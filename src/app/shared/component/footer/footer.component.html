@@ -1,0 +1,49 @@
+@let parentCardClass ="flex flex-1 gap-4 w-full";
+<div
+  class="flex flex-col place-items-center gap-5 leading-10 pt-10 border-t-2 border-secondary"
+>
+  <div
+    class="grid lg:grid-cols-4 md:grid-cols-2 grid-cols-1 flex-wrap gap-5 place-items-center"
+  >
+    @let iconClass ="my-auto pi text-3xl";
+    <!-- Mail -->
+    <div [ngClass]="parentCardClass">
+      <i [ngClass]="iconClass" class="pi-envelope"></i>
+      <p-card header="Email Oriane Montabonnet" class="flex-auto">
+        <div>contact&#64;example.com</div>
+      </p-card>
+    </div>
+    <!-- Tel -->
+    <div [ngClass]="parentCardClass">
+      <i [ngClass]="iconClass" class="pi-phone"></i>
+      <p-card header="Au horaires d'ouvertures" class="flex-auto">
+        <div>06 50 33 18 53</div>
+      </p-card>
+    </div>
+    <!-- Adresse -->
+    <div [ngClass]="parentCardClass">
+      <i [ngClass]="iconClass" class="pi-home"></i>
+      <p-card header="Adresse du cabinet" class="flex-auto">
+        <div class="leading-normal">
+          <div>185 Cour Messier</div>
+          <div>34000 Montpellier</div>
+        </div>
+      </p-card>
+    </div>
+    <div [ngClass]="parentCardClass">
+      <i [ngClass]="iconClass" class="pi-clock"></i>
+      <p-card header="Horaires d'ouverture" class="flex-auto">
+        <div class="flex flex-col leading-normal">
+          <div>Lundi - Vendredi: 9h - 18h</div>
+          <div>Samedi: 10h - 14h</div>
+          <div>Dimanche: Fermé</div>
+        </div>
+      </p-card>
+    </div>
+  </div>
+  <div class="px-5 pt-5 text-center border-t-2 border-secondary w-full">
+    Copyright 2024 - Tout droit réservé
+  </div>
+
+  <p-scrolltop [threshold]="50" />
+</div>

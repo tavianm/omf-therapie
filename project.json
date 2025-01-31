@@ -40,7 +40,8 @@
               "maximumError": "8kb"
             }
           ],
-          "outputHashing": "all"
+          "outputHashing": "all",
+          "baseHref": "/omf-therapy/"
         },
         "development": {
           "optimization": false,
@@ -74,20 +75,13 @@
         "lintFilePatterns": ["./src"]
       }
     },
-    "test": {
-      "executor": "@nx/jest:jest",
-      "outputs": ["{workspaceRoot}/coverage/{projectName}"],
+    "deploy": {
+      "executor": "nx-github-pages:deploy",
       "options": {
-        "jestConfig": "jest.config.ts"
-      }
-    },
-    "serve-static": {
-      "executor": "@nx/web:file-server",
-      "options": {
-        "buildTarget": "omf-therapy:build",
-        "staticFilePath": "dist/omf-therapy/browser",
-        "spa": true
-      }
+        "remote": "https://github.com/tavianm/omf-therapy",
+        "directory": "dist/browser"
+      },
+      "dependsOn": ["build"]
     }
   }
 }
