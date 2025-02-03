@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { AppComponent } from './app.component';
 import { RouterModule } from '@angular/router';
+import { AppComponent } from './app.component';
 
 describe('AppComponent', () => {
   beforeEach(async () => {
@@ -14,13 +14,13 @@ describe('AppComponent', () => {
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.querySelector('h1')?.textContent).toContain(
-      'Welcome omf-therapy'
+      'Welcome omf-therapie'
     );
   });
 
-  it(`should have as title 'omf-therapy'`, () => {
+  it(`should have as title 'omf-therapie'`, () => {
     const fixture = TestBed.createComponent(AppComponent);
     const app = fixture.componentInstance;
-    expect(app.title).toEqual('omf-therapy');
+    expect(app.title).toEqual('omf-therapie');
   });
 });

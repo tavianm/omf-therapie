@@ -1,9 +1,96 @@
-<p>contact works!</p>
-<div class="flex w-full h-50">
+<main class="flex flex-col gap-8 p-6">
   <iframe
     loading="lazy"
     src="https://maps.google.com/maps?q=London%20Eye%2C%20London%2C%20United%20Kingdom&amp;t=m&amp;z=15&amp;output=embed&amp;iwloc=near"
     title="London Eye, London, United Kingdom"
     aria-label="London Eye, London, United Kingdom"
   ></iframe>
-</div>
+  <p-card header="Formulaire de contact" class="w-2/5 ml-auto -mt-24">
+    <form
+      [formGroup]="contactForm"
+      (submit)="sendEmail($event)"
+      class="flex flex-col gap-4"
+    >
+      <!-- Name -->
+      <p-floatlabel variant="on">
+        <input
+          pInputText
+          id="name"
+          formControlName="name"
+          autocomplete="on"
+          ngClass="{'ng-invalid ng-dirty': contactForm.get('name')?.invalid}"
+          [fluid]="true"
+        />
+        <label for="name">Nom</label>
+      </p-floatlabel>
+      <!-- FirstName -->
+      <p-floatlabel variant="on">
+        <input
+          pInputText
+          id="firstName"
+          formControlName="firstName"
+          autocomplete="on"
+          ngClass="{'ng-invalid ng-dirty': contactForm.get('firstName')?.invalid}"
+          [fluid]="true"
+        />
+        <label for="firstName">Prénom</label>
+      </p-floatlabel>
+      <!-- Phone -->
+      <p-floatlabel variant="on">
+        <input
+          pInputText
+          id="phone"
+          formControlName="phone"
+          ngClass="{'ng-invalid ng-dirty': contactForm.get('phone')?.invalid}"
+          autocomplete="on"
+          [fluid]="true"
+        />
+        <label for="phone">Téléphone</label>
+      </p-floatlabel>
+      <!-- email -->
+      <p-floatlabel variant="on">
+        <input
+          pInputText
+          id="email"
+          formControlName="email"
+          ngClass="{'ng-invalid ng-dirty': contactForm.get('email')?.invalid}"
+          autocomplete="on"
+          [fluid]="true"
+        />
+        <label for="email">Email</label>
+      </p-floatlabel>
+      <!-- Subject -->
+      <p-floatlabel variant="on">
+        <input
+          pInputText
+          id="subject"
+          formControlName="subject"
+          ngClass="{'ng-invalid ng-dirty': contactForm.get('subject')?.invalid}"
+          autocomplete="off"
+          [fluid]="true"
+        />
+        <label for="subject">Sujet</label>
+      </p-floatlabel>
+      <!-- message -->
+      <p-floatlabel variant="on" class="flex flex-col">
+        <textarea
+          pTextarea
+          id="message"
+          ngClass="{'ng-invalid ng-dirty': contactForm.get('message')?.invalid}"
+          formControlName="message"
+          rows="5"
+          cols="30"
+          [autoResize]="true"
+          aria-describedby="message-help"
+        ></textarea>
+        <label for="message">Message</label>
+        <small id="message-help"
+          >Longueur du message: {{contactForm.get('message')?.value?.length}} /
+          500
+        </small>
+      </p-floatlabel>
+      <p-button type="submit" label="Envoyer" />
+    </form>
+  </p-card>
+</main>
+<p-toast position="bottom-right"></p-toast>

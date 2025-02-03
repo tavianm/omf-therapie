@@ -1,8 +1,8 @@
 export default {
-  displayName: 'omf-therapy',
+  displayName: 'omf-therapie',
   preset: './jest.preset.js',
   setupFilesAfterEnv: ['<rootDir>/src/test-setup.ts'],
-  coverageDirectory: './coverage/omf-therapy',
+  coverageDirectory: './coverage/omf-therapie',
   transform: {
     '^.+\\.(ts|mjs|js|html)$': [
       'jest-preset-angular',

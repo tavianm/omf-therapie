@@ -1,5 +1,5 @@
 {
-  "name": "omf-therapy",
+  "name": "omf-therapie",
   "$schema": "node_modules/nx/schemas/project-schema.json",
   "includedScripts": [],
   "projectType": "application",
@@ -41,7 +41,7 @@
             }
           ],
           "outputHashing": "all",
-          "baseHref": "/omf-therapy/"
+          "baseHref": "/omf-therapie/"
         },
         "development": {
           "optimization": false,
@@ -55,10 +55,10 @@
       "executor": "@angular-devkit/build-angular:dev-server",
       "configurations": {
         "production": {
-          "buildTarget": "omf-therapy:build:production"
+          "buildTarget": "omf-therapie:build:production"
         },
         "development": {
-          "buildTarget": "omf-therapy:build:development"
+          "buildTarget": "omf-therapie:build:development"
         }
       },
       "defaultConfiguration": "development"
@@ -66,7 +66,7 @@
     "extract-i18n": {
       "executor": "@angular-devkit/build-angular:extract-i18n",
       "options": {
-        "buildTarget": "omf-therapy:build"
+        "buildTarget": "omf-therapie:build"
       }
     },
     "lint": {
@@ -78,7 +78,7 @@
     "deploy": {
       "executor": "nx-github-pages:deploy",
       "options": {
-        "remote": "https://github.com/tavianm/omf-therapy",
+        "remote": "https://github.com/tavianm/omf-therapie",
         "directory": "dist/browser"
       },
       "dependsOn": ["build"]

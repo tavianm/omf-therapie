@@ -1,5 +1,5 @@
 {
-  "name": "@omf-therapy/source",
+  "name": "@omf-therapie/source",
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
@@ -17,6 +17,7 @@
     "@angular/platform-browser": "~19.1.0",
     "@angular/platform-browser-dynamic": "~19.1.0",
     "@angular/router": "~19.1.0",
+    "@emailjs/browser": "^4.4.1",
     "@primeng/themes": "^19.0.5",
     "primeicons": "^7.0.0",
     "primeng": "^19.0.5",

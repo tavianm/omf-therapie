@@ -72,6 +72,6 @@ jobs:
         run: |
           git config --global user.email "matthieu.tavian@gmail.com"
           git config --global user.name "tavianm"
-          npx nx deploy --repo=https://github.com/tavianm/omf-therapy.git
+          npx nx deploy --repo=https://github.com/tavianm/omf-therapie.git
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
