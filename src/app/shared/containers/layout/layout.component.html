@@ -1,9 +1,11 @@
-<header class="p-2">
-  <app-menu />
-</header>
-<div class="flex-col">
-  <router-outlet></router-outlet>
+<div class="flex flex-col">
+  <header class="sticky z-50 top-0">
+    <app-menu />
+  </header>
+  <div class="flex-grow">
+    <router-outlet></router-outlet>
+  </div>
+  <footer class="px-8 z-50">
+    <app-footer />
+  </footer>
 </div>
-<footer class="px-8">
-  <app-footer />
-</footer>

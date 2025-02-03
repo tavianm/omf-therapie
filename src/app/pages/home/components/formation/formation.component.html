@@ -1,7 +1,7 @@
 <section
   class="flex flex-col md:flex-row surface-section place-items-center gap-5"
 >
-  <p-card class="flex-initial">
+  <p-card class="md:w-2/5 w-full">
     <ng-template #header>
       <div class="flex items-center gap-2 px-4 pt-4">
         <i class="fab fa-pagelines fa-xl fa-flip-horizontal text-primary"></i>
@@ -37,11 +37,12 @@
       </li>
     </ul>
   </p-card>
-  <img
-    ngSrc="https://demo2.pavothemes.com/heali/wp-content/uploads/2024/03/h3-healthy.png"
-    alt="Image"
-    class="rounded-tl-[20px] rounded-tr-[120px] rounded-bl-[120px] rounded-br-[20px] flex-1"
-    width="660"
-    height="577"
-  />
+  <div class="relative aspect-square md:w-3/5 w-full">
+    <img
+      ngSrc="https://demo2.pavothemes.com/heali/wp-content/uploads/2024/03/h3-healthy.png"
+      alt="Image"
+      class="object-cover rounded-tl-[20px] rounded-tr-[120px] rounded-bl-[120px] rounded-br-[20px] flex-1"
+      fill
+    />
+  </div>
 </section>

@@ -6,42 +6,47 @@
     height="600"
     referrerpolicy="no-referrer-when-downgrade"
   ></iframe>
-  <section class="px-20 flex">
-    <p-card header="Formulaire de contact" class="w-2/5 ml-auto -mt-32">
+  <section class="sm:px-20 px-6 flex">
+    <p-card
+      header="Formulaire de contact"
+      class="xl:w-1/3 lg:w-2/5 md:w-1/2 sm:w-2/3 w-full ml-auto -mt-32"
+    >
       <form
         [formGroup]="contactForm"
         (submit)="sendEmail($event)"
         class="flex flex-col gap-4 pt-4"
       >
-        <div class="flex flew-row gap-4">
-          <!-- Name -->
-          <p-floatlabel variant="on" class="grow-4">
-            <input
-              pInputText
-              id="name"
-              formControlName="name"
-              autocomplete="on"
-              ngClass="{'ng-invalid ng-dirty': contactForm.get('name')?.invalid}"
-              [fluid]="true"
-            />
-            <label for="name">Nom</label>
-          </p-floatlabel>
-          <!-- FirstName -->
-          <p-floatlabel variant="on">
-            <input
-              pInputText
-              id="firstName"
-              formControlName="firstName"
-              autocomplete="on"
-              ngClass="{'ng-invalid ng-dirty': contactForm.get('firstName')?.invalid}"
-              [fluid]="true"
-            />
-            <label for="firstName">Prénom</label>
-          </p-floatlabel>
-        </div>
+        <p-fluid>
+          <div class="flex flew-row gap-4">
+            <!-- Name -->
+            <p-floatlabel variant="on" class="w-full">
+              <input
+                pInputText
+                id="name"
+                formControlName="name"
+                autocomplete="on"
+                ngClass="{'ng-invalid ng-dirty': contactForm.get('name')?.invalid}"
+                [fluid]="true"
+              />
+              <label for="name">Nom</label>
+            </p-floatlabel>
+            <!-- FirstName -->
+            <p-floatlabel variant="on" class="w-full">
+              <input
+                pInputText
+                id="firstName"
+                formControlName="firstName"
+                autocomplete="on"
+                ngClass="{'ng-invalid ng-dirty': contactForm.get('firstName')?.invalid}"
+                [fluid]="true"
+              />
+              <label for="firstName">Prénom</label>
+            </p-floatlabel>
+          </div>
+        </p-fluid>
         <div class="flex flew-row gap-4">
           <!-- email -->
-          <p-floatlabel variant="on">
+          <p-floatlabel variant="on" class="w-full">
             <input
               pInputText
               id="email"
@@ -53,7 +58,7 @@
             <label for="email">Email</label>
           </p-floatlabel>
           <!-- Phone -->
-          <p-floatlabel variant="on">
+          <p-floatlabel variant="on" class="w-full">
             <input
               pInputText
               id="phone"

@@ -1,15 +1,16 @@
 <section
-  class="flex flex-col md:flex-row surface-section place-items-center gap-5"
+  class="flex flex-col-reverse md:flex-row surface-section place-items-center gap-5"
 >
-  <img
-    ngSrc="https://demo2.pavothemes.com/heali/wp-content/uploads/2024/03/h3-choose01.png"
-    alt="Image"
-    class="rounded-2xl flex-auto"
-    width="520"
-    height="413"
-    priority
-  />
-  <p-card class="flex-auto">
+  <div class="relative aspect-square md:w-3/5 w-full">
+    <img
+      ngSrc="https://demo2.pavothemes.com/heali/wp-content/uploads/2024/03/h3-choose01.png"
+      alt="Image"
+      class="rounded-2xl object-cover"
+      fill
+    />
+  </div>
+
+  <p-card class="md:w-2/5 w-full">
     <ng-template #header>
       <div class="flex items-center gap-2 px-4 pt-4">
         <i class="fas fa-lg fa-user text-primary"></i>
@@ -17,7 +18,7 @@
       </div>
     </ng-template>
     <ng-template #title>
-      <h2 class="text-primary">Mon petit truc en plus</h2>
+      <p class="text-primary">Mon petit truc en plus</p>
     </ng-template>
     <ul class="fa-ul">
       <li>

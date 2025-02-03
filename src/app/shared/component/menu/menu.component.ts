@@ -16,7 +16,7 @@ export class MenuComponent {
     item: { 'focus.background': '{primary.100}', padding: '1rem' },
     'base.item': { padding: '1rem' },
     gap: '1rem',
-    padding: '2rem',
+    padding: '1rem',
   };
 
   items: MenuItem[] = [
@@ -54,7 +54,7 @@ export class MenuComponent {
   scroll(el: string) {
     setTimeout(() => {
       const htmlElement = document.getElementById(el);
-      htmlElement?.scrollIntoView({ behavior: 'smooth' });
+      htmlElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 200);
   }
 }

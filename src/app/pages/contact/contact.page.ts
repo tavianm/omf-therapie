@@ -16,6 +16,7 @@ import { MessageService } from 'primeng/api';
 import { Button } from 'primeng/button';
 import { Card } from 'primeng/card';
 import { FloatLabel } from 'primeng/floatlabel';
+import { Fluid } from 'primeng/fluid';
 import { InputText } from 'primeng/inputtext';
 import { Textarea } from 'primeng/textarea';
 import { Toast } from 'primeng/toast';
@@ -29,6 +30,7 @@ import { Toast } from 'primeng/toast';
     InputText,
     Textarea,
     Button,
+    Fluid,
     Toast,
     FloatLabel,
   ],
@@ -55,6 +57,7 @@ export class ContactPageComponent implements OnInit {
 
   ngOnInit(): void {
     this.contactForm.markAsPristine();
+    window.scrollTo(0, 0);
   }
 
   public sendEmail(e: Event) {
