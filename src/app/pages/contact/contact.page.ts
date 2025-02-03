@@ -1,5 +1,10 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  inject,
+  OnInit,
+} from '@angular/core';
 import {
   FormBuilder,
   FormControl,
@@ -32,7 +37,7 @@ import { Toast } from 'primeng/toast';
   styleUrl: './contact.page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ContactPageComponent {
+export class ContactPageComponent implements OnInit {
   formbuilder = inject(FormBuilder);
   messageService = inject(MessageService);
 
@@ -47,6 +52,10 @@ export class ContactPageComponent {
       Validators.maxLength(500),
     ]),
   });
+
+  ngOnInit(): void {
+    this.contactForm.markAsPristine();
+  }
 
   public sendEmail(e: Event) {
     if (this.contactForm.invalid) {

@@ -41,7 +41,7 @@
             }
           ],
           "outputHashing": "all",
-          "baseHref": "/omf-therapie/"
+          "baseHref": "/"
         },
         "development": {
           "optimization": false,
@@ -79,7 +79,8 @@
       "executor": "nx-github-pages:deploy",
       "options": {
         "remote": "https://github.com/tavianm/omf-therapie",
-        "directory": "dist/browser"
+        "directory": "dist/browser",
+        "CNAME": "www.omf-therapie.fr"
       },
       "dependsOn": ["build"]
     }
