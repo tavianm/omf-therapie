@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component } from '@angular/core';
+import { Component, ViewEncapsulation } from '@angular/core';
 import { MenuItem } from 'primeng/api';
 import { Menubar } from 'primeng/menubar';
 
@@ -8,52 +8,53 @@ import { Menubar } from 'primeng/menubar';
   imports: [CommonModule, Menubar],
   templateUrl: './menu.component.html',
   styleUrl: './menu.component.scss',
+  encapsulation: ViewEncapsulation.None,
 })
 export class MenuComponent {
+  myMenuBar = {
+    'border.color': 'transparent',
+    item: { 'focus.background': '{primary.100}', padding: '1rem' },
+    'base.item': { padding: '1rem' },
+    gap: '1rem',
+    padding: '2rem',
+  };
+
   items: MenuItem[] = [
     {
-      label: 'Home',
-      icon: 'pi pi-home',
+      label: 'Qui suis-je?',
+      routerLink: ['/'],
+      command: () => this.scroll('presentation'),
     },
     {
-      label: 'Features',
-      icon: 'pi pi-star',
+      label: 'Mon parcours',
+      routerLink: ['/'],
+      command: () => this.scroll('formation'),
     },
     {
-      label: 'Projects',
-      icon: 'pi pi-search',
-      items: [
-        {
-          label: 'Components',
-          icon: 'pi pi-bolt',
-        },
-        {
-          label: 'Blocks',
-          icon: 'pi pi-server',
-        },
-        {
-          label: 'UI Kit',
-          icon: 'pi pi-pencil',
-        },
-        {
-          label: 'Templates',
-          icon: 'pi pi-palette',
-          items: [
-            {
-              label: 'Apollo',
-              icon: 'pi pi-palette',
-            },
-            {
-              label: 'Ultima',
-              icon: 'pi pi-palette',
-            },
-          ],
-        },
-      ],
+      label: "Champs d'actions",
+      routerLink: ['/'],
+      command: () => this.scroll('actions'),
+    },
+    {
+      label: 'Etapes',
+      routerLink: ['/'],
+      command: () => this.scroll('etapes'),
+    },
+    {
+      label: 'Tarifs',
+      routerLink: ['/'],
+      command: () => this.scroll('tarifs'),
     },
     {
       label: 'Contact',
-      icon: 'pi pi-envelope',
+      routerLink: ['/contact'],
     },
   ];
+
+  scroll(el: string) {
+    setTimeout(() => {
+      const htmlElement = document.getElementById(el);
+      htmlElement?.scrollIntoView({ behavior: 'smooth' });
+    }, 200);
+  }
 }

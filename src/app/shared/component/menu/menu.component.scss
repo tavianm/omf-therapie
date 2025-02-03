@@ -1,0 +1,13 @@
+p-menubar {
+  .p-menubar {
+    p-menubarsub {
+      margin: auto;
+      .p-menubar-item-link {
+        font-weight: 600;
+      }
+    }
+    .p-menubar-end {
+      display: none;
+    }
+  }
+}
