@@ -1,23 +1,51 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { Heart, Brain, Users, Sparkles, Coffee, Flower } from 'lucide-react';
+import { motion } from "framer-motion";
+import { Brain, Coffee, Users } from "lucide-react";
 
 const Services = () => {
   const services = [
     {
-      icon: Heart,
-      title: "Thérapie Individuelle",
-      description: "Accompagnement personnalisé pour surmonter les difficultés personnelles et émotionnelles."
-    },
-    {
       icon: Brain,
-      title: "Gestion du Stress",
-      description: "Techniques et outils pour mieux gérer le stress et l'anxiété au quotidien."
+      title: "Problématiques personnelles",
+      descriptions: [
+        "Mal-être psychologique, perte de repères",
+        "États dépressifs, tristesse persistante",
+        "Anxiété, stress, angoisses envahissantes",
+        "Hypersensibilité et gestion des émotions",
+        "Difficultés à s'affirmer, peur du jugement",
+        "Conflits internes, indécision, sentiment d'être bloqué(e)",
+        "Manque de confiance et d'estime de soi",
+      ],
     },
     {
       icon: Users,
-      title: "Thérapie de Couple",
-      description: "Aide à la communication et à la résolution des conflits dans le couple."
+      title: "Problématiques alimentaires & image corporelle",
+      descriptions: [
+        "Alimentation émotionnelle, compulsions alimentaires",
+        "Alimentation désordonnée, relation conflictuelle avec la nourriture",
+        "Difficulté à perdre du poids ou à maintenir un équilibre alimentaire",
+        "Troubles du comportement alimentaire (TCA)",
+        "Rééquilibrage alimentaire et bien-être nutritionnel",
+        "Mal-être physique lié à l'image de soi",
+        "Dysmorphophobie (perception altérée de son corps)",
+      ],
+    },
+    {
+      icon: Coffee,
+      title: "Problématiques conjugales & familiales",
+      descriptions: [
+        "Tensions et difficultés relationnelles",
+        "Communication compliquée au sein du couple ou de la famille",
+        "Problématiques sexuelles et intimes",
+        "Conflits conjugaux ou familiaux récurrents",
+        "Préparation à la parentalité, transition vers la vie de parent",
+        "Événements bouleversants affectant le couple ou la famille",
+        "Deuil et gestion des pertes au sein du cercle familial",
+      ],
+    },
+    /* {
+      icon: Heart,
+      title: "Thérapie Individuelle",
+      description: "Accompagnement personnalisé pour surmonter les difficultés personnelles et émotionnelles."
     },
     {
       icon: Sparkles,
@@ -25,15 +53,10 @@ const Services = () => {
       description: "Accompagnement vers une meilleure connaissance de soi et de son potentiel."
     },
     {
-      icon: Coffee,
-      title: "Gestion des Émotions",
-      description: "Apprentissage de la régulation émotionnelle et de la gestion des conflits."
-    },
-    {
       icon: Flower,
       title: "Bien-être au Travail",
       description: "Solutions pour améliorer l'équilibre vie professionnelle et personnelle."
-    }
+    } */
   ];
 
   return (
@@ -65,9 +88,13 @@ const Services = () => {
               <h3 className="text-xl font-serif font-semibold text-sage-800 mb-4">
                 {service.title}
               </h3>
-              <p className="text-sage-600">
-                {service.description}
-              </p>
+              <ul className="list-disc pl-3">
+                {service.descriptions?.map((description, index) => (
+                  <li key={index} className="text-sage-600">
+                    {description}
+                  </li>
+                ))}
+              </ul>
             </motion.div>
           ))}
         </div>
@@ -83,9 +110,10 @@ const Services = () => {
             Une Approche Sur Mesure
           </h2>
           <p className="text-sage-600 max-w-3xl mx-auto">
-            Chaque personne est unique, c'est pourquoi j'adapte mes méthodes et techniques 
-            thérapeutiques en fonction de vos besoins spécifiques. Mon approche intègre 
-            différentes modalités thérapeutiques pour vous offrir un accompagnement optimal.
+            Chaque personne est unique, c'est pourquoi j'adapte mes méthodes et
+            techniques thérapeutiques en fonction de vos besoins spécifiques.
+            Mon approche intègre différentes modalités thérapeutiques pour vous
+            offrir un accompagnement optimal.
           </p>
         </motion.div>
       </div>
@@ -94,3 +122,4 @@ const Services = () => {
 };
 
 export default Services;
+

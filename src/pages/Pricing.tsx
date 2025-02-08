@@ -1,42 +1,60 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { Check } from 'lucide-react';
+import { motion } from "framer-motion";
+import parse from "html-react-parser";
+import { Check } from "lucide-react";
 
 const Pricing = () => {
   const prices = [
     {
-      title: "Consultation Individuelle",
-      price: "70€",
-      duration: "50 minutes",
+      title: "Thérapie Individuelle",
+      priceDetails: [
+        { price: "50€", duration: "60 minutes" },
+        { price: "65€", duration: "90 minutes" },
+      ],
       features: [
-        "Séance en cabinet",
         "Suivi personnalisé",
-        "Techniques adaptées à vos besoins",
-        "Exercices pratiques"
-      ]
+        "Séance en cabinet",
+        "Téléconsultation",
+        "1<sup>re</sup> séance => -25€",
+      ],
     },
     {
-      title: "Thérapie de Couple",
-      price: "90€",
-      duration: "60 minutes",
+      title: "Thérapie conjugale",
+      priceDetails: [
+        { price: "70€", duration: "60 minutes" },
+        { price: "85€", duration: "90 minutes" },
+      ],
       features: [
-        "Séance pour deux personnes",
         "Médiation relationnelle",
-        "Outils de communication",
-        "Suivi personnalisé"
-      ]
+        "Séance en cabinet",
+        "Téléconsultation",
+        "1<sup>re</sup> séance => -25€",
+      ],
     },
     {
-      title: "Pack 5 Séances",
-      price: "325€",
+      title: "Thérapie familiale",
+      priceDetails: [
+        { price: "80€", duration: "60 minutes" },
+        { price: "95€", duration: "90 minutes" },
+      ],
+      features: [
+        "Suivi personnalisé",
+        "Médiation relationnelle",
+        "Séance en cabinet",
+        "1<sup>re</sup> séance => -25€",
+        ,
+      ],
+    },
+    {
+      title: "Tarifs solidaires",
+      priceDetails: [{ price: "-15€", duration: "séance" }],
       duration: "5 x 50 minutes",
       features: [
-        "Économie de 25€",
-        "Suivi régulier",
-        "Progression structurée",
-        "Flexibilité des horaires"
-      ]
-    }
+        "RSA / ASS / Etudiant",
+        "Avec justificatif",
+        "Séance en cabinet",
+        "Téléconsultation",
+      ],
+    },
   ];
 
   return (
@@ -54,7 +72,7 @@ const Pricing = () => {
           </p>
         </motion.div>
 
-        <div className="grid md:grid-cols-3 gap-8">
+        <div className="grid xl:grid-cols-4 sm:grid-cols-2 gap-8">
           {prices.map((price, index) => (
             <motion.div
               key={index}
@@ -67,17 +85,30 @@ const Pricing = () => {
               <h3 className="text-xl font-serif font-semibold text-sage-800 mb-4">
                 {price.title}
               </h3>
-              <div className="flex items-baseline mb-6">
-                <span className="text-4xl font-serif font-semibold text-mint-600">
-                  {price.price}
-                </span>
-                <span className="text-sage-500 ml-2">/ {price.duration}</span>
-              </div>
+              {price.priceDetails?.map((price, priceIndex, array) => (
+                <div
+                  className={
+                    "flex items-baseline " +
+                    (priceIndex > 0
+                      ? "mb-6"
+                      : array.length === 1
+                      ? "my-10 pb-1"
+                      : "mb-1")
+                  }
+                >
+                  <span className="text-4xl font-serif font-semibold text-mint-600">
+                    {price.price}
+                  </span>
+                  <span className="text-sage-500 ml-2">/ {price.duration}</span>
+                </div>
+              ))}
               <ul className="space-y-4">
                 {price.features.map((feature, featureIndex) => (
                   <li key={featureIndex} className="flex items-center gap-3">
                     <Check className="h-5 w-5 text-mint-600" />
-                    <span className="text-sage-600">{feature}</span>
+                    <span className="text-sage-600">
+                      {feature && parse(feature)}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -99,7 +130,6 @@ const Pricing = () => {
             <ul className="space-y-4 text-sage-600">
               <li>Paiement par carte bancaire</li>
               <li>Paiement en espèces</li>
-              <li>Virement bancaire</li>
               <li>Règlement à chaque séance</li>
               <li>Facture fournie sur demande</li>
             </ul>
@@ -111,11 +141,13 @@ const Pricing = () => {
             </h2>
             <div className="space-y-4 text-sage-600">
               <p>
-                Les consultations peuvent être partiellement prises en charge par certaines mutuelles. 
-                N'hésitez pas à vous renseigner auprès de votre organisme complémentaire.
+                Les consultations peuvent être partiellement prises en charge
+                par certaines mutuelles. N'hésitez pas à vous renseigner auprès
+                de votre organisme complémentaire.
               </p>
               <p>
-                Une facture détaillée vous sera fournie pour faciliter vos démarches de remboursement.
+                Une facture détaillée vous sera fournie, sur demande, pour
+                faciliter vos démarches de remboursement.
               </p>
             </div>
           </div>
@@ -129,12 +161,23 @@ const Pricing = () => {
           className="mt-16 bg-white p-8 rounded-lg shadow-sm text-center"
         >
           <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-4">
-            Politique d'Annulation
+            Engagement et responsabilité
           </h2>
-          <p className="text-sage-600 max-w-2xl mx-auto">
-            Toute annulation doit être effectuée au moins 24 heures à l'avance. 
-            En cas d'annulation tardive ou d'absence non justifiée, la séance sera due. 
-            Cette politique permet de garantir une disponibilité optimale pour l'ensemble des patients.
+          <p className="text-sage-600 max-w-3xl mx-auto">
+            Comme 95% de nos patients, nous comptons sur votre présence au
+            rendez-vous prévu.
+          </p>
+
+          <p className="text-sage-600 max-w-3xl mx-auto my-4">
+            Si vous ne pouvez pas honorer votre consultation, merci de bien
+            vouloir : Annuler votre rendez-vous au moins 4 heures à l'avance
+            Utiliser notre système en ligne ou nous contacter directement Votre
+            geste permettra à un autre patient en attente de bénéficier de ce
+            créneau.
+          </p>
+          <p className="text-sage-600 max-w-3xl mx-auto">
+            Nous vous remercions pour votre compréhension et votre
+            collaboration.
           </p>
         </motion.div>
       </div>
@@ -143,3 +186,4 @@ const Pricing = () => {
 };
 
 export default Pricing;
+

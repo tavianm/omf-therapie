@@ -27,7 +27,7 @@ const Home = () => {
         {/* Hero Section */}
         <section
           id="home"
-          className="relative h-[90vh] flex items-center"
+          className="relative h-[60vh] flex items-center"
           aria-labelledby="hero-title"
         >
           <div className="absolute inset-0 z-0" aria-hidden="true">
@@ -45,7 +45,7 @@ const Home = () => {
                 className="w-full h-full object-cover"
                 loading="eager"
                 decoding="async"
-                fetchpriority="high"
+                fetchPriority="high"
                 width="800"
                 height="600"
               />
@@ -64,11 +64,10 @@ const Home = () => {
                 id="hero-title"
                 className="text-5xl md:text-6xl font-serif font-semibold mb-6"
               >
-                Retrouvez votre équilibre intérieur
+                Bienvenue sur OMF Thérapie
               </h1>
               <p className="text-xl md:text-2xl mb-8 max-w-3xl mx-auto">
-                Un accompagnement thérapeutique personnalisé pour vous guider
-                vers le bien-être
+                Votre partenaire pour un bien-être psychologique durable
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Link
@@ -180,3 +179,4 @@ const Home = () => {
 };
 
 export default Home;
+

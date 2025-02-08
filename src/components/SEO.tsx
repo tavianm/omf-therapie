@@ -16,7 +16,7 @@ const SEO: React.FC<SEOProps> = ({
   canonical = "https://www.omf-therapie.fr/",
   type = "website",
   name = "Oriane Montabonnet",
-  image = "https://www.omf-therapie.fr//og-image.jpg", // Ajoutez une image par défaut
+  image = "https://www.omf-therapie.fr/assets/about_1.webp", // Ajoutez une image par défaut
 }) => {
   return (
     <Helmet>
@@ -48,3 +48,4 @@ const SEO: React.FC<SEOProps> = ({
 };
 
 export default SEO;
+

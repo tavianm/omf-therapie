@@ -30,11 +30,11 @@ const Footer = () => {
               </li>
               <li className="flex items-center gap-2 text-sage-300">
                 <Mail className="h-4 w-4" />
-                <span>montabonnet.therapie@gmail.com</span>
+                <span>contact@omf-therapie.fr</span>
               </li>
               <li className="flex items-center gap-2 text-sage-300">
                 <MapPin className="h-4 w-4" />
-                <span>185 cour messier, Montpellier</span>
+                <span>185 cour Messier, Montpellier</span>
               </li>
             </ul>
           </div>
@@ -80,9 +80,9 @@ const Footer = () => {
           <div>
             <h3 className="text-lg font-medium mb-4">Horaires</h3>
             <ul className="space-y-2 text-sage-300">
-              <li>Lundi - Vendredi: 9h - 19h</li>
-              <li>Samedi: 9h - 13h</li>
-              <li>Dimanche: Fermé</li>
+              <li>Lundi - Vendredi </li>
+              <li>8h - 10h</li>
+              <li>15h30 - 19h</li>
             </ul>
           </div>
         </div>
@@ -99,3 +99,4 @@ const Footer = () => {
 };
 
 export default Footer;
+

@@ -110,12 +110,12 @@ const Contact = () => {
                 <div className="space-y-4">
                   <div className="flex items-center gap-4">
                     <Phone className="h-5 w-5 text-mint-600" />
-                    <span className="text-sage-600">01 23 45 67 89</span>
+                    <span className="text-sage-600">06 50 33 18 53</span>
                   </div>
                   <div className="flex items-center gap-4">
                     <Mail className="h-5 w-5 text-mint-600" />
                     <span className="text-sage-600">
-                      montabonnet.therapie@gmail.com
+                      contact@omf-therapie.fr
                     </span>
                   </div>
                   <div className="flex items-center gap-4">
@@ -127,9 +127,9 @@ const Contact = () => {
                   <div className="flex items-center gap-4">
                     <Clock className="h-5 w-5 text-mint-600" />
                     <div className="text-sage-600">
-                      <p>Lundi - Vendredi: 9h - 19h</p>
-                      <p>Samedi: 9h - 13h</p>
-                      <p>Dimanche: Fermé</p>
+                      <p>Lundi - Vendredi</p>
+                      <p>8h - 10h</p>
+                      <p>15h30 - 19h</p>
                     </div>
                   </div>
                 </div>
@@ -141,7 +141,7 @@ const Contact = () => {
                 </h2>
                 <div className="aspect-w-16 aspect-h-9">
                   <iframe
-                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2624.9916256937595!2d2.3294481156744993!3d48.86863857928921!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x47e66e38f817b573%3A0x48d69c30470e7aeb!2sPlace%20Vend%C3%B4me!5e0!3m2!1sen!2sfr!4v1628597681669!5m2!1sen!2sfr"
+                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2624.9916256937595!2d2.3294481156744993!3d48.86863857928921!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x12b6a585a9083373%3A0xaee98960437b8f02!2s185%20Cr%20Messier%2C%2034000%20Montpellier!5e0!3m2!1sen!2sfr!4v1628597681669!5m2!1sen!2sfr"
                     className="w-full h-[300px] rounded-lg"
                     loading="lazy"
                   ></iframe>
@@ -257,3 +257,4 @@ const Contact = () => {
 };
 
 export default Contact;
+

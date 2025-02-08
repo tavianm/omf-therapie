@@ -1,29 +1,34 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { Clock, MessageCircle, Target, Sparkles } from 'lucide-react';
+import { motion } from "framer-motion";
+import { Clock, MessageCircle, Sparkles, Target } from "lucide-react";
 
 const Process = () => {
   const steps = [
     {
       icon: MessageCircle,
-      title: "Premier Contact",
-      description: "Un entretien téléphonique gratuit de 15 minutes pour échanger sur vos besoins."
+      title: "Comprendre et identifier vos besoins (Séance 1 à 2)",
+      description:
+        "Lors des premières séances, nous explorons ensemble ce qui vous amène, vos ressentis et les difficultés que vous rencontrez. L'objectif est de clarifier vos besoins et de poser des bases solides pour la suite de l'accompagnement.",
     },
     {
       icon: Clock,
-      title: "Première Séance",
-      description: "Une séance d'une heure pour faire connaissance et définir ensemble vos objectifs."
+      title:
+        "Définir un plan d'action personnalisé (Fin de séance 1 ou séance 2)",
+      description:
+        "Une fois vos problématiques identifiées, nous élaborons un plan d'action adapté, avec des objectifs concrets et réalisables, afin de vous guider vers un mieux-être progressif et durable.",
     },
     {
       icon: Target,
-      title: "Suivi Personnalisé",
-      description: "Des séances régulières adaptées à votre rythme et vos besoins."
+      title: "Mettre en place des actions concrètes (Séance 3 à 4)",
+      description:
+        "À votre rythme, vous commencez à appliquer les outils et stratégies définis ensemble. Ces mises en pratique vous permettent d'observer les premiers changements et de renforcer votre évolution.",
     },
     {
       icon: Sparkles,
-      title: "Évolution",
-      description: "Un accompagnement qui évolue avec vous jusqu'à l'atteinte de vos objectifs."
-    }
+      title:
+        "Ajuster et affiner votre cheminement (Séance 4 à 5 et au-delà si besoin)",
+      description:
+        "Nous faisons régulièrement le point sur votre progression afin d'ajuster les actions mises en place. Ce suivi vous assure un accompagnement dynamique, adapté à vos ressentis et vos avancées.",
+    },
   ];
 
   return (
@@ -37,13 +42,14 @@ const Process = () => {
         >
           <h1 className="section-title">Le Processus Thérapeutique</h1>
           <p className="section-subtitle">
-            Un accompagnement structuré et bienveillant pour votre développement personnel
+            Un accompagnement structuré et bienveillant pour votre développement
+            personnel
           </p>
         </motion.div>
 
         <div className="relative">
           <div className="absolute top-0 left-1/2 h-full w-px bg-sage-200 hidden md:block" />
-          
+
           <div className="space-y-12 relative">
             {steps.map((step, index) => (
               <motion.div
@@ -53,7 +59,9 @@ const Process = () => {
                 viewport={{ once: true }}
                 transition={{ duration: 0.8 }}
                 className={`flex flex-col md:flex-row gap-8 ${
-                  index % 2 === 0 ? 'md:pr-1/2' : 'md:pl-1/2 md:flex-row-reverse'
+                  index % 2 === 0
+                    ? "md:pr-1/2"
+                    : "md:pl-1/2 md:flex-row-reverse"
                 }`}
               >
                 <div className="flex-1">
@@ -91,9 +99,9 @@ const Process = () => {
                 Durée des Séances
               </h3>
               <p className="text-sage-600">
-                Les séances durent généralement 50 minutes. La fréquence est adaptée 
-                à vos besoins, généralement hebdomadaire au début puis espacée selon 
-                votre évolution.
+                Les séances durent généralement 50 minutes. La fréquence est
+                adaptée à vos besoins, généralement hebdomadaire au début puis
+                espacée selon votre évolution.
               </p>
             </div>
             <div>
@@ -101,8 +109,8 @@ const Process = () => {
                 Confidentialité
               </h3>
               <p className="text-sage-600">
-                Toutes nos séances sont strictement confidentielles, dans le respect 
-                du code de déontologie des psychothérapeutes.
+                Toutes nos séances sont strictement confidentielles, dans le
+                respect du code de déontologie des psychothérapeutes.
               </p>
             </div>
           </div>
@@ -113,3 +121,4 @@ const Process = () => {
 };
 
 export default Process;
+
