@@ -1,8 +1,5 @@
 name: ci
 
-env:
-  NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
-
 on:
   push:
     branches:
@@ -34,13 +31,11 @@ jobs:
 
       - uses: nrwl/nx-set-shas@v4
 
-      - name: Build
-        run: npm run build
-
       - name: Deploy to GitHub Pages
         run: |
           git config --global user.email "matthieu.tavian@gmail.com"
           git config --global user.name "tavianm"
-          npx nx deploy --repo=https://github.com/tavianm/omf-therapie.git
+          git remote set-url origin https://git:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git
+          npm run deploy -- -r=https://github.com/tavianm/omf-therapie.git -u "github-actions-bot <support+actions@github.com>"
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}

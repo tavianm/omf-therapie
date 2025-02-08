@@ -1,6 +1,5 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { Leaf, Phone, Mail, MapPin } from 'lucide-react';
+import { Leaf, Mail, MapPin, Phone } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const Footer = () => {
   return (
@@ -12,11 +11,12 @@ const Footer = () => {
             <Link to="/" className="flex items-center">
               <Leaf className="h-6 w-6 text-mint-400" />
               <span className="ml-2 text-lg font-serif font-medium">
-                Claire Martin
+                Oriane Montabonnet
               </span>
             </Link>
             <p className="text-sage-300 text-sm">
-              Psychothérapeute professionnelle dédiée à votre bien-être et à votre développement personnel.
+              Thérapeute professionnelle dédiée à votre bien-être et à votre
+              développement personnel.
             </p>
           </div>
 
@@ -26,15 +26,15 @@ const Footer = () => {
             <ul className="space-y-3">
               <li className="flex items-center gap-2 text-sage-300">
                 <Phone className="h-4 w-4" />
-                <span>01 23 45 67 89</span>
+                <span>06 50 33 18 53</span>
               </li>
               <li className="flex items-center gap-2 text-sage-300">
                 <Mail className="h-4 w-4" />
-                <span>contact@clairemartin.fr</span>
+                <span>montabonnet.therapie@gmail.com</span>
               </li>
               <li className="flex items-center gap-2 text-sage-300">
                 <MapPin className="h-4 w-4" />
-                <span>123 rue de la Paix, Paris</span>
+                <span>185 cour messier, Montpellier</span>
               </li>
             </ul>
           </div>
@@ -44,18 +44,33 @@ const Footer = () => {
             <h3 className="text-lg font-medium mb-4">Liens Rapides</h3>
             <ul className="space-y-2">
               {[
-                { name: 'Accueil', href: '/' },
-                { name: 'À Propos', href: '/about' },
-                { name: 'Services', href: '/services' },
-                { name: 'Contact', href: '/contact' },
+                { name: "Accueil", href: "#home", path: "/" },
+                { name: "À Propos", href: "#about", path: "/" },
+                { name: "Services", href: "#services", path: "/" },
+                { name: "Contact", href: "/contact", path: "/contact" },
               ].map((link) => (
                 <li key={link.name}>
-                  <Link
-                    to={link.href}
-                    className="text-sage-300 hover:text-mint-400 transition-colors"
-                  >
-                    {link.name}
-                  </Link>
+                  {link.path === "/contact" ? (
+                    <Link
+                      to={link.href}
+                      className="text-sage-300 hover:text-mint-400 transition-colors"
+                    >
+                      {link.name}
+                    </Link>
+                  ) : (
+                    <a
+                      href={link.href}
+                      className="text-sage-300 hover:text-mint-400 transition-colors"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        document
+                          .getElementById(link.href.substring(1))
+                          ?.scrollIntoView({ behavior: "smooth" });
+                      }}
+                    >
+                      {link.name}
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>
@@ -73,7 +88,10 @@ const Footer = () => {
         </div>
 
         <div className="mt-12 pt-8 border-t border-sage-700 text-center text-sage-400 text-sm">
-          <p>© {new Date().getFullYear()} Claire Martin. Tous droits réservés.</p>
+          <p>
+            © {new Date().getFullYear()} Oriane Montabonnet. Tous droits
+            réservés.
+          </p>
         </div>
       </div>
     </footer>

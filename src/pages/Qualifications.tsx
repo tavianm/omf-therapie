@@ -1,6 +1,5 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { GraduationCap, Award, BookOpen } from 'lucide-react';
+import { motion } from "framer-motion";
+import { Award, BookOpen, GraduationCap } from "lucide-react";
 
 const Qualifications = () => {
   const qualifications = [
@@ -8,38 +7,38 @@ const Qualifications = () => {
       year: "2010",
       title: "Doctorat en Psychologie Clinique",
       institution: "Université Paris Descartes",
-      description: "Spécialisation en thérapies comportementales et cognitives"
+      description: "Spécialisation en thérapies comportementales et cognitives",
     },
     {
       year: "2007",
       title: "Master en Psychologie",
       institution: "Université Paris Diderot",
-      description: "Mention très bien, spécialisation en psychopathologie"
+      description: "Mention très bien, spécialisation en psychopathologie",
     },
     {
       year: "2005",
       title: "Licence en Psychologie",
       institution: "Université Paris Nanterre",
-      description: "Formation aux fondamentaux de la psychologie"
-    }
+      description: "Formation aux fondamentaux de la psychologie",
+    },
   ];
 
   const certifications = [
     {
       title: "Thérapie Cognitive et Comportementale",
       institution: "Association Française de TCC",
-      year: "2012"
+      year: "2012",
     },
     {
       title: "Mindfulness et Méditation",
       institution: "Centre de Mindfulness de Paris",
-      year: "2014"
+      year: "2014",
     },
     {
       title: "Thérapie Systémique",
       institution: "Institut des Systèmes Humains",
-      year: "2016"
-    }
+      year: "2016",
+    },
   ];
 
   return (
@@ -53,7 +52,8 @@ const Qualifications = () => {
         >
           <h1 className="section-title">Formations et Qualifications</h1>
           <p className="section-subtitle">
-            Un parcours académique et professionnel riche au service de votre bien-être
+            Un parcours académique et professionnel riche au service de votre
+            bien-être
           </p>
         </motion.div>
 
@@ -80,7 +80,9 @@ const Qualifications = () => {
                   transition={{ duration: 0.5, delay: index * 0.1 }}
                   className="bg-white p-6 rounded-lg shadow-sm"
                 >
-                  <div className="text-mint-600 font-medium mb-2">{qual.year}</div>
+                  <div className="text-mint-600 font-medium mb-2">
+                    {qual.year}
+                  </div>
                   <h3 className="text-xl font-serif font-semibold text-sage-800 mb-2">
                     {qual.title}
                   </h3>
@@ -114,7 +116,9 @@ const Qualifications = () => {
                     transition={{ duration: 0.5, delay: index * 0.1 }}
                     className="bg-white p-6 rounded-lg shadow-sm"
                   >
-                    <div className="text-mint-600 font-medium mb-2">{cert.year}</div>
+                    <div className="text-mint-600 font-medium mb-2">
+                      {cert.year}
+                    </div>
                     <h3 className="text-lg font-serif font-semibold text-sage-800 mb-2">
                       {cert.title}
                     </h3>
@@ -138,7 +142,8 @@ const Qualifications = () => {
               </div>
               <div className="bg-sage-50 p-6 rounded-lg">
                 <p className="text-sage-600 mb-4">
-                  Je maintiens mes connaissances à jour en participant régulièrement à :
+                  Je maintiens mes connaissances à jour en participant
+                  régulièrement à :
                 </p>
                 <ul className="space-y-3 text-sage-600">
                   <li className="flex items-center gap-2">

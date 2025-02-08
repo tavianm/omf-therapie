@@ -1,5 +1,4 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+import { motion } from "framer-motion";
 
 const About = () => {
   return (
@@ -13,7 +12,8 @@ const About = () => {
         >
           <h1 className="section-title">À Propos de Moi</h1>
           <p className="section-subtitle">
-            Psychothérapeute passionnée, je vous accompagne dans votre parcours vers le mieux-être
+            Thérapeute passionnée, je vous accompagne dans votre parcours vers
+            le mieux-être
           </p>
         </motion.div>
 
@@ -26,7 +26,7 @@ const About = () => {
           >
             <img
               src="https://images.unsplash.com/photo-1544717305-2782549b5136?ixlib=rb-1.2.1&auto=format&fit=crop&w=1000&q=80"
-              alt="Claire Martin - Psychothérapeute"
+              alt="Oriane Montabonnet - Thérapeute"
               className="rounded-lg shadow-lg w-full"
             />
           </motion.div>
@@ -42,16 +42,18 @@ const About = () => {
               Mon Parcours
             </h2>
             <p className="text-sage-600">
-              Forte de plus de 15 années d'expérience dans l'accompagnement thérapeutique, 
-              j'ai développé une approche holistique centrée sur l'individu. Mon parcours 
-              académique en psychologie clinique, enrichi par diverses formations en thérapies 
-              comportementales et cognitives, m'a permis de développer une expertise solide 
-              dans le traitement de nombreuses problématiques.
+              Forte de plus de 15 années d'expérience dans l'accompagnement
+              thérapeutique, j'ai développé une approche holistique centrée sur
+              l'individu. Mon parcours académique en psychologie clinique,
+              enrichi par diverses formations en thérapies comportementales et
+              cognitives, m'a permis de développer une expertise solide dans le
+              traitement de nombreuses problématiques.
             </p>
             <p className="text-sage-600">
-              Ma philosophie de travail repose sur l'écoute active, l'empathie et 
-              l'adaptation à chaque personne. Je crois profondément en la capacité de 
-              chacun à évoluer et à s'épanouir, avec un accompagnement approprié.
+              Ma philosophie de travail repose sur l'écoute active, l'empathie
+              et l'adaptation à chaque personne. Je crois profondément en la
+              capacité de chacun à évoluer et à s'épanouir, avec un
+              accompagnement approprié.
             </p>
           </motion.div>
         </div>
@@ -70,16 +72,19 @@ const About = () => {
             {[
               {
                 title: "Bienveillance",
-                description: "Un accompagnement sans jugement, dans le respect de chaque individu."
+                description:
+                  "Un accompagnement sans jugement, dans le respect de chaque individu.",
               },
               {
                 title: "Professionnalisme",
-                description: "Une approche rigoureuse basée sur des méthodes éprouvées."
+                description:
+                  "Une approche rigoureuse basée sur des méthodes éprouvées.",
               },
               {
                 title: "Engagement",
-                description: "Un suivi personnalisé et adapté à vos besoins spécifiques."
-              }
+                description:
+                  "Un suivi personnalisé et adapté à vos besoins spécifiques.",
+              },
             ].map((value, index) => (
               <div key={index} className="text-center">
                 <h3 className="text-xl font-serif font-semibold text-sage-800 mb-3">
