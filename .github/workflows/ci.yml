@@ -33,9 +33,12 @@ jobs:
 
       - name: Deploy to GitHub Pages
         run: |
-          git config --global user.email "matthieu.tavian@gmail.com"
-          git config --global user.name "tavianm"
-          git remote set-url origin https://git:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git
-          npm run deploy -- -r=https://github.com/tavianm/omf-therapie.git -u "github-actions-bot <support+actions@github.com>"
+          git config --global user.name $user_name
+          git config --global user.email $user_email
+          git remote set-url origin https://${github_token}@github.com/${repository}
+          npm run deploy
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          user_name: "github-actions[bot]"
+          user_email: "github-actions[bot]@users.noreply.github.com"
+          github_token: ${{ secrets.GH_TOKEN }}
+          repository: ${{ github.repository }}

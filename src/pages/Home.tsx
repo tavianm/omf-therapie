@@ -1,6 +1,5 @@
 import { motion } from "framer-motion";
 import { ArrowRight, Calendar } from "lucide-react";
-import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import SEO from "../components/SEO";
 import About from "./About";
@@ -10,13 +9,6 @@ import Qualifications from "./Qualifications";
 import Services from "./Services";
 
 const Home = () => {
-  useEffect(() => {
-    // Préchargement de l'image héro
-    const img = new Image();
-    img.src =
-      "https://images.unsplash.com/photo-1600618528240-fb9fc964b853?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=75";
-  }, []);
-
   return (
     <>
       <SEO
@@ -31,25 +23,20 @@ const Home = () => {
           aria-labelledby="hero-title"
         >
           <div className="absolute inset-0 z-0" aria-hidden="true">
-            <picture>
-              <source
-                srcSet="https://images.unsplash.com/photo-1600618528240-fb9fc964b853?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=75&fm=webp 800w, 
-                        https://images.unsplash.com/photo-1600618528240-fb9fc964b853?ixlib=rb-1.2.1&auto=format&fit=crop&w=1200&q=75&fm=webp 1200w,
-                        https://images.unsplash.com/photo-1600618528240-fb9fc964b853?ixlib=rb-1.2.1&auto=format&fit=crop&w=2850&q=75&fm=webp 2850w"
-                sizes="100vw"
-                type="image/webp"
-              />
-              <img
-                src="https://images.unsplash.com/photo-1600618528240-fb9fc964b853?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=75"
-                alt=""
-                className="w-full h-full object-cover"
-                loading="eager"
-                decoding="async"
-                fetchPriority="high"
-                width="800"
-                height="600"
-              />
-            </picture>
+            <img
+              src="https://images.unsplash.com/photo-1600618528240-fb9fc964b853?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=75"
+              srcSet="https://images.unsplash.com/photo-1600618528240-fb9fc964b853?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=75&fm=webp 800w, 
+                      https://images.unsplash.com/photo-1600618528240-fb9fc964b853?ixlib=rb-1.2.1&auto=format&fit=crop&w=1200&q=75&fm=webp 1200w,
+                      https://images.unsplash.com/photo-1600618528240-fb9fc964b853?ixlib=rb-1.2.1&auto=format&fit=crop&w=2850&q=75&fm=webp 2850w"
+              sizes="100vw"
+              alt=""
+              className="w-full h-full object-cover"
+              loading="eager"
+              decoding="async"
+              fetchPriority="high"
+              width="800"
+              height="600"
+            />
             <div className="absolute inset-0 bg-sage-900/40" />
           </div>
 
