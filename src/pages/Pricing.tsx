@@ -41,7 +41,6 @@ const Pricing = () => {
         "Médiation relationnelle",
         "Séance en cabinet",
         "1<sup>re</sup> séance => -25€",
-        ,
       ],
     },
     {
@@ -85,8 +84,9 @@ const Pricing = () => {
               <h3 className="text-xl font-serif font-semibold text-sage-800 mb-4">
                 {price.title}
               </h3>
-              {price.priceDetails?.map((price, priceIndex, array) => (
+              {price.priceDetails?.map((detail, priceIndex, array) => (
                 <div
+                  key={`${index}-${priceIndex}`}
                   className={
                     "flex items-baseline " +
                     (priceIndex > 0
@@ -97,14 +97,17 @@ const Pricing = () => {
                   }
                 >
                   <span className="text-4xl font-serif font-semibold text-mint-600">
-                    {price.price}
+                    {detail.price}
                   </span>
-                  <span className="text-sage-500 ml-2">/ {price.duration}</span>
+                  <span className="text-sage-500 ml-2">/ {detail.duration}</span>
                 </div>
               ))}
               <ul className="space-y-4">
                 {price.features.map((feature, featureIndex) => (
-                  <li key={featureIndex} className="flex items-center gap-3">
+                  <li
+                    key={`${index}-feature-${featureIndex}`}
+                    className="flex items-center gap-3"
+                  >
                     <Check className="h-5 w-5 text-mint-600" />
                     <span className="text-sage-600">
                       {feature && parse(feature)}
@@ -186,4 +189,3 @@ const Pricing = () => {
 };
 
 export default Pricing;
-

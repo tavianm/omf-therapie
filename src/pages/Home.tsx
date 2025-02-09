@@ -33,7 +33,7 @@ const Home = () => {
               className="w-full h-full object-cover"
               loading="eager"
               decoding="async"
-              fetchPriority="high"
+              fetchpriority="high"
               width="800"
               height="600"
             />
@@ -166,4 +166,3 @@ const Home = () => {
 };
 
 export default Home;
-
