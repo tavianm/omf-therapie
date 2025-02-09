@@ -38,6 +38,16 @@ const Home = () => {
               height="600"
             />
             <div className="absolute inset-0 bg-sage-900/40" />
+            {/* Instagram icon positioned at bottom right */}
+            {/* <a
+              href="https://www.instagram.com/omf.therapie"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="absolute bottom-3/4 left-1/2 z-10 bg-white/10 backdrop-blur-sm p-3 rounded-full hover:bg-white/20 transition-colors"
+              aria-label="Suivez-moi sur Instagram"
+            >
+              <Instagram className="h-6 w-6 text-white" aria-hidden="true" />
+            </a> */}
           </div>
 
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

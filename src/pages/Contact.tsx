@@ -1,6 +1,6 @@
 import emailjs from "@emailjs/browser";
 import { motion } from "framer-motion";
-import { Clock, Mail, MapPin, Phone } from "lucide-react";
+import { Clock, Instagram, Mail, MapPin, Phone } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import SEO from "../components/SEO";
 
@@ -39,8 +39,8 @@ const Contact = () => {
 
     try {
       const result = await emailjs.send(
-        "service_bdzolup", // Remplacer par votre Service ID
-        "template_ora67us", // Remplacer par votre Template ID
+        "service_bdzolup",
+        "template_ora67us",
         {
           from_name: formData.name,
           from_email: formData.email,
@@ -48,7 +48,7 @@ const Contact = () => {
           message: formData.message,
           to_name: "Oriane Montabonnet",
         },
-        "a16S46gFg6v_HVO3I" // Remplacer par votre Public Key
+        "a16S46gFg6v_HVO3I"
       );
 
       if (result.status === 200) {
@@ -137,6 +137,17 @@ const Contact = () => {
                     <span className="text-sage-600">
                       contact@omf-therapie.fr
                     </span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <Instagram className="h-5 w-5 text-mint-600" />
+                    <a
+                      href="https://www.instagram.com/omf.therapie"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sage-600 hover:text-mint-500 transition-colors"
+                    >
+                      @omf.therapie
+                    </a>
                   </div>
                   <div className="flex items-center gap-4">
                     <MapPin className="h-5 w-5 text-mint-600" />
@@ -277,3 +288,4 @@ const Contact = () => {
 };
 
 export default Contact;
+

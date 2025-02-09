@@ -1,4 +1,4 @@
-import { Leaf, Mail, MapPin, Phone } from "lucide-react";
+import { Instagram, Leaf, Mail, MapPin, Phone } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const Footer = () => {
@@ -18,6 +18,18 @@ const Footer = () => {
               Thérapeute professionnelle dédiée à votre bien-être et à votre
               développement personnel.
             </p>
+            {/* Ajout des réseaux sociaux */}
+            <div className="flex items-center gap-4 pt-2">
+              <a
+                href="https://www.instagram.com/omf.therapie"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sage-300 hover:text-mint-400 transition-colors"
+                aria-label="Suivez-moi sur Instagram"
+              >
+                <Instagram className="h-5 w-5" />
+              </a>
+            </div>
           </div>
 
           {/* Contact */}

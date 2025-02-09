@@ -42,21 +42,6 @@ const Services = () => {
         "Deuil et gestion des pertes au sein du cercle familial",
       ],
     },
-    /* {
-      icon: Heart,
-      title: "Thérapie Individuelle",
-      description: "Accompagnement personnalisé pour surmonter les difficultés personnelles et émotionnelles."
-    },
-    {
-      icon: Sparkles,
-      title: "Développement Personnel",
-      description: "Accompagnement vers une meilleure connaissance de soi et de son potentiel."
-    },
-    {
-      icon: Flower,
-      title: "Bien-être au Travail",
-      description: "Solutions pour améliorer l'équilibre vie professionnelle et personnelle."
-    } */
   ];
 
   return (
