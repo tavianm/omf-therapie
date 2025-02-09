@@ -48,9 +48,23 @@ const Footer = () => {
                 { name: "À Propos", href: "#about", path: "/" },
                 { name: "Services", href: "#services", path: "/" },
                 { name: "Contact", href: "/contact", path: "/contact" },
+                {
+                  name: "Prendre rendez-vous",
+                  href: "https://hellocare.com/psychopraticien/montpellier/montabonnet-oriane",
+                  external: true,
+                },
               ].map((link) => (
                 <li key={link.name}>
-                  {link.path === "/contact" ? (
+                  {link.external ? (
+                    <a
+                      href={link.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sage-300 hover:text-mint-400 transition-colors"
+                    >
+                      {link.name}
+                    </a>
+                  ) : link.path === "/contact" ? (
                     <Link
                       to={link.href}
                       className="text-sage-300 hover:text-mint-400 transition-colors"

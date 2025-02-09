@@ -1,5 +1,5 @@
 import { Leaf, Menu, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 const Navbar = () => {
@@ -8,15 +8,24 @@ const Navbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const navigation = [
-    { name: "Accueil", href: "#home", path: "/" },
-    { name: "À Propos", href: "#about", path: "/" },
-    { name: "Domaines d'Expertise", href: "#services", path: "/" },
-    { name: "Processus", href: "#process", path: "/" },
-    { name: "Formations", href: "#qualifications", path: "/" },
-    { name: "Tarifs", href: "#pricing", path: "/" },
-    { name: "Contact", href: "/contact", path: "/contact" },
-  ];
+  const navigation = useMemo(
+    () => [
+      { name: "Accueil", href: "#home", path: "/" },
+      { name: "À Propos", href: "#about", path: "/" },
+      { name: "Domaines d'Expertise", href: "#services", path: "/" },
+      { name: "Processus", href: "#process", path: "/" },
+      { name: "Formations", href: "#qualifications", path: "/" },
+      { name: "Tarifs", href: "#pricing", path: "/" },
+      { name: "Contact", href: "/contact", path: "/contact" },
+      {
+        name: "RDV en ligne",
+        href: "https://hellocare.com/psychopraticien/montpellier/montabonnet-oriane",
+        external: true,
+        path: "/",
+      },
+    ],
+    []
+  );
 
   useEffect(() => {
     if (location.pathname === "/") {
@@ -46,9 +55,9 @@ const Navbar = () => {
       window.addEventListener("scroll", handleScroll);
       return () => window.removeEventListener("scroll", handleScroll);
     }
-  }, [location.pathname]);
+  }, [location.pathname, navigation]);
 
-  const navigateToSection = async (href: string, path: string) => {
+  const navigateToSection = async (href: string) => {
     if (location.pathname !== "/") {
       await navigate("/");
       setTimeout(() => {
@@ -85,6 +94,8 @@ const Navbar = () => {
     return location.pathname === "/" && activeSection === href.substring(1);
   };
 
+  const hellocareBtn = navigation.find((item) => item.external);
+
   return (
     <header className="bg-white shadow-sm fixed w-full z-50">
       <nav
@@ -92,10 +103,10 @@ const Navbar = () => {
         role="navigation"
         aria-label="Navigation principale"
       >
-        <div className="flex justify-between h-20">
+        <div className="flex justify-between h-20 pr-3">
           <div className="flex items-center">
             <Link
-              to="/"
+              to="../"
               className="flex items-center"
               aria-label="Accueil Oriane Montabonnet"
             >
@@ -107,12 +118,22 @@ const Navbar = () => {
           </div>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex md:items-center md:space-x-8">
+          <div className="hidden lg:flex md:items-center md:space-x-8">
             {navigation.map((item) =>
-              item.path === "/contact" ? (
+              item.external ? (
+                <a
+                  key={item.name}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-mint-600 hover:text-mint-700 font-medium px-4 py-2 rounded-md bg-mint-50"
+                >
+                  {item.name}
+                </a>
+              ) : item.path === "/contact" ? (
                 <Link
                   key={item.name}
-                  to={item.href}
+                  to={"../" + item.href}
                   className={`${
                     isActive(item.href, item.path)
                       ? "text-mint-600"
@@ -127,7 +148,7 @@ const Navbar = () => {
               ) : (
                 <button
                   key={item.name}
-                  onClick={() => navigateToSection(item.href, item.path)}
+                  onClick={() => navigateToSection(item.href)}
                   className={`${
                     isActive(item.href, item.path)
                       ? "text-mint-600"
@@ -144,7 +165,21 @@ const Navbar = () => {
           </div>
 
           {/* Mobile Navigation Button */}
-          <div className="flex items-center md:hidden">
+          <div className="flex items-center lg:hidden">
+            {hellocareBtn && (
+              <a
+                key={hellocareBtn.name}
+                href={hellocareBtn.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-mint-600 text-center hover:text-mint-700 font-medium block px-4 py-2 bg-mint-50"
+                role="menuitem"
+              >
+                {hellocareBtn.name}
+              </a>
+            )}
+          </div>
+          <div className="flex items-center lg:hidden">
             <button
               onClick={() => setIsOpen(!isOpen)}
               className="text-sage-500 hover:text-sage-600 min-h-[44px] min-w-[44px] flex items-center justify-center"
@@ -165,17 +200,19 @@ const Navbar = () => {
       {/* Mobile Navigation Menu */}
       {isOpen && (
         <div
-          className="md:hidden"
+          className="lg:hidden"
           id="mobile-menu"
           role="menu"
           aria-label="Menu mobile"
         >
           <div className="pt-2 pb-4 space-y-1">
             {navigation.map((item) =>
-              item.path === "/contact" ? (
+              item.external ? (
+                <></>
+              ) : item.path === "/contact" ? (
                 <Link
                   key={item.name}
-                  to={item.href}
+                  to={"../" + item.href}
                   className={`${
                     isActive(item.href, item.path)
                       ? "bg-mint-50 text-mint-600"
@@ -192,12 +229,12 @@ const Navbar = () => {
               ) : (
                 <button
                   key={item.name}
-                  onClick={() => navigateToSection(item.href, item.path)}
+                  onClick={() => navigateToSection(item.href)}
                   className={`${
                     isActive(item.href, item.path)
                       ? "bg-mint-50 text-mint-600"
                       : "text-sage-600 hover:bg-sage-50"
-                  } block w-full text-left px-4 py-2 text-base font-medium min-h-[44px] flex items-center`}
+                  } block px-4 py-2 text-base font-medium min-h-[44px] flex items-center`}
                   role="menuitem"
                   aria-current={
                     isActive(item.href, item.path) ? "page" : undefined
@@ -215,3 +252,4 @@ const Navbar = () => {
 };
 
 export default Navbar;
+

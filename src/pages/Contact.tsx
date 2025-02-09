@@ -105,6 +105,26 @@ const Contact = () => {
             >
               <div>
                 <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
+                  Prendre rendez-vous en ligne
+                </h2>
+                <div className="bg-white p-8 rounded-lg shadow-sm">
+                  <p className="text-sage-600 mb-6">
+                    Réservez votre consultation en quelques clics via notre
+                    plateforme sécurisée Hellocare.
+                  </p>
+                  <a
+                    href="https://hellocare.com/psychopraticien/montpellier/montabonnet-oriane"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-primary w-full justify-center"
+                  >
+                    Réserver une consultation
+                  </a>
+                </div>
+              </div>
+
+              <div>
+                <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
                   Informations de Contact
                 </h2>
                 <div className="space-y-4">
@@ -257,4 +277,3 @@ const Contact = () => {
 };
 
 export default Contact;
-
