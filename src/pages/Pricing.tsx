@@ -65,7 +65,7 @@ const Pricing = () => {
           transition={{ duration: 0.8 }}
           className="text-center mb-16"
         >
-          <h1 className="section-title">Tarifs des Consultations</h1>
+          <h2 className="section-title">Tarifs des Consultations</h2>
           <p className="section-subtitle">
             Des tarifs transparents adaptés à vos besoins
           </p>

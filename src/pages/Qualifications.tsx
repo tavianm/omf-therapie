@@ -32,7 +32,7 @@ const Qualifications = () => {
           transition={{ duration: 0.8 }}
           className="text-center mb-16"
         >
-          <h1 className="section-title">Formations et Qualifications</h1>
+          <h2 className="section-title">Formations et Qualifications</h2>
           <p className="section-subtitle">
             Un parcours académique et professionnel riche au service de votre
             bien-être
@@ -49,9 +49,9 @@ const Qualifications = () => {
           >
             <div className="flex items-center gap-4 mb-8">
               <GraduationCap className="h-8 w-8 text-mint-600" />
-              <h2 className="text-2xl font-serif font-semibold text-sage-800">
+              <h3 className="text-2xl font-serif font-semibold text-sage-800">
                 Parcours Académique & Certifications
-              </h2>
+              </h3>
             </div>
             <div className="space-y-8 ">
               {qualifications.map((qual, index) => (
@@ -66,9 +66,9 @@ const Qualifications = () => {
                   <div className="text-mint-600 font-medium mb-2">
                     {qual.year}
                   </div>
-                  <h3 className="text-xl font-serif font-semibold text-sage-800 mb-2">
+                  <h4 className="text-xl font-serif font-semibold text-sage-800 mb-2">
                     {qual.title}
-                  </h3>
+                  </h4>
                   <div className="text-sage-600 mb-2">{qual.institution}</div>
                   <p className="text-sage-500 text-sm">{qual.description}</p>
                 </motion.div>
@@ -82,4 +82,3 @@ const Qualifications = () => {
 };
 
 export default Qualifications;
-

@@ -89,7 +89,7 @@ const Contact = () => {
             transition={{ duration: 0.8 }}
             className="text-center mb-16"
           >
-            <h1 className="section-title">Contact</h1>
+            <h2 className="section-title">Contact</h2>
             <p className="section-subtitle">
               Je suis à votre écoute pour toute question ou prise de rendez-vous
             </p>
@@ -104,9 +104,9 @@ const Contact = () => {
               className="space-y-8"
             >
               <div>
-                <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
+                <h3 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
                   Prendre rendez-vous en ligne
-                </h2>
+                </h3>
                 <div className="bg-white p-8 rounded-lg shadow-sm">
                   <p className="text-sage-600 mb-6">
                     Réservez votre consultation en quelques clics via notre
@@ -124,9 +124,9 @@ const Contact = () => {
               </div>
 
               <div>
-                <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
+                <h3 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
                   Informations de Contact
-                </h2>
+                </h3>
                 <div className="space-y-4">
                   <div className="flex items-center gap-4">
                     <Phone className="h-5 w-5 text-mint-600" />
@@ -167,9 +167,9 @@ const Contact = () => {
               </div>
 
               <div>
-                <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
+                <h3 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
                   Cabinet
-                </h2>
+                </h3>
                 <div className="aspect-w-16 aspect-h-9">
                   <iframe
                     src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2624.9916256937595!2d2.3294481156744993!3d48.86863857928921!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x12b6a585a9083373%3A0xaee98960437b8f02!2s185%20Cr%20Messier%2C%2034000%20Montpellier!5e0!3m2!1sen!2sfr!4v1628597681669!5m2!1sen!2sfr"
@@ -190,9 +190,9 @@ const Contact = () => {
                 onSubmit={handleSubmit}
                 className="bg-white p-8 rounded-lg shadow-sm"
               >
-                <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
+                <h3 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
                   Formulaire de Contact
-                </h2>
+                </h3>
                 {status.message && (
                   <div
                     className={`mb-6 p-4 rounded-lg ${

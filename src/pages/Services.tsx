@@ -53,7 +53,7 @@ const Services = () => {
           transition={{ duration: 0.8 }}
           className="text-center mb-16"
         >
-          <h1 className="section-title">Domaines d'Expertise</h1>
+          <h2 className="section-title">Domaines d'Expertise</h2>
           <p className="section-subtitle">
             Une approche thérapeutique adaptée à vos besoins spécifiques
           </p>
@@ -91,9 +91,9 @@ const Services = () => {
           transition={{ duration: 0.8 }}
           className="mt-20 bg-sage-50 p-8 rounded-lg text-center"
         >
-          <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-4">
+          <h3 className="text-2xl font-serif font-semibold text-sage-800 mb-4">
             Une Approche Sur Mesure
-          </h2>
+          </h3>
           <p className="text-sage-600 max-w-3xl mx-auto">
             Chaque personne est unique, c'est pourquoi j'adapte mes méthodes et
             techniques thérapeutiques en fonction de vos besoins spécifiques.

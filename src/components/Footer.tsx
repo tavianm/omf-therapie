@@ -34,7 +34,7 @@ const Footer = () => {
 
           {/* Contact */}
           <div>
-            <h3 className="text-lg font-medium mb-4">Contact</h3>
+            <h2 className="text-lg font-medium mb-4">Contact</h2>
             <ul className="space-y-3">
               <li className="flex items-center gap-2 text-sage-300">
                 <Phone className="h-4 w-4" />
@@ -53,7 +53,7 @@ const Footer = () => {
 
           {/* Quick Links */}
           <div>
-            <h3 className="text-lg font-medium mb-4">Liens Rapides</h3>
+            <h2 className="text-lg font-medium mb-4">Liens Rapides</h2>
             <ul className="space-y-2">
               {[
                 { name: "Accueil", href: "#home", path: "/" },
@@ -104,7 +104,7 @@ const Footer = () => {
 
           {/* Hours */}
           <div>
-            <h3 className="text-lg font-medium mb-4">Horaires</h3>
+            <h2 className="text-lg font-medium mb-4">Horaires</h2>
             <ul className="space-y-2 text-sage-300">
               <li>Lundi - Vendredi </li>
               <li>8h - 10h</li>
@@ -125,4 +125,3 @@ const Footer = () => {
 };
 
 export default Footer;
-

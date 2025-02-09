@@ -12,7 +12,7 @@ const Home = () => {
   return (
     <>
       <SEO
-        title="Oriane Montabonnet - Thérapeute à Montpellier | Accompagnement thérapeutique"
+        title="Oriane Montabonnet - Thérapeute à Montpellier"
         description="Thérapeute professionnelle à Montpellier, Oriane Montabonnet vous accompagne dans votre développement personnel. Thérapie individuelle, gestion du stress et accompagnement personnalisé."
       />
       <div className="pt-20">
@@ -24,12 +24,12 @@ const Home = () => {
         >
           <div className="absolute inset-0 z-0" aria-hidden="true">
             <img
-              src="assets/home/home_500w.avif"
-              srcSet="assets/home/home_500w.avif 500w, 
-                      assets/home/home_800w.avif 800w, 
-                      assets/home/home_1200w.avif 1200w,
-                      assets/home/home_1920w.avif 1920w,
-                      assets/home/home_2850w.avif 2850w"
+              src="assets/home/bien-etre-500w.avif"
+              srcSet="assets/home/bien-etre-500w.avif 500w, 
+                      assets/home/bien-etre-800w.avif 800w, 
+                      assets/home/bien-etre-1200w.avif 1200w,
+                      assets/home/bien-etre-1920w.avif 1920w,
+                      assets/home/bien-etre-2850w.avif 2850w"
               sizes="100vw"
               alt="Femme en position de yoga"
               className="w-full h-full object-cover"
@@ -63,7 +63,7 @@ const Home = () => {
                 id="hero-title"
                 className="text-5xl md:text-6xl font-serif font-semibold mb-6"
               >
-                Bienvenue sur OMF Thérapie
+                Oriane Montabonnet: Psychopraticienne à Montpellier
               </h1>
               <p className="text-xl md:text-2xl mb-8 max-w-3xl mx-auto">
                 Votre partenaire pour un bien-être psychologique durable

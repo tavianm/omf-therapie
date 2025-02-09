@@ -12,7 +12,7 @@ const About = () => {
           transition={{ duration: 0.8 }}
           className="text-center mb-16"
         >
-          <h1 className="section-title">À Propos de Moi</h1>
+          <h2 className="section-title">À Propos de Moi</h2>
           <p className="section-subtitle">
             Thérapeute passionnée, je vous accompagne dans votre parcours vers
             le mieux-être
@@ -27,7 +27,7 @@ const About = () => {
             transition={{ duration: 0.8 }}
           >
             <img
-              src={`assets/about/about_${getRandomNumber()}.webp`}
+              src={`assets/about/oriane-montabonnet-${getRandomNumber()}.webp`}
               alt="Oriane Montabonnet - Thérapeute"
               className="rounded-lg shadow-lg w-full"
               sizes="100vw"
@@ -45,9 +45,9 @@ const About = () => {
             transition={{ duration: 0.8 }}
             className="space-y-6"
           >
-            <h2 className="text-3xl font-serif font-semibold text-sage-800">
+            <h3 className="text-3xl font-serif font-semibold text-sage-800">
               Ma Mission
-            </h2>
+            </h3>
             <p className="text-sage-600">
               Les émotions, les pensées et les relations façonnent notre
               équilibre intérieur. Parfois, elles deviennent sources de doutes,
@@ -73,9 +73,9 @@ const About = () => {
               N’hésitez pas à me contacter pour en savoir plus ou prendre
               rendez-vous.
             </p>
-            <h2 className="text-3xl font-serif font-semibold text-sage-800">
+            <h3 className="text-3xl font-serif font-semibold text-sage-800">
               Mon Parcours
-            </h2>
+            </h3>
             <p className="text-sage-600">
               Passionnée par le bien-être psychologique, j’accompagne celles et
               ceux qui traversent des périodes de doute, d’émotions intenses ou
@@ -103,9 +103,9 @@ const About = () => {
           transition={{ duration: 0.8 }}
           className="bg-sage-50 p-8 rounded-lg"
         >
-          <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-6 text-center">
+          <h3 className="text-2xl font-serif font-semibold text-sage-800 mb-6 text-center">
             Mes Valeurs
-          </h2>
+          </h3>
           <div className="grid md:grid-cols-3 gap-8">
             {[
               {

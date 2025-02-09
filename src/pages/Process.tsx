@@ -40,7 +40,7 @@ const Process = () => {
           transition={{ duration: 0.8 }}
           className="text-center mb-16"
         >
-          <h1 className="section-title">Le Processus Thérapeutique</h1>
+          <h2 className="section-title">Le Processus Thérapeutique</h2>
           <p className="section-subtitle">
             Un accompagnement structuré et bienveillant pour votre développement
             personnel
@@ -90,14 +90,14 @@ const Process = () => {
           transition={{ duration: 0.8 }}
           className="mt-20 bg-sage-50 p-8 rounded-lg"
         >
-          <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-6 text-center">
+          <h3 className="text-2xl font-serif font-semibold text-sage-800 mb-6 text-center">
             Informations Pratiques
-          </h2>
+          </h3>
           <div className="grid md:grid-cols-2 gap-8">
             <div>
-              <h3 className="text-xl font-serif font-semibold text-sage-800 mb-4">
+              <h4 className="text-xl font-serif font-semibold text-sage-800 mb-4">
                 Durée des Séances
-              </h3>
+              </h4>
               <p className="text-sage-600">
                 Les séances durent généralement 50 minutes. La fréquence est
                 adaptée à vos besoins, généralement hebdomadaire au début puis
@@ -105,9 +105,9 @@ const Process = () => {
               </p>
             </div>
             <div>
-              <h3 className="text-xl font-serif font-semibold text-sage-800 mb-4">
+              <h4 className="text-xl font-serif font-semibold text-sage-800 mb-4">
                 Confidentialité
-              </h3>
+              </h4>
               <p className="text-sage-600">
                 Toutes nos séances sont strictement confidentielles, dans le
                 respect du code de déontologie des psychothérapeutes.
@@ -121,4 +121,3 @@ const Process = () => {
 };
 
 export default Process;
-
