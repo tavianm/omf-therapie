@@ -27,9 +27,14 @@ const About = () => {
             transition={{ duration: 0.8 }}
           >
             <img
-              src={`assets/about_${getRandomNumber()}.webp?ixlib=rb-1.2.1&auto=format&fit=crop&w=1000&q=80`}
+              src={`assets/about/about_${getRandomNumber()}.webp`}
               alt="Oriane Montabonnet - Thérapeute"
               className="rounded-lg shadow-lg w-full"
+              sizes="100vw"
+              loading="lazy"
+              decoding="async"
+              width="800"
+              height="1200"
             />
           </motion.div>
 
@@ -134,4 +139,3 @@ const About = () => {
 };
 
 export default About;
-

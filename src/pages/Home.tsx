@@ -24,12 +24,14 @@ const Home = () => {
         >
           <div className="absolute inset-0 z-0" aria-hidden="true">
             <img
-              src="https://images.unsplash.com/photo-1600618528240-fb9fc964b853?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=75"
-              srcSet="https://images.unsplash.com/photo-1600618528240-fb9fc964b853?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=75&fm=webp 800w, 
-                      https://images.unsplash.com/photo-1600618528240-fb9fc964b853?ixlib=rb-1.2.1&auto=format&fit=crop&w=1200&q=75&fm=webp 1200w,
-                      https://images.unsplash.com/photo-1600618528240-fb9fc964b853?ixlib=rb-1.2.1&auto=format&fit=crop&w=2850&q=75&fm=webp 2850w"
+              src="assets/home/home_500w.avif"
+              srcSet="assets/home/home_500w.avif 500w, 
+                      assets/home/home_800w.avif 800w, 
+                      assets/home/home_1200w.avif 1200w,
+                      assets/home/home_1920w.avif 1920w,
+                      assets/home/home_2850w.avif 2850w"
               sizes="100vw"
-              alt=""
+              alt="Femme en position de yoga"
               className="w-full h-full object-cover"
               loading="eager"
               decoding="async"

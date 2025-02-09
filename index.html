@@ -2,7 +2,21 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link
+      rel="icon"
+      type="image/png"
+      href="assets/favicon-96x96.png"
+      sizes="96x96"
+    />
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+    <link rel="shortcut icon" href="assets/favicon.ico" />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="assets/apple-touch-icon.png"
+    />
+    <meta name="apple-mobile-web-app-title" content="Omf-therapie" />
+    <link rel="manifest" href="assets/site.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
@@ -20,14 +34,19 @@
     <link
       rel="preload"
       as="image"
-      href="https://images.unsplash.com/photo-1600618528240-fb9fc964b853?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=75"
+      imagesrcset="
+        assets/home/home_500w.avif 500w, 
+        assets/home/home_800w.avif 800w, 
+        assets/home/home_1200w.avif 1200w,
+        assets/home/home_1920w.avif 1920w,
+        assets/home/home_2850w.avif 2850w"
+      imagesizes="100vw"
       fetchpriority="high"
     />
 
     <!-- Preconnect to external domains -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="preconnect" href="https://images.unsplash.com" />
 
     <!-- Optimized font loading -->
     <link
@@ -51,3 +70,4 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
+
