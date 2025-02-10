@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Brain, Coffee, Users } from "lucide-react";
+import { Apple, Brain, Users } from "lucide-react";
 
 const Services = () => {
   const services = [
@@ -17,7 +17,7 @@ const Services = () => {
       ],
     },
     {
-      icon: Users,
+      icon: Apple,
       title: "Problématiques alimentaires & image corporelle",
       descriptions: [
         "Alimentation émotionnelle, compulsions alimentaires",
@@ -30,7 +30,7 @@ const Services = () => {
       ],
     },
     {
-      icon: Coffee,
+      icon: Users,
       title: "Problématiques conjugales & familiales",
       descriptions: [
         "Tensions et difficultés relationnelles",
@@ -107,4 +107,3 @@ const Services = () => {
 };
 
 export default Services;
-
