@@ -18,7 +18,7 @@ const Services = () => {
     },
     {
       icon: Apple,
-      title: "Problématiques alimentaires & image corporelle",
+      title: "Problématiques alimentaires",
       descriptions: [
         "Alimentation émotionnelle, compulsions alimentaires",
         "Alimentation désordonnée, relation conflictuelle avec la nourriture",
