@@ -16,7 +16,7 @@
             l.hostname +
             (l.port ? ":" + l.port : "") +
             "/?redirect=" +
-            encodeURIComponent(segment + l.search + l.hash);
+            encodeURIComponent(l.search + l.hash);
           l.replace(redirectUrl);
         }
       })(window.location);
