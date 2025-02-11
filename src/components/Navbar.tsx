@@ -165,7 +165,7 @@ const Navbar = () => {
           </div>
 
           {/* Mobile Navigation Button */}
-          <div className="flex items-center lg:hidden">
+          <div className="flex items-center lg:hidden gap-6">
             {hellocareBtn && (
               <a
                 key={hellocareBtn.name}
@@ -177,8 +177,6 @@ const Navbar = () => {
                 {hellocareBtn.name}
               </a>
             )}
-          </div>
-          <div className="flex items-center lg:hidden">
             <button
               onClick={() => setIsOpen(!isOpen)}
               className="text-sage-500 hover:text-sage-600 min-h-[44px] min-w-[44px] flex items-center justify-center"
