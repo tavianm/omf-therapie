@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <link
+      rel="icon"
+      type="image/png"
+      href="assets/favicon-96x96.png"
+      sizes="96x96"
+    />
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+    <link rel="shortcut icon" href="assets/favicon.ico" />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="assets/apple-touch-icon.png"
+    />
+    <meta name="apple-mobile-web-app-title" content="Omf-therapie" />
+    <link rel="manifest" href="assets/site.webmanifest" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Oriane Montabonnet - Psychopraticienne à Montpellier. Accompagnement thérapeutique personnalisé pour votre bien-être et développement personnel."
+    />
+    <meta
+      name="keywords"
+      content="psychothérapeute, psychopraticienne, thérapie, Montpellier, bien-être, développement personnel, thérapie comportementale, gestion du stress"
+    />
+    <meta name="author" content="Oriane Montabonnet" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://www.omf-therapie.fr/" />
+
+    <!-- Preload hero image -->
+    <link
+      rel="preload"
+      as="image"
+      imagesrcset="
+        assets/home/bien-etre-500w.avif 500w, 
+        assets/home/bien-etre-800w.avif 800w, 
+        assets/home/bien-etre-1200w.avif 1200w,
+        assets/home/bien-etre-1920w.avif 1920w,
+        assets/home/bien-etre-2850w.avif 2850w"
+      imagesizes="100vw"
+      fetchpriority="high"
+    />
+
+    <!-- Preconnect to external domains -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- Optimized font loading -->
+    <link
+      rel="preload"
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap"
+      as="style"
+      onload="this.onload=null;this.rel='stylesheet'"
+    />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet"
+        type="text/css"
+      />
+    </noscript>
+
+    <script type="text/javascript">
+      // Gestion de la redirection depuis 404.html
+      (function (l) {
+        if (l.search[1] === "/") {
+          var decoded = l.search
+            .slice(1)
+            .split("&")
+            .map(function (s) {
+              return s.replace(/~and~/g, "&");
+            })
+            .join("?");
+          window.history.replaceState(
+            null,
+            null,
+            l.pathname.slice(0, -1) + decoded + l.hash
+          );
+        }
+      })(window.location);
+    </script>
+
+    <title>Oriane Montabonnet - Thérapeute à Montpellier</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
