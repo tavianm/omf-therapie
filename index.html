@@ -63,8 +63,26 @@
       />
     </noscript>
 
+    <script type="text/javascript">
+      // Gestion de la redirection depuis 404.html
+      (function (l) {
+        var redirectParam = new URLSearchParams(l.search).get("redirect");
+        if (redirectParam) {
+          var decodedUrl = decodeURIComponent(redirectParam);
+          var cleanUrl =
+            l.protocol +
+            "//" +
+            l.hostname +
+            (l.port ? ":" + l.port : "") +
+            "/" +
+            decodedUrl;
+          window.history.replaceState(null, null, cleanUrl);
+        }
+      })(window.location);
+    </script>
+
     <title>Oriane Montabonnet - Thérapeute à Montpellier</title>
-    <script type="module" crossorigin src="/assets/index-CS02QgMu.js"></script>
+    <script type="module" crossorigin src="/assets/index-DULF_NVH.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-DJpJocnP.js">
     <link rel="modulepreload" crossorigin href="/assets/ui-CwoAtcAL.js">
     <link rel="stylesheet" crossorigin href="/assets/index-qlAvwwQL.css">
@@ -73,4 +91,3 @@
     <div id="root"></div>
   </body>
 </html>
-
