@@ -12,7 +12,7 @@ const Home = () => {
     <>
       <SEO
         title="Oriane Montabonnet - Thérapeute à Montpellier"
-        description="Thérapeute professionnelle à Montpellier, Oriane Montabonnet vous accompagne dans votre développement personnel. Thérapie individuelle, gestion du stress et accompagnement personnalisé."
+        description="psychologue, thérapeute, Montpellier, bien-être, développement personnel, nutrition, gestion du stress, thérapie individuelle, conjugale, familiale, accompagnement personnalisé."
       />
       <div>
         <HeroSection />

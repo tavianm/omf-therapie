@@ -37,7 +37,7 @@ export const HeroSection = () => {
             id="hero-title"
             className="text-5xl md:text-6xl font-serif font-semibold mb-6"
           >
-            Oriane Montabonnet: Psychopraticienne à Montpellier
+            Oriane Montabonnet: Thérapeute à Montpellier
           </h1>
           <p className="text-xl md:text-2xl mb-8 max-w-3xl mx-auto">
             Votre partenaire pour un bien-être psychologique durable
