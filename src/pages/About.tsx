@@ -7,9 +7,9 @@ const About = () => {
   const { fadeInUp, fadeInLeft, fadeInRight } = useMotionVariants();
 
   return (
-    <div className="py-20">
+    <div className="py-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div {...fadeInUp()} className="text-center mb-16">
+        <motion.div {...fadeInUp()} className="text-center mb-10">
           <h2 className="section-title">À Propos de Moi</h2>
           <p className="section-subtitle">
             Thérapeute passionnée, je vous accompagne dans votre parcours vers
@@ -17,7 +17,7 @@ const About = () => {
           </p>
         </motion.div>
 
-        <div className="grid md:grid-cols-2 gap-12 items-center mb-20">
+        <div className="grid md:grid-cols-2 gap-12 items-center mb-10">
           <motion.div {...fadeInLeft()}>
             <img
               src={`assets/about/oriane-montabonnet-${getRandomNumber()}.webp`}

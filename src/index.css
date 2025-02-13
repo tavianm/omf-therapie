@@ -21,10 +21,11 @@
   }
 
   .section-title {
-    @apply text-4xl md:text-5xl font-serif font-semibold text-sage-800 my-6;
+    @apply text-4xl md:text-5xl font-serif font-semibold text-sage-800 mb-6;
   }
 
   .section-subtitle {
     @apply text-xl text-sage-600 mb-12 max-w-2xl mx-auto;
   }
 }
+

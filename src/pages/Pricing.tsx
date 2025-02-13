@@ -62,9 +62,9 @@ const Pricing = () => {
   ];
 
   return (
-    <div className="py-20">
+    <div className="py-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div {...fadeInUp()} className="text-center mb-16">
+        <motion.div {...fadeInUp()} className="text-center mb-10">
           <h2 className="section-title">Tarifs des Consultations</h2>
           <p className="section-subtitle">
             Des tarifs transparents adaptés à vos besoins

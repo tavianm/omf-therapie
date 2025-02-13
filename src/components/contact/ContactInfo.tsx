@@ -1,4 +1,9 @@
-import { Clock, Instagram, Mail, MapPin, Phone } from "lucide-react";
+import { Clock, Mail, MapPin, Phone } from "lucide-react";
+import {
+  COMPANY_NAME,
+  CONTACT_INFO,
+  SOCIAL_LINKS,
+} from "../../config/global.config";
 
 export const ContactInfo = () => (
   <div>
@@ -6,14 +11,24 @@ export const ContactInfo = () => (
       Informations de Contact
     </h3>
     <div className="space-y-4">
-      <ContactItem icon={Phone} text="06 50 33 18 53" />
-      <ContactItem icon={Mail} text="contact@omf-therapie.fr" />
       <ContactItem
-        icon={Instagram}
-        text="@omf.therapie"
-        href="https://www.instagram.com/omf.therapie"
+        icon={Phone}
+        text={CONTACT_INFO.phone}
+        href={`tel:${CONTACT_INFO.phone.replace(/\s/g, "")}`}
       />
-      <ContactItem icon={MapPin} text="Espace Pitot, 186 Pl. Jacques Mirouze, Montpellier" />
+      <ContactItem
+        icon={Mail}
+        text={CONTACT_INFO.email}
+        href={`mailto:${CONTACT_INFO.email}`}
+      />
+      {SOCIAL_LINKS.map((link) => (
+        <ContactItem icon={link.icon} text={link.label} href={link.url} />
+      ))}
+      <ContactItem
+        icon={MapPin}
+        text="Espace Pitot, 186 Pl. Jacques Mirouze, Montpellier"
+        href={`https://www.google.com/maps/search/${COMPANY_NAME} ${CONTACT_INFO.address}`}
+      />
       <ContactItem
         icon={Clock}
         text={
@@ -47,7 +62,7 @@ const ContactItem = ({ icon: Icon, text, href }: ContactItemProps) => {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="hover:text-mint-500 transition-colors"
+      className="hover:text-mint-500 flex items-center gap-4 transition-colors"
     >
       {content}
     </a>
@@ -55,3 +70,4 @@ const ContactItem = ({ icon: Icon, text, href }: ContactItemProps) => {
     content
   );
 };
+

@@ -5,7 +5,7 @@ export const PaymentInfo = () => {
   const { fadeIn } = useMotionVariants();
 
   return (
-    <motion.div {...fadeIn()} className="mt-16 grid md:grid-cols-2 gap-8">
+    <motion.div {...fadeIn()} className="mt-10 grid md:grid-cols-2 gap-8">
       <div className="bg-sage-50 p-8 rounded-lg">
         <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
           Modalités de Paiement
@@ -37,3 +37,4 @@ export const PaymentInfo = () => {
     </motion.div>
   );
 };
+

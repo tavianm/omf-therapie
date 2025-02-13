@@ -1,68 +1,9 @@
-import emailjs from "@emailjs/browser";
-import { memo, useCallback, useState } from "react";
-import type { FormData } from "../../types/contact";
-
-const INITIAL_FORM_STATE = {
-  name: "",
-  email: "",
-  phone: "",
-  message: "",
-};
+import { memo } from "react";
+import { useContactForm } from "../../hooks/useContactForm";
 
 export const ContactForm = () => {
-  const [formData, setFormData] = useState<FormData>(INITIAL_FORM_STATE);
-  const [status, setStatus] = useState({ message: "", type: "" });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setFormData((prev) => ({
-        ...prev,
-        [e.target.id]: e.target.value,
-      }));
-    },
-    []
-  );
-
-  const handleSubmit = useCallback(
-    async (e: React.FormEvent<HTMLFormElement>) => {
-      e.preventDefault();
-      setIsSubmitting(true);
-      setStatus({ message: "", type: "" });
-
-      try {
-        const result = await emailjs.send(
-          "service_bdzolup",
-          "template_ora67us",
-          {
-            from_name: formData.name,
-            from_email: formData.email,
-            phone: formData.phone,
-            message: formData.message,
-            to_name: "Oriane Montabonnet",
-          },
-          "a16S46gFg6v_HVO3I"
-        );
-
-        if (result.status === 200) {
-          setStatus({
-            message: "Votre message a été envoyé avec succès !",
-            type: "success",
-          });
-          setFormData(INITIAL_FORM_STATE);
-        }
-      } catch {
-        setStatus({
-          message:
-            "Une erreur est survenue lors de l'envoi du message. Veuillez réessayer.",
-          type: "error",
-        });
-      } finally {
-        setIsSubmitting(false);
-      }
-    },
-    [formData]
-  );
+  const { formData, status, isSubmitting, handleChange, handleSubmit } =
+    useContactForm();
 
   return (
     <form onSubmit={handleSubmit} className="bg-white p-8 rounded-lg shadow-sm">
@@ -76,6 +17,8 @@ export const ContactForm = () => {
               ? "bg-green-50 text-green-800"
               : "bg-red-50 text-red-800"
           }`}
+          role="alert"
+          aria-live="polite"
         >
           {status.message}
         </div>
@@ -118,6 +61,7 @@ export const ContactForm = () => {
             required
             rows={4}
             className="w-full px-4 py-2 rounded-lg border border-sage-200 focus:ring-2 focus:ring-mint-500 focus:border-transparent"
+            aria-required="true"
           ></textarea>
         </div>
         <button
@@ -126,6 +70,7 @@ export const ContactForm = () => {
           className={`w-full btn-primary justify-center ${
             isSubmitting ? "opacity-75 cursor-not-allowed" : ""
           }`}
+          aria-disabled={isSubmitting}
         >
           {isSubmitting ? "Envoi en cours..." : "Envoyer"}
         </button>
@@ -159,6 +104,7 @@ const FormField = memo(
         onChange={onChange}
         required={required}
         className="w-full px-4 py-2 rounded-lg border border-sage-200 focus:ring-2 focus:ring-mint-500 focus:border-transparent"
+        aria-required={required}
       />
     </div>
   )

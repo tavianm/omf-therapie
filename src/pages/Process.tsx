@@ -34,9 +34,9 @@ const Process = () => {
   ];
 
   return (
-    <div className="py-20">
+    <div className="py-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div {...fadeInUp()} className="text-center mb-16">
+        <motion.div {...fadeInUp()} className="text-center mb-10">
           <h2 className="section-title">Le Processus Thérapeutique</h2>
           <p className="section-subtitle">
             Un accompagnement structuré et bienveillant pour votre développement
@@ -77,7 +77,7 @@ const Process = () => {
           </div>
         </div>
 
-        <motion.div {...fadeIn()} className="mt-20 bg-sage-50 p-8 rounded-lg">
+        <motion.div {...fadeIn()} className="mt-10 bg-sage-50 p-8 rounded-lg">
           <h3 className="text-2xl font-serif font-semibold text-sage-800 mb-6 text-center">
             Informations Pratiques
           </h3>
@@ -87,9 +87,9 @@ const Process = () => {
                 Durée des Séances
               </h4>
               <p className="text-sage-600">
-                Les séances durent généralement 50 minutes. La fréquence est
-                adaptée à vos besoins, généralement hebdomadaire au début puis
-                espacée selon votre évolution.
+                Les séances durent généralement 60 à 90 minutes. La fréquence
+                est adaptée à vos besoins, généralement hebdomadaire au début
+                puis espacée selon votre évolution.
               </p>
             </div>
             <div>

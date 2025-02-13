@@ -7,7 +7,7 @@ export const CTASection = () => {
   return (
     <motion.div
       {...fadeIn()}
-      className="mt-16 bg-white p-8 rounded-lg shadow-sm text-center"
+      className="mt-10 bg-white p-8 rounded-lg shadow-sm text-center"
     >
       <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-4">
         Prêt à commencer ?
@@ -27,3 +27,4 @@ export const CTASection = () => {
     </motion.div>
   );
 };
+

@@ -27,9 +27,9 @@ const Qualifications = () => {
   ];
 
   return (
-    <div className="py-20">
+    <div className="py-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div {...fadeInUp()} className="text-center mb-16">
+        <motion.div {...fadeInUp()} className="text-center mb-10">
           <h2 className="section-title">Formations et Qualifications</h2>
           <p className="section-subtitle">
             Un parcours académique et professionnel riche au service de votre

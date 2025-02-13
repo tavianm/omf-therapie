@@ -48,9 +48,9 @@ const Services = () => {
   ];
 
   return (
-    <div className="py-20">
+    <div className="py-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div {...fadeInUp()} className="text-center mb-16">
+        <motion.div {...fadeInUp()} className="text-center mb-10">
           <h2 className="section-title">Domaines d'Expertise</h2>
           <p className="section-subtitle">
             Une approche thérapeutique adaptée à vos besoins spécifiques
@@ -81,7 +81,7 @@ const Services = () => {
 
         <motion.div
           {...fadeIn()}
-          className="mt-20 bg-sage-50 p-8 rounded-lg text-center"
+          className="mt-10 bg-sage-50 p-8 rounded-lg text-center"
         >
           <h3 className="text-2xl font-serif font-semibold text-sage-800 mb-4">
             Une Approche Sur Mesure
