@@ -14,7 +14,7 @@ const Home = () => {
         title="Oriane Montabonnet - Thérapeute à Montpellier"
         description="Thérapeute professionnelle à Montpellier, Oriane Montabonnet vous accompagne dans votre développement personnel. Thérapie individuelle, gestion du stress et accompagnement personnalisé."
       />
-      <div className="pt-20">
+      <div>
         <HeroSection />
         <IntroSection />
 
@@ -43,3 +43,4 @@ const Home = () => {
 };
 
 export default Home;
+

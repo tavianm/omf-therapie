@@ -20,10 +20,9 @@ export const FooterBrand = () => {
         role="list"
         aria-label="Réseaux sociaux"
       >
-        <li role="listitem">
-          {SOCIAL_LINKS.map((link) => (
+        {SOCIAL_LINKS.map((link) => (
+          <li role="listitem" key={link.name}>
             <a
-              key={link.name}
               href={link.url}
               target="_blank"
               rel="noopener noreferrer"
@@ -33,8 +32,8 @@ export const FooterBrand = () => {
               <link.icon className="h-5 w-5" aria-hidden="true" />
               <span>{link.label}</span>
             </a>
-          ))}
-        </li>
+          </li>
+        ))}
       </ul>
     </div>
   );

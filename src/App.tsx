@@ -27,7 +27,7 @@ function App() {
           Aller au contenu principal
         </a>
         <Navbar />
-        <main id="main-content" className="flex-grow" role="main">
+        <main id="main-content" className="flex-grow pt-20" role="main">
           <Routes>
             <Route path="/" Component={Home} />
             <Route path="/contact" Component={Contact} />

@@ -6,7 +6,7 @@ export const FooterContact = () => (
   <div>
     <FooterHeading>Contact</FooterHeading>
     <ul className="space-y-3" role="list" aria-label="Informations de contact">
-      <li role="listitem">
+      <li role="listitem" key="phone">
         <a
           href={`tel:${CONTACT_INFO.phone.replace(/\s/g, "")}`}
           className="flex items-center gap-2 text-sage-300 hover:text-mint-400 transition-colors"
@@ -16,7 +16,7 @@ export const FooterContact = () => (
           <span>{CONTACT_INFO.phone}</span>
         </a>
       </li>
-      <li role="listitem">
+      <li role="listitem" key="email">
         <a
           href={`mailto:${CONTACT_INFO.email}`}
           className="flex items-center gap-2 text-sage-300 hover:text-mint-400 transition-colors"
@@ -26,7 +26,7 @@ export const FooterContact = () => (
           <span>{CONTACT_INFO.email}</span>
         </a>
       </li>
-      <li role="listitem">
+      <li role="listitem" key="map">
         <a
           href={`https://www.google.com/maps/search/${COMPANY_NAME} ${CONTACT_INFO.address}`}
           target="_blank"

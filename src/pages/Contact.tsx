@@ -20,7 +20,7 @@ const Contact = () => {
         description="Contactez Oriane Montabonnet, thérapeute à Montpellier. Prenez rendez-vous pour une consultation et commencez votre parcours vers le bien-être."
         canonical="https://www.omf-therapie.fr/contact"
       />
-      <div className="py-10">
+      <div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 ">
           <motion.div {...fadeInUp()} className="text-center mb-10">
             <h2 className="section-title mt-6">Contact</h2>

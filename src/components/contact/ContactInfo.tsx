@@ -22,7 +22,9 @@ export const ContactInfo = () => (
         href={`mailto:${CONTACT_INFO.email}`}
       />
       {SOCIAL_LINKS.map((link) => (
-        <ContactItem icon={link.icon} text={link.label} href={link.url} />
+        <div key={link.name}>
+          <ContactItem icon={link.icon} text={link.label} href={link.url} />
+        </div>
       ))}
       <ContactItem
         icon={MapPin}
