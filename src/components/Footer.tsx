@@ -46,7 +46,9 @@ const Footer = () => {
               </li>
               <li className="flex items-center gap-2 text-sage-300">
                 <MapPin className="h-4 w-4" />
-                <span>185 cour Messier, Montpellier</span>
+                <span>
+                  Espace Pitot, 186 Pl. Jacques Mirouze, 34000 Montpellier
+                </span>
               </li>
             </ul>
           </div>
@@ -125,3 +127,4 @@ const Footer = () => {
 };
 
 export default Footer;
+
