@@ -1,8 +1,13 @@
 import { motion } from "framer-motion";
-import parse from "html-react-parser";
-import { Check } from "lucide-react";
+import { CommitmentSection } from "../components/pricing/CommitmentSection";
+import { CTASection } from "../components/pricing/CTASection";
+import { PaymentInfo } from "../components/pricing/PaymentInfo";
+import { PriceCard } from "../components/pricing/PriceCard";
+import { useMotionVariants } from "../hooks/useMotionVariants";
 
 const Pricing = () => {
+  const { fadeInUp } = useMotionVariants();
+
   const prices = [
     {
       title: "Thérapie Individuelle",
@@ -59,12 +64,7 @@ const Pricing = () => {
   return (
     <div className="py-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          className="text-center mb-16"
-        >
+        <motion.div {...fadeInUp()} className="text-center mb-16">
           <h2 className="section-title">Tarifs des Consultations</h2>
           <p className="section-subtitle">
             Des tarifs transparents adaptés à vos besoins
@@ -73,145 +73,17 @@ const Pricing = () => {
 
         <div className="grid xl:grid-cols-4 sm:grid-cols-2 gap-8">
           {prices.map((price, index) => (
-            <motion.div
-              key={index}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: index * 0.1 }}
-              className="bg-white p-8 rounded-lg shadow-sm hover:shadow-md transition-shadow"
-            >
-              <h3 className="text-xl font-serif font-semibold text-sage-800 mb-4">
-                {price.title}
-              </h3>
-              {price.priceDetails?.map((detail, priceIndex, array) => (
-                <div
-                  key={`${index}-${priceIndex}`}
-                  className={
-                    "flex items-baseline " +
-                    (priceIndex > 0
-                      ? "mb-6"
-                      : array.length === 1
-                      ? "my-10 pb-1"
-                      : "mb-1")
-                  }
-                >
-                  <span className="text-4xl font-serif font-semibold text-mint-600">
-                    {detail.price}
-                  </span>
-                  <span className="text-sage-500 ml-2">
-                    / {detail.duration}
-                  </span>
-                </div>
-              ))}
-              <ul className="space-y-4">
-                {price.features.map((feature, featureIndex) => (
-                  <li
-                    key={`${index}-feature-${featureIndex}`}
-                    className="flex items-center gap-3"
-                  >
-                    <Check className="h-5 w-5 text-mint-600" />
-                    <span className="text-sage-600">
-                      {feature && parse(feature)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </motion.div>
+            <PriceCard key={index} {...price} index={index} />
           ))}
         </div>
 
-        <motion.div
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.8 }}
-          className="mt-16 grid md:grid-cols-2 gap-8"
-        >
-          <div className="bg-sage-50 p-8 rounded-lg">
-            <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
-              Modalités de Paiement
-            </h2>
-            <ul className="space-y-4 text-sage-600">
-              <li>Paiement par carte bancaire</li>
-              <li>Paiement en espèces</li>
-              <li>Règlement à chaque séance</li>
-              <li>Facture fournie sur demande</li>
-            </ul>
-          </div>
-
-          <div className="bg-sage-50 p-8 rounded-lg">
-            <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
-              Remboursements
-            </h2>
-            <div className="space-y-4 text-sage-600">
-              <p>
-                Les consultations peuvent être partiellement prises en charge
-                par certaines mutuelles. N'hésitez pas à vous renseigner auprès
-                de votre organisme complémentaire.
-              </p>
-              <p>
-                Une facture détaillée vous sera fournie, sur demande, pour
-                faciliter vos démarches de remboursement.
-              </p>
-            </div>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.8 }}
-          className="mt-16 bg-white p-8 rounded-lg shadow-sm text-center"
-        >
-          <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-4">
-            Engagement et responsabilité
-          </h2>
-          <p className="text-sage-600 max-w-3xl mx-auto">
-            Comme 95% de nos patients, nous comptons sur votre présence au
-            rendez-vous prévu.
-          </p>
-
-          <p className="text-sage-600 max-w-3xl mx-auto my-4">
-            Si vous ne pouvez pas honorer votre consultation, merci de bien
-            vouloir : Annuler votre rendez-vous au moins 4 heures à l'avance
-            Utiliser notre système en ligne ou nous contacter directement Votre
-            geste permettra à un autre patient en attente de bénéficier de ce
-            créneau.
-          </p>
-          <p className="text-sage-600 max-w-3xl mx-auto">
-            Nous vous remercions pour votre compréhension et votre
-            collaboration.
-          </p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.8 }}
-          className="mt-16 bg-white p-8 rounded-lg shadow-sm text-center"
-        >
-          <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-4">
-            Prêt à commencer ?
-          </h2>
-          <p className="text-sage-600 max-w-3xl mx-auto mb-6">
-            Réservez votre consultation en ligne et commencez votre parcours
-            vers le mieux-être.
-          </p>
-          <a
-            href="https://hellocare.com/psychopraticien/montpellier/montabonnet-oriane"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-primary"
-          >
-            Réserver une consultation
-          </a>
-        </motion.div>
+        <PaymentInfo />
+        <CommitmentSection />
+        <CTASection />
       </div>
     </div>
   );
 };
 
 export default Pricing;
+

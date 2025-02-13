@@ -1,17 +1,15 @@
 import { motion } from "framer-motion";
+import { useMotionVariants } from "../hooks/useMotionVariants";
 
 const getRandomNumber = () => Math.floor(Math.random() * 2) + 1;
 
 const About = () => {
+  const { fadeInUp, fadeInLeft, fadeInRight } = useMotionVariants();
+
   return (
     <div className="py-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          className="text-center mb-16"
-        >
+        <motion.div {...fadeInUp()} className="text-center mb-16">
           <h2 className="section-title">À Propos de Moi</h2>
           <p className="section-subtitle">
             Thérapeute passionnée, je vous accompagne dans votre parcours vers
@@ -20,12 +18,7 @@ const About = () => {
         </motion.div>
 
         <div className="grid md:grid-cols-2 gap-12 items-center mb-20">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.8 }}
-          >
+          <motion.div {...fadeInLeft()}>
             <img
               src={`assets/about/oriane-montabonnet-${getRandomNumber()}.webp`}
               alt="Oriane Montabonnet - Thérapeute"
@@ -38,13 +31,7 @@ const About = () => {
             />
           </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.8 }}
-            className="space-y-6"
-          >
+          <motion.div {...fadeInRight()} className="space-y-6">
             <h3 className="text-3xl font-serif font-semibold text-sage-800">
               Ma Mission
             </h3>
@@ -96,13 +83,7 @@ const About = () => {
           </motion.div>
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.8 }}
-          className="bg-sage-50 p-8 rounded-lg"
-        >
+        <motion.div {...fadeInUp()} className="bg-sage-50 p-8 rounded-lg">
           <h3 className="text-2xl font-serif font-semibold text-sage-800 mb-6 text-center">
             Mes Valeurs
           </h3>
@@ -139,3 +120,4 @@ const About = () => {
 };
 
 export default About;
+

@@ -2,7 +2,7 @@ import { Leaf } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export const Logo = () => (
-  <div className="flex items-center">
+  <div className="flex items-center mr-3">
     <Link
       to="../"
       className="flex items-center"
@@ -15,3 +15,4 @@ export const Logo = () => (
     </Link>
   </div>
 );
+

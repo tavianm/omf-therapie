@@ -1,7 +1,10 @@
 import { motion } from "framer-motion";
 import { Apple, Brain, Users } from "lucide-react";
+import { useMotionVariants } from "../hooks/useMotionVariants";
 
 const Services = () => {
+  const { fadeInUp, fadeIn } = useMotionVariants();
+
   const services = [
     {
       icon: Brain,
@@ -47,12 +50,7 @@ const Services = () => {
   return (
     <div className="py-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          className="text-center mb-16"
-        >
+        <motion.div {...fadeInUp()} className="text-center mb-16">
           <h2 className="section-title">Domaines d'Expertise</h2>
           <p className="section-subtitle">
             Une approche thérapeutique adaptée à vos besoins spécifiques
@@ -63,10 +61,7 @@ const Services = () => {
           {services.map((service, index) => (
             <motion.div
               key={index}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: index * 0.1 }}
+              {...fadeInUp({ duration: 0.5, delay: index * 0.1 })}
               className="bg-white p-8 rounded-lg shadow-sm hover:shadow-md transition-shadow"
             >
               <service.icon className="h-12 w-12 text-mint-600 mb-6" />
@@ -85,10 +80,7 @@ const Services = () => {
         </div>
 
         <motion.div
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.8 }}
+          {...fadeIn()}
           className="mt-20 bg-sage-50 p-8 rounded-lg text-center"
         >
           <h3 className="text-2xl font-serif font-semibold text-sage-800 mb-4">
@@ -107,3 +99,4 @@ const Services = () => {
 };
 
 export default Services;
+

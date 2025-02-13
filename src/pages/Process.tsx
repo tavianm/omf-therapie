@@ -1,7 +1,9 @@
 import { motion } from "framer-motion";
 import { Clock, MessageCircle, Sparkles, Target } from "lucide-react";
+import { useMotionVariants } from "../hooks/useMotionVariants";
 
 const Process = () => {
+  const { fadeInUp, fadeInRight, fadeInLeft, fadeIn } = useMotionVariants();
   const steps = [
     {
       icon: MessageCircle,
@@ -34,12 +36,7 @@ const Process = () => {
   return (
     <div className="py-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          className="text-center mb-16"
-        >
+        <motion.div {...fadeInUp()} className="text-center mb-16">
           <h2 className="section-title">Le Processus Thérapeutique</h2>
           <p className="section-subtitle">
             Un accompagnement structuré et bienveillant pour votre développement
@@ -54,10 +51,7 @@ const Process = () => {
             {steps.map((step, index) => (
               <motion.div
                 key={index}
-                initial={{ opacity: 0, x: index % 2 === 0 ? -20 : 20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.8 }}
+                {...(index % 2 === 0 ? fadeInLeft() : fadeInRight())}
                 className={`flex flex-col md:flex-row gap-8 ${
                   index % 2 === 0
                     ? "md:pr-1/2"
@@ -83,13 +77,7 @@ const Process = () => {
           </div>
         </div>
 
-        <motion.div
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.8 }}
-          className="mt-20 bg-sage-50 p-8 rounded-lg"
-        >
+        <motion.div {...fadeIn()} className="mt-20 bg-sage-50 p-8 rounded-lg">
           <h3 className="text-2xl font-serif font-semibold text-sage-800 mb-6 text-center">
             Informations Pratiques
           </h3>
@@ -121,3 +109,4 @@ const Process = () => {
 };
 
 export default Process;
+

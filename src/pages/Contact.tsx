@@ -1,10 +1,18 @@
 import { motion } from "framer-motion";
+import { useEffect } from "react";
 import SEO from "../components/SEO";
 import { ContactForm } from "../components/contact/ContactForm";
 import { ContactInfo } from "../components/contact/ContactInfo";
 import { LocationMap } from "../components/contact/LocationMap";
+import { useMotionVariants } from "../hooks/useMotionVariants";
 
 const Contact = () => {
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
+  const { fadeInUp, fadeInLeft, fadeInRight } = useMotionVariants();
+
   return (
     <>
       <SEO
@@ -14,12 +22,7 @@ const Contact = () => {
       />
       <div className="py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            className="text-center mb-16"
-          >
+          <motion.div {...fadeInUp()} className="text-center mb-16">
             <h2 className="section-title">Contact</h2>
             <p className="section-subtitle">
               Je suis à votre écoute pour toute question ou prise de rendez-vous
@@ -27,24 +30,13 @@ const Contact = () => {
           </motion.div>
 
           <div className="grid md:grid-cols-2 gap-12">
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.8 }}
-              className="space-y-8"
-            >
+            <motion.div {...fadeInLeft()} className="space-y-8">
               <OnlineBooking />
               <ContactInfo />
               <LocationMap />
             </motion.div>
 
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.8 }}
-            >
+            <motion.div {...fadeInRight()}>
               <ContactForm />
             </motion.div>
           </div>
@@ -77,3 +69,4 @@ const OnlineBooking = () => (
 );
 
 export default Contact;
+

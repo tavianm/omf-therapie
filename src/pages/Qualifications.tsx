@@ -1,7 +1,10 @@
 import { motion } from "framer-motion";
 import { GraduationCap } from "lucide-react";
+import { useMotionVariants } from "../hooks/useMotionVariants";
 
 const Qualifications = () => {
+  const { fadeInUp, fadeInLeft } = useMotionVariants();
+
   const qualifications = [
     {
       year: "2021",
@@ -26,12 +29,7 @@ const Qualifications = () => {
   return (
     <div className="py-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          className="text-center mb-16"
-        >
+        <motion.div {...fadeInUp()} className="text-center mb-16">
           <h2 className="section-title">Formations et Qualifications</h2>
           <p className="section-subtitle">
             Un parcours académique et professionnel riche au service de votre
@@ -41,10 +39,7 @@ const Qualifications = () => {
 
         <div className="grid md:grid-cols-6 gap-12">
           <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.8 }}
+            {...fadeInLeft()}
             className="md:col-span-4 md:col-start-2"
           >
             <div className="flex items-center gap-4 mb-8">
@@ -57,10 +52,7 @@ const Qualifications = () => {
               {qualifications.map((qual, index) => (
                 <motion.div
                   key={index}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                  {...fadeInUp({ duration: 0.5, delay: index * 0.1 })}
                   className="bg-white p-6 rounded-lg shadow-sm"
                 >
                   <div className="text-mint-600 font-medium mb-2">
@@ -82,3 +74,4 @@ const Qualifications = () => {
 };
 
 export default Qualifications;
+
