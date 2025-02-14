@@ -4,8 +4,12 @@ import {
   COMPANY_NAME,
   SOCIAL_LINKS,
 } from "../../config/global.config";
+import { ClassNames, ContactItem } from "../common/ContactItem";
 
 export const FooterBrand = () => {
+  const classNames: ClassNames = {
+    containerClass: "gap-2 text-sage-300 hover:text-mint-400",
+  };
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -22,20 +26,16 @@ export const FooterBrand = () => {
       >
         {SOCIAL_LINKS.map((link) => (
           <li role="listitem" key={link.name}>
-            <a
+            <ContactItem
+              icon={link.icon}
+              text={link.label}
               href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sage-300 hover:text-mint-400 transition-colors flex items-center gap-2 "
-              aria-label={`Suivez-moi sur ${link.name}`}
-            >
-              <link.icon className="h-5 w-5" aria-hidden="true" />
-              <span>{link.label}</span>
-            </a>
+              ariaLabel={link.ariaLabel}
+              classNames={classNames}
+            />
           </li>
         ))}
       </ul>
     </div>
   );
 };
-

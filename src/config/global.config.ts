@@ -9,6 +9,7 @@ export const SOCIAL_LINKS = [
     name: "Instagram",
     label: "@omf.therapie",
     url: "https://www.instagram.com/omf.therapie",
+    ariaLabel: "Suivez-moi sur Instagram",
     icon: Instagram,
   },
 ];

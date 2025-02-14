@@ -13,4 +13,3 @@ export const LocationMap = () => (
     </div>
   </div>
 );
-
