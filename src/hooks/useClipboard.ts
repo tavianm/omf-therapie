@@ -11,6 +11,7 @@ export const useClipboard = () => {
       toast.success(message, {
         duration: 2000,
         className: "bg-mint-50 text-mint-800 border border-mint-200",
+        iconTheme: { primary: "#477a6d", secondary: "#ffffff" },
       });
     } catch {
       toast.error(errorMessage, {
