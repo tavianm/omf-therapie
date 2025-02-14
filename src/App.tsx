@@ -1,4 +1,4 @@
-import { PageViews } from "@piwikpro/react-piwik-pro";
+import { lazy } from "react";
 import {
   Navigate,
   Route,
@@ -7,12 +7,11 @@ import {
 } from "react-router-dom";
 import Footer from "./components/Footer";
 import Navbar from "./components/Navbar";
-import Contact from "./pages/Contact";
-import Home from "./pages/Home";
+
+const Home = lazy(() => import("./pages/Home"));
+const Contact = lazy(() => import("./pages/Contact"));
 
 function App() {
-  PageViews.trackPageView("optional title");
-
   return (
     <Router
       future={{
@@ -28,10 +27,10 @@ function App() {
           Aller au contenu principal
         </a>
         <Navbar />
-        <main id="main-content" className="flex-grow" role="main">
+        <main id="main-content" className="flex-grow pt-20" role="main">
           <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/contact" element={<Contact />} />
+            <Route path="/" Component={Home} />
+            <Route path="/contact" Component={Contact} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
@@ -42,3 +41,4 @@ function App() {
 }
 
 export default App;
+
