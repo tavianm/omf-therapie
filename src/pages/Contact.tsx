@@ -23,7 +23,7 @@ const Contact = () => {
       <div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 ">
           <motion.div {...fadeInUp()} className="text-center mb-10">
-            <h2 className="section-title mt-6">Contact</h2>
+            <h1 className="section-title mt-6">Contact</h1>
             <p className="section-subtitle">
               Je suis à votre écoute pour toute question ou prise de rendez-vous
             </p>
@@ -50,9 +50,9 @@ const Contact = () => {
 
 const OnlineBooking = () => (
   <div>
-    <h3 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
+    <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
       Prendre rendez-vous en ligne
-    </h3>
+    </h2>
     <div className="bg-white p-8 rounded-lg shadow-sm">
       <p className="text-sage-600 mb-6">
         Réservez votre consultation en quelques clics via notre plateforme

@@ -7,9 +7,9 @@ export const ContactForm = () => {
 
   return (
     <form onSubmit={handleSubmit} className="bg-white p-8 rounded-lg shadow-sm">
-      <h3 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
+      <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
         Formulaire de Contact
-      </h3>
+      </h2>
       {status.message && (
         <div
           className={`mb-6 p-4 rounded-lg ${

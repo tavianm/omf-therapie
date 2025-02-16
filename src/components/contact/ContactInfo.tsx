@@ -19,9 +19,9 @@ export const ContactInfo = () => {
   return (
     <div>
       <Toaster position="bottom-center" />
-      <h3 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
+      <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
         Informations de Contact
-      </h3>
+      </h2>
       <div className="space-y-4">
         <ContactItem
           icon={Phone}
