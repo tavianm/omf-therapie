@@ -13,10 +13,10 @@ interface SEOProps {
 const SEO: React.FC<SEOProps> = ({
   title,
   description,
-  canonical = "https://www.omf-therapie.fr/",
+  canonical = "https://omf-therapie.fr/",
   type = "website",
   name = "Oriane Montabonnet",
-  image = "https://www.omf-therapie.fr/assets/oriane-montabonnet-1.webp", // Ajoutez une image par défaut
+  image = "https://omf-therapie.fr/assets/oriane-montabonnet-1.webp", // Ajoutez une image par défaut
 }) => {
   return (
     <Helmet>
