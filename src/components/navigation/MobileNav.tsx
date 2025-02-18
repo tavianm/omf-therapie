@@ -19,13 +19,13 @@ export const MobileNav = ({
   navigateToSection,
   hellocareBtn,
 }: MobileNavProps) => (
-  <div className="flex items-center lg:hidden gap-6">
+  <div className="flex items-center lg:hidden max-[412px]:gap-2 max-sm:gap-4 gap-6">
     {hellocareBtn && (
       <a
         href={hellocareBtn.href}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-mint-600 text-center hover:text-mint-700 font-medium block px-4 py-2 bg-mint-50"
+        className="text-mint-600 text-center hover:text-mint-700 font-medium block max-[412px]:px-2 px-4 py-2 bg-mint-50"
       >
         {hellocareBtn.name}
       </a>

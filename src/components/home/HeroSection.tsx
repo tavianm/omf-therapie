@@ -8,7 +8,7 @@ export const HeroSection = () => {
   return (
     <section
       id="home"
-      className="relative h-[60vh] min-h-96 flex items-center"
+      className="relative h-[60vh] min-h-[430px] flex items-center"
       aria-labelledby="hero-title"
     >
       <div className="absolute inset-0 z-0" aria-hidden="true">
@@ -71,4 +71,3 @@ export const HeroSection = () => {
     </section>
   );
 };
-

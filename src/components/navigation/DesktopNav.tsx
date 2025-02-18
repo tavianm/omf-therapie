@@ -35,7 +35,7 @@ const ExternalLink = ({ item }: { item: NavigationItem }) => (
     href={item.href}
     target="_blank"
     rel="noopener noreferrer"
-    className="text-mint-600 hover:text-mint-700 font-medium px-4 py-2 rounded-md bg-mint-50"
+    className="text-mint-600 text-center hover:text-mint-700 font-medium px-4 py-2 rounded-md bg-mint-50"
   >
     {item.name}
   </a>
