@@ -23,7 +23,6 @@ const SEO: React.FC<SEOProps> = ({
       {/* Balises standards */}
       <title>{title}</title>
       <meta name="description" content={description} />
-      <link rel="canonical" href={canonical} />
 
       {/* Open Graph */}
       <meta property="og:type" content={type} />
