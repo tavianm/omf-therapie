@@ -20,7 +20,7 @@ export const CommitmentSection = () => {
       <p className="text-sage-600 max-w-3xl mx-auto my-4">
         Si vous ne pouvez pas honorer votre consultation, merci de bien vouloir
         : Annuler votre rendez-vous au moins 4 heures à l'avance Utiliser notre
-        système en ligne ou nous contacter directement Votre geste permettra à
+        système en ligne ou nous contacter directement. Votre geste permettra à
         un autre patient en attente de bénéficier de ce créneau.
       </p>
       <p className="text-sage-600 max-w-3xl mx-auto">
@@ -29,4 +29,3 @@ export const CommitmentSection = () => {
     </motion.div>
   );
 };
-
