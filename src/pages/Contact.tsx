@@ -18,6 +18,7 @@ const Contact = () => {
       <SEO
         title="Contact | Oriane Montabonnet - Thérapeute à Montpellier"
         description="Contactez Oriane Montabonnet, thérapeute à Montpellier. Prenez rendez-vous pour une consultation et commencez votre parcours vers le bien-être."
+        canonical="https://omf-therapie.fr/contact"
       />
       <div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 ">
