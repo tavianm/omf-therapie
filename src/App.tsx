@@ -1,4 +1,4 @@
-import { lazy } from "react";
+import { lazy, Suspense } from "react";
 import {
   Navigate,
   Route,
@@ -7,11 +7,21 @@ import {
 } from "react-router-dom";
 import Footer from "./components/Footer";
 import Navbar from "./components/Navbar";
+import { AutoScrollHandler } from "./components/navigation/AutoScrollHandler";
 
 const Home = lazy(() => import("./pages/Home"));
 const Contact = lazy(() => import("./pages/Contact"));
 
 function App() {
+  // Mapping des chemins d'URL vers les IDs de section
+  const pathToSectionMap = {
+    "/Tarifs": "pricing",
+    "/Services": "services",
+    "/About": "about",
+    "/Process": "process",
+    "/Formations": "qualifications",
+  };
+
   return (
     <Router
       future={{
@@ -28,13 +38,23 @@ function App() {
         </a>
         <Navbar />
         <main id="main-content" className="flex-grow pt-20" role="main">
-          <Routes>
-            <Route path="/" Component={Home} />
-            <Route path="/contact" Component={Contact} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          <Suspense
+            fallback={<div className="p-8 text-center">Chargement...</div>}
+          >
+            <Routes>
+              <Route path="/" Component={Home} />
+              {/* Routes pour les sections spécifiques qui chargent Home */}
+              {Object.keys(pathToSectionMap).map((path) => (
+                <Route key={path} path={path} Component={Home} />
+              ))}
+              <Route path="/contact" Component={Contact} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
         </main>
         <Footer />
+        {/* Placer AutoScrollHandler après le contenu pour s'assurer qu'il s'exécute après le rendu */}
+        <AutoScrollHandler pathToSectionMap={pathToSectionMap} />
       </div>
     </Router>
   );

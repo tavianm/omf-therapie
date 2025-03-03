@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useScrollToSection } from "../hooks/useScrollToSection";
 import type { NavbarProps } from "../types/navigation";
 import { DesktopNav } from "./navigation/DesktopNav";
 import { Logo } from "./navigation/Logo";
@@ -13,6 +14,9 @@ const Navbar = memo(({ className = "" }: NavbarProps) => {
   const navigate = useNavigate();
   const navigation = useNavigationItems();
   const hellocareBtn = navigation.find((item) => item.external);
+
+  // Utiliser notre hook personnalisé pour le défilement avec des options adaptées
+  const { scrollToSection } = useScrollToSection(undefined, {});
 
   const handleScroll = useCallback(() => {
     if (location.pathname === "/") {
@@ -39,19 +43,6 @@ const Navbar = memo(({ className = "" }: NavbarProps) => {
     }
   }, [location.pathname, navigation]);
 
-  const scrollToSection = useCallback((href: string) => {
-    const element = document.getElementById(href.substring(1));
-    if (element) {
-      const offset = 80;
-      const elementPosition = element.getBoundingClientRect().top;
-      const offsetPosition = elementPosition + window.pageYOffset - offset;
-      window.scrollTo({
-        top: offsetPosition,
-        behavior: "smooth",
-      });
-    }
-  }, []);
-
   useEffect(() => {
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
@@ -59,13 +50,17 @@ const Navbar = memo(({ className = "" }: NavbarProps) => {
 
   const navigateToSection = useCallback(
     async (href: string) => {
+      const sectionId = href.substring(1);
+
       if (location.pathname !== "/") {
         await navigate("/");
+        // Attendre que la navigation soit terminée avant de défiler
+        // Utiliser un délai plus long pour s'assurer que le contenu est chargé
         setTimeout(() => {
-          scrollToSection(href);
+          scrollToSection(sectionId);
         }, 100);
       } else {
-        scrollToSection(href);
+        scrollToSection(sectionId);
       }
       setIsOpen(false);
     },
@@ -115,3 +110,4 @@ const Navbar = memo(({ className = "" }: NavbarProps) => {
 Navbar.displayName = "Navbar";
 
 export default Navbar;
+
