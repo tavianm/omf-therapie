@@ -24,9 +24,9 @@ export const useScrollToSection = (
   const {
     offset = 80,
     behavior = "smooth",
-    delay = 0,
+    delay = 50,
     maxRetries = 10,
-    retryInterval = 50,
+    retryInterval = 100,
   } = options;
 
   // Fonction pour défiler vers une section spécifique avec retries

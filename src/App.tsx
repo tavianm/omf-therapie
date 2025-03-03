@@ -5,6 +5,7 @@ import {
   BrowserRouter as Router,
   Routes,
 } from "react-router-dom";
+import { SuspenseFallback } from "./components/common/SuspenseFallback";
 import Footer from "./components/Footer";
 import Navbar from "./components/Navbar";
 import { AutoScrollHandler } from "./components/navigation/AutoScrollHandler";
@@ -37,10 +38,8 @@ function App() {
           Aller au contenu principal
         </a>
         <Navbar />
-        <main id="main-content" className="flex-grow pt-20" role="main">
-          <Suspense
-            fallback={<div className="p-8 text-center">Chargement...</div>}
-          >
+        <Suspense fallback={<SuspenseFallback />}>
+          <main id="main-content" className="flex-grow pt-20" role="main">
             <Routes>
               <Route path="/" Component={Home} />
               {/* Routes pour les sections spécifiques qui chargent Home */}
@@ -50,9 +49,9 @@ function App() {
               <Route path="/contact" Component={Contact} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
-          </Suspense>
-        </main>
-        <Footer />
+          </main>
+          <Footer />
+        </Suspense>
         {/* Placer AutoScrollHandler après le contenu pour s'assurer qu'il s'exécute après le rendu */}
         <AutoScrollHandler pathToSectionMap={pathToSectionMap} />
       </div>
