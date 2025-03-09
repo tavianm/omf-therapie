@@ -33,7 +33,32 @@ export default {
         sans: ['Inter', 'sans-serif'],
         serif: ['Cormorant Garamond', 'serif'],
       },
+      typography: (theme) => ({
+        sage: {
+          css: {
+            '--tw-prose-body': theme('colors.sage.600'),
+            '--tw-prose-headings': theme('colors.sage.800'),
+            '--tw-prose-lead': theme('colors.sage.700'),
+            '--tw-prose-links': theme('colors.mint.600'),
+            '--tw-prose-bold': theme('colors.sage.800'),
+            '--tw-prose-counters': theme('colors.sage.500'),
+            '--tw-prose-bullets': theme('colors.sage.400'),
+            '--tw-prose-hr': theme('colors.sage.200'),
+            '--tw-prose-quotes': theme('colors.sage.700'),
+            '--tw-prose-quote-borders': theme('colors.mint.300'),
+            '--tw-prose-captions': theme('colors.sage.500'),
+            '--tw-prose-code': theme('colors.sage.800'),
+            '--tw-prose-pre-code': theme('colors.sage.200'),
+            '--tw-prose-pre-bg': theme('colors.sage.800'),
+            '--tw-prose-th-borders': theme('colors.sage.300'),
+            '--tw-prose-td-borders': theme('colors.sage.200'),
+          },
+        },
+      }),
     },
   },
-  plugins: [],
+  plugins: [
+    require('@tailwindcss/typography'),
+    require('@tailwindcss/line-clamp'),
+  ],
 };

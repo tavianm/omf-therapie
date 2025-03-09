@@ -53,7 +53,7 @@ export const MobileNav = ({
       >
         <div className="pt-2 pb-4 space-y-1">
           {navigation.map((item) =>
-            item.external ? null : item.path === "/contact" ? (
+            item.external ? null : item.page? (
               <Link
                 key={item.name}
                 to={"../" + item.href}

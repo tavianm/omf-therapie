@@ -14,6 +14,19 @@ export const FooterHours = () => (
         ))}
       </ul>
     </div>
+    <div className="mt-4">
+      <a
+        rel="nofollow"
+        href="https://www.psychologue.net/cabinets/montabonnet-oriane?utm_source=448100&utm_medium=widget&utm_campaign=widget-company_stamp"
+        target="_blank"
+      >
+        <img
+          src="https://www.psychologue.net/stamp.xpng?com=448100&v=10"
+          alt="Montabonnet Oriane"
+          width="175px"
+        />
+      </a>
+    </div>
   </div>
 );
 
