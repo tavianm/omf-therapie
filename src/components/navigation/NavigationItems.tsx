@@ -10,7 +10,8 @@ export const useNavigationItems = () => {
       { name: "Processus", href: "#process", path: "/" },
       { name: "Formations", href: "#qualifications", path: "/" },
       { name: "Tarifs", href: "#pricing", path: "/" },
-      { name: "Contact", href: "/contact", path: "/contact" },
+      { name: "Blog", href: "/blog", path: "/blog", page: true },
+      { name: "Contact", href: "/contact", path: "/contact", page: true },
       {
         name: "RDV en ligne",
         href: "https://hellocare.com/psychopraticien/montpellier/montabonnet-oriane",

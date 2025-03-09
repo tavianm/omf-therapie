@@ -16,7 +16,7 @@ export const DesktopNav = ({
     {navigation.map((item) =>
       item.external ? (
         <ExternalLink key={item.name} item={item} />
-      ) : item.path === "/contact" ? (
+      ) : item.page ? (
         <ContactLink key={item.name} item={item} isActive={isActive} />
       ) : (
         <SectionLink

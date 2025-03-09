@@ -12,6 +12,8 @@ import { AutoScrollHandler } from "./components/navigation/AutoScrollHandler";
 
 const Home = lazy(() => import("./pages/Home"));
 const Contact = lazy(() => import("./pages/Contact"));
+const Blog = lazy(() => import("./pages/Blog"));
+const BlogPost = lazy(() => import("./pages/BlogPost"));
 
 function App() {
   // Mapping des chemins d'URL vers les IDs de section
@@ -47,6 +49,8 @@ function App() {
                 <Route key={path} path={path} Component={Home} />
               ))}
               <Route path="/contact" Component={Contact} />
+              <Route path="/blog" Component={Blog} />
+              <Route path="/blog/:slug" Component={BlogPost} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>
@@ -60,4 +64,3 @@ function App() {
 }
 
 export default App;
-

@@ -12,6 +12,7 @@ export const QUICK_LINKS: FooterLink[] = [
   { name: "Accueil", href: "#home", path: "/" },
   { name: "À Propos", href: "#about", path: "/" },
   { name: "Services", href: "#services", path: "/" },
+  { name: "Blog", href: "/blog", path: "/blog" },
   { name: "Contact", href: "/contact", path: "/contact" },
   {
     name: "Prendre rendez-vous",
@@ -20,4 +21,3 @@ export const QUICK_LINKS: FooterLink[] = [
     path: "/",
   },
 ];
-
