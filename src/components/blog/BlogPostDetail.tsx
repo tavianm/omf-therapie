@@ -3,6 +3,7 @@ import parse from "html-react-parser";
 import { ArrowLeft, Calendar, Clock, Tag, User } from "lucide-react";
 import { Link } from "react-router-dom";
 import { BlogPost } from "../../types/blog";
+import { calculateReadingTime } from "../../utils/blogApi";
 import { ShareButtons } from "./ShareButtons";
 
 interface BlogPostDetailProps {
@@ -34,7 +35,10 @@ export const BlogPostDetail = ({ post, relatedPosts }: BlogPostDetailProps) => {
         Retour aux articles
       </Link>
 
-      <motion.article {...fadeInUp()} className="bg-white rounded-lg shadow-sm overflow-hidden p-6 md:p-8">
+      <motion.article
+        {...fadeInUp()}
+        className="bg-white rounded-lg shadow-sm overflow-hidden p-6 md:p-8"
+      >
         <div className="flex flex-wrap gap-2 mb-4">
           {post.categories.map((category) => (
             <Link
@@ -63,7 +67,7 @@ export const BlogPostDetail = ({ post, relatedPosts }: BlogPostDetailProps) => {
           </span>
           <span className="flex items-center mb-2">
             <Clock className="h-4 w-4 mr-1" />
-            {post.readingTime} min de lecture
+            {calculateReadingTime(post.content)} min de lecture
           </span>
         </div>
 
@@ -72,7 +76,9 @@ export const BlogPostDetail = ({ post, relatedPosts }: BlogPostDetailProps) => {
             <img
               src={post.imageUrl}
               alt={post.title}
-              className="w-full h-auto rounded-lg"
+              className="h-auto rounded-lg"
+              loading="lazy"
+              decoding="async"
               width="800"
               height="400"
             />
@@ -85,7 +91,9 @@ export const BlogPostDetail = ({ post, relatedPosts }: BlogPostDetailProps) => {
 
         <div className="border-t border-sage-100 pt-6 flex flex-wrap justify-between items-center">
           <div className="mb-4 md:mb-0">
-            <h3 className="text-sage-700 font-medium mb-2">Partager cet article</h3>
+            <h3 className="text-sage-700 font-medium mb-2">
+              Partager cet article
+            </h3>
             <ShareButtons post={post} />
           </div>
 
@@ -105,7 +113,10 @@ export const BlogPostDetail = ({ post, relatedPosts }: BlogPostDetailProps) => {
           </h2>
           <div className="grid md:grid-cols-2 gap-6">
             {relatedPosts.slice(0, 2).map((relatedPost) => (
-              <div key={relatedPost.id} className="bg-white rounded-lg shadow-sm overflow-hidden">
+              <div
+                key={relatedPost.id}
+                className="bg-white rounded-lg shadow-sm overflow-hidden"
+              >
                 <Link to={`/blog/${relatedPost.slug}`} className="block p-6">
                   <div className="flex flex-wrap gap-2 mb-2">
                     {relatedPost.categories.slice(0, 1).map((category) => (
@@ -120,7 +131,9 @@ export const BlogPostDetail = ({ post, relatedPosts }: BlogPostDetailProps) => {
                   <h3 className="text-xl font-serif font-semibold text-sage-800 mb-2 hover:text-mint-600 transition-colors">
                     {relatedPost.title}
                   </h3>
-                  <p className="text-sage-600 line-clamp-2">{relatedPost.excerpt}</p>
+                  <p className="text-sage-600 line-clamp-2">
+                    {relatedPost.excerpt}
+                  </p>
                 </Link>
               </div>
             ))}
@@ -130,3 +143,4 @@ export const BlogPostDetail = ({ post, relatedPosts }: BlogPostDetailProps) => {
     </div>
   );
 };
+

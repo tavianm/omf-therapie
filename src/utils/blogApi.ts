@@ -1,9 +1,11 @@
+import { parse } from "date-fns";
+import { fr } from "date-fns/locale";
 import { BlogPost, BlogPostsParams, BlogPostsResponse } from "../types/blog";
 import { BLOG_POSTS } from "./blog-list";
 
 // Calculate reading time based on content length
 export const calculateReadingTime = (content: string): number => {
-  const wordsPerMinute = 150;
+  const wordsPerMinute = 200;
   const wordCount = content.split(/\s+/).length;
   return Math.ceil(wordCount / wordsPerMinute);
 };
@@ -52,7 +54,12 @@ const filterPosts = (
     );
   }
 
-  return filteredPosts;
+  return filteredPosts.sort((a, b) => {
+    const parseDate = (dateStr: string) => {
+      return parse(dateStr, "d MMMM yyyy", new Date(), { locale: fr });
+    };
+    return parseDate(b.date).getTime() - parseDate(a.date).getTime();
+  });
 };
 
 // Paginate posts
