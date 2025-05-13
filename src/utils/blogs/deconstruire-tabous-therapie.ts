@@ -44,7 +44,7 @@ export const DeconstruireTabousTherapie: BlogPost = {
 
     <p>N'attendons pas d'être en difficulté pour explorer ce chemin de croissance personnelle. La thérapie est un cadeau que nous pouvons nous faire à tout moment de notre vie.</p>
   `,
-  date: "15 janvier 2024",
+  date: "5 mai 2025",
   categories: ["Santé mentale", "Développement personnel", "Bien-être", "Psychologie"],
   imageUrl: "https://images.pexels.com/photos/4101143/pexels-photo-4101143.jpeg",
   author: {
