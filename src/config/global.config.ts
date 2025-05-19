@@ -17,5 +17,6 @@ export const SOCIAL_LINKS = [
 export const CONTACT_INFO = {
   phone: "06 50 33 18 53",
   email: "contact@omf-therapie.fr",
-  address: "Espace Pitot, 186 Pl. Jacques Mirouze, 34000 Montpellier",
+  address: "1086 Av. Albert Einstein, 34000 Montpellier",
 };
+
