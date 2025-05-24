@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Analytics } from "../../utils/analytics";
 import type { NavigationItem } from "../../types/navigation";
 
 export const useNavigationItems = () => {
@@ -17,6 +18,7 @@ export const useNavigationItems = () => {
         href: "https://hellocare.com/psychopraticien/montpellier/montabonnet-oriane",
         external: true,
         path: "/",
+        onClick: () => Analytics.trackBookingClick('online', 'navigation', 'RDV en ligne')
       },
     ],
     []

@@ -1,12 +1,21 @@
 import { memo } from "react";
 import { useContactForm } from "../../hooks/useContactForm";
+import { Analytics } from "../../utils/analytics";
 
 export const ContactForm = () => {
-  const { formData, status, isSubmitting, handleChange, handleSubmit } =
-    useContactForm();
+  const { formData, status, isSubmitting, handleChange, handleSubmit } = useContactForm();
+
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    const success = await handleSubmit(e);
+    Analytics.trackFormSubmission(
+      'contact_form',
+      'Contact Form',
+      success
+    );
+  };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white p-8 rounded-lg shadow-sm">
+    <form onSubmit={onSubmit} className="bg-white p-8 rounded-lg shadow-sm">
       <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
         Formulaire de Contact
       </h2>

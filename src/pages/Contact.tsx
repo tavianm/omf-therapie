@@ -5,6 +5,7 @@ import { ContactForm } from "../components/contact/ContactForm";
 import { ContactInfo } from "../components/contact/ContactInfo";
 import { LocationMap } from "../components/contact/LocationMap";
 import { useMotionVariants } from "../hooks/useMotionVariants";
+import { Analytics } from "../utils/analytics";
 
 const Contact = () => {
   useEffect(() => {
@@ -48,6 +49,14 @@ const Contact = () => {
   );
 };
 
+const handleBookingClick = () => {
+  Analytics.trackBookingClick(
+    "consultation",
+    "contact_section",
+    "Réserver une consultation"
+  );
+};
+
 const OnlineBooking = () => (
   <div>
     <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
@@ -63,6 +72,7 @@ const OnlineBooking = () => (
         target="_blank"
         rel="noopener noreferrer"
         className="btn-primary w-full justify-center"
+        onClick={handleBookingClick}
       >
         Réserver une consultation
       </a>
@@ -71,3 +81,4 @@ const OnlineBooking = () => (
 );
 
 export default Contact;
+

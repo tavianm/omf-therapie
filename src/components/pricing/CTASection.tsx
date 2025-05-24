@@ -1,8 +1,13 @@
 import { motion } from "framer-motion";
 import { useMotionVariants } from "../../hooks/useMotionVariants";
+import { Analytics } from "../../utils/analytics";
 
 export const CTASection = () => {
   const { fadeIn } = useMotionVariants();
+
+  const handleBookingClick = () => {
+    Analytics.trackBookingClick('consultation', 'pricing_section', 'Réserver une consultation');
+  };
 
   return (
     <motion.div
@@ -21,10 +26,10 @@ export const CTASection = () => {
         target="_blank"
         rel="noopener noreferrer"
         className="btn-primary"
+        onClick={handleBookingClick}
       >
         Réserver une consultation
       </a>
     </motion.div>
   );
 };
-
