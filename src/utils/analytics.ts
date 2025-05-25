@@ -32,8 +32,8 @@ export class Analytics {
   }
 
   static trackEvent(eventName: string, params: EventParams = {}) {
-    if (!window.gtag) return;
-    /* window.gtag("event", eventName, params); */
+    /*  if (!window.gtag) return;
+    window.gtag("event", eventName, params); */
     ReactGA.event(
       {
         category: "evennt",
