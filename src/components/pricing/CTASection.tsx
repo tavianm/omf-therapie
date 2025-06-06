@@ -6,7 +6,11 @@ export const CTASection = () => {
   const { fadeIn } = useMotionVariants();
 
   const handleBookingClick = () => {
-    Analytics.trackBookingClick('consultation', 'pricing_section', 'Réserver une consultation');
+    Analytics.trackBookingClick(
+      "consultation",
+      "pricing_section",
+      "Réserver une consultation"
+    );
   };
 
   return (
@@ -22,7 +26,7 @@ export const CTASection = () => {
         mieux-être.
       </p>
       <a
-        href="https://hellocare.com/psychopraticien/montpellier/montabonnet-oriane"
+        href="https://www.psychologue.net/cabinets/oriane-montabonnet"
         target="_blank"
         rel="noopener noreferrer"
         className="btn-primary"

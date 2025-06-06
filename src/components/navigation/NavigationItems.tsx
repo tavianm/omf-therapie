@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { Analytics } from "../../utils/analytics";
 import type { NavigationItem } from "../../types/navigation";
+import { Analytics } from "../../utils/analytics";
 
 export const useNavigationItems = () => {
   return useMemo<NavigationItem[]>(
@@ -15,10 +15,11 @@ export const useNavigationItems = () => {
       { name: "Contact", href: "/contact", path: "/contact", page: true },
       {
         name: "RDV en ligne",
-        href: "https://hellocare.com/psychopraticien/montpellier/montabonnet-oriane",
+        href: "https://www.psychologue.net/cabinets/oriane-montabonnet",
         external: true,
         path: "/",
-        onClick: () => Analytics.trackBookingClick('online', 'navigation', 'RDV en ligne')
+        onClick: () =>
+          Analytics.trackBookingClick("online", "navigation", "RDV en ligne"),
       },
     ],
     []

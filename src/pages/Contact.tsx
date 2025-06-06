@@ -65,10 +65,10 @@ const OnlineBooking = () => (
     <div className="bg-white p-8 rounded-lg shadow-sm">
       <p className="text-sage-600 mb-6">
         Réservez votre consultation en quelques clics via notre plateforme
-        sécurisée Hellocare.
+        sécurisée Psychologue.net.
       </p>
       <a
-        href="https://hellocare.com/psychopraticien/montpellier/montabonnet-oriane"
+        href="https://www.psychologue.net/cabinets/oriane-montabonnet"
         target="_blank"
         rel="noopener noreferrer"
         className="btn-primary w-full justify-center"
@@ -81,4 +81,3 @@ const OnlineBooking = () => (
 );
 
 export default Contact;
-
