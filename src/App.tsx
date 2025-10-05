@@ -14,6 +14,7 @@ const Home = lazy(() => import("./pages/Home"));
 const Contact = lazy(() => import("./pages/Contact"));
 const Blog = lazy(() => import("./pages/Blog"));
 const BlogPost = lazy(() => import("./pages/BlogPost"));
+const Accessibilite = lazy(() => import("./pages/Accessibilite"));
 
 function App() {
   // Mapping des chemins d'URL vers les IDs de section
@@ -51,6 +52,7 @@ function App() {
               <Route path="/contact" Component={Contact} />
               <Route path="/blog" Component={Blog} />
               <Route path="/blog/:slug" Component={BlogPost} />
+              <Route path="/accessibilite" Component={Accessibilite} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>

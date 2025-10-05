@@ -41,7 +41,7 @@ export const PriceCard = ({
           <span className="text-4xl font-serif font-semibold text-mint-600">
             {detail.price}
           </span>
-          <span className="text-sage-500 ml-2">/ {detail.duration}</span>
+          <span className="text-sage-700 ml-2">/ {detail.duration}</span>
         </div>
       ))}
       <ul className="space-y-4">

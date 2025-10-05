@@ -50,7 +50,7 @@ export const ContactItem = ({
       className={
         "flex items-center transition-colors " + classNames?.containerClass
       }
-      aria-label={ariaLabel}
+      aria-label={typeof text === "string" && text.trim().length > 0 ? undefined : ariaLabel}
     >
       {content}
     </a>

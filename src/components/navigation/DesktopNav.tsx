@@ -12,22 +12,23 @@ export const DesktopNav = ({
   isActive,
   navigateToSection,
 }: DesktopNavProps) => (
-  <div className="hidden lg:flex md:items-center md:space-x-8">
-    {navigation.map((item) =>
-      item.external ? (
-        <ExternalLink key={item.name} item={item} />
-      ) : item.page ? (
-        <ContactLink key={item.name} item={item} isActive={isActive} />
-      ) : (
-        <SectionLink
-          key={item.name}
-          item={item}
-          isActive={isActive}
-          navigateToSection={navigateToSection}
-        />
-      )
-    )}
-  </div>
+  <ul className="hidden lg:flex md:items-center md:space-x-8" role="list">
+    {navigation.map((item) => (
+      <li key={item.name} role="listitem">
+        {item.external ? (
+          <ExternalLink item={item} />
+        ) : item.page ? (
+          <ContactLink item={item} isActive={isActive} />
+        ) : (
+          <SectionLink
+            item={item}
+            isActive={isActive}
+            navigateToSection={navigateToSection}
+          />
+        )}
+      </li>
+    ))}
+  </ul>
 );
 
 const ExternalLink = ({ item }: { item: NavigationItem }) => (

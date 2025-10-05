@@ -62,7 +62,7 @@ const Qualifications = () => {
                     {qual.title}
                   </h4>
                   <div className="text-sage-600 mb-2">{qual.institution}</div>
-                  <p className="text-sage-500 text-sm">{qual.description}</p>
+                  <p className="text-sage-700 text-sm">{qual.description}</p>
                 </motion.div>
               ))}
             </div>
