@@ -51,9 +51,12 @@ export const MobileNav = ({
         role="menu"
         aria-label="Menu mobile"
       >
-        <div className="pt-2 pb-4 space-y-1">
+        <div
+          className="overflow-auto space-y-1 py-1"
+          style={{ maxHeight: "calc(100vh - 5.7rem)" }}
+        >
           {navigation.map((item) =>
-            item.external ? null : item.page? (
+            item.external ? null : item.page ? (
               <Link
                 key={item.name}
                 to={"../" + item.href}
