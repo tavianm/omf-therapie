@@ -6,6 +6,7 @@ import { FooterHeading } from "../common/FooterHeading";
 export const FooterLinks = () => {
   const { scrollToSection } = useScrollToSection(undefined, {});
   const location = useLocation();
+  const linkClass = "text-sage-300 hover:text-mint-400 hover:underline transition-colors"
 
   return <nav aria-label="Navigation du pied de page">
     <FooterHeading>Liens Rapides</FooterHeading>
@@ -17,7 +18,7 @@ export const FooterLinks = () => {
               href={link.href}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sage-300 hover:text-mint-400 transition-colors"
+              className={linkClass}
               aria-label={`${link.name} (s'ouvre dans un nouvel onglet)`}
             >
               {link.name}
@@ -25,14 +26,14 @@ export const FooterLinks = () => {
           ) : link.path !== "/" ? (
             <Link
               to={link.href}
-              className="text-sage-300 hover:text-mint-400 transition-colors"
+              className={linkClass}
             >
               {link.name}
             </Link>
           ) : (
             <Link
               to={link.href}
-              className="text-sage-300 hover:text-mint-400 transition-colors"
+              className={linkClass}
               onClick={(e) => {
                 if (location.pathname === '/') {
                   e.preventDefault();

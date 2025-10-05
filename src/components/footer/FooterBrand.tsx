@@ -8,7 +8,7 @@ import { ClassNames, ContactItem } from "../common/ContactItem";
 
 export const FooterBrand = () => {
   const classNames: ClassNames = {
-    containerClass: "gap-2 text-sage-300 hover:text-mint-400",
+    containerClass: "gap-2 text-sage-300 hover:text-mint-400 hover:underline transition-colors",
   };
   return (
     <div className="space-y-4">

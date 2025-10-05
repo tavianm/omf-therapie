@@ -12,7 +12,7 @@ import { ClassNames, ContactItem } from "../common/ContactItem";
 export const ContactInfo = () => {
   const { copyToClipboard } = useClipboard();
   const classNames: ClassNames = {
-    containerClass: "hover:text-mint-500 gap-4",
+    containerClass: "hover:text-mint-500 gap-4 transition-colors hover:underline",
     textClass: "text-sage-600",
     iconClass: "text-mint-600 ",
   };

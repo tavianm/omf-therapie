@@ -1,6 +1,7 @@
 import { Helmet } from "react-helmet-async";
 
 export default function Accessibilite() {
+  window.scrollTo(0, 0);
   return (
     <section className="max-w-3xl mx-auto px-4 py-10">
       <Helmet>
