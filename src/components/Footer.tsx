@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { FooterBrand } from "./footer/FooterBrand";
 import { FooterContact } from "./footer/FooterContact";
 import { FooterHours } from "./footer/FooterHours";
@@ -17,6 +18,9 @@ const Footer = () => {
         </div>
         <div className="mt-8 pt-4 border-t border-sage-700 text-center text-sage-300 text-sm">
           <span>©{currentYear} Oriane Montabonnet. Tous droits réservés.</span>
+          <Link to="/accessibilite" className="ml-4 hover:text-mint-400 hover:underline transition-colors">
+            Accessibilité: non conforme
+          </Link>
         </div>
       </div>
     </footer>

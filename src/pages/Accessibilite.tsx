@@ -106,8 +106,16 @@ export default function Accessibilite() {
       </p>
       <p className="mb-3">Vous pouvez :</p>
       <ul className="list-disc pl-6 space-y-2 mb-8">
-        <li>Écrire un message au Défenseur des droits</li>
-        <li>Contacter le délégué du Défenseur des droits dans votre région</li>
+        <li>
+          <a href="https://formulaire.defenseurdesdroits.fr/formulaire_saisine/" className="text-mint-600 underline hover:text-mint-700">
+            Écrire un message au Défenseur des droits
+          </a>
+        </li>
+        <li>
+          <a href="https://www.defenseurdesdroits.fr/carte-des-delegues" className="text-mint-600 underline hover:text-mint-700">
+            Contacter le délégué du Défenseur des droits dans votre région
+          </a>
+        </li>
         <li>
           Envoyer un courrier par la poste (gratuit, ne pas mettre de timbre) :
           <br />
