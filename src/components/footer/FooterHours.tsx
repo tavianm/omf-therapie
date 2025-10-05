@@ -4,7 +4,7 @@ import { FooterHeading } from "../common/FooterHeading";
 export const FooterHours = () => (
   <div role="group" aria-label="Horaires">
     <FooterHeading>Horaires</FooterHeading>
-    <div className="space-y-2 text-sage-300 ">
+    <div className="space-y-3 text-sage-300 ">
       <div>{BUSINESS_HOURS.days}</div>
       <ul role="list" aria-label="Horaires d'ouverture">
         {BUSINESS_HOURS.hours.map((hour, hourIndex) => (
@@ -14,7 +14,7 @@ export const FooterHours = () => (
         ))}
       </ul>
     </div>
-    <div className="mt-4">
+    <div className="mt-3">
       <a
         href="https://www.psychologue.net/cabinets/montabonnet-oriane?utm_source=448100&utm_medium=widget&utm_campaign=widget-company_stamp"
         target="_blank"

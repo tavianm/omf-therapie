@@ -3,7 +3,7 @@ import { Helmet } from "react-helmet-async";
 export default function Accessibilite() {
   window.scrollTo(0, 0);
   return (
-    <section className="max-w-3xl mx-auto px-4 py-5 md:py-10">
+    <section className="max-w-3xl mx-auto px-4 py-8 md:py-10">
       <Helmet>
         <title>Déclaration d’accessibilité — OMF Thérapie</title>
         <meta

@@ -34,7 +34,7 @@ const Process = () => {
   ];
 
   return (
-    <div className="py-5 md:py-10">
+    <div className="py-8 md:py-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div {...fadeInUp()} className="text-center mb-8">
           <h2 className="section-title">Le Processus Thérapeutique</h2>
@@ -84,7 +84,7 @@ const Process = () => {
           <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-6 text-center">
             Informations Pratiques
           </h3>
-          <div className="grid md:grid-cols-2 gap-8">
+          <div className="grid md:grid-cols-2 gap-6 md:gap-8">
             <div>
               <h4 className="text-2xl font-serif font-semibold text-sage-800 mb-4">
                 Durée des Séances

@@ -27,7 +27,7 @@ const Qualifications = () => {
   ];
 
   return (
-    <div className="py-5 md:py-10">
+    <div className="py-8 md:py-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div {...fadeInUp()} className="text-center mb-8">
           <h2 className="section-title">Formations et Qualifications</h2>

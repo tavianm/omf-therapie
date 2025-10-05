@@ -24,7 +24,7 @@ export const FooterBrand = () => {
       </div>
       <p className="text-sage-300 text-sm">{COMPANY_DESCRIPTION}</p>
       <ul
-        className="flex items-center gap-4 pt-2"
+        className="flex items-center gap-4 "
         role="list"
         aria-label="Réseaux sociaux"
       >
