@@ -20,3 +20,10 @@ export const CONTACT_INFO = {
   address: "1086 Av. Albert Einstein, 34000 Montpellier",
 };
 
+export const BUSINESS_HOURS = {
+  days: "Lundi - Vendredi",
+  hours: [
+    { start: "8h", end: "12h" },
+    { start: "14h", end: "19h" },
+  ],
+};

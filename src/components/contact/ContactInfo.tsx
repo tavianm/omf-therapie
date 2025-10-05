@@ -1,6 +1,7 @@
 import { Clock, Mail, MapPin, Phone } from "lucide-react";
 import { Toaster } from "react-hot-toast";
 import {
+  BUSINESS_HOURS,
   COMPANY_NAME,
   CONTACT_INFO,
   SOCIAL_LINKS,
@@ -71,10 +72,15 @@ export const ContactInfo = () => {
           icon={Clock}
           classNames={classNames}
           text={
-            <div>
-              <p>Lundi - Vendredi</p>
-              <p>8h - 10h</p>
-              <p>15h30 - 19h</p>
+            <div >
+              <div>{BUSINESS_HOURS.days}</div>
+              <ul role="list" aria-label="Horaires d'ouverture">
+                {BUSINESS_HOURS.hours.map((hour, hourIndex) => (
+                  <li role="listitem" key={hourIndex}>
+                    {hour.start} - {hour.end}
+                  </li>
+                ))}
+              </ul>
             </div>
           }
         />
