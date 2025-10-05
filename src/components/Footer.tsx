@@ -8,7 +8,11 @@ const Footer = () => {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="bg-sage-800 text-sage-100" role="contentinfo">
+    <footer
+      className="bg-sage-800 text-sage-100"
+      role="contentinfo"
+      aria-label="Pied de page"
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-4 pt-8">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           <FooterBrand />
@@ -16,10 +20,14 @@ const Footer = () => {
           <FooterLinks />
           <FooterHours />
         </div>
-        <div className="mt-8 pt-4 border-t border-sage-700 text-center text-sage-300 text-sm">
+        <div className="mt-8 pt-4 border-t border-sage-700 text-center text-sage-300 text-sm flex flex-col md:flex-row items-center justify-center gap-2">
           <span>©{currentYear} Oriane Montabonnet. Tous droits réservés.</span>
-          <Link to="/accessibilite" className="ml-4 hover:text-mint-400 hover:underline transition-colors">
-            Accessibilité: non conforme
+          <Link
+            to="/accessibilite"
+            className="hover:text-mint-400 hover:underline transition-colors"
+            aria-label="Page accessibilité — non conforme"
+          >
+            Accessibilité : non conforme
           </Link>
         </div>
       </div>
@@ -28,4 +36,3 @@ const Footer = () => {
 };
 
 export default Footer;
-

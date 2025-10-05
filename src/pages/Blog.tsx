@@ -87,7 +87,7 @@ const Blog = () => {
         canonical="https://omf-therapie.fr/blog"
       />
       <Toaster position="bottom-center" />
-      <div className="py-10">
+      <div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <BlogHeader
             title="Blog"
@@ -109,7 +109,7 @@ const Blog = () => {
               />
 
               {totalPages > 1 && (
-                <div className="mt-10">
+                <div className="my-5">
                   <BlogPagination
                     currentPage={currentPage}
                     totalPages={totalPages}
@@ -134,4 +134,3 @@ const Blog = () => {
 };
 
 export default Blog;
-

@@ -43,7 +43,10 @@ export const HeroSection = () => {
             <p className="text-xl md:text-2xl mb-8 max-w-3xl mx-auto">
               Votre partenaire pour un bien-être psychologique durable
             </p>
-            <ul className="flex flex-col sm:flex-row gap-4 justify-center" role="list">
+            <ul
+              className="flex flex-col sm:flex-row gap-4 justify-center items-center"
+              role="list"
+            >
               <li role="listitem">
                 <Link
                   to="../contact"

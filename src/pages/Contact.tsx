@@ -22,7 +22,7 @@ const Contact = () => {
       />
       <div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 ">
-          <motion.div {...fadeInUp()} className="text-center mb-10">
+          <motion.div {...fadeInUp()} className="text-center mb-8">
             <h1 className="section-title mt-6">Contact</h1>
             <p className="section-subtitle">
               Je suis à votre écoute pour toute question ou prise de rendez-vous

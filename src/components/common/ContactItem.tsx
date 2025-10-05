@@ -22,7 +22,10 @@ export const ContactItem = ({
 }: ContactItemProps) => {
   const content = (
     <>
-      <Icon className={"min-h-5 min-w-5 h-5 w-5 " + classNames?.iconClass} />
+      <Icon
+        className={"min-h-5 min-w-5 h-5 w-5 " + classNames?.iconClass}
+        aria-label={Icon.displayName ?? Icon.toString()}
+      />
       <span className={classNames?.textClass}>{text}</span>
     </>
   );
@@ -50,7 +53,11 @@ export const ContactItem = ({
       className={
         "flex items-center transition-colors " + classNames?.containerClass
       }
-      aria-label={typeof text === "string" && text.trim().length > 0 ? undefined : ariaLabel}
+      aria-label={
+        typeof text === "string" && text.trim().length > 0
+          ? undefined
+          : ariaLabel
+      }
     >
       {content}
     </a>

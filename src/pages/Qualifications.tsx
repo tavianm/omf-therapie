@@ -27,9 +27,9 @@ const Qualifications = () => {
   ];
 
   return (
-    <div className="py-10">
+    <div className="py-5 md:py-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div {...fadeInUp()} className="text-center mb-10">
+        <motion.div {...fadeInUp()} className="text-center mb-8">
           <h2 className="section-title">Formations et Qualifications</h2>
           <p className="section-subtitle">
             Un parcours académique et professionnel riche au service de votre
@@ -37,14 +37,14 @@ const Qualifications = () => {
           </p>
         </motion.div>
 
-        <div className="grid md:grid-cols-6 gap-12">
+        <div className="grid md:grid-cols-6">
           <motion.div
             {...fadeInLeft()}
             className="md:col-span-4 md:col-start-2"
           >
             <div className="flex items-center gap-4 mb-8">
               <GraduationCap className="h-8 w-8 text-mint-600" />
-              <h3 className="text-2xl font-serif font-semibold text-sage-800">
+              <h3 className="text-3xl font-serif font-semibold text-sage-800">
                 Parcours Académique & Certifications
               </h3>
             </div>
@@ -58,7 +58,7 @@ const Qualifications = () => {
                   <div className="text-mint-600 font-medium mb-2">
                     {qual.year}
                   </div>
-                  <h4 className="text-xl font-serif font-semibold text-sage-800 mb-2">
+                  <h4 className="text-2xl font-serif font-semibold text-sage-800 mb-2">
                     {qual.title}
                   </h4>
                   <div className="text-sage-600 mb-2">{qual.institution}</div>
@@ -74,4 +74,3 @@ const Qualifications = () => {
 };
 
 export default Qualifications;
-

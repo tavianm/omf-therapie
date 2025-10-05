@@ -8,17 +8,17 @@ import { useBlogPost } from "../hooks/useBlogPost";
 const BlogPost = () => {
   const { slug } = useParams<{ slug: string }>();
   const [isLoading, setIsLoading] = useState(true);
-  
+
   const { post, relatedPosts, error } = useBlogPost(slug || "");
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    
+
     // Simulate loading time
     const timer = setTimeout(() => {
       setIsLoading(false);
     }, 500);
-    
+
     return () => clearTimeout(timer);
   }, [slug]);
 
@@ -28,7 +28,7 @@ const BlogPost = () => {
 
   if (error) {
     return (
-      <div className="py-10">
+      <div className="py-5 md:py-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
             <h2 className="text-xl font-serif font-semibold text-red-800 mb-3">
@@ -46,7 +46,7 @@ const BlogPost = () => {
 
   if (!post) {
     return (
-      <div className="py-10">
+      <div className="py-5 md:py-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="bg-sage-50 border border-sage-200 rounded-lg p-8 text-center">
             <h2 className="text-xl font-serif font-semibold text-sage-800 mb-3">
@@ -70,7 +70,7 @@ const BlogPost = () => {
         type="article"
         image={post.imageUrl || undefined}
       />
-      <div className="py-10">
+      <div className="py-5 md:py-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <BlogPostDetail post={post} relatedPosts={relatedPosts} />
         </div>

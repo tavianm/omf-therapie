@@ -12,7 +12,10 @@ export const DesktopNav = ({
   isActive,
   navigateToSection,
 }: DesktopNavProps) => (
-  <ul className="hidden lg:flex md:items-center md:space-x-8" role="list">
+  <ul
+    className="hidden lg:flex md:items-center xl:space-x-8 lg:space-x-4"
+    role="list"
+  >
     {navigation.map((item) => (
       <li key={item.name} role="listitem">
         {item.external ? (
@@ -36,7 +39,7 @@ const ExternalLink = ({ item }: { item: NavigationItem }) => (
     href={item.href}
     target="_blank"
     rel="noopener noreferrer"
-    className="text-mint-600 text-center hover:text-mint-700 font-medium px-4 py-2 rounded-md bg-mint-50"
+    className="block text-mint-600 text-center hover:text-mint-700 font-medium px-4 py-2 rounded-md bg-mint-50"
   >
     {item.name}
   </a>

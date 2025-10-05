@@ -2,7 +2,7 @@ import { BUSINESS_HOURS } from "../../config/global.config";
 import { FooterHeading } from "../common/FooterHeading";
 
 export const FooterHours = () => (
-  <div>
+  <div role="group" aria-label="Horaires">
     <FooterHeading>Horaires</FooterHeading>
     <div className="space-y-2 text-sage-300 ">
       <div>{BUSINESS_HOURS.days}</div>
@@ -28,4 +28,3 @@ export const FooterHours = () => (
     </div>
   </div>
 );
-

@@ -34,9 +34,9 @@ const Process = () => {
   ];
 
   return (
-    <div className="py-10">
+    <div className="py-5 md:py-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div {...fadeInUp()} className="text-center mb-10">
+        <motion.div {...fadeInUp()} className="text-center mb-8">
           <h2 className="section-title">Le Processus Thérapeutique</h2>
           <p className="section-subtitle">
             Un accompagnement structuré et bienveillant pour votre développement
@@ -47,7 +47,7 @@ const Process = () => {
         <div className="relative">
           <div className="absolute top-0 left-1/2 h-full w-px bg-sage-200 hidden md:block" />
 
-          <div className="space-y-12 relative">
+          <div className="space-y-8 relative">
             {steps.map((step, index) => (
               <motion.div
                 key={index}
@@ -61,7 +61,7 @@ const Process = () => {
                 <div className="flex-1">
                   <div className="bg-white p-8 rounded-lg shadow-sm">
                     <step.icon className="h-12 w-12 text-mint-600 mb-6" />
-                    <h3 className="text-xl font-serif font-semibold text-sage-800 mb-4">
+                    <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-4">
                       {step.title}
                     </h3>
                     <p className="text-sage-600">{step.description}</p>
@@ -77,13 +77,16 @@ const Process = () => {
           </div>
         </div>
 
-        <motion.div {...fadeIn()} className="mt-10 bg-sage-50 p-8 rounded-lg">
-          <h3 className="text-2xl font-serif font-semibold text-sage-800 mb-6 text-center">
+        <motion.div
+          {...fadeIn()}
+          className="mt-5 md:mt-10 bg-sage-50 p-8 rounded-lg"
+        >
+          <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-6 text-center">
             Informations Pratiques
           </h3>
           <div className="grid md:grid-cols-2 gap-8">
             <div>
-              <h4 className="text-xl font-serif font-semibold text-sage-800 mb-4">
+              <h4 className="text-2xl font-serif font-semibold text-sage-800 mb-4">
                 Durée des Séances
               </h4>
               <p className="text-sage-600">
@@ -93,7 +96,7 @@ const Process = () => {
               </p>
             </div>
             <div>
-              <h4 className="text-xl font-serif font-semibold text-sage-800 mb-4">
+              <h4 className="text-2xl font-serif font-semibold text-sage-800 mb-4">
                 Confidentialité
               </h4>
               <p className="text-sage-600">
@@ -109,4 +112,3 @@ const Process = () => {
 };
 
 export default Process;
-

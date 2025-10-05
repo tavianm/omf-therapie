@@ -26,7 +26,7 @@ const features: IntroFeature[] = [
 export const IntroSection = () => {
   const { fadeIn } = useMotionVariants();
   return (
-    <section className="py-10 bg-white" aria-labelledby="intro-title">
+    <section className="py-5 md:py-10 bg-white" aria-labelledby="intro-title">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div {...fadeIn()} className="text-center">
           <h2 id="intro-title" className="section-title">
@@ -39,7 +39,7 @@ export const IntroSection = () => {
           </p>
         </motion.div>
 
-        <div className="mt-10 grid md:grid-cols-3 gap-8">
+        <div className="mt-5 md:mt-10 grid md:grid-cols-3 gap-8">
           {features.map((feature, index) => (
             <FeatureCard key={index} feature={feature} index={index} />
           ))}
@@ -61,11 +61,10 @@ const FeatureCard = ({ feature, index }: FeatureCardProps) => {
       {...fadeInUp({ duration: 0.5, delay: index * 0.2 })}
       className="bg-sage-50 p-8 rounded-lg"
     >
-      <h3 className="text-xl font-serif font-semibold text-sage-800 mb-4">
+      <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-4">
         {feature.title}
       </h3>
       <p className="text-sage-600">{feature.description}</p>
     </motion.div>
   );
 };
-

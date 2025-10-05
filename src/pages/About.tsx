@@ -7,9 +7,9 @@ const About = () => {
   const { fadeInUp, fadeInLeft, fadeInRight } = useMotionVariants();
 
   return (
-    <div className="py-10">
+    <div className="py-5 md:py-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div {...fadeInUp()} className="text-center mb-10">
+        <motion.div {...fadeInUp()} className="text-center mb-8">
           <h2 className="section-title">À Propos de Moi</h2>
           <p className="section-subtitle">
             Thérapeute passionnée, je vous accompagne dans votre parcours vers
@@ -17,7 +17,7 @@ const About = () => {
           </p>
         </motion.div>
 
-        <div className="grid md:grid-cols-2 gap-12 items-center mb-10">
+        <div className="grid md:grid-cols-2 gap-12 items-center mb-8">
           <motion.div {...fadeInLeft()}>
             <img
               src={`assets/about/oriane-montabonnet-${getRandomNumber()}.webp`}
@@ -84,7 +84,7 @@ const About = () => {
         </div>
 
         <motion.div {...fadeInUp()} className="bg-sage-50 p-8 rounded-lg">
-          <h3 className="text-2xl font-serif font-semibold text-sage-800 mb-6 text-center">
+          <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-6 text-center">
             Mes Valeurs
           </h3>
           <div className="grid md:grid-cols-3 gap-8">
@@ -106,9 +106,9 @@ const About = () => {
               },
             ].map((value, index) => (
               <div key={index} className="text-center">
-                <h3 className="text-xl font-serif font-semibold text-sage-800 mb-3">
+                <h4 className="text-2xl font-serif font-semibold text-sage-800 mb-3">
                   {value.title}
-                </h3>
+                </h4>
                 <p className="text-sage-600">{value.description}</p>
               </div>
             ))}
@@ -120,4 +120,3 @@ const About = () => {
 };
 
 export default About;
-

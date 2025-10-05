@@ -8,12 +8,16 @@ import { ClassNames, ContactItem } from "../common/ContactItem";
 
 export const FooterBrand = () => {
   const classNames: ClassNames = {
-    containerClass: "gap-2 text-sage-300 hover:text-mint-400 hover:underline transition-colors",
+    containerClass:
+      "gap-2 text-sage-300 hover:text-mint-400 hover:underline transition-colors",
   };
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" role="group" aria-label="Marque">
       <div className="flex items-center gap-2">
-        <Leaf className="h-6 w-6 text-mint-400  transition-colors" />
+        <Leaf
+          className="h-6 w-6 text-mint-400  transition-colors"
+          aria-label="leaf"
+        />
         <span className="text-lg font-serif font-medium  transition-colors">
           {COMPANY_NAME}
         </span>
