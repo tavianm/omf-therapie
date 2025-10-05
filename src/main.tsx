@@ -3,10 +3,6 @@ import { createRoot } from "react-dom/client";
 import { HelmetProvider } from "react-helmet-async";
 import App from "./App.tsx";
 import "./index.css";
-import { Analytics } from "./utils/analytics.ts";
-
-// Initialize analytics
-Analytics.init();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -15,3 +11,4 @@ createRoot(document.getElementById("root")!).render(
     </HelmetProvider>
   </StrictMode>
 );
+

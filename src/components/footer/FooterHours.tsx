@@ -1,4 +1,4 @@
-import { BUSINESS_HOURS } from "../../config/footer.config";
+import { BUSINESS_HOURS } from "../../config/global.config";
 import { FooterHeading } from "../common/FooterHeading";
 
 export const FooterHours = () => (

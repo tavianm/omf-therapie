@@ -1,9 +1,13 @@
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { QUICK_LINKS } from "../../config/footer.config";
+import { useScrollToSection } from "../../hooks/useScrollToSection";
 import { FooterHeading } from "../common/FooterHeading";
 
-export const FooterLinks = () => (
-  <nav aria-label="Navigation du pied de page">
+export const FooterLinks = () => {
+  const { scrollToSection } = useScrollToSection(undefined, {});
+  const location = useLocation();
+
+  return <nav aria-label="Navigation du pied de page">
     <FooterHeading>Liens Rapides</FooterHeading>
     <ul className="space-y-2" role="list">
       {QUICK_LINKS.map((link) => (
@@ -18,7 +22,7 @@ export const FooterLinks = () => (
             >
               {link.name}
             </a>
-          ) : link.path === "/contact" ? (
+          ) : link.path !== "/" ? (
             <Link
               to={link.href}
               className="text-sage-300 hover:text-mint-400 transition-colors"
@@ -26,22 +30,22 @@ export const FooterLinks = () => (
               {link.name}
             </Link>
           ) : (
-            <a
-              href={link.href}
+            <Link
+              to={link.href}
               className="text-sage-300 hover:text-mint-400 transition-colors"
               onClick={(e) => {
-                e.preventDefault();
-                document
-                  .getElementById(link.href.substring(1))
-                  ?.scrollIntoView({ behavior: "smooth" });
+                if (location.pathname === '/') {
+                  e.preventDefault();
+                  const sectionId = link.href.substring(2);
+                  scrollToSection(sectionId);
+                }
               }}
             >
               {link.name}
-            </a>
+            </Link>
           )}
         </li>
       ))}
     </ul>
   </nav>
-);
-
+}

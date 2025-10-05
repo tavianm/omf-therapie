@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import SEO from "../components/SEO";
 import { HeroSection } from "../components/home/HeroSection";
 import { IntroSection } from "../components/home/IntroSection";
@@ -8,6 +9,10 @@ import Qualifications from "./Qualifications";
 import Services from "./Services";
 
 const Home = () => {
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
   return (
     <>
       <SEO
