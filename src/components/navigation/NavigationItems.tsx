@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import type { NavigationItem } from "../../types/navigation";
-import { Analytics } from "../../utils/analytics";
 
 export const useNavigationItems = () => {
   return useMemo<NavigationItem[]>(
@@ -18,8 +17,6 @@ export const useNavigationItems = () => {
         href: "https://www.psychologue.net/cabinets/oriane-montabonnet",
         external: true,
         path: "/",
-        onClick: () =>
-          Analytics.trackBookingClick("online", "navigation", "RDV en ligne"),
       },
     ],
     []
