@@ -5,11 +5,14 @@ export const PaymentInfo = () => {
   const { fadeIn } = useMotionVariants();
 
   return (
-    <motion.div {...fadeIn()} className="mt-10 grid md:grid-cols-2 gap-8">
+    <motion.div
+      {...fadeIn()}
+      className="mt-5 md:mt-10 grid sm:grid-cols-2 sm:gap-4 xl:gap-8"
+    >
       <div className="bg-sage-50 p-8 rounded-lg">
-        <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
+        <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-6">
           Modalités de Paiement
-        </h2>
+        </h3>
         <ul className="space-y-4 text-sage-600">
           <li>Paiement par carte bancaire</li>
           <li>Paiement en espèces</li>
@@ -19,9 +22,9 @@ export const PaymentInfo = () => {
       </div>
 
       <div className="bg-sage-50 p-8 rounded-lg">
-        <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-6">
+        <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-6">
           Remboursements
-        </h2>
+        </h3>
         <div className="space-y-4 text-sage-600">
           <p>
             Les consultations peuvent être partiellement prises en charge par
@@ -37,4 +40,3 @@ export const PaymentInfo = () => {
     </motion.div>
   );
 };
-

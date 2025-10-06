@@ -9,7 +9,6 @@ import Qualifications from "./Qualifications";
 import Services from "./Services";
 
 const Home = () => {
-
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
@@ -48,4 +47,3 @@ const Home = () => {
 };
 
 export default Home;
-

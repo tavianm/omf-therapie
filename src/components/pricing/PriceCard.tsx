@@ -23,7 +23,7 @@ export const PriceCard = ({
       {...fadeInUp({ delay: index * 0.1, duration: 0.5 })}
       className="bg-white p-8 rounded-lg shadow-sm hover:shadow-md transition-shadow"
     >
-      <h3 className="text-xl font-serif font-semibold text-sage-800 mb-4">
+      <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-4">
         {title}
       </h3>
       {priceDetails?.map((detail, priceIndex, array) => (
@@ -41,7 +41,7 @@ export const PriceCard = ({
           <span className="text-4xl font-serif font-semibold text-mint-600">
             {detail.price}
           </span>
-          <span className="text-sage-500 ml-2">/ {detail.duration}</span>
+          <span className="text-sage-600 ml-2">/ {detail.duration}</span>
         </div>
       ))}
       <ul className="space-y-4">
@@ -58,4 +58,3 @@ export const PriceCard = ({
     </motion.div>
   );
 };
-

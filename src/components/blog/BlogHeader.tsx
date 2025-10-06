@@ -9,19 +9,19 @@ interface BlogHeaderProps {
   showSyncButton?: boolean;
 }
 
-export const BlogHeader = ({ 
-  title, 
-  subtitle, 
+export const BlogHeader = ({
+  title,
+  subtitle,
   onSyncComplete,
-  showSyncButton = false
+  showSyncButton = false,
 }: BlogHeaderProps) => {
   const { fadeInUp } = useMotionVariants();
 
   return (
-    <motion.div {...fadeInUp()} className="text-center mb-10">
+    <motion.div {...fadeInUp()} className="text-center mb-8">
       <h1 className="section-title mt-6">{title}</h1>
       <p className="section-subtitle">{subtitle}</p>
-      
+
       {showSyncButton && (
         <div className="mt-4">
           <BlogSyncButton onSyncComplete={onSyncComplete} />

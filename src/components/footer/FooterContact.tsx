@@ -8,11 +8,12 @@ import { FooterHeading } from "../common/FooterHeading";
 export const FooterContact = () => {
   const { copyToClipboard } = useClipboard();
   const classNames: ClassNames = {
-    containerClass: "gap-2 text-sage-300 hover:text-mint-400",
+    containerClass:
+      "gap-2 text-sage-300 hover:text-mint-400 hover:underline transition-colors",
   };
 
   return (
-    <div>
+    <div role="group" aria-label="Contact">
       <Toaster position="bottom-center" />
       <FooterHeading>Contact</FooterHeading>
       <ul
@@ -63,4 +64,3 @@ export const FooterContact = () => {
     </div>
   );
 };
-

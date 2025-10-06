@@ -12,22 +12,26 @@ export const DesktopNav = ({
   isActive,
   navigateToSection,
 }: DesktopNavProps) => (
-  <div className="hidden lg:flex md:items-center md:space-x-8">
-    {navigation.map((item) =>
-      item.external ? (
-        <ExternalLink key={item.name} item={item} />
-      ) : item.page ? (
-        <ContactLink key={item.name} item={item} isActive={isActive} />
-      ) : (
-        <SectionLink
-          key={item.name}
-          item={item}
-          isActive={isActive}
-          navigateToSection={navigateToSection}
-        />
-      )
-    )}
-  </div>
+  <ul
+    className="hidden lg:flex md:items-center xl:space-x-8 lg:space-x-4"
+    role="list"
+  >
+    {navigation.map((item) => (
+      <li key={item.name} role="listitem">
+        {item.external ? (
+          <ExternalLink item={item} />
+        ) : item.page ? (
+          <ContactLink item={item} isActive={isActive} />
+        ) : (
+          <SectionLink
+            item={item}
+            isActive={isActive}
+            navigateToSection={navigateToSection}
+          />
+        )}
+      </li>
+    ))}
+  </ul>
 );
 
 const ExternalLink = ({ item }: { item: NavigationItem }) => (
@@ -35,7 +39,7 @@ const ExternalLink = ({ item }: { item: NavigationItem }) => (
     href={item.href}
     target="_blank"
     rel="noopener noreferrer"
-    className="text-mint-600 text-center hover:text-mint-700 font-medium px-4 py-2 rounded-md bg-mint-50"
+    className="block text-mint-600 text-center hover:text-mint-700 font-medium px-4 py-2 rounded-md bg-mint-50"
   >
     {item.name}
   </a>

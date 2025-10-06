@@ -80,7 +80,7 @@ export const fetchBlogPosts = async (
   // Simulate API delay
   await new Promise((resolve) => setTimeout(resolve, 150));
 
-  const { page = 1, limit = 5, search, category } = params;
+  const { page = 1, limit = 3, search, category } = params;
 
   // Filter posts based on search and category
   const filteredPosts = filterPosts(BLOG_POSTS, search, category);
@@ -166,4 +166,3 @@ export const syncLinkedInPosts = async (): Promise<boolean> => {
 
   return true;
 };
-

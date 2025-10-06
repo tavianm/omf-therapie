@@ -48,16 +48,16 @@ const Services = () => {
   ];
 
   return (
-    <div className="py-10">
+    <div className="py-8 md:py-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div {...fadeInUp()} className="text-center mb-10">
+        <motion.div {...fadeInUp()} className="text-center mb-8">
           <h2 className="section-title">Domaines d'Expertise</h2>
           <p className="section-subtitle">
             Une approche thérapeutique adaptée à vos besoins spécifiques
           </p>
         </motion.div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
           {services.map((service, index) => (
             <motion.div
               key={index}
@@ -65,7 +65,7 @@ const Services = () => {
               className="bg-white p-8 rounded-lg shadow-sm hover:shadow-md transition-shadow"
             >
               <service.icon className="h-12 w-12 text-mint-600 mb-6" />
-              <h3 className="text-xl font-serif font-semibold text-sage-800 mb-4">
+              <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-4">
                 {service.title}
               </h3>
               <ul className="list-disc pl-3">
@@ -81,9 +81,9 @@ const Services = () => {
 
         <motion.div
           {...fadeIn()}
-          className="mt-10 bg-sage-50 p-8 rounded-lg text-center"
+          className="mt-5 md:mt-10 bg-sage-50 p-8 rounded-lg text-center"
         >
-          <h3 className="text-2xl font-serif font-semibold text-sage-800 mb-4">
+          <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-4">
             Une Approche Sur Mesure
           </h3>
           <p className="text-sage-600 max-w-3xl mx-auto">
@@ -99,4 +99,3 @@ const Services = () => {
 };
 
 export default Services;
-

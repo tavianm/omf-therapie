@@ -7,11 +7,11 @@ export const CTASection = () => {
   return (
     <motion.div
       {...fadeIn()}
-      className="mt-10 bg-white p-8 rounded-lg shadow-sm text-center"
+      className="mt-5 md:mt-10 bg-white p-8 rounded-lg shadow-sm text-center"
     >
-      <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-4">
+      <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-4">
         Prêt à commencer ?
-      </h2>
+      </h3>
       <p className="text-sage-600 max-w-3xl mx-auto mb-6">
         Réservez votre consultation en ligne et commencez votre parcours vers le
         mieux-être.
@@ -21,6 +21,7 @@ export const CTASection = () => {
         target="_blank"
         rel="noopener noreferrer"
         className="btn-primary"
+        aria-label="Réserver une consultation"
       >
         Réserver une consultation
       </a>

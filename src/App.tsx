@@ -14,6 +14,7 @@ const Home = lazy(() => import("./pages/Home"));
 const Contact = lazy(() => import("./pages/Contact"));
 const Blog = lazy(() => import("./pages/Blog"));
 const BlogPost = lazy(() => import("./pages/BlogPost"));
+const Accessibilite = lazy(() => import("./pages/Accessibilite"));
 
 function App() {
   // Mapping des chemins d'URL vers les IDs de section
@@ -33,12 +34,6 @@ function App() {
       }}
     >
       <div className="min-h-screen flex flex-col">
-        <a
-          href="#main-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-white focus:text-mint-600"
-        >
-          Aller au contenu principal
-        </a>
         <Navbar />
         <Suspense fallback={<SuspenseFallback />}>
           <main id="main-content" className="flex-grow pt-20" role="main">
@@ -51,6 +46,7 @@ function App() {
               <Route path="/contact" Component={Contact} />
               <Route path="/blog" Component={Blog} />
               <Route path="/blog/:slug" Component={BlogPost} />
+              <Route path="/accessibilite" Component={Accessibilite} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>
