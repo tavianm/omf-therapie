@@ -3,6 +3,7 @@ import * as blogs from "./blogs";
 
 // Simulated blog posts data
 export const BLOG_POSTS: BlogPost[] = [
+  blogs.ComprendreLangagesAmour,
   blogs.DeconstruireTabousTherapie,
   blogs.AccompagnerTransitionsVieSerenite,
   blogs.CultiverEstimeDeSoiQuotidien,
