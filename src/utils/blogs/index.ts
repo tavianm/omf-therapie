@@ -1,4 +1,5 @@
 export * from './accompagner-transitions-vie-serenite';
+export * from './comprendre-langages-amour';
 export * from './cultiver-estime-de-soi-quotidien';
 export * from './deconstruire-tabous-therapie';
 export * from './gerer-anxiete-quotidien-techniques-conseils';
