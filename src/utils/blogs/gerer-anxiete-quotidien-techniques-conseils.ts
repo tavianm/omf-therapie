@@ -68,7 +68,7 @@ export const GererAnxieteQuotidienTechniquesConseils: BlogPost = {
       <p>En pratiquant régulièrement ces techniques, vous développerez progressivement une meilleure gestion de votre anxiété. N'oubliez pas que demander de l'aide à un professionnel est également une démarche importante si votre anxiété persiste ou s'aggrave.</p>
     `,
   date: "15 février 2025",
-  categories: ["Anxiété", "Bien-être", "Santé mentale"],
+  categories: ["Anxiété", "Bien-être"],
   imageUrl:
     "https://images.unsplash.com/photo-1499209974431-9dddcece7f88?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80",
   linkedinUrl:

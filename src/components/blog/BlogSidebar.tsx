@@ -44,7 +44,7 @@ export const BlogSidebar = ({
           </li>
 
           {categories
-            .filter((category) => category.count > 1)
+            .filter((category) => category.count > 0)
             .map((category) => (
               <li key={category.name}>
                 <button

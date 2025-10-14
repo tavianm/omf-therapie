@@ -101,7 +101,7 @@ const Blog = () => {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-            <div className="lg:col-span-3">
+            <div className="lg:col-span-3 mb-5">
               <BlogList
                 posts={filteredPosts}
                 isLoading={isLoading}
@@ -109,7 +109,7 @@ const Blog = () => {
               />
 
               {totalPages > 1 && (
-                <div className="my-5">
+                <div className="mt-5">
                   <BlogPagination
                     currentPage={currentPage}
                     totalPages={totalPages}

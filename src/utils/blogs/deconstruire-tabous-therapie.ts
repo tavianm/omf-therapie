@@ -2,9 +2,11 @@ import { BlogPost } from "../../types/blog";
 
 export const DeconstruireTabousTherapie: BlogPost = {
   id: "9",
-  title: "Déconstruire les tabous sur la thérapie : ce n'est pas seulement pour 'les autres'",
+  title:
+    "Déconstruire les tabous sur la thérapie : ce n'est pas seulement pour 'les autres'",
   slug: "deconstruire-tabous-therapie",
-  excerpt: "Explorons ensemble pourquoi la thérapie n'est pas réservée aux personnes en difficulté et comment elle peut bénéficier à tous.",
+  excerpt:
+    "Explorons ensemble pourquoi la thérapie n'est pas réservée aux personnes en difficulté et comment elle peut bénéficier à tous.",
   content: `
     <p>La thérapie est souvent perçue comme une solution uniquement destinée aux personnes traversant des difficultés majeures. Cette vision restrictive empêche beaucoup d'entre nous de bénéficier d'un outil précieux de développement personnel. Déconstruisons ensemble ces idées reçues et explorons les multiples facettes de l'accompagnement thérapeutique.</p>
 
@@ -87,8 +89,9 @@ export const DeconstruireTabousTherapie: BlogPost = {
     <p>Rappelez-vous : prendre soin de sa santé mentale n'est pas un luxe, c'est une nécessité dans notre monde moderne en constante évolution.</p>
   `,
   date: "5 mai 2025",
-  categories: ["Santé mentale", "Développement personnel", "Bien-être", "Psychologie"],
-  imageUrl: "https://images.pexels.com/photos/4101143/pexels-photo-4101143.jpeg",
+  categories: ["Développement personnel", "Bien-être"],
+  imageUrl:
+    "https://images.pexels.com/photos/4101143/pexels-photo-4101143.jpeg",
   author: {
     name: "Oriane Montabonnet",
     title: "Thérapeute",

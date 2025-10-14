@@ -143,4 +143,3 @@ export const BlogPostDetail = ({ post, relatedPosts }: BlogPostDetailProps) => {
     </div>
   );
 };
-

@@ -2,9 +2,11 @@ import { BlogPost } from "../../types/blog";
 
 export const ComprendreLangagesAmour: BlogPost = {
   id: "10",
-  title: "Comprendre les langages de l'amour : une clé pour mieux aimer et être aimé",
+  title:
+    "Comprendre les langages de l'amour : une clé pour mieux aimer et être aimé",
   slug: "comprendre-langages-amour",
-  excerpt: "Découvrez comment les cinq langages de l'amour peuvent transformer votre façon de communiquer et d'exprimer vos sentiments dans vos relations.",
+  excerpt:
+    "Découvrez comment les cinq langages de l'amour peuvent transformer votre façon de communiquer et d'exprimer vos sentiments dans vos relations.",
   content: `
     <p>Si l'amour semble universel, sa manière de s'exprimer ne l'est pas. Nous ne parlons pas tous le même <strong>langage émotionnel</strong>, et c'est souvent là que naissent les malentendus dans les relations : "Je fais tout pour lui/elle, mais il/elle ne le voit pas !"</p>
 
@@ -50,8 +52,9 @@ export const ComprendreLangagesAmour: BlogPost = {
     <p>Les réponses révèlent souvent des décalages... mais aussi un point de départ précieux pour <strong>réapprendre à se rencontrer</strong>.</p>
   `,
   date: "14 octobre 2025",
-  categories: ["Relations", "Couple", "Communication", "Développement personnel"],
-  imageUrl: "https://images.pexels.com/photos/7642000/pexels-photo-7642000.jpeg",
+  categories: ["Couple", "Communication"],
+  imageUrl:
+    "https://images.pexels.com/photos/7642000/pexels-photo-7642000.jpeg",
   author: {
     name: "Oriane Montabonnet",
     title: "Thérapeute",

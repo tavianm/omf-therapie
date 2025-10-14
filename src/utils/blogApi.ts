@@ -77,10 +77,7 @@ const paginatePosts = (
 export const fetchBlogPosts = async (
   params: BlogPostsParams = {}
 ): Promise<BlogPostsResponse> => {
-  // Simulate API delay
-  await new Promise((resolve) => setTimeout(resolve, 150));
-
-  const { page = 1, limit = 3, search, category } = params;
+  const { page = 1, limit = 4, search, category } = params;
 
   // Filter posts based on search and category
   const filteredPosts = filterPosts(BLOG_POSTS, search, category);
@@ -103,9 +100,6 @@ export const fetchBlogPosts = async (
 export const fetchBlogPostBySlug = async (
   slug: string
 ): Promise<BlogPost | null> => {
-  // Simulate API delay
-  await new Promise((resolve) => setTimeout(resolve, 200));
-
   const post =
     BLOG_POSTS.filter((post) => !post.disabled).find(
       (post) => post.slug === slug

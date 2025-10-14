@@ -13,13 +13,7 @@ const BlogPost = () => {
 
   useEffect(() => {
     window.scrollTo(0, 0);
-
-    // Simulate loading time
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 500);
-
-    return () => clearTimeout(timer);
+    setIsLoading(false);
   }, [slug]);
 
   if (isLoading) {

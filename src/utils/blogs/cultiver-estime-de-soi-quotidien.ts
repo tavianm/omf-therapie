@@ -88,7 +88,7 @@ export const CultiverEstimeDeSoiQuotidien: BlogPost = {
       <p>Rappelez-vous que l'estime de soi se construit jour après jour, à travers de petites actions cohérentes. Soyez patient(e) et bienveillant(e) envers vous-même dans ce processus de croissance personnelle.</p>
     `,
   date: "8 février 2025",
-  categories: ["Développement personnel", "Confiance en soi", "Bien-être"],
+  categories: ["Développement personnel", "Confiance en soi"],
   imageUrl:
     "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80",
   linkedinUrl:

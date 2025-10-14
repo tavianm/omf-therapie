@@ -80,7 +80,7 @@ export const RenforcerCommunicationCouple: BlogPost = {
       <p>N'oubliez pas que la communication est une compétence qui s'apprend et se développe avec la pratique. Chaque petit pas vers une meilleure communication contribue à renforcer l'intimité et la satisfaction dans votre relation.</p>
     `,
   date: "1 mars 2025",
-  categories: ["Couple", "Communication", "Relations"],
+  categories: ["Couple", "Communication"],
   imageUrl:
     "https://images.unsplash.com/reserve/Af0sF2OS5S5gatqrKzVP_Silhoutte.jpg?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
   linkedinUrl:

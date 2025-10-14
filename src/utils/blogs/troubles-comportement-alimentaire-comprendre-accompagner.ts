@@ -93,7 +93,7 @@ export const TroublesComportementAlimentaireComprendreAccompagner: BlogPost = {
       <p>La guérison d'un TCA est un processus qui prend du temps, mais avec un accompagnement adapté, il est possible de rétablir une relation saine avec la nourriture et son corps. Si vous ou un proche êtes concerné, n'hésitez pas à chercher de l'aide auprès de professionnels spécialisés.</p>
     `,
   date: "8 mars 2025",
-  categories: ["Troubles alimentaires", "Santé mentale", "Nutrition"],
+  categories: ["Troubles alimentaires", "Nutrition"],
   imageUrl:
     "https://images.unsplash.com/photo-1490645935967-10de6ba17061?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80",
   linkedinUrl:

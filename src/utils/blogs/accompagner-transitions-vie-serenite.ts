@@ -114,7 +114,7 @@ export const AccompagnerTransitionsVieSerenite: BlogPost = {
       <p>Rappelez-vous que les transitions, même difficiles, portent en elles un potentiel de renouveau et de développement personnel. Elles nous invitent à nous reconnecter à nos valeurs profondes et à redéfinir ce qui compte vraiment pour nous.</p>
     `,
   date: "1 février 2025",
-  categories: ["Développement personnel", "Gestion du changement", "Bien-être"],
+  categories: ["Développement personnel", "Gestion du changement"],
   imageUrl:
     "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1173&q=80",
   linkedinUrl:

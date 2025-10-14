@@ -106,7 +106,7 @@ export const ImpactMotsLangageMalEtre: BlogPost = {
         <p>Nos mots ont le pouvoir de nous construire ou de nous détruire. En prenant conscience de notre dialogue intérieur et en le transformant progressivement, nous pouvons créer un environnement mental plus sain et plus propice à notre épanouissement. Le changement commence par une simple prise de conscience : quels mots choisissez-vous pour vous parler aujourd'hui ?</p>
       `,
   date: "15 mars 2025",
-  categories: ["Développement personnel", "Santé mentale", "Communication"],
+  categories: ["Développement personnel", "Communication"],
   imageUrl:
     "https://images.unsplash.com/photo-1455849318743-b2233052fcff?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1169&q=80",
   linkedinUrl:
