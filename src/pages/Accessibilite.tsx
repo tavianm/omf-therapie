@@ -55,7 +55,7 @@ export default function Accessibilite() {
       </h3>
       <p className="mb-4">
         L’accessibilité de OMF Thérapie s’appuie sur les technologies
-        suivantes :
+        suivantes :
       </p>
       <ul className="list-disc pl-6 space-y-1 mb-8">
         <li>HTML</li>
@@ -75,7 +75,7 @@ export default function Accessibilite() {
       </p>
       <ul className="list-disc pl-6 space-y-1 mb-4">
         <li>
-          Téléphone :{" "}
+          Téléphone :{" "}
           <a
             href="tel:0650331853"
             className="text-mint-600 underline hover:text-mint-700"
@@ -84,7 +84,7 @@ export default function Accessibilite() {
           </a>
         </li>
         <li>
-          E-mail :{" "}
+          E-mail :{" "}
           <a
             href="mailto:montabonnet.therapie@gmail.com"
             className="text-mint-600 underline hover:text-mint-700"
@@ -93,7 +93,7 @@ export default function Accessibilite() {
           </a>
         </li>
         <li>
-          Formulaire de contact :{" "}
+          Formulaire de contact :{" "}
           <a
             href="/contact"
             className="text-mint-600 underline hover:text-mint-700"
@@ -101,7 +101,7 @@ export default function Accessibilite() {
             Nous contacter
           </a>
         </li>
-        <li>Adresse : Montpellier</li>
+        <li>Adresse : Montpellier</li>
         <li>
           <a
             href="https://www.instagram.com/omf.therapie"
@@ -118,12 +118,12 @@ export default function Accessibilite() {
       </h2>
       <div className="h-px bg-sage-200 mb-6" aria-hidden="true" />
       <p className="mb-4">
-        Cette procédure est à utiliser dans le cas suivant : vous avez signalé
+        Cette procédure est à utiliser dans le cas suivant : vous avez signalé
         au responsable du site internet un défaut d’accessibilité qui vous
         empêche d’accéder à un contenu ou à un des services du portail et vous
         n’avez pas obtenu de réponse satisfaisante.
       </p>
-      <p className="mb-3">Vous pouvez :</p>
+      <p className="mb-3">Vous pouvez :</p>
       <ul className="list-disc pl-6 space-y-2 mb-8">
         <li>
           <a
@@ -142,7 +142,7 @@ export default function Accessibilite() {
           </a>
         </li>
         <li>
-          Envoyer un courrier par la poste (gratuit, ne pas mettre de timbre) :
+          Envoyer un courrier par la poste (gratuit, ne pas mettre de timbre) :
           <br />
           <address className="not-italic">
             Défenseur des droits

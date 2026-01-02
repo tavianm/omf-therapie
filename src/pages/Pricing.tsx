@@ -19,38 +19,38 @@ const Pricing = () => {
         "Suivi personnalisé",
         "Séance en cabinet",
         "Téléconsultation",
-        "1<sup>re</sup> séance => -25€",
+        "1<sup>re</sup> séance => -15€",
       ],
     },
     {
       title: "Thérapie conjugale",
       priceDetails: [
-        { price: "70€", duration: "60 minutes" },
-        { price: "85€", duration: "90 minutes" },
+        { price: "75€", duration: "60 minutes" },
+        { price: "90€", duration: "90 minutes" },
       ],
       features: [
         "Médiation relationnelle",
         "Séance en cabinet",
         "Téléconsultation",
-        "1<sup>re</sup> séance => -25€",
+        "1<sup>re</sup> séance => -15€",
       ],
     },
     {
       title: "Thérapie familiale",
       priceDetails: [
-        { price: "80€", duration: "60 minutes" },
-        { price: "95€", duration: "90 minutes" },
+        { price: "85€", duration: "60 minutes" },
+        { price: "100€", duration: "90 minutes" },
       ],
       features: [
         "Suivi personnalisé",
         "Médiation relationnelle",
         "Séance en cabinet",
-        "1<sup>re</sup> séance => -25€",
+        "1<sup>re</sup> séance => -15€",
       ],
     },
     {
       title: "Tarifs solidaires",
-      priceDetails: [{ price: "-15€", duration: "séance" }],
+      priceDetails: [{ price: "-10€", duration: "séance" }],
       duration: "5 x 50 minutes",
       features: [
         "RSA / ASS / Etudiant",

@@ -2,32 +2,12 @@
   "url": "https://omf-therapie.fr/blog/troubles-comportement-alimentaire-comprendre-accompagner",
   "issues": [
     {
-      "code": "WCAG2AA.Principle1.Guideline1_4.1_4_3.G18.Abs",
-      "type": "warning",
-      "typeCode": 2,
-      "message": "This element is absolutely positioned and the background color can not be determined. Ensure the contrast ratio between the text and all covered parts of the background are at least 4.5:1.",
-      "context": "<a href=\"#main-content\" class=\"sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-white focus:text-mint-600\">Aller au contenu principal</a>",
-      "selector": "#root > div > a",
-      "runner": "htmlcs",
-      "runnerExtras": {}
-    },
-    {
       "code": "WCAG2AA.Principle1.Guideline1_4.1_4_10.C32,C31,C33,C38,SCR34,G206",
       "type": "warning",
       "typeCode": 2,
       "message": "This element has \"position: fixed\". This may require scrolling in two dimensions, which is considered a failure of this Success Criterion.",
       "context": "<header class=\"bg-white shadow-sm fixed top-0 w-full z-50 \"><nav class=\"max-w-7xl mx-auto p...</header>",
       "selector": "#root > div > header",
-      "runner": "htmlcs",
-      "runnerExtras": {}
-    },
-    {
-      "code": "WCAG2AA.Principle1.Guideline1_3.1_3_1.H48",
-      "type": "warning",
-      "typeCode": 2,
-      "message": "If this element contains a navigation section, it is recommended that it be marked up as a list.",
-      "context": "<div class=\"hidden lg:flex md:items-center md:space-x-8\"><button class=\"text-sage-600 ho...</div>",
-      "selector": "#root > div > header > nav > div > div:nth-child(2)",
       "runner": "htmlcs",
       "runnerExtras": {}
     },
@@ -48,16 +28,6 @@
       "message": "The heading structure is not logically nested. This h2 element should be an h1 to be properly nested.",
       "context": "<h2 class=\"text-xl font-serif font-semibold text-sage-800 mb-3\">Article non trouvé</h2>",
       "selector": "#main-content > div > div > div > h2",
-      "runner": "htmlcs",
-      "runnerExtras": {}
-    },
-    {
-      "code": "WCAG2AA.Principle2.Guideline2_5.2_5_3.F96",
-      "type": "warning",
-      "typeCode": 2,
-      "message": "Accessible name for this element does not contain the visible label text. Check that for user interface components with labels that include text or images of text, the name contains the text that is presented visually.",
-      "context": "<a href=\"https://www.instagram.com/omf.therapie\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"flex items-center transition-colors gap-2 text-sage-300 hover:text-mint-400\" aria-label=\"Suivez-moi sur Instagram\"><svg xmlns=\"http://www.w3.org/2...</a>",
-      "selector": "#root > div > footer > div > div:nth-child(1) > div:nth-child(1) > ul > li > a",
       "runner": "htmlcs",
       "runnerExtras": {}
     },

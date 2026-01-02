@@ -13,8 +13,7 @@ export const BlogPagination = ({
 }: BlogPaginationProps) => {
   const renderPageNumbers = () => {
     const pages = [];
-    const maxVisiblePages = 5;
-    
+
     // Always show first page
     pages.push(
       <PaginationButton
