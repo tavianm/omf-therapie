@@ -2,32 +2,12 @@
   "url": "https://omf-therapie.fr",
   "issues": [
     {
-      "code": "WCAG2AA.Principle1.Guideline1_4.1_4_3.G18.Abs",
-      "type": "warning",
-      "typeCode": 2,
-      "message": "This element is absolutely positioned and the background color can not be determined. Ensure the contrast ratio between the text and all covered parts of the background are at least 4.5:1.",
-      "context": "<a href=\"#main-content\" class=\"sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-white focus:text-mint-600\">Aller au contenu principal</a>",
-      "selector": "#root > div > a",
-      "runner": "htmlcs",
-      "runnerExtras": {}
-    },
-    {
       "code": "WCAG2AA.Principle1.Guideline1_4.1_4_10.C32,C31,C33,C38,SCR34,G206",
       "type": "warning",
       "typeCode": 2,
       "message": "This element has \"position: fixed\". This may require scrolling in two dimensions, which is considered a failure of this Success Criterion.",
       "context": "<header class=\"bg-white shadow-sm fixed top-0 w-full z-50 \"><nav class=\"max-w-7xl mx-auto p...</header>",
       "selector": "#root > div > header",
-      "runner": "htmlcs",
-      "runnerExtras": {}
-    },
-    {
-      "code": "WCAG2AA.Principle1.Guideline1_3.1_3_1.H48",
-      "type": "warning",
-      "typeCode": 2,
-      "message": "If this element contains a navigation section, it is recommended that it be marked up as a list.",
-      "context": "<div class=\"hidden lg:flex md:items-center md:space-x-8\"><button class=\"text-mint-600 tr...</div>",
-      "selector": "#root > div > header > nav > div > div:nth-child(2)",
       "runner": "htmlcs",
       "runnerExtras": {}
     },
@@ -47,17 +27,7 @@
       "typeCode": 1,
       "message": "This element has insufficient contrast at this conformance level. Expected a contrast ratio of at least 3:1, but text in this element has a contrast ratio of 1.08:1. Recommendation:  change background to #929592.",
       "context": "<p class=\"text-xl md:text-2xl mb-8 max-w-3xl mx-auto\">Votre partenaire pour un bien-ê...</p>",
-      "selector": "#home > div:nth-child(2) > div > p",
-      "runner": "htmlcs",
-      "runnerExtras": {}
-    },
-    {
-      "code": "WCAG2AA.Principle1.Guideline1_3.1_3_1.H48",
-      "type": "warning",
-      "typeCode": 2,
-      "message": "If this element contains a navigation section, it is recommended that it be marked up as a list.",
-      "context": "<div class=\"flex flex-col sm:flex-row gap-4 justify-center\"><a class=\"btn-primary\" aria-lab...</div>",
-      "selector": "#home > div:nth-child(2) > div > div",
+      "selector": "#home > div:nth-child(2) > div > div > p",
       "runner": "htmlcs",
       "runnerExtras": {}
     },
@@ -66,118 +36,8 @@
       "type": "error",
       "typeCode": 1,
       "message": "This element has insufficient contrast at this conformance level. Expected a contrast ratio of at least 4.5:1, but text in this element has a contrast ratio of 1.08:1. Recommendation:  change background to #747774.",
-      "context": "<a href=\"#about\" class=\"inline-flex items-center gap-2 text-white hover:text-mint-200 transition-colors min-h-[44px] min-w-[44px] justify-center\" aria-label=\"En savoir plus sur mes services\">En savoir plus<svg xmlns=\"http:...</a>",
-      "selector": "#home > div:nth-child(2) > div > div > a:nth-child(2)",
-      "runner": "htmlcs",
-      "runnerExtras": {}
-    },
-    {
-      "code": "WCAG2AA.Principle1.Guideline1_4.1_4_3.G18.Fail",
-      "type": "error",
-      "typeCode": 1,
-      "message": "This element has insufficient contrast at this conformance level. Expected a contrast ratio of at least 4.5:1, but text in this element has a contrast ratio of 4.17:1. Recommendation:  change text colour to #5f7e5f.",
-      "context": "<p class=\"text-sage-500 text-sm\">Formation aux fondamentaux de l...</p>",
-      "selector": "#qualifications > div > div > div:nth-child(2) > div > div:nth-child(2) > div:nth-child(1) > p",
-      "runner": "htmlcs",
-      "runnerExtras": {}
-    },
-    {
-      "code": "WCAG2AA.Principle1.Guideline1_4.1_4_3.G18.Fail",
-      "type": "error",
-      "typeCode": 1,
-      "message": "This element has insufficient contrast at this conformance level. Expected a contrast ratio of at least 4.5:1, but text in this element has a contrast ratio of 4.17:1. Recommendation:  change text colour to #5f7e5f.",
-      "context": "<p class=\"text-sage-500 text-sm\">Spécialisation en thérapies con...</p>",
-      "selector": "#qualifications > div > div > div:nth-child(2) > div > div:nth-child(2) > div:nth-child(2) > p",
-      "runner": "htmlcs",
-      "runnerExtras": {}
-    },
-    {
-      "code": "WCAG2AA.Principle1.Guideline1_4.1_4_3.G18.Fail",
-      "type": "error",
-      "typeCode": 1,
-      "message": "This element has insufficient contrast at this conformance level. Expected a contrast ratio of at least 4.5:1, but text in this element has a contrast ratio of 4.17:1. Recommendation:  change text colour to #5f7e5f.",
-      "context": "<p class=\"text-sage-500 text-sm\">Etude de l'impact de l'alimenta...</p>",
-      "selector": "#qualifications > div > div > div:nth-child(2) > div > div:nth-child(2) > div:nth-child(3) > p",
-      "runner": "htmlcs",
-      "runnerExtras": {}
-    },
-    {
-      "code": "WCAG2AA.Principle1.Guideline1_4.1_4_3.G18.Fail",
-      "type": "error",
-      "typeCode": 1,
-      "message": "This element has insufficient contrast at this conformance level. Expected a contrast ratio of at least 4.5:1, but text in this element has a contrast ratio of 4.17:1. Recommendation:  change text colour to #5f7e5f.",
-      "context": "<span class=\"text-sage-500 ml-2\">/ 60 minutes</span>",
-      "selector": "#pricing > div > div > div:nth-child(2) > div:nth-child(1) > div:nth-child(2) > span:nth-child(2)",
-      "runner": "htmlcs",
-      "runnerExtras": {}
-    },
-    {
-      "code": "WCAG2AA.Principle1.Guideline1_4.1_4_3.G18.Fail",
-      "type": "error",
-      "typeCode": 1,
-      "message": "This element has insufficient contrast at this conformance level. Expected a contrast ratio of at least 4.5:1, but text in this element has a contrast ratio of 4.17:1. Recommendation:  change text colour to #5f7e5f.",
-      "context": "<span class=\"text-sage-500 ml-2\">/ 90 minutes</span>",
-      "selector": "#pricing > div > div > div:nth-child(2) > div:nth-child(1) > div:nth-child(3) > span:nth-child(2)",
-      "runner": "htmlcs",
-      "runnerExtras": {}
-    },
-    {
-      "code": "WCAG2AA.Principle1.Guideline1_4.1_4_3.G18.Fail",
-      "type": "error",
-      "typeCode": 1,
-      "message": "This element has insufficient contrast at this conformance level. Expected a contrast ratio of at least 4.5:1, but text in this element has a contrast ratio of 4.17:1. Recommendation:  change text colour to #5f7e5f.",
-      "context": "<span class=\"text-sage-500 ml-2\">/ 60 minutes</span>",
-      "selector": "#pricing > div > div > div:nth-child(2) > div:nth-child(2) > div:nth-child(2) > span:nth-child(2)",
-      "runner": "htmlcs",
-      "runnerExtras": {}
-    },
-    {
-      "code": "WCAG2AA.Principle1.Guideline1_4.1_4_3.G18.Fail",
-      "type": "error",
-      "typeCode": 1,
-      "message": "This element has insufficient contrast at this conformance level. Expected a contrast ratio of at least 4.5:1, but text in this element has a contrast ratio of 4.17:1. Recommendation:  change text colour to #5f7e5f.",
-      "context": "<span class=\"text-sage-500 ml-2\">/ 90 minutes</span>",
-      "selector": "#pricing > div > div > div:nth-child(2) > div:nth-child(2) > div:nth-child(3) > span:nth-child(2)",
-      "runner": "htmlcs",
-      "runnerExtras": {}
-    },
-    {
-      "code": "WCAG2AA.Principle1.Guideline1_4.1_4_3.G18.Fail",
-      "type": "error",
-      "typeCode": 1,
-      "message": "This element has insufficient contrast at this conformance level. Expected a contrast ratio of at least 4.5:1, but text in this element has a contrast ratio of 4.17:1. Recommendation:  change text colour to #5f7e5f.",
-      "context": "<span class=\"text-sage-500 ml-2\">/ 60 minutes</span>",
-      "selector": "#pricing > div > div > div:nth-child(2) > div:nth-child(3) > div:nth-child(2) > span:nth-child(2)",
-      "runner": "htmlcs",
-      "runnerExtras": {}
-    },
-    {
-      "code": "WCAG2AA.Principle1.Guideline1_4.1_4_3.G18.Fail",
-      "type": "error",
-      "typeCode": 1,
-      "message": "This element has insufficient contrast at this conformance level. Expected a contrast ratio of at least 4.5:1, but text in this element has a contrast ratio of 4.17:1. Recommendation:  change text colour to #5f7e5f.",
-      "context": "<span class=\"text-sage-500 ml-2\">/ 90 minutes</span>",
-      "selector": "#pricing > div > div > div:nth-child(2) > div:nth-child(3) > div:nth-child(3) > span:nth-child(2)",
-      "runner": "htmlcs",
-      "runnerExtras": {}
-    },
-    {
-      "code": "WCAG2AA.Principle1.Guideline1_4.1_4_3.G18.Fail",
-      "type": "error",
-      "typeCode": 1,
-      "message": "This element has insufficient contrast at this conformance level. Expected a contrast ratio of at least 4.5:1, but text in this element has a contrast ratio of 4.17:1. Recommendation:  change text colour to #5f7e5f.",
-      "context": "<span class=\"text-sage-500 ml-2\">/ séance</span>",
-      "selector": "#pricing > div > div > div:nth-child(2) > div:nth-child(4) > div > span:nth-child(2)",
-      "runner": "htmlcs",
-      "runnerExtras": {}
-    },
-    {
-      "code": "WCAG2AA.Principle2.Guideline2_5.2_5_3.F96",
-      "type": "warning",
-      "typeCode": 2,
-      "message": "Accessible name for this element does not contain the visible label text. Check that for user interface components with labels that include text or images of text, the name contains the text that is presented visually.",
-      "context": "<a href=\"https://www.instagram.com/omf.therapie\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"flex items-center transition-colors gap-2 text-sage-300 hover:text-mint-400\" aria-label=\"Suivez-moi sur Instagram\"><svg xmlns=\"http://www.w3.org/2...</a>",
-      "selector": "#root > div > footer > div > div:nth-child(1) > div:nth-child(1) > ul > li > a",
+      "context": "<a href=\"#about\" class=\"inline-flex items-center gap-2 text-white hover:underline transition-colors min-h-[44px] min-w-[44px] justify-center\" aria-label=\"En savoir plus sur mes services\">En savoir plus<svg xmlns=\"http:...</a>",
+      "selector": "#home > div:nth-child(2) > div > div > ul > li:nth-child(2) > a",
       "runner": "htmlcs",
       "runnerExtras": {}
     },

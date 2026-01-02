@@ -140,7 +140,7 @@ export const fetchRelatedPosts = async (
 };
 
 // Simulated API function to fetch LinkedIn posts
-export const fetchLinkedInPosts = async (): Promise<any[]> => {
+export const fetchLinkedInPosts = async (): Promise<BlogPost[]> => {
   // In a real implementation, this would connect to LinkedIn's API
   // For now, we'll return an empty array as this is just a placeholder
   await new Promise((resolve) => setTimeout(resolve, 500));
