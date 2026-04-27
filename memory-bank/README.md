@@ -1,4 +1,8 @@
-# Memory Bank
+# Memory Bank — ⚠️ DEPRECATED
+
+> **This directory is deprecated.** The vault (namespace `omf-therapie`) is the source of truth.
+> See [DEPRECATED.md](./DEPRECATED.md) for migration details.
+> Do not edit files in this directory.
 
 ## Purpose
 
