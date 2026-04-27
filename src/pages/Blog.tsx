@@ -15,17 +15,13 @@ const Blog = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [refreshKey] = useState(0);
 
   const { categories, isLoading, error, totalPages, filteredPosts } =
-    useBlogPosts(
-      {
-        page: currentPage,
-        search: searchQuery,
-        category: selectedCategory,
-      },
-      refreshKey
-    );
+    useBlogPosts({
+      page: currentPage,
+      search: searchQuery,
+      category: selectedCategory,
+    });
 
   useEffect(() => {
     window.scrollTo(0, 0);
