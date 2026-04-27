@@ -33,7 +33,6 @@ const Home = () => {
       <div>
         <HeroSection />
         <IntroSection />
-        <LocalAreaSection />
 
         <section id="about" aria-label="À propos">
           <About />
@@ -46,6 +45,8 @@ const Home = () => {
         <section id="process" aria-label="Processus">
           <Process />
         </section>
+
+        <LocalAreaSection />
 
         <section id="qualifications" aria-label="Qualifications">
           <Qualifications />

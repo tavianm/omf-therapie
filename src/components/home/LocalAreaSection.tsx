@@ -1,15 +1,19 @@
+import { MapPin, Video, Car } from "lucide-react";
+
 const MODES = [
   {
-    icon: "📍",
+    Icon: MapPin,
     title: "En cabinet à Montpellier",
     description:
       "Je vous reçois au 1086 Avenue Albert Einstein, 34000 Montpellier — accessible depuis le centre-ville et les communes voisines.",
+    note: "Parking gratuit sur place.",
   },
   {
-    icon: "💻",
+    Icon: Video,
     title: "En téléconsultation",
     description:
       "Les séances en visio sont disponibles où que vous soyez, au même tarif qu'en cabinet.",
+    note: null,
   },
 ];
 
@@ -21,18 +25,24 @@ export default function LocalAreaSection() {
           Thérapeute à Montpellier — en cabinet ou en visio
         </h2>
         <div className="grid sm:grid-cols-2 gap-6">
-          {MODES.map((mode) => (
+          {MODES.map(({ Icon, title, description, note }) => (
             <div
-              key={mode.title}
+              key={title}
               className="bg-white border border-sage-200 rounded-lg p-6 text-center"
             >
-              <span className="text-3xl mb-3 block" aria-hidden="true">
-                {mode.icon}
-              </span>
-              <h3 className="font-semibold text-sage-800 mb-2">{mode.title}</h3>
+              <div className="flex justify-center mb-3">
+                <Icon className="w-8 h-8 text-sage-500" aria-hidden="true" />
+              </div>
+              <h3 className="font-semibold text-sage-800 mb-2">{title}</h3>
               <p className="text-sage-600 text-sm leading-relaxed">
-                {mode.description}
+                {description}
               </p>
+              {note && (
+                <p className="mt-3 flex items-center justify-center gap-1.5 text-sage-500 text-xs">
+                  <Car className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  {note}
+                </p>
+              )}
             </div>
           ))}
         </div>
