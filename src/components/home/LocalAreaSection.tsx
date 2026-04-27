@@ -17,7 +17,7 @@ export default function LocalAreaSection() {
         </h2>
         <p className="text-sage-600 mb-6 max-w-2xl mx-auto text-sm">
           Le cabinet est situé au 1086 Avenue Albert Einstein, 34000 Montpellier.
-          Oriane Montabonnet accompagne également les patients des communes voisines.
+          J'accompagne également les patients des communes voisines.
         </p>
         <ul className="flex flex-wrap justify-center gap-2" aria-label="Communes desservies">
           {CITIES.map((city) => (

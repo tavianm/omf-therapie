@@ -59,7 +59,9 @@ const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
     .join("\n")}
 </urlset>`;
 
-const sitemapTxt = allPages.map((page) => `${baseUrl}${page}`).join("\n");
+const sitemapTxt = [...allPages, ...sectionRoutes]
+  .map((page) => `${baseUrl}${page}`)
+  .join("\n");
 
 fs.writeFileSync("public/sitemap.xml", sitemapXml);
 fs.writeFileSync("public/sitemap.txt", sitemapTxt);

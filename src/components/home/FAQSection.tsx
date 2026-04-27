@@ -12,9 +12,9 @@ export default function FAQSection({ faqs }: FAQSectionProps) {
           Questions fréquentes
         </h2>
         <div className="space-y-4">
-          {faqs.map((faq, index) => (
+          {faqs.map((faq) => (
             <details
-              key={index}
+              key={faq.question}
               className="group border border-sage-200 rounded-lg overflow-hidden"
             >
               <summary className="flex items-center justify-between p-4 cursor-pointer list-none bg-sage-50 hover:bg-sage-100 transition-colors">

@@ -68,7 +68,7 @@ export const GererAnxieteQuotidienTechniquesConseils: BlogPost = {
       <p>En pratiquant régulièrement ces techniques, vous développerez progressivement une meilleure gestion de votre anxiété. N'oubliez pas que demander de l'aide à un professionnel est également une démarche importante si votre anxiété persiste ou s'aggrave.</p>
 
       <h2>Accompagnement de l'anxiété à Montpellier</h2>
-      <p>Si l'anxiété affecte significativement votre quotidien, un accompagnement thérapeutique peut faire une vraie différence. Oriane Montabonnet, thérapeute à <strong>Montpellier</strong>, propose des séances individuelles adaptées à votre situation au <strong>1086 Avenue Albert Einstein, 34000 Montpellier</strong>. Elle reçoit également les patients de Castelnau-le-Lez, Lattes, Pérols et des communes environnantes. Contactez-la au <strong>06 50 33 18 53</strong>.</p>
+      <p>Si l'anxiété affecte significativement votre quotidien, un accompagnement thérapeutique peut faire une vraie différence. Thérapeute à <strong>Montpellier</strong>, je propose des séances individuelles adaptées à votre situation au <strong>1086 Avenue Albert Einstein, 34000 Montpellier</strong>. Je reçois également les patients de Castelnau-le-Lez, Lattes, Pérols et des communes environnantes. Contactez-moi au <strong>06 50 33 18 53</strong>.</p>
     `,
   date: "15 février 2025",
   categories: ["Anxiété", "Bien-être"],
