@@ -87,6 +87,9 @@ export const DeconstruireTabousTherapie: BlogPost = {
     <p>N'attendons pas d'être en difficulté pour explorer ce chemin de croissance personnelle. La thérapie est un cadeau que nous pouvons nous faire à tout moment de notre vie, une opportunité de mieux nous comprendre et de nous épanouir pleinement.</p>
 
     <p>Rappelez-vous : prendre soin de sa santé mentale n'est pas un luxe, c'est une nécessité dans notre monde moderne en constante évolution.</p>
+
+    <h2>Thérapeute à Montpellier : commencer votre démarche</h2>
+    <p>Si cet article vous a donné envie de franchir le pas, Oriane Montabonnet vous reçoit en cabinet au <strong>1086 Avenue Albert Einstein, 34000 Montpellier</strong>. Elle accompagne les habitants de Montpellier et des communes voisines (Castelnau-le-Lez, Lattes, Pérols, Juvignac, Grabels, Clapiers) dans leur parcours thérapeutique, qu'il soit individuel, de couple ou familial. N'hésitez pas à la contacter au <strong>06 50 33 18 53</strong> pour un premier rendez-vous.</p>
   `,
   date: "5 mai 2025",
   categories: ["Développement personnel", "Bien-être"],

@@ -83,7 +83,7 @@ const Blog = () => {
     <>
       <SEO
         title="Blog | Oriane Montabonnet - Thérapeute à Montpellier"
-        description="Découvrez les articles et conseils d'Oriane Montabonnet, thérapeute à Montpellier, sur le bien-être, la psychologie et le développement personnel."
+        description="Conseils, réflexions et ressources sur le bien-être et la thérapie par Oriane Montabonnet, thérapeute à Montpellier."
         canonical="https://omf-therapie.fr/blog"
       />
       <Toaster position="bottom-center" />

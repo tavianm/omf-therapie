@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import SEO from "../components/SEO";
+import StructuredData from "../components/StructuredData";
 import { BlogPostDetail } from "../components/blog/BlogPostDetail";
 import { SuspenseFallback } from "../components/common/SuspenseFallback";
 import { useBlogPost } from "../hooks/useBlogPost";
+import { buildArticleSchema } from "../utils/schema";
 
 const BlogPost = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -64,6 +66,7 @@ const BlogPost = () => {
         type="article"
         image={post.imageUrl || undefined}
       />
+      <StructuredData schema={buildArticleSchema(post)} />
       <div className="py-8 md:py-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <BlogPostDetail post={post} relatedPosts={relatedPosts} />

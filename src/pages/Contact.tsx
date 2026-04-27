@@ -1,10 +1,12 @@
 import { motion } from "framer-motion";
 import { useEffect } from "react";
 import SEO from "../components/SEO";
+import StructuredData from "../components/StructuredData";
 import { ContactForm } from "../components/contact/ContactForm";
 import { ContactInfo } from "../components/contact/ContactInfo";
 import { LocationMap } from "../components/contact/LocationMap";
 import { useMotionVariants } from "../hooks/useMotionVariants";
+import { buildLocalBusinessSchema } from "../utils/schema";
 
 const Contact = () => {
   useEffect(() => {
@@ -17,9 +19,10 @@ const Contact = () => {
     <>
       <SEO
         title="Contact | Oriane Montabonnet - Thérapeute à Montpellier"
-        description="Contactez Oriane Montabonnet, thérapeute à Montpellier. Prenez rendez-vous pour une consultation et commencez votre parcours vers le bien-être."
+        description="Contactez Oriane Montabonnet, thérapeute à Montpellier. Cabinet au 1086 Av. Albert Einstein, 34000 Montpellier. Lundi–Vendredi 8h–12h et 14h–19h."
         canonical="https://omf-therapie.fr/contact"
       />
+      <StructuredData schema={buildLocalBusinessSchema()} />
       <div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 ">
           <motion.div {...fadeInUp()} className="text-center mb-8">
