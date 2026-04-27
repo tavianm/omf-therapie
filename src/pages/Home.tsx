@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import SEO from "../components/SEO";
+import StructuredData from "../components/StructuredData";
 import { HeroSection } from "../components/home/HeroSection";
 import { IntroSection } from "../components/home/IntroSection";
 import About from "./About";
@@ -7,6 +8,14 @@ import Pricing from "./Pricing";
 import Process from "./Process";
 import Qualifications from "./Qualifications";
 import Services from "./Services";
+import {
+  buildLocalBusinessSchema,
+  buildPersonSchema,
+  buildFAQSchema,
+  FAQ_ITEMS,
+} from "../utils/schema";
+import FAQSection from "../components/home/FAQSection";
+import LocalAreaSection from "../components/home/LocalAreaSection";
 
 const Home = () => {
   useEffect(() => {
@@ -16,8 +25,11 @@ const Home = () => {
     <>
       <SEO
         title="Oriane Montabonnet - Thérapeute à Montpellier"
-        description="psychologue, thérapeute, Montpellier, bien-être, développement personnel, nutrition, gestion du stress, thérapie individuelle, conjugale, familiale, accompagnement personnalisé."
+        description="Oriane Montabonnet, thérapeute à Montpellier, vous accompagne en thérapie individuelle, de couple et familiale. Cabinet au 1086 Av. Albert Einstein, Montpellier."
       />
+      <StructuredData schema={buildLocalBusinessSchema()} />
+      <StructuredData schema={buildPersonSchema()} />
+      <StructuredData schema={buildFAQSchema(FAQ_ITEMS)} />
       <div>
         <HeroSection />
         <IntroSection />
@@ -34,6 +46,8 @@ const Home = () => {
           <Process />
         </section>
 
+        <LocalAreaSection />
+
         <section id="qualifications" aria-label="Qualifications">
           <Qualifications />
         </section>
@@ -41,6 +55,8 @@ const Home = () => {
         <section id="pricing" aria-label="Tarifs">
           <Pricing />
         </section>
+
+        <FAQSection faqs={FAQ_ITEMS} />
       </div>
     </>
   );

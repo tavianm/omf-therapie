@@ -12,6 +12,9 @@ if (!fs.existsSync("public")) {
 // Base static pages
 const basePages = ["", "/contact", '/accessibilite', "/blog",];
 
+// SPA section routes (anchor sections on the home page)
+const sectionRoutes = ["/Tarifs", "/Services", "/About", "/Process", "/Formations"];
+
 // Extract blog slugs from TS files to build blog URLs
 const blogUrls = [];
 if (fs.existsSync(blogsDir)) {
@@ -43,9 +46,22 @@ const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
     </url>`
     )
     .join("\n")}
+  ${sectionRoutes
+    .map(
+      (route) => `
+    <url>
+      <loc>${baseUrl}${route}</loc>
+      <lastmod>${now}</lastmod>
+      <changefreq>monthly</changefreq>
+      <priority>0.7</priority>
+    </url>`
+    )
+    .join("\n")}
 </urlset>`;
 
-const sitemapTxt = allPages.map((page) => `${baseUrl}${page}`).join("\n");
+const sitemapTxt = [...allPages, ...sectionRoutes]
+  .map((page) => `${baseUrl}${page}`)
+  .join("\n");
 
 fs.writeFileSync("public/sitemap.xml", sitemapXml);
 fs.writeFileSync("public/sitemap.txt", sitemapTxt);
