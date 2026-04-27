@@ -10,11 +10,17 @@ OMF Therapie is a professional therapy practice website built with React and Typ
 
 ## Essential Documentation
 
-Before making changes, review the documentation in `/memory-bank/`:
-- `architecture.md` - System architecture and data flow
-- `conventions.md` - Code style and patterns
-- `decisions.md` - Architectural decision records (ADRs)
-- `project-overview.md` - Business context and goals
+Project knowledge is stored in the **vault** (namespace: `omf-therapie`). Query it before making changes:
+
+```bash
+vault search "architecture"        # System architecture and data flow
+vault search "conventions"         # Code style and patterns
+vault search "ADR decisions"       # Architectural decision records
+vault search "project overview"    # Business context and goals
+vault list --namespace omf-therapie  # All entries
+```
+
+Entries: Project Overview · Architecture · Coding Conventions · Architectural Decision Records · Technical Stack · Active Context
 
 ## Common Commands
 

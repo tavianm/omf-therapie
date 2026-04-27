@@ -14,12 +14,17 @@ OMF Therapie est un site web professionnel pour une praticienne en thérapie, co
 
 ## 📚 Documentation Essentielle
 
-Avant toute nouvelle conversation ou modification, consultez impérativement les fichiers suivants dans `/memory-bank/` :
+La documentation du projet est stockée dans le **vault** (namespace : `omf-therapie`). Consultez-le avant toute modification :
 
-- `project-overview.md` - Vue d'ensemble et objectifs
-- `architecture.md` - Structure et patterns techniques
-- `conventions.md` - Standards de code et bonnes pratiques
-- `decisions.md` - Historique des choix techniques
+```bash
+vault list --namespace omf-therapie    # Lister toutes les entrées
+vault search "architecture"            # Architecture et patterns
+vault search "conventions"             # Standards de code
+vault search "ADR"                     # Décisions techniques
+vault search "project overview"        # Vue d'ensemble du projet
+```
+
+Entrées disponibles : Project Overview · Architecture · Coding Conventions · Architectural Decision Records · Technical Stack · Active Context
 
 ## 🏗 Architecture du Projet
 
@@ -33,7 +38,7 @@ omf-therapie/
 │   ├── types/         # Définitions TypeScript
 │   └── utils/         # Utilitaires et contenu blog
 ├── public/            # Assets statiques et rapports
-└── memory-bank/       # Documentation technique
+└── memory-bank/       # Migré vers vault (namespace: omf-therapie)
 ```
 
 ## 💻 Standards de Code
@@ -132,7 +137,7 @@ Points critiques à respecter :
 
 - Messages d'erreur en français
 - Commentaires techniques en anglais
-- Documentation du `memory-bank` à jour
+- Vault (`omf-therapie`) à jour après changements majeurs
 - Pas de CSS personnalisé (Tailwind uniquement)
 - Tests pa11y avant chaque PR
 
