@@ -51,11 +51,11 @@ const Home = () => {
           <Qualifications />
         </section>
 
-        <FAQSection faqs={FAQ_ITEMS} />
-
         <section id="pricing" aria-label="Tarifs">
           <Pricing />
         </section>
+
+        <FAQSection faqs={FAQ_ITEMS} />
       </div>
     </>
   );
