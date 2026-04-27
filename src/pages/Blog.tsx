@@ -15,7 +15,7 @@ const Blog = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [refreshKey] = useState(0);
 
   const { categories, isLoading, error, totalPages, filteredPosts } =
     useBlogPosts(
@@ -74,11 +74,6 @@ const Blog = () => {
     setSearchParams(searchParams);
   };
 
-  const handleSyncComplete = () => {
-    // Refresh the blog posts by updating the key
-    setRefreshKey((prev) => prev + 1);
-  };
-
   return (
     <>
       <SEO
@@ -92,8 +87,6 @@ const Blog = () => {
           <BlogHeader
             title="Blog"
             subtitle="Réflexions, conseils et actualités sur le bien-être et la thérapie"
-            onSyncComplete={handleSyncComplete}
-            showSyncButton={false}
           />
 
           <div className="mt-8 mb-6">
