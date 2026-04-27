@@ -13,9 +13,10 @@ const reducedMotionProps: MotionProps = {
 };
 
 export const useMotionVariants = () => {
-  const prefersReducedMotion = window.matchMedia(
-    "(prefers-reduced-motion: reduce)"
-  ).matches;
+  const prefersReducedMotion =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const fadeInUp = (options: MotionVariantOptions = {}): MotionProps => {
     if (prefersReducedMotion) return reducedMotionProps;
