@@ -2,7 +2,7 @@
 issue: null
 tier: F-full
 spec: artifacts/specs/seo-geo-optimisation-spec.md
-status: draft
+status: approved
 ---
 
 ## Tasks
