@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { Calendar, Clock, Tag } from "lucide-react";
 import { BlogPost } from "../../types/blog";
-import { calculateReadingTime } from "../../utils/blogApi";
+import { calculateReadingTime } from "../../utils/readingTime";
 import { ShareButtons } from "./ShareButtons";
 
 interface BlogPostCardProps {

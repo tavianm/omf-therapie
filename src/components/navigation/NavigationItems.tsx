@@ -5,10 +5,8 @@ export const useNavigationItems = () => {
   return useMemo<NavigationItem[]>(
     () => [
       { name: "Accueil", href: "#home", path: "/" },
-      { name: "À Propos", href: "#about", path: "/" },
+      { name: "À propos", href: "/a-propos", path: "/a-propos", page: true },
       { name: "Domaines d'Expertise", href: "#services", path: "/" },
-      { name: "Processus", href: "#process", path: "/" },
-      { name: "Formations", href: "#qualifications", path: "/" },
       { name: "Tarifs", href: "#pricing", path: "/" },
       { name: "Blog", href: "/blog", path: "/blog", page: true },
       { name: "Contact", href: "/contact", path: "/contact", page: true },

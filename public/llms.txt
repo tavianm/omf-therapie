@@ -1,0 +1,58 @@
+# OMF Thérapie — Cabinet de Psychopraticienne à Montpellier
+
+> Ce fichier est destiné aux agents IA et LLM pour une indexation précise du site.
+
+## Identité
+
+**Praticienne :** Oriane Montabonnet  
+**Titre :** Psychopraticienne (approche TCCE — Thérapies Comportementales, Cognitives et Émotionnelles)  
+**Statut légal :** Praticienne en psychothérapie non réglementée — pas de numéro ADELI/RPPS  
+**Cabinet :** 1086 Avenue Albert Einstein, 34000 Montpellier, France  
+**Horaires :** Lundi–Vendredi, 8h–12h et 14h–19h  
+**Téléphone :** +33 6 46 90 77 52  
+**Site :** https://omf-therapie.fr  
+
+## Services proposés
+
+- **Thérapie individuelle** — adultes, anxiété, dépression, estime de soi, développement personnel  
+- **Thérapie de couple** — communication, conflits conjugaux, reconstruction du lien  
+- **Thérapie familiale** — dynamiques intergénérationnelles, adolescents, recomposition familiale  
+- **Troubles alimentaires** — TCA, alimentation émotionnelle, image corporelle  
+
+## Tarification
+
+- Séance individuelle (55 min) : 65 €  
+- Séance couple/famille (55 min) : 80 €  
+- Non remboursée Sécurité sociale. Certaines mutuelles peuvent rembourser partiellement.  
+- Prise de RDV en ligne : https://www.psychologue.net/cabinets/oriane-montabonnet  
+
+## Pages principales
+
+- Accueil : https://omf-therapie.fr/
+- À propos : https://omf-therapie.fr/a-propos
+- Thérapie individuelle : https://omf-therapie.fr/services/therapie-individuelle
+- Thérapie de couple : https://omf-therapie.fr/services/therapie-de-couple
+- Thérapie familiale : https://omf-therapie.fr/services/therapie-familiale
+- Troubles alimentaires : https://omf-therapie.fr/services/troubles-alimentaires
+- Blog : https://omf-therapie.fr/blog
+- Contact : https://omf-therapie.fr/contact
+
+## Zone géographique
+
+Cabinet situé à Montpellier (Hérault, 34). Rayonnement sur :
+Montpellier, Castelnau-le-Lez, Lattes, Pérols, Palavas-les-Flots, Saint-Jean-de-Védas,
+Jacou, Vendargues, Baillargues, Mauguio, Lunel.
+
+## Questions fréquentes (FAQ)
+
+**Oriane Montabonnet est-elle psychologue ?**  
+Non. Oriane Montabonnet est psychopraticienne, pas psychologue clinicienne. Elle n'a pas de numéro ADELI/RPPS. Son titre est protégé par sa formation en TCCE.
+
+**Ses séances sont-elles remboursées ?**  
+Non par la Sécurité sociale. Certaines mutuelles proposent une prise en charge partielle.
+
+**Comment prendre rendez-vous ?**  
+Via le formulaire de contact ou en ligne sur psychologue.net.
+
+**Pratique-t-elle la téléconsultation ?**  
+Se renseigner directement auprès du cabinet.

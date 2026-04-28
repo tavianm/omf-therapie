@@ -1,0 +1,41 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/islands/Navbar';
+import Footer from '../components/layout/Footer.astro';
+---
+
+<Layout
+  title="Page introuvable — OMF Thérapie"
+  description="La page que vous recherchez n'existe pas ou a été déplacée."
+  noindex={true}
+>
+  <Navbar client:load />
+
+  <main id="main-content" class="pt-20 min-h-[70vh] flex items-center" tabindex="-1">
+    <div class="max-w-2xl mx-auto px-4 text-center py-20">
+      <p class="text-6xl font-serif text-mint-400 mb-4" aria-hidden="true">404</p>
+      <h1 class="font-serif text-2xl md:text-3xl text-sage-800 mb-4">
+        Page introuvable
+      </h1>
+      <p class="text-sage-600 mb-8">
+        La page que vous recherchez n'existe pas ou a été déplacée.
+      </p>
+      <div class="flex flex-col sm:flex-row gap-4 justify-center">
+        <a
+          href="/"
+          class="inline-flex items-center justify-center gap-2 bg-mint-600 text-white px-6 py-3 rounded-lg hover:bg-mint-700 transition-colors font-medium"
+        >
+          Retour à l'accueil
+        </a>
+        <a
+          href="/contact"
+          class="inline-flex items-center justify-center gap-2 border border-sage-300 text-sage-700 px-6 py-3 rounded-lg hover:bg-sage-50 transition-colors font-medium"
+        >
+          Nous contacter
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <Footer />
+</Layout>

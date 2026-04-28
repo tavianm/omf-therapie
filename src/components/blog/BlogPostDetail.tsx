@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import parse from "html-react-parser";
 import { ArrowLeft, Calendar, Clock, Tag, User } from "lucide-react";
 import { BlogPost } from "../../types/blog";
-import { calculateReadingTime } from "../../utils/blogApi";
+import { calculateReadingTime } from "../../utils/readingTime";
 import { ShareButtons } from "./ShareButtons";
 
 interface BlogPostDetailProps {
