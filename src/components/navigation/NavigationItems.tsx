@@ -6,7 +6,7 @@ export const useNavigationItems = () => {
     () => [
       { name: "Accueil", href: "#home", path: "/" },
       { name: "À propos", href: "/a-propos", path: "/a-propos", page: true },
-      { name: "Domaines d'Expertise", href: "#services", path: "/" },
+      { name: "Domaines d'Expertise", href: "/services", path: "/services", page: true },
       { name: "Tarifs", href: "#pricing", path: "/" },
       { name: "Blog", href: "/blog", path: "/blog", page: true },
       { name: "Contact", href: "/contact", path: "/contact", page: true },
