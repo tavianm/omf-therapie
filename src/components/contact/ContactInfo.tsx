@@ -7,7 +7,7 @@ import {
   SOCIAL_LINKS,
 } from "../../config/global.config";
 import { useClipboard } from "../../hooks/useClipboard";
-import { ClassNames, ContactItem } from "../common/ContactItem";
+import { type ClassNames, ContactItem } from "../common/ContactItem";
 
 export const ContactInfo = () => {
   const { copyToClipboard } = useClipboard();

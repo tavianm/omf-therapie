@@ -4,7 +4,7 @@ import {
   COMPANY_NAME,
   SOCIAL_LINKS,
 } from "../../config/global.config";
-import { ClassNames, ContactItem } from "../common/ContactItem";
+import { type ClassNames, ContactItem } from "../common/ContactItem";
 
 export const FooterBrand = () => {
   const classNames: ClassNames = {

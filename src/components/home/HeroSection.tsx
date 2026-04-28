@@ -23,7 +23,7 @@ export const HeroSection = () => {
           className="w-full h-full object-cover"
           loading="eager"
           decoding="async"
-          fetchpriority="high"
+          fetchPriority="high"
           width="800"
           height="600"
         />
