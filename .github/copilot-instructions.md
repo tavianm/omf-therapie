@@ -4,11 +4,11 @@
 
 ## 🎯 Aperçu du Projet
 
-OMF Therapie est un site web professionnel pour une praticienne en thérapie, construit avec React et TypeScript. Le site met l'accent sur :
+OMF Therapie est un site web professionnel pour une praticienne en thérapie, construit avec **Astro 5** et TypeScript. Le site met l'accent sur :
 
 - L'accessibilité (conformité WCAG)
-- Les performances (optimisations Vite)
-- Le contenu éducatif (système de blog)
+- Les performances (Islands Architecture — zéro JS par défaut)
+- Le contenu éducatif (système de blog via Content Collections)
 - Le contact et la prise de rendez-vous
 - L'expérience utilisateur responsive
 
@@ -24,21 +24,27 @@ vault search "ADR"                     # Décisions techniques
 vault search "project overview"        # Vue d'ensemble du projet
 ```
 
-Entrées disponibles : Project Overview · Architecture · Coding Conventions · Architectural Decision Records · Technical Stack · Active Context
+Entrées disponibles : Project Overview · Architecture · Coding Conventions · Architectural Decision Records · Technical Stack · Active Context · Astro
+
+> **Standards Astro :** Consulter `memory-bank/astro.md` pour les patterns Islands Architecture, Content Collections et directives client.
 
 ## 🏗 Architecture du Projet
 
 ```
 omf-therapie/
 ├── src/
-│   ├── components/     # Composants React organisés par domaine
+│   ├── components/     # Composants React (islands/) et Astro
+│   │   └── islands/    # React islands hydratés côté client (Navbar, BlogClientWrapper)
 │   ├── config/         # Configuration globale
-│   ├── hooks/          # Hooks React personnalisés
-│   ├── pages/         # Composants de pages/routes
-│   ├── types/         # Définitions TypeScript
-│   └── utils/         # Utilitaires et contenu blog
-├── public/            # Assets statiques et rapports
-└── memory-bank/       # Migré vers vault (namespace: omf-therapie)
+│   ├── content/        # Contenu blog (Markdown, Content Collections)
+│   │   └── blog/       # Articles au format Markdown avec frontmatter
+│   ├── hooks/          # Hooks React personnalisés (utilisés dans les islands)
+│   ├── layouts/        # Layouts Astro (Layout.astro, ServiceLayout.astro)
+│   ├── pages/          # Routes Astro (fichiers .astro → URLs)
+│   ├── types/          # Définitions TypeScript
+│   └── utils/          # Utilitaires (schema.ts, blogApi.ts, etc.)
+├── memory-bank/        # Standards de développement (astro.md, conventions.md, etc.)
+└── public/             # Assets statiques et rapports
 ```
 
 ## 💻 Standards de Code
@@ -82,15 +88,17 @@ export default function Component({ prop }: Props) {
 
 ### Routing
 
-- React Router avec scroll automatique aux sections
-- Routes lazy-loadées
-- Navigation basée sur les ancres pour les sections
+- Astro file-based routing : chaque fichier `src/pages/*.astro` = une URL
+- Pages de service dédiées (`/services/therapie-individuelle`, etc.)
+- Blog pré-rendu statiquement via `[slug].astro` + Content Collections
+- Anciens paths SPA (`/Tarifs`, `/About`, etc.) redirigés via `netlify.toml`
 
 ### Performance
 
-- Code splitting au niveau des routes
+- **Zéro JS par défaut** — rendu serveur statique (SSG) via Astro
+- **Islands Architecture** — React hydraté uniquement sur les composants interactifs (`client:load`, `client:idle`, `client:visible`)
 - Images responsives (multiple tailles + WebP/AVIF)
-- Bundle optimisé via Vite
+- Sitemap auto-généré par `@astrojs/sitemap`
 
 ## ♿️ Accessibilité
 
@@ -119,10 +127,11 @@ Points critiques à respecter :
 
 ## 📝 Gestion du Blog
 
-- Posts stockés dans `src/utils/blogs/`
-- Interfaces dans `src/types/blog.ts`
-- Markdown parsé via `html-react-parser`
-- SEO optimisé pour chaque article
+- Posts stockés dans `src/content/blog/` (fichiers Markdown avec frontmatter YAML)
+- Schéma validé par Zod dans `src/content.config.ts`
+- Rendu statique via `src/pages/blog/[slug].astro` + `entry.render()` + `<Content />`
+- Island de filtrage/recherche : `src/components/islands/BlogClientWrapper.tsx`
+- SEO optimisé pour chaque article (JSON-LD Article dans le head)
 
 ## 🚀 Workflow de Développement
 
