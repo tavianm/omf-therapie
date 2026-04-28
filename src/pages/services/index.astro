@@ -1,0 +1,46 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Navbar from '../../components/islands/Navbar';
+import Footer from '../../components/layout/Footer.astro';
+import ServicesSection from '../../components/home/ServicesSection';
+import { buildLocalBusinessSchema } from '../../utils/schema';
+
+const jsonLd = buildLocalBusinessSchema();
+---
+
+<Layout
+  title="Mes services — Thérapie individuelle, conjugale & familiale | Oriane Montabonnet"
+  description="Découvrez mes domaines d'expertise : thérapie individuelle, troubles alimentaires, thérapie conjugale et thérapie familiale à Montpellier."
+  canonical="https://omf-therapie.fr/services"
+  jsonLd={jsonLd}
+>
+  <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded">
+    Aller au contenu principal
+  </a>
+
+  <Navbar client:load isHomePage={false} />
+
+  <main id="main-content" class="pt-20" tabindex="-1">
+    <section class="bg-sage-50 py-12 px-4">
+      <div class="max-w-7xl mx-auto">
+        <nav class="mb-6 text-sm text-sage-500" aria-label="Fil d'Ariane">
+          <ol class="flex items-center gap-2 flex-wrap" role="list">
+            <li role="listitem"><a href="/" class="hover:text-mint-600 transition-colors">Accueil</a></li>
+            <li role="listitem" aria-hidden="true">›</li>
+            <li role="listitem" aria-current="page" class="text-sage-700 font-medium">Services</li>
+          </ol>
+        </nav>
+        <h1 class="font-serif text-3xl md:text-4xl lg:text-5xl font-semibold text-sage-800 mb-4">
+          Mes domaines d'expertise
+        </h1>
+        <p class="text-xl text-sage-600 max-w-3xl">
+          Un accompagnement thérapeutique adapté à vos besoins, qu'il s'agisse de difficultés personnelles, alimentaires, conjugales ou familiales.
+        </p>
+      </div>
+    </section>
+
+    <ServicesSection detailMode={true} client:visible />
+  </main>
+
+  <Footer />
+</Layout>
