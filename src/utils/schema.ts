@@ -46,8 +46,10 @@ export function buildLocalBusinessSchema(): Record<string, unknown> {
   return {
     "@context": "https://schema.org",
     "@type": "HealthAndBeautyBusiness",
+    "@id": `${SITE_URL}/#business`,
     name: COMPANY_NAME,
     url: SITE_URL,
+    priceRange: "€€",
     telephone: CONTACT_INFO.phoneE164,
     email: CONTACT_INFO.email,
     address: {
@@ -82,9 +84,7 @@ export function buildPersonSchema(): Record<string, unknown> {
     url: SITE_URL,
     image: OWNER_IMAGE,
     worksFor: {
-      "@type": "HealthAndBeautyBusiness",
-      name: COMPANY_NAME,
-      url: SITE_URL,
+      "@id": `${SITE_URL}/#business`,
     },
     hasCredential: [
       {
