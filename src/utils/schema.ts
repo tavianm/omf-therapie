@@ -7,6 +7,7 @@ import {
   SITE_URL,
   OWNER_IMAGE,
   GBP_PROFILE_URL,
+  GEO_COORDINATES,
 } from "../config/global.config";
 
 export interface FAQItem {
@@ -44,7 +45,7 @@ function parseFrenchDate(frenchDate: string): string {
 export function buildLocalBusinessSchema(): Record<string, unknown> {
   return {
     "@context": "https://schema.org",
-    "@type": "LocalBusiness",
+    "@type": "HealthAndBeautyBusiness",
     name: COMPANY_NAME,
     url: SITE_URL,
     telephone: CONTACT_INFO.phoneE164,
@@ -55,6 +56,11 @@ export function buildLocalBusinessSchema(): Record<string, unknown> {
       addressLocality: "Montpellier",
       postalCode: "34000",
       addressCountry: "FR",
+    },
+    geo: {
+      "@type": "GeoCoordinates",
+      latitude: GEO_COORDINATES.latitude,
+      longitude: GEO_COORDINATES.longitude,
     },
     openingHoursSpecification: BUSINESS_HOURS.hours.map((h) => ({
       "@type": "OpeningHoursSpecification",
@@ -72,25 +78,52 @@ export function buildPersonSchema(): Record<string, unknown> {
     "@context": "https://schema.org",
     "@type": "Person",
     name: COMPANY_NAME,
-    jobTitle: "Thérapeute",
+    jobTitle: "Psychopraticienne",
     url: SITE_URL,
     image: OWNER_IMAGE,
     worksFor: {
-      "@type": "LocalBusiness",
+      "@type": "HealthAndBeautyBusiness",
       name: COMPANY_NAME,
       url: SITE_URL,
     },
+    hasCredential: [
+      {
+        "@type": "EducationalOccupationalCredential",
+        credentialCategory: "Formation TCCE",
+        recognizedBy: {
+          "@type": "Organization",
+          name: "Institut de formation en psychothérapie",
+        },
+      },
+    ],
+    alumniOf: [
+      {
+        "@type": "EducationalOrganization",
+        name: "Formation en Thérapies Comportementales, Cognitives et Émotionnelles (TCCE)",
+      },
+    ],
+    knowsAbout: [
+      "Thérapie individuelle",
+      "Thérapie de couple",
+      "Thérapie familiale",
+      "Troubles alimentaires",
+      "Gestion de l'anxiété",
+      "Développement personnel",
+    ],
     sameAs: SAME_AS,
   };
 }
 
 export function buildArticleSchema(post: BlogPost): Record<string, unknown> {
+  const datePublished = parseFrenchDate(post.date);
   return {
     "@context": "https://schema.org",
     "@type": "Article",
     headline: post.title,
     description: post.excerpt,
-    datePublished: parseFrenchDate(post.date),
+    datePublished,
+    dateModified: datePublished,
+    wordCount: Math.round(post.content.length / 5),
     url: `${SITE_URL}/blog/${post.slug}`,
     image: post.imageUrl ?? OWNER_IMAGE,
     author: {
@@ -101,6 +134,37 @@ export function buildArticleSchema(post: BlogPost): Record<string, unknown> {
       "@type": "Organization",
       name: COMPANY_NAME,
       url: SITE_URL,
+      logo: {
+        "@type": "ImageObject",
+        url: "https://omf-therapie.fr/assets/logo.png",
+      },
+    },
+  };
+}
+
+export function buildServiceSchema(
+  serviceName: string,
+  description: string,
+  url: string,
+): Record<string, unknown> {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Service",
+    name: serviceName,
+    description,
+    url,
+    provider: {
+      "@type": "HealthAndBeautyBusiness",
+      name: COMPANY_NAME,
+      url: SITE_URL,
+      telephone: CONTACT_INFO.phoneE164,
+      address: {
+        "@type": "PostalAddress",
+        streetAddress: "1086 Av. Albert Einstein",
+        addressLocality: "Montpellier",
+        postalCode: "34000",
+        addressCountry: "FR",
+      },
     },
   };
 }

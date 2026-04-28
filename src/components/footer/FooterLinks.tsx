@@ -1,11 +1,9 @@
-import { Link, useLocation } from "react-router-dom";
 import { QUICK_LINKS } from "../../config/footer.config";
 import { useScrollToSection } from "../../hooks/useScrollToSection";
 import { FooterHeading } from "../common/FooterHeading";
 
 export const FooterLinks = () => {
-  const { scrollToSection } = useScrollToSection(undefined, {});
-  const location = useLocation();
+  const { scrollToSection } = useScrollToSection({});
   const linkClass =
     "text-sage-300 hover:text-mint-400 hover:underline transition-colors";
 
@@ -26,23 +24,24 @@ export const FooterLinks = () => {
                 {link.name}
               </a>
             ) : link.path !== "/" ? (
-              <Link to={link.href} className={linkClass}>
+              <a href={link.href} className={linkClass}>
                 {link.name}
-              </Link>
+              </a>
             ) : (
-              <Link
-                to={link.href}
+              <a
+                href={link.href}
                 className={linkClass}
                 onClick={(e) => {
-                  if (location.pathname === "/") {
+                  if (window.location.pathname === "/") {
                     e.preventDefault();
+                    // href is "/#section" — extract section id after "/#"
                     const sectionId = link.href.substring(2);
                     scrollToSection(sectionId);
                   }
                 }}
               >
                 {link.name}
-              </Link>
+              </a>
             )}
           </li>
         ))}

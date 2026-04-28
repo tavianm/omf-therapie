@@ -1,5 +1,4 @@
 import { Menu, X } from "lucide-react";
-import { Link } from "react-router-dom";
 import type { NavigationItem } from "../../types/navigation";
 
 interface MobileNavProps {
@@ -7,7 +6,7 @@ interface MobileNavProps {
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
   isActive: (href: string, path: string) => boolean;
-  navigateToSection: (href: string) => Promise<void>;
+  navigateToSection: (href: string) => void;
   hellocareBtn?: NavigationItem;
 }
 
@@ -57,9 +56,9 @@ export const MobileNav = ({
         >
           {navigation.map((item) =>
             item.external ? null : item.page ? (
-              <Link
+              <a
                 key={item.name}
-                to={"../" + item.href}
+                href={item.href}
                 className={`${
                   isActive(item.href, item.path)
                     ? "bg-mint-50 text-mint-600"
@@ -72,7 +71,7 @@ export const MobileNav = ({
                 }
               >
                 {item.name}
-              </Link>
+              </a>
             ) : (
               <button
                 key={item.name}

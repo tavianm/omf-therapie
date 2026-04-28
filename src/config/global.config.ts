@@ -32,3 +32,8 @@ export const BUSINESS_HOURS = {
     { start: "14h", end: "19h" },
   ],
 };
+
+export const GEO_COORDINATES = {
+  latitude: 43.610769,
+  longitude: 3.876716,
+};

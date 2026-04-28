@@ -1,10 +1,9 @@
 import { Leaf } from "lucide-react";
-import { Link } from "react-router-dom";
 
 export const Logo = () => (
   <div className="flex items-center mr-3">
-    <Link
-      to="../"
+    <a
+      href="/"
       className="flex items-center"
       aria-label="Accueil Oriane Montabonnet"
     >
@@ -12,7 +11,7 @@ export const Logo = () => (
       <span className="ml-2 text-xl font-serif font-medium text-sage-800">
         Oriane Montabonnet
       </span>
-    </Link>
+    </a>
   </div>
 );
 
