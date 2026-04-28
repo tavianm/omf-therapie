@@ -1,0 +1,130 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Navbar from '../../components/islands/Navbar';
+import Footer from '../../components/layout/Footer.astro';
+import { buildFAQSchema, buildServiceSchema } from '../../utils/schema';
+
+const faqs = [
+  {
+    question: "Qu'est-ce que la thérapie individuelle à Montpellier ?",
+    answer: "La thérapie individuelle est un accompagnement personnalisé en tête-à-tête avec un thérapeute. À Montpellier, Oriane Montabonnet propose des séances de 55 minutes pour vous aider à traverser des difficultés émotionnelles, relationnelles ou comportementales, à votre rythme.",
+  },
+  {
+    question: "Combien de séances faut-il pour un suivi thérapeutique à Montpellier ?",
+    answer: "Le nombre de séances varie selon vos objectifs et votre situation. Certaines personnes constatent des changements en 6 à 10 séances ; d'autres choisissent un accompagnement plus long. Oriane Montabonnet évalue avec vous au fil des séances.",
+  },
+  {
+    question: "La thérapie individuelle est-elle remboursée à Montpellier ?",
+    answer: "Les séances de psychopraticienne ne sont pas remboursées par la Sécurité sociale. Certaines mutuelles proposent une prise en charge partielle — renseignez-vous auprès de la vôtre avant votre première consultation.",
+  },
+  {
+    question: "Comment se déroule la première séance de thérapie à Montpellier ?",
+    answer: "La première séance est un espace d'échange libre. Vous exposez ce qui vous amène, vos attentes. Oriane Montabonnet vous écoute sans jugement et vous propose une orientation thérapeutique adaptée à votre situation.",
+  },
+];
+
+const jsonLd = [
+  buildFAQSchema(faqs),
+  buildServiceSchema(
+    "Thérapie individuelle à Montpellier",
+    "Accompagnement thérapeutique individuel par Oriane Montabonnet, psychopraticienne à Montpellier. Séances de 55 min pour anxiété, dépression, estime de soi, développement personnel.",
+    "https://omf-therapie.fr/services/therapie-individuelle"
+  ),
+];
+---
+
+<Layout
+  title="Thérapie individuelle à Montpellier | Oriane Montabonnet — Psychopraticienne"
+  description="Thérapie individuelle à Montpellier avec Oriane Montabonnet, psychopraticienne. Séances de 55 min pour anxiété, dépression, développement personnel. Cabinet 1086 Av. Albert Einstein."
+  canonical="https://omf-therapie.fr/services/therapie-individuelle"
+  jsonLd={jsonLd}
+>
+  <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded">
+    Aller au contenu principal
+  </a>
+
+  <Navbar client:load />
+
+  <main id="main-content" class="pt-20" tabindex="-1">
+    <section class="bg-sage-50 py-12 px-4">
+      <div class="max-w-4xl mx-auto">
+        <nav class="mb-6 text-sm text-sage-500" aria-label="Fil d'Ariane">
+          <ol class="flex items-center gap-2 flex-wrap" role="list">
+            <li role="listitem"><a href="/" class="hover:text-mint-600 transition-colors">Accueil</a></li>
+            <li role="listitem" aria-hidden="true">›</li>
+            <li role="listitem"><a href="/#services" class="hover:text-mint-600 transition-colors">Services</a></li>
+            <li role="listitem" aria-hidden="true">›</li>
+            <li role="listitem" aria-current="page" class="text-sage-700 font-medium">Thérapie individuelle</li>
+          </ol>
+        </nav>
+        <h1 class="font-serif text-3xl md:text-4xl lg:text-5xl text-sage-800 mb-6">Thérapie individuelle à Montpellier</h1>
+        <p class="text-xl text-sage-600 max-w-3xl leading-relaxed">La thérapie individuelle avec Oriane Montabonnet, psychopraticienne à Montpellier, vous offre un espace confidentiel et bienveillant pour explorer vos difficultés émotionnelles, relationnelles ou comportementales. En séances de 55 minutes au cabinet du 1086 avenue Albert Einstein, vous avancez à votre propre rythme vers un mieux-être durable.</p>
+        <div class="mt-6">
+          <a href="/contact" class="inline-flex items-center gap-2 bg-mint-600 text-white px-6 py-3 rounded-lg hover:bg-mint-700 transition-colors font-medium">
+            Prendre rendez-vous
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <article class="max-w-4xl mx-auto px-4 py-12 space-y-12">
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">Pour qui est la thérapie individuelle ?</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">La thérapie individuelle convient à toute personne traversant une période difficile ou souhaitant mieux se comprendre — elle ne nécessite pas d'être « en crise » pour en bénéficier.</p>
+        <ul class="space-y-2 text-sage-600" aria-label="Motifs fréquents de consultation">
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Anxiété généralisée, attaques de panique, phobies</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Dépression légère à modérée, manque de motivation</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Troubles du sommeil liés au stress</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Faible estime de soi, autocritique excessive</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Difficultés dans les relations (couple, famille, travail)</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Séparation, deuil, perte d'emploi, transition de vie</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Développement personnel, connaissance de soi</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Préparation à un événement important (entretien, examen, maternité)</li>
+        </ul>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">Comment se déroule une thérapie individuelle à Montpellier ?</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">La première séance est une rencontre : vous exposez ce qui vous amène, sans préparation nécessaire. <a href="/a-propos" class="text-mint-600 hover:text-mint-700 underline underline-offset-2">Oriane Montabonnet</a> vous écoute sans jugement et explore avec vous vos attentes et votre situation. Ensemble, vous définissez un cadre de travail adapté à votre rythme et à vos objectifs.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">Les séances suivantes s'articulent autour de vos objectifs. Vous pouvez aborder librement ce qui se présente : une difficulté récente, une pensée récurrente, une émotion envahissante. Des techniques concrètes sont proposées entre les séances — restructuration cognitive, exposition graduée, exercices de pleine conscience — pour ancrer les prises de conscience dans le quotidien.</p>
+        <p class="text-sage-600 leading-relaxed">La fréquence habituelle est d'une séance par semaine ou toutes les deux semaines. Certaines personnes progressent rapidement en 6 à 10 séances ; d'autres choisissent un accompagnement plus long selon la nature de leur demande.</p>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">Mon approche : les TCCE</h2>
+        <p class="text-sage-600 leading-relaxed mb-4"><a href="/a-propos" class="text-mint-600 hover:text-mint-700 underline underline-offset-2">Oriane Montabonnet</a> est formée aux Thérapies Comportementales, Cognitives et Émotionnelles (TCCE) — une approche validée scientifiquement par de nombreuses études cliniques internationales. Les TCCE travaillent sur le lien entre pensées, émotions et comportements : en modifiant les schémas de pensée automatiques, on agit progressivement sur les émotions et les actions qui en découlent.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">Concrètement, si vous souffrez d'anxiété sociale, la thérapie vous aidera à identifier les pensées automatiques négatives (« je vais me ridiculiser »), à les questionner et à expérimenter progressivement des situations sociales dans un cadre sécurisé. Les résultats sont mesurables et les progrès visibles à chaque étape du suivi.</p>
+        <p class="text-sage-600 leading-relaxed">Les TCCE sont particulièrement efficaces pour : anxiété, dépression, troubles du comportement alimentaire, phobies, stress post-traumatique et faible estime de soi.</p>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">Durée et tarifs</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">Chaque séance de thérapie individuelle dure <strong class="font-semibold text-sage-700">55 minutes</strong>. Le tarif est de <strong class="font-semibold text-sage-700">65 € par séance</strong>.</p>
+        <p class="text-sage-600 leading-relaxed">Les honoraires ne sont pas remboursés par l'Assurance maladie, mais de nombreuses complémentaires santé proposent un remboursement partiel — renseignez-vous auprès de votre mutuelle avant votre première consultation. Le règlement s'effectue en espèces ou par virement bancaire à l'issue de chaque séance.</p>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">Un cabinet accessible à Montpellier</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">Le cabinet est situé au <strong class="font-semibold text-sage-700">1086 Avenue Albert Einstein, 34000 Montpellier</strong>, dans le quartier Hôpitaux-Facultés. Facilement accessible en transports en commun (ligne 2 du tramway, arrêt Universités des Sciences et Lettres) et en voiture depuis Castelnau-le-Lez, Lattes, Pérols et Saint-Jean-de-Védas.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">Les séances se tiennent du lundi au vendredi, de 8h à 12h et de 14h à 19h. Si vous résidez dans l'Hérault (34) et ne pouvez pas vous déplacer, des séances en visioconférence sécurisée sont également disponibles sur demande.</p>
+        <p class="text-sage-600 leading-relaxed">Prêt(e) à franchir le pas ? <a href="/contact" class="text-mint-600 hover:text-mint-700 underline underline-offset-2">Prenez rendez-vous</a> directement en ligne ou par téléphone — la première prise de contact est sans engagement.</p>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-4">Questions fréquentes sur la thérapie individuelle à Montpellier</h2>
+        <div class="space-y-6" itemscope itemtype="https://schema.org/FAQPage">
+          {faqs.map((faq) => (
+            <div class="border-l-4 border-mint-200 pl-4" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+              <h3 class="font-semibold text-sage-800 mb-2" itemprop="name">{faq.question}</h3>
+              <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+                <p class="text-sage-600" itemprop="text">{faq.answer}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </article>
+  </main>
+
+  <Footer />
+</Layout>

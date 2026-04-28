@@ -1,9 +1,8 @@
 import { motion } from "framer-motion";
 import parse from "html-react-parser";
 import { ArrowLeft, Calendar, Clock, Tag, User } from "lucide-react";
-import { Link } from "react-router-dom";
-import { BlogPost } from "../../types/blog";
-import { calculateReadingTime } from "../../utils/blogApi";
+import type { BlogPost } from "../../types/blog";
+import { calculateReadingTime } from "../../utils/readingTime";
 import { ShareButtons } from "./ShareButtons";
 
 interface BlogPostDetailProps {
@@ -27,13 +26,13 @@ export const BlogPostDetail = ({ post, relatedPosts }: BlogPostDetailProps) => {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <Link
-        to="/blog"
+      <a
+        href="/blog"
         className="inline-flex items-center text-mint-600 hover:text-mint-700 mb-6"
       >
         <ArrowLeft className="h-4 w-4 mr-2" />
         Retour aux articles
-      </Link>
+      </a>
 
       <motion.article
         {...fadeInUp()}
@@ -41,14 +40,14 @@ export const BlogPostDetail = ({ post, relatedPosts }: BlogPostDetailProps) => {
       >
         <div className="flex flex-wrap gap-2 mb-4">
           {post.categories.map((category) => (
-            <Link
+            <a
               key={category}
-              to={`/blog?category=${encodeURIComponent(category)}`}
+              href={`/blog?category=${encodeURIComponent(category)}`}
               className="inline-flex items-center gap-1 text-xs font-medium text-mint-600 bg-mint-50 px-2 py-1 rounded-full hover:bg-mint-100 transition-colors"
             >
               <Tag className="h-3 w-3" />
               {category}
-            </Link>
+            </a>
           ))}
         </div>
 
@@ -97,12 +96,12 @@ export const BlogPostDetail = ({ post, relatedPosts }: BlogPostDetailProps) => {
             <ShareButtons post={post} />
           </div>
 
-          <Link
-            to="/contact"
+          <a
+            href="/contact"
             className="text-mint-600 font-medium hover:text-mint-700 transition-colors"
           >
             Des questions? Contactez-moi
-          </Link>
+          </a>
         </div>
       </motion.article>
 
@@ -117,7 +116,7 @@ export const BlogPostDetail = ({ post, relatedPosts }: BlogPostDetailProps) => {
                 key={relatedPost.id}
                 className="bg-white rounded-lg shadow-sm overflow-hidden"
               >
-                <Link to={`/blog/${relatedPost.slug}`} className="block p-6">
+                <a href={`/blog/${relatedPost.slug}`} className="block p-6">
                   <div className="flex flex-wrap gap-2 mb-2">
                     {relatedPost.categories.slice(0, 1).map((category) => (
                       <span
@@ -134,7 +133,7 @@ export const BlogPostDetail = ({ post, relatedPosts }: BlogPostDetailProps) => {
                   <p className="text-sage-600 line-clamp-2">
                     {relatedPost.excerpt}
                   </p>
-                </Link>
+                </a>
               </div>
             ))}
           </div>

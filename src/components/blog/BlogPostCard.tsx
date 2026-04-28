@@ -1,8 +1,7 @@
 import { motion } from "framer-motion";
 import { Calendar, Clock, Tag } from "lucide-react";
-import { Link } from "react-router-dom";
-import { BlogPost } from "../../types/blog";
-import { calculateReadingTime } from "../../utils/blogApi";
+import type { BlogPost } from "../../types/blog";
+import { calculateReadingTime } from "../../utils/readingTime";
 import { ShareButtons } from "./ShareButtons";
 
 interface BlogPostCardProps {
@@ -27,22 +26,22 @@ export const BlogPostCard = ({ post }: BlogPostCardProps) => {
       <div className="p-6">
         <div className="flex flex-wrap gap-2 mb-3">
           {post.categories.map((category) => (
-            <Link
+            <a
               key={category}
-              to={`/blog?category=${encodeURIComponent(category)}`}
+              href={`/blog?category=${encodeURIComponent(category)}`}
               className="inline-flex items-center gap-1 text-xs font-medium text-mint-600 bg-mint-50 px-2 py-1 rounded-full hover:bg-mint-100 transition-colors"
             >
               <Tag className="h-3 w-3" />
               {category}
-            </Link>
+            </a>
           ))}
         </div>
 
-        <Link to={`/blog/${post.slug}`}>
+        <a href={`/blog/${post.slug}`}>
           <h2 className="text-2xl font-serif font-semibold text-sage-800 mb-3 hover:text-mint-600 transition-colors">
             {post.title}
           </h2>
-        </Link>
+        </a>
 
         <div className="flex items-center text-sage-500 text-sm mb-4">
           <span className="flex items-center">
@@ -59,12 +58,12 @@ export const BlogPostCard = ({ post }: BlogPostCardProps) => {
         <p className="text-sage-600 mb-4 line-clamp-3">{post.excerpt}</p>
 
         <div className="flex justify-between items-center">
-          <Link
-            to={`/blog/${post.slug}`}
+          <a
+            href={`/blog/${post.slug}`}
             className="text-mint-600 font-medium hover:text-mint-700 transition-colors"
           >
             Lire la suite
-          </Link>
+          </a>
 
           <ShareButtons post={post} />
         </div>

@@ -1,0 +1,125 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/islands/Navbar';
+import Footer from '../components/layout/Footer.astro';
+import { buildPersonSchema } from '../utils/schema';
+
+const jsonLd = buildPersonSchema();
+---
+
+<Layout
+  title="À propos — Oriane Montabonnet, Psychopraticienne à Montpellier"
+  description="Découvrez le parcours d'Oriane Montabonnet, psychopraticienne à Montpellier. Formation TCCE, approche intégrative, accompagnement individuel, couple et famille."
+  canonical="https://omf-therapie.fr/a-propos"
+  jsonLd={jsonLd}
+>
+  <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded">
+    Aller au contenu principal
+  </a>
+
+  <Navbar client:load />
+
+  <main id="main-content" class="pt-20" tabindex="-1">
+    <section class="bg-sage-50 py-16 px-4">
+      <div class="max-w-4xl mx-auto">
+        <nav class="mb-6 text-sm text-sage-500" aria-label="Fil d'Ariane">
+          <ol class="flex items-center gap-2 flex-wrap" role="list">
+            <li role="listitem"><a href="/" class="hover:text-mint-600 transition-colors">Accueil</a></li>
+            <li role="listitem" aria-hidden="true">›</li>
+            <li role="listitem" aria-current="page" class="text-sage-700 font-medium">À propos</li>
+          </ol>
+        </nav>
+        <h1 class="font-serif text-3xl md:text-4xl lg:text-5xl text-sage-800 mb-6">Oriane Montabonnet</h1>
+        <p class="text-xl text-sage-600">Psychopraticienne à Montpellier — Approche intégrative TCCE</p>
+      </div>
+    </section>
+
+    <section class="max-w-4xl mx-auto px-4 py-12">
+      <div class="grid md:grid-cols-2 gap-12 items-start">
+        <div>
+          <img
+            src="/assets/about/oriane-montabonnet-1.webp"
+            alt="Oriane Montabonnet, psychopraticienne à Montpellier"
+            class="rounded-lg shadow-lg w-full"
+            width="600"
+            height="800"
+            loading="eager"
+          />
+        </div>
+        <div class="space-y-6">
+          <div>
+            <h2 class="font-serif text-2xl text-sage-800 mb-4">Ma Mission</h2>
+            <p class="text-sage-600 leading-relaxed">Les émotions, les pensées et les relations façonnent notre équilibre intérieur. Parfois, elles deviennent sources de doutes, de tensions ou de souffrance. Vous n'avez pas à traverser cela seul(e).</p>
+            <p class="text-sage-600 leading-relaxed mt-3">À travers la thérapie, je vous accompagne avec écoute et bienveillance pour vous aider à mieux comprendre ce que vous traversez et à retrouver un équilibre apaisé. Anxiété, estime de soi, troubles alimentaires, difficultés relationnelles… Chaque parcours est unique, et mon approche s'adapte à vos besoins, à votre rythme.</p>
+            <p class="text-sage-600 leading-relaxed mt-3">Ici, vous trouverez un espace sécurisant, où vous pourrez déposer vos pensées, explorer des solutions concrètes et avancer vers une vie plus sereine et alignée avec vous-même.</p>
+          </div>
+          <div>
+            <h2 class="font-serif text-2xl text-sage-800 mb-4">Mon Statut</h2>
+            <p class="text-sage-600 leading-relaxed">Je suis <strong>psychopraticienne</strong> — un titre professionnel qui désigne les praticiens en psychothérapie non réglementée en France. Mon approche est fondée sur les <strong>Thérapies Comportementales, Cognitives et Émotionnelles (TCCE)</strong>, un modèle validé scientifiquement.</p>
+            <p class="text-sage-600 leading-relaxed mt-3">En tant que psychopraticienne, mes séances ne sont pas remboursées par l'Assurance maladie. Certaines mutuelles peuvent proposer une prise en charge partielle.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-12 space-y-8">
+        <div>
+          <h2 class="font-serif text-2xl text-sage-800 mb-4">Mon Parcours</h2>
+          <p class="text-sage-600 leading-relaxed">Passionnée par le bien-être psychologique, j'accompagne celles et ceux qui traversent des périodes de doute, d'émotions intenses ou de questionnements, en leur offrant un espace bienveillant pour mieux comprendre et apaiser ce qu'ils vivent.</p>
+          <p class="text-sage-600 leading-relaxed mt-3">Diplômée en psychologie, spécialisée en TCCE, thérapie conjugale et familiale, ainsi qu'en nutrition et psyché, j'adopte une approche globale pour aider chacun à retrouver équilibre émotionnel, relations apaisées et bien-être physique.</p>
+        </div>
+
+        <div>
+          <h2 class="font-serif text-2xl text-sage-800 mb-4">Formation et Qualifications</h2>
+          <ul class="space-y-3 text-sage-600" aria-label="Formations et qualifications d'Oriane Montabonnet">
+            <li class="flex items-start gap-3">
+              <span class="text-mint-600 font-bold mt-1" aria-hidden="true">✓</span>
+              <span><strong>Formation en TCCE</strong> — Thérapies Comportementales, Cognitives et Émotionnelles</span>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-mint-600 font-bold mt-1" aria-hidden="true">✓</span>
+              <span><strong>Thérapie conjugale et familiale</strong> — Accompagnement des couples et des systèmes familiaux</span>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-mint-600 font-bold mt-1" aria-hidden="true">✓</span>
+              <span><strong>Nutrition et psyché</strong> — Lien entre alimentation, comportement et émotions</span>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-mint-600 font-bold mt-1" aria-hidden="true">✓</span>
+              <span><strong>Approche intégrative</strong> — Adaptation des techniques selon les besoins de chaque patient</span>
+            </li>
+          </ul>
+        </div>
+
+        <div>
+          <h2 class="font-serif text-2xl text-sage-800 mb-4">Mes Valeurs</h2>
+          <div class="grid md:grid-cols-3 gap-6 bg-sage-50 p-8 rounded-lg">
+            <div class="text-center">
+              <h3 class="font-serif text-xl font-semibold text-sage-800 mb-3">Bienveillance</h3>
+              <p class="text-sage-600">Un accompagnement sans jugement, dans le respect de chaque individu.</p>
+            </div>
+            <div class="text-center">
+              <h3 class="font-serif text-xl font-semibold text-sage-800 mb-3">Professionnalisme</h3>
+              <p class="text-sage-600">Une approche rigoureuse basée sur des méthodes éprouvées.</p>
+            </div>
+            <div class="text-center">
+              <h3 class="font-serif text-xl font-semibold text-sage-800 mb-3">Engagement</h3>
+              <p class="text-sage-600">Un suivi personnalisé et adapté à vos besoins spécifiques.</p>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h2 class="font-serif text-2xl text-sage-800 mb-4">Mon Cabinet à Montpellier</h2>
+          <p class="text-sage-600 leading-relaxed">Mon cabinet est situé au <strong>1086 Avenue Albert Einstein, 34000 Montpellier</strong>, facilement accessible depuis Castelnau-le-Lez, Lattes, Pérols et les communes voisines. Je reçois en consultation du lundi au vendredi, de 8h à 12h et de 14h à 19h.</p>
+          <div class="mt-6">
+            <a href="/contact" class="inline-block bg-mint-600 text-white px-6 py-3 rounded-lg hover:bg-mint-700 transition-colors font-medium">
+              Prendre rendez-vous
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <Footer />
+</Layout>

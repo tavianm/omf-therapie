@@ -1,4 +1,4 @@
-import { FAQItem } from "../../utils/schema";
+import type { FAQItem } from "../../utils/schema";
 
 interface FAQSectionProps {
   faqs: FAQItem[];

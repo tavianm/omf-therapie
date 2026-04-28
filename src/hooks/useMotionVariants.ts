@@ -1,4 +1,4 @@
-import { MotionProps } from "framer-motion";
+import type { MotionProps } from "framer-motion";
 
 interface MotionVariantOptions {
   duration?: number;

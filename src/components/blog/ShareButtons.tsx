@@ -1,5 +1,5 @@
 import { Facebook, Linkedin, Twitter } from "lucide-react";
-import { BlogPost } from "../../types/blog";
+import type { BlogPost } from "../../types/blog";
 
 interface ShareButtonsProps {
   post: BlogPost;

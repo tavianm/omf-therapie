@@ -1,0 +1,129 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Navbar from '../../components/islands/Navbar';
+import Footer from '../../components/layout/Footer.astro';
+import { buildFAQSchema, buildServiceSchema } from '../../utils/schema';
+
+const faqs = [
+  {
+    question: "À quoi sert une thérapie familiale ?",
+    answer: "La thérapie familiale améliore la communication et les dynamiques au sein de la famille. Elle permet de mettre des mots sur les tensions, de mieux comprendre les besoins de chacun et de trouver ensemble des modes de fonctionnement plus apaisés et respectueux.",
+  },
+  {
+    question: "Qui doit être présent en thérapie familiale ?",
+    answer: "Il n'est pas obligatoire que tous les membres de la famille soient présents à chaque séance. La thérapie s'adapte à ceux qui souhaitent s'impliquer dans la démarche. L'essentiel est la volonté de travailler ensemble sur les dynamiques relationnelles.",
+  },
+  {
+    question: "La thérapie familiale convient-elle aux adolescents ?",
+    answer: "Oui, la thérapie familiale est souvent le cadre idéal pour les adolescents en difficulté relationnelle avec leurs parents. Elle offre un espace sécurisé où chacun peut s'exprimer, être entendu et comprendre le point de vue de l'autre, sans que les tensions habituelles n'entravent le dialogue.",
+  },
+  {
+    question: "Combien de séances pour une thérapie familiale à Montpellier ?",
+    answer: "Le nombre de séances est variable selon la complexité de la situation familiale. En général, un suivi de 5 à 15 séances est engagé, avec une réévaluation régulière des objectifs et des progrès en accord avec la famille.",
+  },
+];
+
+const jsonLd = [
+  buildFAQSchema(faqs),
+  buildServiceSchema(
+    "Thérapie familiale à Montpellier",
+    "Accompagnement des conflits intergénérationnels, adolescents en difficulté et recompositions familiales par Oriane Montabonnet, psychopraticienne à Montpellier.",
+    "https://omf-therapie.fr/services/therapie-familiale"
+  ),
+];
+---
+
+<Layout
+  title="Thérapie familiale à Montpellier | Oriane Montabonnet — Psychopraticienne"
+  description="Thérapie familiale à Montpellier avec Oriane Montabonnet. Accompagnement des conflits intergénérationnels, adolescents en difficulté, recomposition familiale."
+  canonical="https://omf-therapie.fr/services/therapie-familiale"
+  jsonLd={jsonLd}
+>
+  <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded">
+    Aller au contenu principal
+  </a>
+
+  <Navbar client:load />
+
+  <main id="main-content" class="pt-20" tabindex="-1">
+    <section class="bg-sage-50 py-12 px-4">
+      <div class="max-w-4xl mx-auto">
+        <nav class="mb-6 text-sm text-sage-500" aria-label="Fil d'Ariane">
+          <ol class="flex items-center gap-2 flex-wrap" role="list">
+            <li role="listitem"><a href="/" class="hover:text-mint-600 transition-colors">Accueil</a></li>
+            <li role="listitem" aria-hidden="true">›</li>
+            <li role="listitem"><a href="/#services" class="hover:text-mint-600 transition-colors">Services</a></li>
+            <li role="listitem" aria-hidden="true">›</li>
+            <li role="listitem" aria-current="page" class="text-sage-700 font-medium">Thérapie familiale</li>
+          </ol>
+        </nav>
+        <h1 class="font-serif text-3xl md:text-4xl lg:text-5xl text-sage-800 mb-6">Thérapie familiale à Montpellier</h1>
+        <p class="text-xl text-sage-600 max-w-3xl leading-relaxed">La thérapie familiale avec Oriane Montabonnet, psychopraticienne à Montpellier, offre un espace de dialogue pour les familles traversant des tensions, des conflits intergénérationnels ou des transitions difficiles. L'objectif : restaurer la communication et retrouver un équilibre familial apaisé.</p>
+        <div class="mt-6">
+          <a href="/contact" class="inline-flex items-center gap-2 bg-mint-600 text-white px-6 py-3 rounded-lg hover:bg-mint-700 transition-colors font-medium">
+            Prendre rendez-vous
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <article class="max-w-4xl mx-auto px-4 py-12 space-y-12">
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">Pour qui est la thérapie familiale ?</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">La thérapie familiale s'adresse à toutes les configurations familiales confrontées à des difficultés relationnelles ou à des changements importants — il n'est pas nécessaire que la situation soit en crise pour en bénéficier.</p>
+        <ul class="space-y-2 text-sage-600" aria-label="Situations concernées par la thérapie familiale">
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Tensions intergénérationnelles chroniques ou conflits durables</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Adolescents en crise ou en opposition avec les parents</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Divorce ou séparation parentale difficile à traverser</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Familles recomposées en phase d'adaptation</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Deuil familial ou traumatisme partagé</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Conflits entre parents et enfants adultes</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Annonce d'un diagnostic (maladie grave, handicap) impactant toute la famille</li>
+        </ul>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">Comment se déroule une thérapie familiale ?</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">La thérapie familiale réunit deux membres de la famille ou plus dans un même espace thérapeutique, au cabinet du 1086 avenue Albert Einstein à Montpellier. Les séances durent de <strong class="font-semibold text-sage-700">55 minutes à 1h15</strong> selon le nombre de participants et la complexité de la situation. Tous les membres de la famille ne sont pas obligés d'être présents à chaque séance : <a href="/a-propos" class="text-mint-600 hover:text-mint-700 underline underline-offset-2">Oriane Montabonnet</a> adapte le format à ceux qui souhaitent s'impliquer dans la démarche.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">La première séance est consacrée à la présentation de chacun, à l'exposition des tensions vécues et à la définition des objectifs partagés. <a href="/a-propos" class="text-mint-600 hover:text-mint-700 underline underline-offset-2">Oriane Montabonnet</a> adopte une posture de facilitatrice neutre : elle veille à ce que chaque voix soit entendue, y compris celle des enfants ou adolescents, et guide la famille vers des modes d'interaction plus respectueux.</p>
+        <p class="text-sage-600 leading-relaxed">Le rythme habituel est d'une séance toutes les une à deux semaines. Un bilan intermédiaire est réalisé après 4 à 6 séances pour réévaluer les objectifs et ajuster l'accompagnement.</p>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">Mon approche : systémique et TCCE</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">La thérapie familiale proposée par <a href="/a-propos" class="text-mint-600 hover:text-mint-700 underline underline-offset-2">Oriane Montabonnet</a> combine une approche systémique — qui considère la famille comme un système dont chaque membre influence et est influencé par les autres — et les outils des Thérapies Comportementales, Cognitives et Émotionnelles (TCCE). Cette combinaison permet de cartographier les dynamiques familiales : les rôles implicites, les alliances, les patterns de communication et les schémas répétitifs qui génèrent de la souffrance.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">Concrètement, la séance peut conduire à identifier qu'un adolescent « fait problème » est en réalité le révélateur d'une tension entre les parents non exprimée ; ou qu'un conflit récurrent autour d'une question pratique cache un besoin de reconnaissance non formulé. En nommant ces dynamiques, la famille peut commencer à en sortir.</p>
+        <p class="text-sage-600 leading-relaxed">Des exercices pratiques sont proposés entre les séances : nouvelles façons de communiquer, rituels familiaux, exercices d'écoute active. L'objectif est de construire des outils durables, utilisables bien au-delà de la thérapie.</p>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">Durée et tarifs</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">Chaque séance de thérapie familiale dure <strong class="font-semibold text-sage-700">55 minutes à 1h15</strong> selon la configuration. Le tarif est de <strong class="font-semibold text-sage-700">80 € par séance</strong>.</p>
+        <p class="text-sage-600 leading-relaxed">Les honoraires ne sont pas remboursés par l'Assurance maladie. Certaines mutuelles proposent une prise en charge partielle — renseignez-vous auprès de votre complémentaire santé avant votre première consultation. Le règlement s'effectue en espèces ou par virement bancaire.</p>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">À Montpellier et dans l'Hérault</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">Le cabinet est situé au <strong class="font-semibold text-sage-700">1086 Avenue Albert Einstein, 34000 Montpellier</strong>, dans le quartier Hôpitaux-Facultés. Il est accessible en tramway (ligne 2) et facilement accessible en voiture depuis les communes voisines de l'Hérault : Castelnau-le-Lez, Lattes, Pérols, Saint-Jean-de-Védas, Jacou.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">Les séances se tiennent du lundi au vendredi, de 8h à 12h et de 14h à 19h. Si un membre de la famille ne peut pas se déplacer, une séance en visioconférence sécurisée peut être envisagée ponctuellement.</p>
+        <p class="text-sage-600 leading-relaxed">Vous souhaitez entamer une démarche familiale ? <a href="/contact" class="text-mint-600 hover:text-mint-700 underline underline-offset-2">Contactez Oriane Montabonnet</a> pour un premier échange confidentiel, sans engagement.</p>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-4">Questions fréquentes sur la thérapie familiale à Montpellier</h2>
+        <div class="space-y-6" itemscope itemtype="https://schema.org/FAQPage">
+          {faqs.map((faq) => (
+            <div class="border-l-4 border-mint-200 pl-4" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+              <h3 class="font-semibold text-sage-800 mb-2" itemprop="name">{faq.question}</h3>
+              <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+                <p class="text-sage-600" itemprop="text">{faq.answer}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </article>
+  </main>
+
+  <Footer />
+</Layout>

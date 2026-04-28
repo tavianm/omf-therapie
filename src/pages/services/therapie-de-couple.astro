@@ -1,0 +1,129 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Navbar from '../../components/islands/Navbar';
+import Footer from '../../components/layout/Footer.astro';
+import { buildFAQSchema, buildServiceSchema } from '../../utils/schema';
+
+const faqs = [
+  {
+    question: "Comment se passe une thérapie de couple à Montpellier ?",
+    answer: "Les séances de thérapie de couple durent 55 minutes et se déroulent dans un cadre neutre et confidentiel. Oriane Montabonnet accueille les deux partenaires ensemble et guide les échanges sans prendre parti, pour favoriser une communication constructive et une meilleure compréhension mutuelle.",
+  },
+  {
+    question: "La thérapie de couple peut-elle sauver une relation ?",
+    answer: "La thérapie de couple n'a pas pour objectif de « sauver » la relation à tout prix, mais d'améliorer la communication et de restaurer la compréhension entre les partenaires. Dans certains cas, elle aide à traverser une crise ; dans d'autres, elle accompagne vers une séparation plus apaisée et respectueuse.",
+  },
+  {
+    question: "Combien coûte une thérapie de couple à Montpellier ?",
+    answer: "Les tarifs des séances de thérapie de couple sont consultables sur la page Tarifs du site omf-therapie.fr. Certaines mutuelles proposent une prise en charge partielle des séances — renseignez-vous auprès de la vôtre.",
+  },
+  {
+    question: "Faut-il être marié pour consulter en thérapie de couple ?",
+    answer: "Non, la thérapie de couple est ouverte à tous les types de relations : couples mariés, pacsés, en concubinage, ou traversant des difficultés autour d'un projet parental. Ce qui compte, c'est la volonté des deux partenaires de travailler ensemble sur leur relation.",
+  },
+];
+
+const jsonLd = [
+  buildFAQSchema(faqs),
+  buildServiceSchema(
+    "Thérapie de couple à Montpellier",
+    "Accompagnement des conflits conjugaux et amélioration de la communication de couple par Oriane Montabonnet, psychopraticienne à Montpellier. Cabinet au 1086 Av. Albert Einstein.",
+    "https://omf-therapie.fr/services/therapie-de-couple"
+  ),
+];
+---
+
+<Layout
+  title="Thérapie de couple à Montpellier | Oriane Montabonnet — Psychopraticienne"
+  description="Thérapie de couple à Montpellier avec Oriane Montabonnet, psychopraticienne. Accompagnement des conflits conjugaux, communication, reconstruction du lien. Cabinet au 1086 Av. Albert Einstein."
+  canonical="https://omf-therapie.fr/services/therapie-de-couple"
+  jsonLd={jsonLd}
+>
+  <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded">
+    Aller au contenu principal
+  </a>
+
+  <Navbar client:load />
+
+  <main id="main-content" class="pt-20" tabindex="-1">
+    <section class="bg-sage-50 py-12 px-4">
+      <div class="max-w-4xl mx-auto">
+        <nav class="mb-6 text-sm text-sage-500" aria-label="Fil d'Ariane">
+          <ol class="flex items-center gap-2 flex-wrap" role="list">
+            <li role="listitem"><a href="/" class="hover:text-mint-600 transition-colors">Accueil</a></li>
+            <li role="listitem" aria-hidden="true">›</li>
+            <li role="listitem"><a href="/#services" class="hover:text-mint-600 transition-colors">Services</a></li>
+            <li role="listitem" aria-hidden="true">›</li>
+            <li role="listitem" aria-current="page" class="text-sage-700 font-medium">Thérapie de couple</li>
+          </ol>
+        </nav>
+        <h1 class="font-serif text-3xl md:text-4xl lg:text-5xl text-sage-800 mb-6">Thérapie de couple à Montpellier</h1>
+        <p class="text-xl text-sage-600 max-w-3xl leading-relaxed">La thérapie de couple avec Oriane Montabonnet, psychopraticienne à Montpellier, vous aide à améliorer votre communication, traverser les conflits et reconstruire le lien au sein de votre relation. Dans un cadre neutre et bienveillant, les deux partenaires sont accueillis pour avancer ensemble.</p>
+        <div class="mt-6">
+          <a href="/contact" class="inline-flex items-center gap-2 bg-mint-600 text-white px-6 py-3 rounded-lg hover:bg-mint-700 transition-colors font-medium">
+            Prendre rendez-vous
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <article class="max-w-4xl mx-auto px-4 py-12 space-y-12">
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">Pour qui est la thérapie de couple ?</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">La thérapie de couple s'adresse à tous les types de partenaires — mariés, pacsés, en concubinage — qui traversent des difficultés relationnelles ou souhaitent renforcer leur lien avant qu'une crise ne s'installe.</p>
+        <ul class="space-y-2 text-sage-600" aria-label="Situations fréquentes en thérapie de couple">
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Conflits répétitifs sans issue apparente</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Manque de communication ou incompréhension mutuelle chronique</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Infidélité, trahison et reconstruction de la confiance</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Perte de désir ou d'intimité dans la relation</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Préparation à la parentalité ou difficultés co-parentales</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Transition de vie impactant le couple (déménagement, carrière, deuil)</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Séparation difficile à traverser sereinement</li>
+        </ul>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">Comment se déroule une thérapie de couple ?</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">La thérapie de couple repose sur des séances de 55 minutes au cabinet du 1086 avenue Albert Einstein à Montpellier. Les deux partenaires sont accueillis ensemble dans un espace neutre et confidentiel. <a href="/a-propos" class="text-mint-600 hover:text-mint-700 underline underline-offset-2">Oriane Montabonnet</a> guide les échanges sans prendre parti pour l'un ou l'autre : son rôle est de faciliter une communication constructive et d'aider chaque partenaire à exprimer ses besoins et à entendre ceux de l'autre.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">Des séances individuelles alternées peuvent être proposées ponctuellement, selon la dynamique du suivi, pour permettre à chacun d'explorer sa propre part dans la relation. L'objectif n'est pas de « sauver le couple à tout prix », mais d'améliorer la communication et la compréhension mutuelle — que cela conduise à une reconstruction du lien ou à une séparation plus apaisée.</p>
+        <p class="text-sage-600 leading-relaxed">La fréquence habituelle est d'une séance toutes les une à deux semaines. Un premier bilan est établi après 4 à 6 séances pour réévaluer les objectifs ensemble.</p>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">Mon approche : les TCCE appliquées au couple</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">Formée aux Thérapies Comportementales, Cognitives et Émotionnelles (TCCE), <a href="/a-propos" class="text-mint-600 hover:text-mint-700 underline underline-offset-2">Oriane Montabonnet</a> s'appuie sur des outils éprouvés scientifiquement pour travailler les dynamiques de couple. La thérapie de couple en TCCE vise à identifier les schémas de communication dysfonctionnels qui s'installent souvent sans que les partenaires en soient conscients : escalade de conflits, retrait émotionnel, interprétations négatives systématiques.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">Des techniques concrètes sont intégrées au suivi : écoute active, communication non violente, gestion des déclencheurs émotionnels et exercices à pratiquer entre les séances. Ces outils permettent aux partenaires de reprendre le contrôle sur leurs réactions et de créer de nouvelles façons d'interagir.</p>
+        <p class="text-sage-600 leading-relaxed">L'approche TCCE est particulièrement adaptée aux conflits récurrents, aux problèmes de communication et à la reconstruction de la confiance après une rupture de l'intimité.</p>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">Durée et tarifs</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">Chaque séance de thérapie de couple dure <strong class="font-semibold text-sage-700">55 minutes</strong>. Le tarif est de <strong class="font-semibold text-sage-700">80 € par séance</strong>.</p>
+        <p class="text-sage-600 leading-relaxed">Les honoraires ne sont pas remboursés par l'Assurance maladie. Certaines mutuelles proposent toutefois une prise en charge partielle des séances de psychothérapie — renseignez-vous auprès de votre complémentaire santé. Le règlement s'effectue en espèces ou par virement bancaire à l'issue de chaque séance.</p>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">À Montpellier et dans l'Hérault</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">Le cabinet est situé au <strong class="font-semibold text-sage-700">1086 Avenue Albert Einstein, 34000 Montpellier</strong>, dans le quartier Hôpitaux-Facultés, facilement accessible en tramway (ligne 2) et en voiture. Les séances ont lieu du lundi au vendredi, de 8h à 12h et de 14h à 19h.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">De nombreux couples viennent depuis Castelnau-le-Lez, Lattes, Pérols, Villeneuve-lès-Maguelone ou d'autres communes de l'Hérault (34). Des séances en visioconférence sécurisée sont disponibles pour les couples dont l'un des partenaires ne peut pas se déplacer.</p>
+        <p class="text-sage-600 leading-relaxed">Vous souhaitez commencer ? <a href="/contact" class="text-mint-600 hover:text-mint-700 underline underline-offset-2">Contactez Oriane Montabonnet</a> pour un premier échange et convenir d'une date — la démarche est confidentielle et sans engagement.</p>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-4">Questions fréquentes sur la thérapie de couple à Montpellier</h2>
+        <div class="space-y-6" itemscope itemtype="https://schema.org/FAQPage">
+          {faqs.map((faq) => (
+            <div class="border-l-4 border-mint-200 pl-4" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+              <h3 class="font-semibold text-sage-800 mb-2" itemprop="name">{faq.question}</h3>
+              <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+                <p class="text-sage-600" itemprop="text">{faq.answer}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </article>
+  </main>
+
+  <Footer />
+</Layout>

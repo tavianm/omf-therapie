@@ -2,7 +2,7 @@ import { Mail, MapPin, Phone } from "lucide-react";
 import { Toaster } from "react-hot-toast";
 import { COMPANY_NAME, CONTACT_INFO } from "../../config/global.config";
 import { useClipboard } from "../../hooks/useClipboard";
-import { ClassNames, ContactItem } from "../common/ContactItem";
+import { type ClassNames, ContactItem } from "../common/ContactItem";
 import { FooterHeading } from "../common/FooterHeading";
 
 export const FooterContact = () => {

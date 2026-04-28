@@ -1,6 +1,5 @@
 import { motion } from "framer-motion";
 import { ArrowRight, Calendar } from "lucide-react";
-import { Link } from "react-router-dom";
 import { useMotionVariants } from "../../hooks/useMotionVariants";
 
 export const HeroSection = () => {
@@ -24,7 +23,7 @@ export const HeroSection = () => {
           className="w-full h-full object-cover"
           loading="eager"
           decoding="async"
-          fetchpriority="high"
+          fetchPriority="high"
           width="800"
           height="600"
         />
@@ -48,14 +47,14 @@ export const HeroSection = () => {
               role="list"
             >
               <li role="listitem">
-                <Link
-                  to="../contact"
+                <a
+                  href="/contact"
                   className="btn-primary"
                   aria-label="Prendre rendez-vous"
                 >
                   <Calendar className="w-5 h-5" aria-hidden="true" />
                   Prendre rendez-vous
-                </Link>
+                </a>
               </li>
               <li role="listitem" className="flex">
                 <a

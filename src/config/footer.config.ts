@@ -1,4 +1,4 @@
-import { FooterLink } from "../types/footer-links";
+import type { FooterLink } from "../types/footer-links";
 
 
 

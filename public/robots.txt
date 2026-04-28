@@ -1,4 +1,5 @@
 User-agent: *
 Allow: /
+Disallow: /accessibilite/
 
-Sitemap: https://omf-therapie.fr/sitemap.xml
+Sitemap: https://omf-therapie.fr/sitemap-index.xml

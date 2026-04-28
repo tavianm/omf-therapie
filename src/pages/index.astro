@@ -1,0 +1,70 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/islands/Navbar';
+import Footer from '../components/layout/Footer.astro';
+import { HeroSection } from '../components/home/HeroSection';
+import { IntroSection } from '../components/home/IntroSection';
+import AboutSection from '../components/home/AboutSection';
+import ServicesSection from '../components/home/ServicesSection';
+import ProcessSection from '../components/home/ProcessSection';
+import QualificationsSection from '../components/home/QualificationsSection';
+import PricingSection from '../components/home/PricingSection';
+import FAQSection from '../components/home/FAQSection';
+import LocalAreaSection from '../components/home/LocalAreaSection';
+import {
+  buildLocalBusinessSchema,
+  buildPersonSchema,
+  buildFAQSchema,
+  FAQ_ITEMS,
+} from '../utils/schema';
+
+const jsonLd = [
+  buildLocalBusinessSchema(),
+  buildPersonSchema(),
+  buildFAQSchema(FAQ_ITEMS),
+];
+---
+
+<Layout
+  title="Oriane Montabonnet — Psychopraticienne à Montpellier | Thérapie individuelle, couple, famille"
+  description="Oriane Montabonnet, psychopraticienne à Montpellier, vous accompagne en thérapie individuelle, de couple et familiale. Cabinet au 1086 Av. Albert Einstein, Montpellier."
+  canonical="https://omf-therapie.fr/"
+  jsonLd={jsonLd}
+>
+  <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded">
+    Aller au contenu principal
+  </a>
+
+  <Navbar client:load />
+
+  <main id="main-content" class="pt-20" tabindex="-1">
+    <HeroSection client:load />
+    <IntroSection client:load />
+
+    <section id="about" aria-label="À propos">
+      <AboutSection client:visible />
+    </section>
+
+    <section id="services" aria-label="Domaines d'expertise">
+      <ServicesSection client:visible />
+    </section>
+
+    <section id="process" aria-label="Processus thérapeutique">
+      <ProcessSection client:visible />
+    </section>
+
+    <LocalAreaSection client:visible />
+
+    <section id="qualifications" aria-label="Formations et qualifications">
+      <QualificationsSection client:visible />
+    </section>
+
+    <section id="pricing" aria-label="Tarifs des séances">
+      <PricingSection client:visible />
+    </section>
+
+    <FAQSection faqs={FAQ_ITEMS} client:visible />
+  </main>
+
+  <Footer />
+</Layout>

@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { Leaf } from "lucide-react";
-import { BlogPost } from "../../types/blog";
+import type { BlogPost } from "../../types/blog";
 import { BlogPostCard } from "./BlogPostCard";
 
 interface BlogListProps {

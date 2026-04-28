@@ -1,10 +1,9 @@
-import { Link } from "react-router-dom";
 import type { NavigationItem } from "../../types/navigation";
 
 interface DesktopNavProps {
   navigation: NavigationItem[];
   isActive: (href: string, path: string) => boolean;
-  navigateToSection: (href: string) => Promise<void>;
+  navigateToSection: (href: string) => void;
 }
 
 export const DesktopNav = ({
@@ -52,8 +51,8 @@ const ContactLink = ({
   item: NavigationItem;
   isActive: (href: string, path: string) => boolean;
 }) => (
-  <Link
-    to={"../" + item.href}
+  <a
+    href={item.href}
     className={`${
       isActive(item.href, item.path)
         ? "text-mint-600"
@@ -62,7 +61,7 @@ const ContactLink = ({
     aria-current={isActive(item.href, item.path) ? "page" : undefined}
   >
     {item.name}
-  </Link>
+  </a>
 );
 
 const SectionLink = ({
@@ -72,7 +71,7 @@ const SectionLink = ({
 }: {
   item: NavigationItem;
   isActive: (href: string, path: string) => boolean;
-  navigateToSection: (href: string) => Promise<void>;
+  navigateToSection: (href: string) => void;
 }) => (
   <button
     onClick={() => navigateToSection(item.href)}
