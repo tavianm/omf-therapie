@@ -90,7 +90,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Erreur inconnue';
-    console.error('[resend] Exception lors de l'envoi de l'email :', message);
+    console.error(`[resend] Exception lors de l'envoi de l'email :`, message);
     return {
       success: false,
       error: message,
