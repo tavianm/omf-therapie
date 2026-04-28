@@ -32,9 +32,9 @@ author:
 
 <h2>Comment se déroule une séance de thérapie de couple à Montpellier ?</h2>
 
-<p>Une séance de thérapie de couple dure généralement <strong>55 minutes</strong>. Lors de la première rencontre, le thérapeute prend le temps de recueillir l'histoire du couple, les motifs de consultation et les attentes de chacun.</p>
+<p>Une séance de thérapie de couple dure généralement <strong>55 minutes</strong>. Lors de la première rencontre, je prends le temps de recueillir l'histoire du couple, les motifs de consultation et les attentes de chacun.</p>
 
-<p>Le rôle du thérapeute est d'être <strong>strictement neutre</strong> : il ne prend pas parti, ne juge pas et ne cherche pas à désigner un responsable. Son objectif est de créer les conditions pour que chaque partenaire puisse s'exprimer et être entendu.</p>
+<p>Mon rôle est d'être <strong>strictement neutre</strong> : je ne prends pas parti, ne juge pas et ne cherche pas à désigner un responsable. Mon objectif est de créer les conditions pour que chaque partenaire puisse s'exprimer et être entendu.</p>
 
 <p>Au fil des séances, différents outils sont utilisés :</p>
 
@@ -59,7 +59,7 @@ author:
 
 <h2>Combien coûte une thérapie de couple à Montpellier ?</h2>
 
-<p>À Montpellier, une séance de thérapie de couple avec Oriane Montabonnet est facturée <strong>80 € par séance</strong>. La thérapie de couple n'est pas remboursée par l'Assurance maladie.</p>
+<p>À Montpellier, une séance de thérapie de couple est facturée <strong>80 € par séance</strong>. La thérapie de couple n'est pas remboursée par l'Assurance maladie.</p>
 
 <p>En revanche, de nombreuses mutuelles proposent un remboursement partiel des consultations de psychothérapie. Renseignez-vous auprès de votre complémentaire santé pour connaître votre niveau de couverture avant de commencer le suivi.</p>
 
@@ -67,6 +67,6 @@ author:
 
 <h2>Prendre rendez-vous pour une thérapie de couple à Montpellier</h2>
 
-<p>Oriane Montabonnet reçoit les couples dans son cabinet du <strong>1086 Avenue Albert Einstein, 34000 Montpellier</strong>, en semaine de 8h à 19h. Son approche TCCE (Thérapies Comportementales, Cognitives et Émotionnelles) offre un cadre structuré et bienveillant, adapté à chaque couple.</p>
+<p>Je reçois les couples dans mon cabinet du <strong>1086 Avenue Albert Einstein, 34000 Montpellier</strong>, en semaine de 8h à 19h. Mon approche TCCE (Thérapies Comportementales, Cognitives et Émotionnelles) offre un cadre structuré et bienveillant, adapté à chaque couple.</p>
 
-<p>Pour en savoir plus sur son accompagnement, consultez la page <a href="/services/therapie-de-couple">thérapie de couple</a> ou <a href="/contact">prenez rendez-vous directement</a>. Le premier entretien est l'occasion de poser toutes vos questions sans engagement.</p>
+<p>Pour en savoir plus sur mon accompagnement, consultez la page <a href="/services/therapie-de-couple">thérapie de couple</a> ou <a href="/contact">prenez rendez-vous directement</a>. Le premier entretien est l'occasion de poser toutes vos questions sans engagement.</p>

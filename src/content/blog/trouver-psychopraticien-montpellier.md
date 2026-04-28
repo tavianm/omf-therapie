@@ -54,14 +54,14 @@ author:
 <p>À Montpellier, les séances de psychopraticien se situent généralement entre 50 € et 80 €. Vérifiez auprès de votre mutuelle si elle prend en charge ce type de consultation.</p>
 
 <h3>4. Vérifiez la localisation et les horaires</h3>
-<p>Le cabinet d'Oriane Montabonnet est situé au <strong>1086 Avenue Albert Einstein, 34000 Montpellier</strong>, accessible depuis le centre-ville, Castelnau-le-Lez, Lattes et Pérols. Horaires : lundi–vendredi, 8h–12h et 14h–19h.</p>
+<p>Mon cabinet est situé au <strong>1086 Avenue Albert Einstein, 34000 Montpellier</strong>, accessible depuis le centre-ville, Castelnau-le-Lez, Lattes et Pérols. Horaires : lundi–vendredi, 8h–12h et 14h–19h.</p>
 
 <h2>Quelles approches thérapeutiques existe-t-il à Montpellier ?</h2>
 
 <p>Au-delà du titre du professionnel, l'approche thérapeutique qu'il utilise est un critère de choix essentiel. Voici les principales méthodes pratiquées à Montpellier :</p>
 
 <ul>
-  <li><strong>Les TCCE (Thérapies Comportementales, Cognitives et Émotionnelles)</strong> : approche structurée, orientée vers le présent et les solutions. Parmi les mieux évaluées scientifiquement pour l'anxiété, la dépression, les TCA et les troubles de la personnalité. C'est l'approche pratiquée par Oriane Montabonnet.</li>
+  <li><strong>Les TCCE (Thérapies Comportementales, Cognitives et Émotionnelles)</strong> : approche structurée, orientée vers le présent et les solutions. Parmi les mieux évaluées scientifiquement pour l'anxiété, la dépression, les TCA et les troubles de la personnalité. C'est l'approche que je pratique.</li>
   <li><strong>L'EMDR (Eye Movement Desensitization and Reprocessing)</strong> : recommandée pour le traitement des traumatismes et du stress post-traumatique. Peut être intégrée aux TCCE.</li>
   <li><strong>La thérapie psychanalytique ou psychodynamique</strong> : travail en profondeur sur l'histoire de vie, les conflits inconscients et les patterns relationnels. Convient aux personnes qui souhaitent une exploration de longue durée.</li>
   <li><strong>L'ACT (Acceptance and Commitment Therapy)</strong> : approche de troisième vague des TCC, qui intègre la pleine conscience et le travail sur les valeurs personnelles.</li>
@@ -83,6 +83,6 @@ author:
 
 <h2>Prendre rendez-vous avec un psychopraticien à Montpellier</h2>
 
-<p>Oriane Montabonnet, psychopraticienne à Montpellier, propose des séances de <strong>thérapie individuelle</strong>, de <strong>thérapie de couple</strong> et de <strong>thérapie familiale</strong>, ainsi qu'un accompagnement spécialisé pour les <strong>troubles alimentaires</strong>.</p>
+<p>Je propose des séances de <strong>thérapie individuelle</strong>, de <strong>thérapie de couple</strong> et de <strong>thérapie familiale</strong>, ainsi qu'un accompagnement spécialisé pour les <strong>troubles alimentaires</strong>.</p>
 
-<p>Son approche est fondée sur les TCCE (Thérapies Comportementales, Cognitives et Émotionnelles), une méthode validée scientifiquement, adaptée à chaque patient. Pour prendre rendez-vous, vous pouvez utiliser le <a href="/contact">formulaire de contact</a> ou réserver directement en ligne sur psychologue.net.</p>
+<p>Mon approche est fondée sur les TCCE (Thérapies Comportementales, Cognitives et Émotionnelles), une méthode validée scientifiquement, adaptée à chaque patient. Pour prendre rendez-vous, vous pouvez utiliser le <a href="/contact">formulaire de contact</a> ou réserver directement en ligne sur psychologue.net.</p>

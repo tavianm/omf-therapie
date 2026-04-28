@@ -80,6 +80,6 @@ author:
 
 <h2>Consultation pour l'anxiété à Montpellier</h2>
 
-<p>Oriane Montabonnet, psychopraticienne à Montpellier, accompagne les personnes souffrant d'anxiété, de stress chronique et de troubles apparentés dans son cabinet du <strong>1086 Avenue Albert Einstein, 34000 Montpellier</strong>. Elle reçoit également les patients de Castelnau-le-Lez, Lattes, Pérols et des communes voisines.</p>
+<p>J'accompagne les personnes souffrant d'anxiété, de stress chronique et de troubles apparentés dans mon cabinet du <strong>1086 Avenue Albert Einstein, 34000 Montpellier</strong>. Je reçois également les patients de Castelnau-le-Lez, Lattes, Pérols et des communes voisines.</p>
 
-<p>Son approche TCCE est adaptée à chaque patient : les séances combinent psychoéducation, restructuration cognitive, techniques de relaxation et exposition progressive selon vos besoins spécifiques. Pour prendre rendez-vous ou poser une question, utilisez le <a href="/contact">formulaire de contact</a>.</p>
+<p>Mon approche TCCE est adaptée à chaque patient : les séances combinent psychoéducation, restructuration cognitive, techniques de relaxation et exposition progressive selon vos besoins spécifiques. Pour prendre rendez-vous ou poser une question, utilisez le <a href="/contact">formulaire de contact</a>.</p>
