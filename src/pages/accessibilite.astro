@@ -10,7 +10,7 @@ import Footer from '../components/layout/Footer.astro';
   canonical="https://omf-therapie.fr/accessibilite"
   noindex={true}
 >
-  <Navbar client:load />
+  <Navbar client:load isHomePage={false} />
 
   <main id="main-content" class="pt-20" tabindex="-1">
     <section class="max-w-3xl mx-auto px-4 py-8 md:py-10">

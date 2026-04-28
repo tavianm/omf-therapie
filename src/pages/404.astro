@@ -9,7 +9,7 @@ import Footer from '../components/layout/Footer.astro';
   description="La page que vous recherchez n'existe pas ou a été déplacée."
   noindex={true}
 >
-  <Navbar client:load />
+  <Navbar client:load isHomePage={false} />
 
   <main id="main-content" class="pt-20 min-h-[70vh] flex items-center" tabindex="-1">
     <div class="max-w-2xl mx-auto px-4 text-center py-20">

@@ -8,4 +8,5 @@ export interface NavigationItem {
 
 export interface NavbarProps {
   className?: string;
+  isHomePage?: boolean;
 }

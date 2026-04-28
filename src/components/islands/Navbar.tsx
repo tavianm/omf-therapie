@@ -6,7 +6,7 @@ import { Logo } from "../navigation/Logo";
 import { MobileNav } from "../navigation/MobileNav";
 import { useNavigationItems } from "../navigation/NavigationItems";
 
-const Navbar = memo(({ className = "" }: NavbarProps) => {
+const Navbar = memo(({ className = "", isHomePage: isHomePageProp }: NavbarProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("home");
   const navigation = useNavigationItems();
@@ -14,7 +14,9 @@ const Navbar = memo(({ className = "" }: NavbarProps) => {
   const { scrollToSection } = useScrollToSection({});
 
   const isHomePage =
-    typeof window !== "undefined" && window.location.pathname === "/";
+    isHomePageProp !== undefined
+      ? isHomePageProp
+      : typeof window !== "undefined" && window.location.pathname === "/";
 
   const handleScroll = useCallback(() => {
     if (isHomePage) {

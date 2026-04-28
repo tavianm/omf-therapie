@@ -9,6 +9,7 @@ const ServicesSection = () => {
     {
       icon: Brain,
       title: "Problématiques personnelles",
+      href: "/services/therapie-individuelle",
       descriptions: [
         "Mal-être psychologique, perte de repères",
         "États dépressifs, tristesse persistante",
@@ -22,6 +23,7 @@ const ServicesSection = () => {
     {
       icon: Apple,
       title: "Problématiques alimentaires",
+      href: "/services/troubles-alimentaires",
       descriptions: [
         "Alimentation émotionnelle, compulsions alimentaires",
         "Alimentation désordonnée, relation conflictuelle avec la nourriture",
@@ -35,6 +37,7 @@ const ServicesSection = () => {
     {
       icon: Users,
       title: "Problématiques conjugales & familiales",
+      href: "/services/therapie-de-couple",
       descriptions: [
         "Tensions et difficultés relationnelles",
         "Communication compliquée au sein du couple ou de la famille",
@@ -68,13 +71,19 @@ const ServicesSection = () => {
               <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-4">
                 {service.title}
               </h3>
-              <ul className="list-disc pl-3">
+              <ul className="list-disc pl-3 mb-6">
                 {service.descriptions?.map((description, index) => (
                   <li key={index} className="text-sage-600">
                     {description}
                   </li>
                 ))}
               </ul>
+              <a
+                href={service.href}
+                className="inline-flex items-center text-mint-600 hover:text-mint-700 font-medium transition-colors duration-200"
+              >
+                En savoir plus →
+              </a>
             </motion.div>
           ))}
         </div>

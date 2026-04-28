@@ -54,7 +54,7 @@ const readingTime = calculateReadingTime(entry.body ?? '');
     Aller au contenu principal
   </a>
 
-  <Navbar client:load />
+  <Navbar client:load isHomePage={false} />
 
   <main id="main-content" class="pt-20" tabindex="-1">
     <div class="max-w-4xl mx-auto px-4 py-12">
