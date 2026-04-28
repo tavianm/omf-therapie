@@ -7,7 +7,7 @@ import netlify from '@astrojs/netlify';
 export default defineConfig({
   site: 'https://omf-therapie.fr',
   trailingSlash: 'always',
-  output: 'static',
+  output: 'hybrid',
   adapter: netlify(),
   integrations: [
     react(),
