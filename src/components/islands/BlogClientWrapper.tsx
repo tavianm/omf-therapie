@@ -13,7 +13,10 @@ interface Props {
 
 export function BlogClientWrapper({ initialPosts }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return new URLSearchParams(window.location.search).get('category');
+  });
   const [currentPage, setCurrentPage] = useState(1);
 
   // Compute categories from all non-disabled posts
