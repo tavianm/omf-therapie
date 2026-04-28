@@ -27,3 +27,8 @@ dist/
 
 # Astro generated
 .astro/
+
+# Audit artifacts
+audit-screenshots/
+audit-results.json
+.claude/
