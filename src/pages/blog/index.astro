@@ -7,7 +7,10 @@ import { BlogClientWrapper } from '../../components/islands/BlogClientWrapper';
 import { collectionEntryToBlogPost } from '../../utils/blogAdapter';
 
 const entries = await getCollection('blog');
-const allPosts = entries.map(collectionEntryToBlogPost);
+const sortedEntries = entries.sort((a, b) =>
+  new Date(b.data.dateIso).getTime() - new Date(a.data.dateIso).getTime()
+);
+const allPosts = sortedEntries.map(collectionEntryToBlogPost);
 ---
 
 <Layout

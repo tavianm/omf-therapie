@@ -2,8 +2,8 @@
 id: gestion-stress-anxiete-montpellier
 title: "Anxiété et stress à Montpellier : comment s'en libérer avec la thérapie"
 excerpt: "L'anxiété touche de nombreuses personnes à Montpellier et en Hérault. Quelles solutions existent ? La thérapie TCCE est l'une des approches les plus efficaces. Oriane Montabonnet vous accompagne."
-date: "29 janvier 2025"
-dateIso: "2025-01-29"
+date: "28 avril 2026"
+dateIso: "2026-04-28"
 categories:
   - "Anxiété"
   - "Stress"

@@ -2,8 +2,8 @@
 id: therapie-couple-montpellier-guide
 title: "Thérapie de couple à Montpellier : quand consulter et comment ça se passe"
 excerpt: "La thérapie de couple permet de surmonter les crises conjugales et d'améliorer la communication. Découvrez comment se passe une thérapie de couple à Montpellier avec Oriane Montabonnet, psychopraticienne."
-date: "22 janvier 2025"
-dateIso: "2025-01-22"
+date: "27 avril 2026"
+dateIso: "2026-04-27"
 categories:
   - "Thérapie de couple"
   - "Montpellier"
