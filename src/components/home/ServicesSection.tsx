@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Apple, Brain, Users } from "lucide-react";
+import { Apple, Brain, Home, Users } from "lucide-react";
 import { useMotionVariants } from "../../hooks/useMotionVariants";
 
 const ServicesSection = () => {
@@ -48,6 +48,20 @@ const ServicesSection = () => {
         "Deuil et gestion des pertes au sein du cercle familial",
       ],
     },
+    {
+      icon: Home,
+      title: "Thérapie familiale",
+      href: "/services/therapie-familiale",
+      descriptions: [
+        "Tensions intergénérationnelles chroniques ou conflits durables",
+        "Adolescents en crise ou en opposition avec les parents",
+        "Divorce ou séparation parentale difficile à traverser",
+        "Familles recomposées en phase d'adaptation",
+        "Deuil familial ou traumatisme partagé",
+        "Conflits entre parents et enfants adultes",
+        "Annonce d'un diagnostic impactant toute la famille",
+      ],
+    },
   ];
 
   return (
@@ -60,7 +74,7 @@ const ServicesSection = () => {
           </p>
         </motion.div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
+        <div className="grid md:grid-cols-2 gap-6 md:gap-8">
           {services.map((service, index) => (
             <motion.div
               key={index}
