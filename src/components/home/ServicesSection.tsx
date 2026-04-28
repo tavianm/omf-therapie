@@ -2,11 +2,7 @@ import { motion } from "framer-motion";
 import { Apple, Brain, Home, Users } from "lucide-react";
 import { useMotionVariants } from "../../hooks/useMotionVariants";
 
-interface Props {
-  detailMode?: boolean;
-}
-
-const ServicesSection = ({ detailMode = false }: Props) => {
+const ServicesSection = () => {
   const { fadeInUp, fadeIn } = useMotionVariants();
 
   const services = [
@@ -97,7 +93,7 @@ const ServicesSection = ({ detailMode = false }: Props) => {
                 ))}
               </ul>
               <a
-                href={detailMode ? service.href : "/services"}
+                href={service.href}
                 className="inline-flex items-center text-mint-600 hover:text-mint-700 font-medium transition-colors duration-200"
               >
                 En savoir plus →
