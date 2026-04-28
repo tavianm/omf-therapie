@@ -1,0 +1,63 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/islands/Navbar';
+import Footer from '../components/layout/Footer.astro';
+import { ContactForm } from '../components/contact/ContactForm';
+import { ContactInfo } from '../components/contact/ContactInfo';
+import { LocationMap } from '../components/contact/LocationMap';
+import { buildLocalBusinessSchema } from '../utils/schema';
+
+const jsonLd = buildLocalBusinessSchema();
+---
+
+<Layout
+  title="Contact | Oriane Montabonnet — Psychopraticienne à Montpellier"
+  description="Contactez Oriane Montabonnet, psychopraticienne à Montpellier. Cabinet au 1086 Av. Albert Einstein, 34000 Montpellier. Lundi–Vendredi 8h–12h et 14h–19h."
+  canonical="https://omf-therapie.fr/contact"
+  jsonLd={jsonLd}
+>
+  <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded">
+    Aller au contenu principal
+  </a>
+
+  <Navbar client:load />
+
+  <main id="main-content" class="pt-20" tabindex="-1">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div class="text-center mb-8">
+        <h1 class="text-3xl md:text-4xl font-serif font-semibold text-sage-800 mt-6">Contact</h1>
+        <p class="text-sage-600 mt-3 text-lg">Je suis à votre écoute pour toute question ou prise de rendez-vous</p>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-8 md:gap-12 mb-12">
+        <div class="space-y-8">
+          <!-- Online booking box -->
+          <div>
+            <h2 class="text-2xl font-serif font-semibold text-sage-800 mb-6">Prendre rendez-vous en ligne</h2>
+            <div class="bg-white p-8 rounded-lg shadow-sm">
+              <p class="text-sage-600 mb-6">Réservez votre consultation en quelques clics via notre plateforme sécurisée Psychologue.net.</p>
+              <a
+                href="https://www.psychologue.net/cabinets/oriane-montabonnet"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn-primary w-full justify-center inline-flex items-center"
+                aria-label="Réserver une consultation en ligne (s'ouvre dans un nouvel onglet)"
+              >
+                Réserver une consultation
+              </a>
+            </div>
+          </div>
+          <ContactInfo client:visible />
+        </div>
+
+        <ContactForm client:load />
+
+        <div class="md:col-span-2 md:-mt-8">
+          <LocationMap client:visible />
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <Footer />
+</Layout>

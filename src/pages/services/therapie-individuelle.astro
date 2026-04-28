@@ -1,0 +1,106 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Navbar from '../../components/islands/Navbar';
+import Footer from '../../components/layout/Footer.astro';
+import { buildFAQSchema, buildServiceSchema } from '../../utils/schema';
+
+const faqs = [
+  {
+    question: "Qu'est-ce que la thérapie individuelle à Montpellier ?",
+    answer: "La thérapie individuelle est un accompagnement personnalisé en tête-à-tête avec un thérapeute. À Montpellier, Oriane Montabonnet propose des séances de 55 minutes pour vous aider à traverser des difficultés émotionnelles, relationnelles ou comportementales, à votre rythme.",
+  },
+  {
+    question: "Combien de séances faut-il pour un suivi thérapeutique à Montpellier ?",
+    answer: "Le nombre de séances varie selon vos objectifs et votre situation. Certaines personnes constatent des changements en 6 à 10 séances ; d'autres choisissent un accompagnement plus long. Oriane Montabonnet évalue avec vous au fil des séances.",
+  },
+  {
+    question: "La thérapie individuelle est-elle remboursée à Montpellier ?",
+    answer: "Les séances de psychopraticienne ne sont pas remboursées par la Sécurité sociale. Certaines mutuelles proposent une prise en charge partielle — renseignez-vous auprès de la vôtre avant votre première consultation.",
+  },
+  {
+    question: "Comment se déroule la première séance de thérapie à Montpellier ?",
+    answer: "La première séance est un espace d'échange libre. Vous exposez ce qui vous amène, vos attentes. Oriane Montabonnet vous écoute sans jugement et vous propose une orientation thérapeutique adaptée à votre situation.",
+  },
+];
+
+const jsonLd = [
+  buildFAQSchema(faqs),
+  buildServiceSchema(
+    "Thérapie individuelle à Montpellier",
+    "Accompagnement thérapeutique individuel par Oriane Montabonnet, psychopraticienne à Montpellier. Séances de 55 min pour anxiété, dépression, estime de soi, développement personnel.",
+    "https://omf-therapie.fr/services/therapie-individuelle"
+  ),
+];
+---
+
+<Layout
+  title="Thérapie individuelle à Montpellier | Oriane Montabonnet — Psychopraticienne"
+  description="Thérapie individuelle à Montpellier avec Oriane Montabonnet, psychopraticienne. Séances de 55 min pour anxiété, dépression, développement personnel. Cabinet 1086 Av. Albert Einstein."
+  canonical="https://omf-therapie.fr/services/therapie-individuelle"
+  jsonLd={jsonLd}
+>
+  <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded">
+    Aller au contenu principal
+  </a>
+
+  <Navbar client:load />
+
+  <main id="main-content" class="pt-20" tabindex="-1">
+    <section class="bg-sage-50 py-12 px-4">
+      <div class="max-w-4xl mx-auto">
+        <nav class="mb-6 text-sm text-sage-500" aria-label="Fil d'Ariane">
+          <ol class="flex items-center gap-2 flex-wrap" role="list">
+            <li role="listitem"><a href="/" class="hover:text-mint-600 transition-colors">Accueil</a></li>
+            <li role="listitem" aria-hidden="true">›</li>
+            <li role="listitem"><a href="/#services" class="hover:text-mint-600 transition-colors">Services</a></li>
+            <li role="listitem" aria-hidden="true">›</li>
+            <li role="listitem" aria-current="page" class="text-sage-700 font-medium">Thérapie individuelle</li>
+          </ol>
+        </nav>
+        <h1 class="font-serif text-3xl md:text-4xl lg:text-5xl text-sage-800 mb-6">Thérapie individuelle à Montpellier</h1>
+        <p class="text-xl text-sage-600 max-w-3xl leading-relaxed">La thérapie individuelle avec Oriane Montabonnet, psychopraticienne à Montpellier, vous offre un espace confidentiel et bienveillant pour explorer vos difficultés émotionnelles, relationnelles ou comportementales. En séances de 55 minutes au cabinet du 1086 avenue Albert Einstein, vous avancez à votre propre rythme vers un mieux-être durable.</p>
+        <div class="mt-6">
+          <a href="/contact" class="inline-flex items-center gap-2 bg-mint-600 text-white px-6 py-3 rounded-lg hover:bg-mint-700 transition-colors font-medium">
+            Prendre rendez-vous
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="max-w-4xl mx-auto px-4 py-12 space-y-10">
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-4">Pour qui est la thérapie individuelle ?</h2>
+        <p class="text-sage-600 leading-relaxed">La thérapie individuelle s'adresse à toute personne souhaitant mieux comprendre ses émotions, surmonter une période difficile ou développer ses ressources intérieures.</p>
+        <ul class="mt-4 space-y-2 text-sage-600" aria-label="Motifs fréquents de consultation">
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Anxiété, stress, angoisses récurrentes</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>États dépressifs, tristesse persistante</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Manque de confiance et d'estime de soi</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Difficultés à s'affirmer, peur du jugement</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Deuil, séparation, transitions de vie</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Développement personnel et connaissance de soi</li>
+        </ul>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-4">Comment se déroule une séance ?</h2>
+        <p class="text-sage-600 leading-relaxed">Chaque séance dure 55 minutes dans un cadre sécurisé et confidentiel au cabinet de Montpellier. Oriane Montabonnet utilise une approche intégrative basée sur les Thérapies Comportementales, Cognitives et Émotionnelles (TCCE), adaptée à votre profil et à vos objectifs. L'espace thérapeutique est un lieu sans jugement où vous pouvez aborder librement ce qui vous préoccupe.</p>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-4">Questions fréquentes sur la thérapie individuelle à Montpellier</h2>
+        <div class="space-y-6" itemscope itemtype="https://schema.org/FAQPage">
+          {faqs.map((faq) => (
+            <div class="border-l-4 border-mint-200 pl-4" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+              <h3 class="font-semibold text-sage-800 mb-2" itemprop="name">{faq.question}</h3>
+              <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+                <p class="text-sage-600" itemprop="text">{faq.answer}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <Footer />
+</Layout>

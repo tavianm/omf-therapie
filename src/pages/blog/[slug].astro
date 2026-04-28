@@ -1,0 +1,64 @@
+---
+import type { GetStaticPaths } from 'astro';
+import { getCollection } from 'astro:content';
+import Layout from '../../layouts/Layout.astro';
+import Navbar from '../../components/islands/Navbar';
+import Footer from '../../components/layout/Footer.astro';
+import { BlogPostView } from '../../components/islands/BlogPostView';
+import { ShareButtons } from '../../components/blog/ShareButtons';
+import { collectionEntryToBlogPost } from '../../utils/blogAdapter';
+import { buildArticleSchema } from '../../utils/schema';
+
+export const getStaticPaths: GetStaticPaths = async () => {
+  const entries = await getCollection('blog');
+  return entries.map((entry) => ({
+    params: { slug: entry.id.replace(/\.md$/, '') }, // strip .md extension from Astro 5 entry.id
+    props: { entry },
+  }));
+};
+
+const { entry } = Astro.props;
+const post = collectionEntryToBlogPost(entry);
+
+// Get related posts (same category, exclude current, not disabled)
+const allEntries = await getCollection('blog');
+const allPosts = allEntries.map(collectionEntryToBlogPost);
+const relatedPosts = allPosts
+  .filter(
+    (p) =>
+      p.slug !== post.slug &&
+      !p.disabled &&
+      p.categories.some((cat) => post.categories.includes(cat))
+  )
+  .slice(0, 3);
+
+const jsonLd = buildArticleSchema(post);
+const canonicalUrl = `https://omf-therapie.fr/blog/${post.slug}`;
+---
+
+<Layout
+  title={`${post.title} | Blog — Oriane Montabonnet`}
+  description={post.excerpt}
+  canonical={canonicalUrl}
+  ogType="article"
+  ogImage={post.imageUrl}
+  jsonLd={jsonLd}
+>
+  <a
+    href="#main-content"
+    class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded"
+  >
+    Aller au contenu principal
+  </a>
+
+  <Navbar client:load />
+
+  <main id="main-content" class="pt-20" tabindex="-1">
+    <BlogPostView post={post} relatedPosts={relatedPosts} client:load />
+    <div class="max-w-4xl mx-auto px-4 pb-8">
+      <ShareButtons post={post} client:visible />
+    </div>
+  </main>
+
+  <Footer />
+</Layout>

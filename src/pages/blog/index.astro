@@ -1,0 +1,42 @@
+---
+import { getCollection } from 'astro:content';
+import Layout from '../../layouts/Layout.astro';
+import Navbar from '../../components/islands/Navbar';
+import Footer from '../../components/layout/Footer.astro';
+import { BlogClientWrapper } from '../../components/islands/BlogClientWrapper';
+import { collectionEntryToBlogPost } from '../../utils/blogAdapter';
+
+const entries = await getCollection('blog');
+const allPosts = entries.map(collectionEntryToBlogPost);
+---
+
+<Layout
+  title="Blog — Thérapie et bien-être | Oriane Montabonnet, Montpellier"
+  description="Conseils, réflexions et ressources sur le bien-être et la thérapie par Oriane Montabonnet, psychopraticienne à Montpellier."
+  canonical="https://omf-therapie.fr/blog"
+>
+  <a
+    href="#main-content"
+    class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded"
+  >
+    Aller au contenu principal
+  </a>
+
+  <Navbar client:load />
+
+  <main id="main-content" class="pt-20" tabindex="-1">
+    <div class="bg-sage-50 py-10 px-4 mb-4">
+      <div class="max-w-7xl mx-auto">
+        <h1 class="font-serif text-3xl md:text-4xl text-sage-800 font-semibold">
+          Blog
+        </h1>
+        <p class="text-sage-600 mt-2 text-lg">
+          Ressources et réflexions sur la thérapie et le bien-être
+        </p>
+      </div>
+    </div>
+    <BlogClientWrapper initialPosts={allPosts} client:load />
+  </main>
+
+  <Footer />
+</Layout>

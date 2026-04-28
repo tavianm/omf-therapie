@@ -1,0 +1,106 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Navbar from '../../components/islands/Navbar';
+import Footer from '../../components/layout/Footer.astro';
+import { buildFAQSchema, buildServiceSchema } from '../../utils/schema';
+
+const faqs = [
+  {
+    question: "Les troubles alimentaires se traitent-ils en psychothérapie à Montpellier ?",
+    answer: "Oui, la psychothérapie est l'un des traitements les plus efficaces pour les troubles du comportement alimentaire (TCA). La thérapie permet de travailler sur les pensées dysfonctionnelles, les comportements alimentaires et la relation émotionnelle à la nourriture. Elle peut être complémentaire à un suivi médical ou nutritionnel si nécessaire.",
+  },
+  {
+    question: "L'alimentation émotionnelle est-elle un trouble alimentaire ?",
+    answer: "Oui, manger en réponse aux émotions — stress, ennui, tristesse, anxiété — plutôt qu'à la faim physique est un pattern que la thérapie peut aider à identifier et transformer. L'alimentation émotionnelle peut évoluer vers des formes plus sévères ; un accompagnement précoce est bénéfique.",
+  },
+  {
+    question: "Comment se déroule le suivi pour les troubles alimentaires ?",
+    answer: "Le suivi se fait en séances individuelles de 55 minutes. Oriane Montabonnet travaille sur les pensées automatiques dysfonctionnelles, la relation au corps et à l'alimentation, et les mécanismes émotionnels sous-jacents. L'approche TCCE permet d'identifier des schémas de pensée et de les transformer progressivement.",
+  },
+  {
+    question: "Oriane Montabonnet suit-elle les TCA graves ?",
+    answer: "Elle accompagne les troubles alimentaires en ambulatoire, y compris les formes modérées d'anorexie, boulimie et hyperphagie. Pour les formes sévères nécessitant une hospitalisation ou un suivi médical intensif, elle oriente vers des structures spécialisées à Montpellier et maintient si possible un suivi psychothérapeutique complémentaire.",
+  },
+];
+
+const jsonLd = [
+  buildFAQSchema(faqs),
+  buildServiceSchema(
+    "Accompagnement des troubles alimentaires à Montpellier",
+    "Accompagnement des troubles du comportement alimentaire (TCA) par Oriane Montabonnet, psychopraticienne à Montpellier. Approche TCCE pour anorexie, boulimie, hyperphagie, alimentation émotionnelle.",
+    "https://omf-therapie.fr/services/troubles-alimentaires"
+  ),
+];
+---
+
+<Layout
+  title="Troubles alimentaires à Montpellier | Oriane Montabonnet — Psychopraticienne"
+  description="Accompagnement des troubles alimentaires à Montpellier par Oriane Montabonnet. TCA, alimentation émotionnelle, image corporelle. Approche TCCE en cabinet."
+  canonical="https://omf-therapie.fr/services/troubles-alimentaires"
+  jsonLd={jsonLd}
+>
+  <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded">
+    Aller au contenu principal
+  </a>
+
+  <Navbar client:load />
+
+  <main id="main-content" class="pt-20" tabindex="-1">
+    <section class="bg-sage-50 py-12 px-4">
+      <div class="max-w-4xl mx-auto">
+        <nav class="mb-6 text-sm text-sage-500" aria-label="Fil d'Ariane">
+          <ol class="flex items-center gap-2 flex-wrap" role="list">
+            <li role="listitem"><a href="/" class="hover:text-mint-600 transition-colors">Accueil</a></li>
+            <li role="listitem" aria-hidden="true">›</li>
+            <li role="listitem"><a href="/#services" class="hover:text-mint-600 transition-colors">Services</a></li>
+            <li role="listitem" aria-hidden="true">›</li>
+            <li role="listitem" aria-current="page" class="text-sage-700 font-medium">Troubles alimentaires</li>
+          </ol>
+        </nav>
+        <h1 class="font-serif text-3xl md:text-4xl lg:text-5xl text-sage-800 mb-6">Accompagnement des troubles alimentaires à Montpellier</h1>
+        <p class="text-xl text-sage-600 max-w-3xl leading-relaxed">Oriane Montabonnet, psychopraticienne à Montpellier, propose un accompagnement spécialisé pour les troubles du comportement alimentaire (TCA). Grâce à l'approche TCCE, elle vous aide à transformer votre relation à l'alimentation, à votre corps et à vos émotions, dans un cadre bienveillant et sans jugement.</p>
+        <div class="mt-6">
+          <a href="/contact" class="inline-flex items-center gap-2 bg-mint-600 text-white px-6 py-3 rounded-lg hover:bg-mint-700 transition-colors font-medium">
+            Prendre rendez-vous
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="max-w-4xl mx-auto px-4 py-12 space-y-10">
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-4">Quels troubles alimentaires accompagner ?</h2>
+        <p class="text-sage-600 leading-relaxed">De nombreuses formes de souffrance liées à l'alimentation peuvent bénéficier d'un accompagnement psychothérapeutique. Oriane Montabonnet intervient notamment sur :</p>
+        <ul class="mt-4 space-y-2 text-sage-600" aria-label="Types de troubles alimentaires accompagnés">
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Anorexie mentale restrictive ou avec conduites purgatives</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Boulimie et crises de compulsions alimentaires</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Hyperphagie boulimique (binge eating)</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Alimentation émotionnelle et grignotages compulsifs</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Difficultés d'image corporelle et dysmorphophobie</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Orthorexie et rapport rigide ou anxieux à la nourriture</li>
+        </ul>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-4">L'approche TCCE pour les troubles alimentaires</h2>
+        <p class="text-sage-600 leading-relaxed">Les Thérapies Comportementales, Cognitives et Émotionnelles (TCCE) sont particulièrement efficaces pour les troubles alimentaires. Cette approche s'appuie sur l'identification des pensées automatiques négatives liées à l'alimentation et au corps, sur la compréhension des émotions qui déclenchent les comportements alimentaires dysfonctionnels, et sur la mise en place progressive de nouvelles habitudes et de nouveaux modes de relation à soi-même. Le travail se fait à votre rythme, avec des outils concrets et adaptés à votre histoire.</p>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-4">Questions fréquentes sur les troubles alimentaires à Montpellier</h2>
+        <div class="space-y-6" itemscope itemtype="https://schema.org/FAQPage">
+          {faqs.map((faq) => (
+            <div class="border-l-4 border-mint-200 pl-4" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+              <h3 class="font-semibold text-sage-800 mb-2" itemprop="name">{faq.question}</h3>
+              <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+                <p class="text-sage-600" itemprop="text">{faq.answer}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <Footer />
+</Layout>
