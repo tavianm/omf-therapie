@@ -3,9 +3,30 @@
   publish = "dist"
 
 [dev]
-  framework = "vite"
+  framework = "astro"
+
+# Legacy section-route redirects (301 permanent)
+[[redirects]]
+  from = "/Tarifs"
+  to = "/#pricing"
+  status = 301
 
 [[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+  from = "/Services"
+  to = "/services/therapie-individuelle"
+  status = 301
+
+[[redirects]]
+  from = "/About"
+  to = "/a-propos"
+  status = 301
+
+[[redirects]]
+  from = "/Process"
+  to = "/#process"
+  status = 301
+
+[[redirects]]
+  from = "/Formations"
+  to = "/#qualifications"
+  status = 301
