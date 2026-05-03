@@ -111,12 +111,12 @@ const jsonLd = [
 
       <div>
         <h2 class="font-serif text-2xl text-sage-800 mb-4">Questions fréquentes sur la thérapie de couple à Montpellier</h2>
-        <div class="space-y-6" itemscope itemtype="https://schema.org/FAQPage">
+        <div class="space-y-6" >
           {faqs.map((faq) => (
-            <div class="border-l-4 border-mint-200 pl-4" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
-              <h3 class="font-semibold text-sage-800 mb-2" itemprop="name">{faq.question}</h3>
-              <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
-                <p class="text-sage-600" itemprop="text">{faq.answer}</p>
+            <div class="border-l-4 border-mint-200 pl-4" >
+              <h3 class="font-semibold text-sage-800 mb-2" >{faq.question}</h3>
+              <div>
+                <p class="text-sage-600" >{faq.answer}</p>
               </div>
             </div>
           ))}
