@@ -3,7 +3,7 @@ import { Clock, MessageCircle, Sparkles, Target } from "lucide-react";
 import { useMotionVariants } from "../../hooks/useMotionVariants";
 
 const ProcessSection = () => {
-  const { fadeInUp, fadeInRight, fadeInLeft, fadeIn } = useMotionVariants();
+  const { fadeInUp, fadeIn } = useMotionVariants();
   const steps = [
     {
       icon: MessageCircle,
@@ -49,9 +49,8 @@ const ProcessSection = () => {
 
           <div className="space-y-8 relative">
             {steps.map((step, index) => (
-              <motion.div
+              <div
                 key={index}
-                {...(index % 2 === 0 ? fadeInLeft() : fadeInRight())}
                 className={`flex flex-col md:flex-row gap-8 ${
                   index % 2 === 0
                     ? "md:pr-1/2"
@@ -72,7 +71,7 @@ const ProcessSection = () => {
                     {index + 1}
                   </div>
                 </div>
-              </motion.div>
+              </div>
             ))}
           </div>
         </div>
