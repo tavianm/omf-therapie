@@ -41,7 +41,7 @@ export const IntroSection = () => {
 
         <div className="mt-5 md:mt-10 grid md:grid-cols-3 gap-6 md:gap-8">
           {features.map((feature, index) => (
-            <FeatureCard key={index} feature={feature} index={index} />
+            <FeatureCard key={index} feature={feature} />
           ))}
         </div>
       </div>
@@ -51,20 +51,15 @@ export const IntroSection = () => {
 
 interface FeatureCardProps {
   feature: IntroFeature;
-  index: number;
 }
 
-const FeatureCard = ({ feature, index }: FeatureCardProps) => {
-  const { fadeInUp } = useMotionVariants();
+const FeatureCard = ({ feature }: FeatureCardProps) => {
   return (
-    <motion.div
-      {...fadeInUp({ duration: 0.5, delay: index * 0.2 })}
-      className="bg-sage-50 p-8 rounded-lg"
-    >
+    <div className="bg-sage-50 p-8 rounded-lg">
       <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-4">
         {feature.title}
       </h3>
       <p className="text-sage-600">{feature.description}</p>
-    </motion.div>
+    </div>
   );
 };

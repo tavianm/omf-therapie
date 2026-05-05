@@ -76,9 +76,8 @@ const ServicesSection = () => {
 
         <div className="grid md:grid-cols-2 gap-6 md:gap-8">
           {services.map((service, index) => (
-            <motion.div
+            <div
               key={index}
-              {...fadeInUp({ duration: 0.5, delay: index * 0.1 })}
               className="bg-white p-8 rounded-lg shadow-sm hover:shadow-md transition-shadow"
             >
               <service.icon className="h-12 w-12 text-mint-600 mb-6" />
@@ -98,7 +97,7 @@ const ServicesSection = () => {
               >
                 En savoir plus →
               </a>
-            </motion.div>
+            </div>
           ))}
         </div>
 

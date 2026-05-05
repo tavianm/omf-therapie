@@ -1,7 +1,5 @@
-import { motion } from "framer-motion";
 import parse from "html-react-parser";
 import { Check } from "lucide-react";
-import { useMotionVariants } from "../../hooks/useMotionVariants";
 
 interface PriceCardProps {
   title: string;
@@ -16,13 +14,8 @@ export const PriceCard = ({
   features,
   index,
 }: PriceCardProps) => {
-  const { fadeInUp } = useMotionVariants();
-
   return (
-    <motion.div
-      {...fadeInUp({ delay: index * 0.1, duration: 0.5 })}
-      className="bg-white p-8 rounded-lg shadow-sm hover:shadow-md transition-shadow"
-    >
+    <div className="bg-white p-8 rounded-lg shadow-sm hover:shadow-md transition-shadow">
       <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-4">
         {title}
       </h3>
@@ -55,6 +48,6 @@ export const PriceCard = ({
           </li>
         ))}
       </ul>
-    </motion.div>
+    </div>
   );
 };

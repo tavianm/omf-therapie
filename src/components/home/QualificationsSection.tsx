@@ -50,9 +50,8 @@ const QualificationsSection = () => {
             </div>
             <div className="space-y-8 ">
               {qualifications.map((qual, index) => (
-                <motion.div
+                <div
                   key={index}
-                  {...fadeInUp({ duration: 0.5, delay: index * 0.1 })}
                   className="bg-white p-6 rounded-lg shadow-sm"
                 >
                   <div className="text-mint-600 font-medium mb-2">
@@ -63,7 +62,7 @@ const QualificationsSection = () => {
                   </h4>
                   <div className="text-sage-600 mb-2">{qual.institution}</div>
                   <p className="text-sage-600 text-sm">{qual.description}</p>
-                </motion.div>
+                </div>
               ))}
             </div>
           </motion.div>

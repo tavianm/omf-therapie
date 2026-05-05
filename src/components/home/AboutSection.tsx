@@ -1,8 +1,6 @@
 import { motion } from "framer-motion";
 import { useMotionVariants } from "../../hooks/useMotionVariants";
 
-const getRandomNumber = () => Math.floor(Math.random() * 2) + 1;
-
 const AboutSection = () => {
   const { fadeInUp, fadeInLeft, fadeInRight } = useMotionVariants();
 
@@ -20,7 +18,7 @@ const AboutSection = () => {
         <div className="grid md:grid-cols-2 gap-12 items-center mb-8">
           <motion.div {...fadeInLeft()}>
             <img
-              src={`assets/about/oriane-montabonnet-${getRandomNumber()}.webp`}
+              src="assets/about/oriane-montabonnet-1.webp"
               alt="Oriane Montabonnet - Thérapeute"
               className="rounded-lg shadow-lg w-full"
               sizes="100vw"
