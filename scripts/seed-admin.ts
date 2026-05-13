@@ -33,9 +33,9 @@ if (password.length < 16) {
 
 async function seedAdmin() {
   console.log(`\n🔑 Création du compte admin : ${email}`);
-  console.log(`   Endpoint : ${baseURL}/api/auth/sign-up/email\n`);
+  console.log(`   Endpoint : ${baseURL}/api/auth/sign-up/email/\n`);
 
-  const response = await fetch(`${baseURL}/api/auth/sign-up/email`, {
+  const response = await fetch(`${baseURL}/api/auth/sign-up/email/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password, name }),

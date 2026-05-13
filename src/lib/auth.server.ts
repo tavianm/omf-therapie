@@ -14,7 +14,9 @@ import { Pool } from 'pg';
 
 export const pool = new Pool({
   connectionString: import.meta.env.DATABASE_URL,
-  ssl: true,
+  ssl: import.meta.env.DATABASE_URL?.includes('localhost') || import.meta.env.DATABASE_URL?.includes('127.0.0.1')
+    ? false
+    : { rejectUnauthorized: false },
 });
 
 // ---------------------------------------------------------------------------
@@ -77,38 +79,35 @@ export const auth = betterAuth({
   // ── Hook : bloquer toute inscription supplémentaire ───────────────────────
   // Un seul compte admin est autorisé. Tout appel à /sign-up/email est rejeté
   // si un utilisateur existe déjà en base. L'admin est créé via script CLI.
+  //
+  // BetterAuth v1.6.11 : hooks.before = single function (not array of {matcher,handler}).
   hooks: {
-    before: [
-      {
-        matcher(context) {
-          // Intercepter uniquement la route d'inscription
-          return context.path === '/sign-up/email';
-        },
-        async handler() {
-          // Vérifier si un utilisateur existe déjà dans la table "user" BetterAuth
-          try {
-            const result = await pool.query<{ id: string }>(
-              'SELECT id FROM "user" LIMIT 1',
-            );
-            if (result.rowCount && result.rowCount > 0) {
-              return new Response(
-                JSON.stringify({
-                  error: 'Inscription désactivée. Ce site n\'accepte pas de nouveaux comptes.',
-                }),
-                { status: 403, headers: { 'Content-Type': 'application/json' } },
-              );
-            }
-          } catch (error) {
-            console.error('[auth] Erreur lors de la vérification admin :', error);
-            return new Response(
-              JSON.stringify({ error: 'Erreur interne — inscription impossible.' }),
-              { status: 500, headers: { 'Content-Type': 'application/json' } },
-            );
-          }
-          // Aucun utilisateur → première création autorisée (script de seed)
-        },
-      },
-    ],
+    before: async (context) => {
+      // Only intercept the sign-up route
+      if (context.path !== '/sign-up/email') return;
+
+      // Vérifier si un utilisateur existe déjà dans la table "user" BetterAuth
+      try {
+        const result = await pool.query<{ id: string }>(
+          'SELECT id FROM "user" LIMIT 1',
+        );
+        if (result.rowCount && result.rowCount > 0) {
+          return new Response(
+            JSON.stringify({
+              error: 'Inscription désactivée. Ce site n\'accepte pas de nouveaux comptes.',
+            }),
+            { status: 403, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+      } catch (error) {
+        console.error('[auth] Erreur lors de la vérification admin :', error);
+        return new Response(
+          JSON.stringify({ error: 'Erreur interne — inscription impossible.' }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      // Aucun utilisateur → première création autorisée (script de seed)
+    },
   },
 });
 
