@@ -7,9 +7,12 @@ import { supabaseAdmin } from '../../../lib/supabase';
 import { sendEmail } from '../../../lib/resend';
 import { generateGoogleCalendarLink, generateICSDataUri, CABINET_ADDRESS } from '../../../lib/ics';
 import { getTypeLabel, getModeLabel } from '../../../lib/pricing';
+import { createAppointmentPaymentLink } from '../../../lib/stripe';
+import { isWednesdayParis } from '../../../utils/date';
 import AppointmentConfirmed from '../../../emails/AppointmentConfirmed';
 import AppointmentDeclined from '../../../emails/AppointmentDeclined';
 import AppointmentRescheduled from '../../../emails/AppointmentRescheduled';
+import PaymentRequest from '../../../emails/PaymentRequest';
 import type { Appointment } from '../../../types/appointment';
 
 function errorResponse(status: number, message: string): Response {
@@ -68,8 +71,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     return errorResponse(400, 'Corps de requête JSON invalide');
   }
 
-  const { action, video_link, stripe_payment_link_url, stripe_payment_link_id,
-    stripe_payment_intent_id, therapist_notes, rescheduled_to } = body;
+  const { action, video_link, stripe_payment_intent_id, therapist_notes, rescheduled_to } = body;
 
   if (!action || !['confirm', 'decline', 'reschedule', 'save_notes'].includes(action as string))
     return errorResponse(422, 'Action invalide (confirm | decline | reschedule | save_notes)');
@@ -104,10 +106,43 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       status: newStatus,
       therapist_notes: therapist_notes ?? appointment.therapist_notes,
     };
-    if (video_link) updateData.video_link = video_link;
-    if (stripe_payment_link_id) updateData.stripe_payment_link_id = stripe_payment_link_id;
-    if (stripe_payment_link_url) updateData.stripe_payment_link_url = stripe_payment_link_url;
+
+    // Validation URL vidéo
+    if (video_link) {
+      const ALLOWED_VIDEO_HOSTS = ['meet.google.com', 'zoom.us', 'teams.microsoft.com', 'whereby.com', 'jitsi.org'];
+      try {
+        const parsed = new URL(String(video_link));
+        if (parsed.protocol !== 'https:' || !ALLOWED_VIDEO_HOSTS.some(h => parsed.hostname === h || parsed.hostname.endsWith('.' + h))) {
+          return errorResponse(400, 'Lien vidéo invalide : seuls les liens sécurisés vers des services de visioconférence connus sont acceptés');
+        }
+        updateData.video_link = parsed.toString();
+      } catch {
+        return errorResponse(400, 'Lien vidéo invalide');
+      }
+    }
+
     if (stripe_payment_intent_id) updateData.stripe_payment_intent_id = stripe_payment_intent_id;
+
+    // Génération du Payment Link Stripe côté serveur pour les séances vidéo
+    if (appointment.appointment_mode === 'video' && newStatus === 'payment_pending') {
+      try {
+        const successUrl = import.meta.env.STRIPE_SUCCESS_URL ?? ((import.meta.env.BETTER_AUTH_URL ?? 'https://omf-therapie.fr') + '/rdv/merci');
+        const description = `Séance ${getTypeLabel(appointment.appointment_type)} — OMF Thérapie (${appointment.duration} min)`;
+        const paymentLink = await createAppointmentPaymentLink({
+          appointmentId: appointment.id,
+          patientEmail: appointment.patient_email,
+          patientName: appointment.patient_name,
+          amount: appointment.final_price,
+          description,
+          successUrl,
+        });
+        updateData.stripe_payment_link_id = paymentLink.id;
+        updateData.stripe_payment_link_url = paymentLink.url;
+      } catch (stripeErr) {
+        console.error('[appointments/patch] Erreur Stripe Payment Link:', stripeErr);
+        return errorResponse(500, 'Erreur lors de la génération du lien de paiement Stripe');
+      }
+    }
 
     const { data: updated, error: updateError } = await supabaseAdmin
       .from('appointments')
@@ -122,6 +157,24 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     }
 
     const updatedAppt = updated as Appointment;
+
+    // Envoyer email de demande de paiement si payment_pending (séance vidéo)
+    if (newStatus === 'payment_pending' && updatedAppt.stripe_payment_link_url) {
+      sendEmail({
+        to: updatedAppt.patient_email,
+        subject: `Prépaiement de votre séance — ${new Intl.DateTimeFormat('fr-FR', {
+          day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
+        }).format(new Date(updatedAppt.scheduled_at))}`,
+        react: createElement(PaymentRequest, {
+          patientName: updatedAppt.patient_name,
+          scheduledAt: updatedAppt.scheduled_at,
+          appointmentType: updatedAppt.appointment_type,
+          duration: updatedAppt.duration,
+          finalPrice: updatedAppt.final_price,
+          stripePaymentUrl: updatedAppt.stripe_payment_link_url,
+        }),
+      }).catch(err => console.error('[appointments/patch] Erreur email PaymentRequest:', err));
+    }
 
     // Envoyer confirmation seulement si status final = confirmed (pas payment_pending)
     if (newStatus === 'confirmed') {

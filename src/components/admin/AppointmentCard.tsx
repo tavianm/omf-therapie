@@ -422,7 +422,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
                 </a>
               ) : (
                 <span className="inline-flex items-center px-4 py-2 text-sm text-sage-500 font-sans">
-                  Lien Stripe non généré
+                  En attente de paiement — lien envoyé par email
                 </span>
               )}
               <button
