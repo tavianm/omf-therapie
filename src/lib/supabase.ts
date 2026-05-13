@@ -11,7 +11,7 @@
  * ⚠️  Ne jamais exposer `supabaseAdmin` côté client/browser.
  */
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 // ---------------------------------------------------------------------------

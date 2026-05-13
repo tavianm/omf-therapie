@@ -4,12 +4,14 @@ interface DesktopNavProps {
   navigation: NavigationItem[];
   isActive: (href: string, path: string) => boolean;
   navigateToSection: (href: string) => void;
+  isAuthenticated?: boolean;
 }
 
 export const DesktopNav = ({
   navigation,
   isActive,
   navigateToSection,
+  isAuthenticated = false,
 }: DesktopNavProps) => (
   <ul
     className="hidden lg:flex md:items-center xl:space-x-8 lg:space-x-4"
@@ -30,6 +32,25 @@ export const DesktopNav = ({
         )}
       </li>
     ))}
+    {isAuthenticated && (
+      <li role="listitem">
+        <a
+          href="/mes-rdvs"
+          className={`${
+            typeof window !== "undefined" && window.location.pathname === "/mes-rdvs"
+              ? "text-mint-600"
+              : "text-sage-600 hover:text-mint-500"
+          } transition-colors duration-200 font-medium min-h-[44px] min-w-[44px] flex items-center justify-center`}
+          aria-current={
+            typeof window !== "undefined" && window.location.pathname === "/mes-rdvs"
+              ? "page"
+              : undefined
+          }
+        >
+          Mes RDV
+        </a>
+      </li>
+    )}
   </ul>
 );
 

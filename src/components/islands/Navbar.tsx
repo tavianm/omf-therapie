@@ -6,9 +6,10 @@ import { Logo } from "../navigation/Logo";
 import { MobileNav } from "../navigation/MobileNav";
 import { useNavigationItems } from "../navigation/NavigationItems";
 
-const Navbar = memo(({ className = "", isHomePage: isHomePageProp }: NavbarProps) => {
+const Navbar = memo(({ className = "", isHomePage: isHomePageProp, isAuthenticated: isAuthenticatedProp }: NavbarProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("home");
+  const [isAuthenticated, setIsAuthenticated] = useState(isAuthenticatedProp ?? false);
   const navigation = useNavigationItems();
   const hellocareBtn = navigation.find((item) => item.external);
   const { scrollToSection } = useScrollToSection({});
@@ -17,6 +18,17 @@ const Navbar = memo(({ className = "", isHomePage: isHomePageProp }: NavbarProps
     isHomePageProp !== undefined
       ? isHomePageProp
       : typeof window !== "undefined" && window.location.pathname === "/";
+
+  // Détection côté client si le hint serveur n'est pas fourni
+  useEffect(() => {
+    if (isAuthenticatedProp !== undefined) return;
+    fetch("/api/auth/get-session", { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { session?: unknown } | null) => {
+        setIsAuthenticated(!!data?.session);
+      })
+      .catch(() => {});
+  }, [isAuthenticatedProp]);
 
   const handleScroll = useCallback(() => {
     if (isHomePage) {
@@ -84,6 +96,7 @@ const Navbar = memo(({ className = "", isHomePage: isHomePageProp }: NavbarProps
             navigation={navigation}
             isActive={isActive}
             navigateToSection={navigateToSection}
+            isAuthenticated={isAuthenticated}
           />
           <MobileNav
             navigation={navigation}
@@ -92,6 +105,7 @@ const Navbar = memo(({ className = "", isHomePage: isHomePageProp }: NavbarProps
             isActive={isActive}
             navigateToSection={navigateToSection}
             hellocareBtn={hellocareBtn}
+            isAuthenticated={isAuthenticated}
           />
         </div>
       </nav>

@@ -1,0 +1,225 @@
+---
+/**
+ * /mes-rdvs — Dashboard admin SSR
+ *
+ * Guard auth → redirige vers /login si non connecté.
+ * Charge tous les rendez-vous actifs depuis Supabase (soft-delete exclus).
+ * Délègue le rendu interactif à l'island React AppointmentCard.
+ */
+
+export const prerender = false;
+
+import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/islands/Navbar';
+import { AppointmentCard } from '../components/admin/AppointmentCard';
+import { auth } from '../lib/auth';
+import { supabaseAdmin } from '../lib/supabase';
+import type { Appointment, AppointmentStatus } from '../types/appointment';
+
+// ── Auth guard ───────────────────────────────────────────────────────────────
+const session = await auth.api.getSession({ headers: Astro.request.headers });
+if (!session) {
+  return Astro.redirect('/login?redirect=/mes-rdvs');
+}
+
+// ── Fetch appointments ───────────────────────────────────────────────────────
+const { data: rows, error } = await supabaseAdmin
+  .from('appointments')
+  .select('*')
+  .is('deleted_at', null)
+  .order('scheduled_at', { ascending: false });
+
+const appointments: Appointment[] = (rows ?? []) as Appointment[];
+
+if (error) {
+  console.error('[mes-rdvs] Erreur Supabase :', error);
+}
+
+// ── Comptages par statut ─────────────────────────────────────────────────────
+type FilterKey = 'all' | AppointmentStatus;
+
+const FILTERS: { key: FilterKey; label: string }[] = [
+  { key: 'all',              label: 'Tous'               },
+  { key: 'pending',          label: 'En attente'         },
+  { key: 'rescheduled',      label: 'Reportés'           },
+  { key: 'payment_pending',  label: 'Paiement en attente'},
+  { key: 'payment_received', label: 'Paiement reçu'      },
+  { key: 'confirmed',        label: 'Confirmés'          },
+  { key: 'declined',         label: 'Refusés'            },
+  { key: 'cancelled',        label: 'Annulés'            },
+];
+
+const counts: Record<string, number> = { all: appointments.length };
+for (const appt of appointments) {
+  counts[appt.status] = (counts[appt.status] ?? 0) + 1;
+}
+---
+
+<Layout
+  title="Mes rendez-vous — OMF Thérapie"
+  description="Tableau de bord de gestion des rendez-vous."
+  noindex={true}
+>
+  <!-- Navbar avec flag isAuthenticated (utilisateur vérifié côté serveur) -->
+  <Navbar client:load isAuthenticated={true} />
+
+  <main class="min-h-screen bg-sage-50 pt-20 pb-12">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+
+      <!-- En-tête page -->
+      <div class="flex flex-wrap items-center justify-between gap-4 py-8">
+        <div>
+          <h1 class="font-serif text-3xl font-semibold text-sage-900">
+            Mes rendez-vous
+          </h1>
+          <p class="text-sage-500 text-sm font-sans mt-1">
+            {appointments.length} rendez-vous
+            {counts['pending'] ? ` · ${counts['pending']} en attente` : ''}
+          </p>
+        </div>
+        <button
+          id="signout-btn"
+          type="button"
+          class="
+            inline-flex items-center gap-2 px-4 py-2 text-sm font-medium font-sans
+            rounded-xl border border-sage-300 text-sage-600
+            hover:bg-sage-100 hover:text-sage-800
+            focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1
+            transition-colors min-h-[40px]
+          "
+          aria-label="Se déconnecter"
+        >
+          <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clip-rule="evenodd" />
+          </svg>
+          Déconnexion
+        </button>
+      </div>
+
+      <!-- Filtres par statut -->
+      <div
+        class="flex flex-wrap gap-2 mb-6"
+        role="group"
+        aria-label="Filtrer par statut"
+      >
+        {FILTERS.map(({ key, label }) => {
+          const count = counts[key] ?? 0;
+          if (key !== 'all' && count === 0) return null;
+          return (
+            <button
+              type="button"
+              data-filter={key}
+              class={`
+                filter-btn inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium font-sans
+                rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-mint-400
+                ${key === 'all'
+                  ? 'bg-mint-600 text-white border-mint-600'
+                  : 'bg-white text-sage-600 border-sage-200 hover:border-mint-400 hover:text-mint-700'}
+              `}
+              aria-pressed={key === 'all' ? 'true' : 'false'}
+            >
+              {label}
+              <span class={`
+                inline-flex items-center justify-center w-5 h-5 text-xs rounded-full
+                ${key === 'all' ? 'bg-mint-500 text-white' : 'bg-sage-100 text-sage-600'}
+              `}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <!-- Message vide -->
+      {appointments.length === 0 && (
+        <div class="text-center py-16">
+          <div class="w-16 h-16 mx-auto mb-4 bg-sage-100 rounded-full flex items-center justify-center">
+            <svg class="w-8 h-8 text-sage-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <p class="font-serif text-xl text-sage-600">Aucun rendez-vous</p>
+          <p class="text-sage-400 text-sm mt-1 font-sans">
+            Les nouvelles demandes apparaîtront ici.
+          </p>
+        </div>
+      )}
+
+      <!-- Liste des rendez-vous -->
+      <div id="appointments-list" class="space-y-4">
+        {appointments.map((appt) => (
+          <div
+            class="appointment-wrapper"
+            data-status={appt.status}
+          >
+            <AppointmentCard client:load appointment={appt} />
+          </div>
+        ))}
+      </div>
+
+      <!-- Message "aucun résultat pour ce filtre" (caché par défaut) -->
+      <p
+        id="no-filter-result"
+        class="hidden text-center py-12 text-sage-400 font-sans text-sm"
+        role="status"
+        aria-live="polite"
+      >
+        Aucun rendez-vous pour ce filtre.
+      </p>
+
+    </div>
+  </main>
+</Layout>
+
+<script>
+  // ── Déconnexion ────────────────────────────────────────────────────────────
+  const signoutBtn = document.getElementById('signout-btn');
+  signoutBtn?.addEventListener('click', async () => {
+    signoutBtn.setAttribute('disabled', 'true');
+    try {
+      await fetch('/api/auth/sign-out', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+    } finally {
+      window.location.href = '/login';
+    }
+  });
+
+  // ── Filtres par statut ─────────────────────────────────────────────────────
+  const filterBtns = document.querySelectorAll<HTMLButtonElement>('.filter-btn');
+  const wrappers = document.querySelectorAll<HTMLElement>('.appointment-wrapper');
+  const noResult = document.getElementById('no-filter-result');
+
+  filterBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const filter = btn.dataset['filter'] ?? 'all';
+
+      // Mise à jour des styles actifs
+      filterBtns.forEach((b) => {
+        const isActive = b === btn;
+        b.setAttribute('aria-pressed', String(isActive));
+        if (isActive) {
+          b.classList.add('bg-mint-600', 'text-white', 'border-mint-600');
+          b.classList.remove('bg-white', 'text-sage-600', 'border-sage-200', 'hover:border-mint-400', 'hover:text-mint-700');
+        } else {
+          b.classList.remove('bg-mint-600', 'text-white', 'border-mint-600');
+          b.classList.add('bg-white', 'text-sage-600', 'border-sage-200', 'hover:border-mint-400', 'hover:text-mint-700');
+        }
+      });
+
+      // Affichage/masquage des cartes
+      let visible = 0;
+      wrappers.forEach((wrapper) => {
+        const show = filter === 'all' || wrapper.dataset['status'] === filter;
+        wrapper.style.display = show ? '' : 'none';
+        if (show) visible++;
+      });
+
+      // Message vide si aucun résultat
+      if (noResult) {
+        noResult.classList.toggle('hidden', visible > 0);
+      }
+    });
+  });
+</script>

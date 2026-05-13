@@ -81,8 +81,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const { action, video_link, stripe_payment_link_url, stripe_payment_link_id,
     stripe_payment_intent_id, therapist_notes, rescheduled_to } = body;
 
-  if (!action || !['confirm', 'decline', 'reschedule'].includes(action as string))
-    return errorResponse(422, 'Action invalide (confirm | decline | reschedule)');
+  if (!action || !['confirm', 'decline', 'reschedule', 'save_notes'].includes(action as string))
+    return errorResponse(422, 'Action invalide (confirm | decline | reschedule | save_notes)');
 
   // 3. Récupérer le rendez-vous
   const { data: appt, error: fetchError } = await supabaseAdmin
@@ -100,7 +100,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // Action: confirm
   // ---------------------------------------------------------------------------
   if (action === 'confirm') {
-    if (!['pending', 'payment_received'].includes(appointment.status))
+    if (!['pending', 'payment_received', 'rescheduled'].includes(appointment.status))
       return errorResponse(409, 'Ce rendez-vous ne peut pas être confirmé dans son état actuel');
 
     let newStatus: Appointment['status'];
@@ -244,6 +244,25 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     }).catch(err => console.error('[appointments/patch] Erreur email reschedule:', err));
 
     return jsonResponse({ appointment: updatedAppt, message: 'Nouveau créneau proposé.' });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Action: save_notes
+  // ---------------------------------------------------------------------------
+  if (action === 'save_notes') {
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from('appointments')
+      .update({ therapist_notes: typeof therapist_notes === 'string' ? therapist_notes : null })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError || !updated) {
+      console.error('[appointments/patch] Erreur save_notes:', updateError);
+      return errorResponse(500, 'Erreur lors de la mise à jour des notes');
+    }
+
+    return jsonResponse({ appointment: updated as Appointment, message: 'Notes sauvegardées.' });
   }
 
   return errorResponse(422, 'Action non reconnue');

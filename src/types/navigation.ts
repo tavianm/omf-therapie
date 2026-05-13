@@ -9,4 +9,6 @@ export interface NavigationItem {
 export interface NavbarProps {
   className?: string;
   isHomePage?: boolean;
+  /** Hint serveur : passer `true` quand la session est connue côté SSR */
+  isAuthenticated?: boolean;
 }

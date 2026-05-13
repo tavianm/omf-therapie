@@ -1,0 +1,166 @@
+---
+/**
+ * /rdv/merci — Page de confirmation après soumission du formulaire de RDV
+ *
+ * SSG (pas de prerender = false).
+ * Affiche un message de succès + récapitulatif optionnel depuis les params URL.
+ *
+ * Params URL supportés (optionnels) :
+ *   ?type=individual|couple|family
+ *   ?mode=in-person|video
+ *   ?date=<ISO 8601>
+ *   ?name=<prénom patient>
+ */
+
+import Layout from '../../layouts/Layout.astro';
+import Navbar from '../../components/islands/Navbar';
+import type { AppointmentType, AppointmentMode } from '../../types/appointment';
+import { getTypeLabel, getModeLabel } from '../../lib/pricing';
+
+// ── Lecture des paramètres URL ───────────────────────────────────────────────
+const url = Astro.url;
+const paramType  = url.searchParams.get('type')  as AppointmentType | null;
+const paramMode  = url.searchParams.get('mode')  as AppointmentMode | null;
+const paramDate  = url.searchParams.get('date');
+const paramName  = url.searchParams.get('name');
+
+const VALID_TYPES  = new Set(['individual', 'couple', 'family']);
+const VALID_MODES  = new Set(['in-person', 'video']);
+
+const typeLabel = paramType && VALID_TYPES.has(paramType)  ? getTypeLabel(paramType)  : null;
+const modeLabel = paramMode && VALID_MODES.has(paramMode)  ? getModeLabel(paramMode)  : null;
+
+let formattedDate: string | null = null;
+if (paramDate) {
+  const d = new Date(paramDate);
+  if (!isNaN(d.getTime())) {
+    formattedDate = new Intl.DateTimeFormat('fr-FR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Europe/Paris',
+    }).format(d);
+  }
+}
+
+const hasRecap = typeLabel || modeLabel || formattedDate;
+---
+
+<Layout
+  title="Demande envoyée — OMF Thérapie"
+  description="Votre demande de rendez-vous a bien été reçue. Vous recevrez un email de confirmation dans les 24-48h."
+  noindex={true}
+>
+  <Navbar client:load />
+
+  <main class="min-h-screen bg-sage-50 flex items-start justify-center pt-24 pb-16 px-4">
+    <div class="w-full max-w-lg">
+
+      <!-- Icône de succès -->
+      <div class="flex justify-center mb-8">
+        <div
+          class="w-20 h-20 rounded-full bg-mint-100 flex items-center justify-center"
+          aria-hidden="true"
+        >
+          <svg
+            class="w-10 h-10 text-mint-600"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        </div>
+      </div>
+
+      <!-- Message principal -->
+      <div class="text-center mb-8">
+        <h1 class="font-serif text-3xl font-semibold text-sage-900 mb-3">
+          {paramName ? `Merci, ${paramName}\u00a0!` : 'Demande envoyée\u00a0!'}
+        </h1>
+        <p class="text-sage-600 font-sans leading-relaxed">
+          Votre demande de rendez-vous a bien été reçue.
+          <br />
+          Vous recevrez un e-mail de confirmation dans les{' '}
+          <strong class="text-sage-800">24–48\u00a0h</strong>.
+        </p>
+      </div>
+
+      <!-- Récapitulatif (si params URL fournis) -->
+      {hasRecap && (
+        <div class="bg-white rounded-2xl border border-sage-100 shadow-sm px-6 py-5 mb-8 font-sans">
+          <h2 class="text-sm font-semibold text-sage-500 uppercase tracking-wide mb-4">
+            Récapitulatif
+          </h2>
+          <dl class="space-y-3">
+            {typeLabel && (
+              <div class="flex justify-between gap-4">
+                <dt class="text-sage-500 text-sm">Type de thérapie</dt>
+                <dd class="text-sage-900 text-sm font-medium text-right">{typeLabel}</dd>
+              </div>
+            )}
+            {modeLabel && (
+              <div class="flex justify-between gap-4">
+                <dt class="text-sage-500 text-sm">Mode de consultation</dt>
+                <dd class="text-sage-900 text-sm font-medium text-right">{modeLabel}</dd>
+              </div>
+            )}
+            {formattedDate && (
+              <div class="flex justify-between gap-4">
+                <dt class="text-sage-500 text-sm">Créneau souhaité</dt>
+                <dd class="text-sage-900 text-sm font-medium text-right capitalize">{formattedDate}</dd>
+              </div>
+            )}
+          </dl>
+        </div>
+      )}
+
+      <!-- Encart informatif -->
+      <div class="bg-mint-50 rounded-2xl border border-mint-100 px-6 py-5 mb-8 font-sans">
+        <h2 class="text-sm font-semibold text-mint-700 mb-2">
+          Prochaines étapes
+        </h2>
+        <ul class="space-y-2 text-sm text-sage-700">
+          <li class="flex items-start gap-2">
+            <span class="text-mint-500 mt-0.5 flex-shrink-0" aria-hidden="true">1.</span>
+            Vous recevrez un e-mail de confirmation de réception.
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-mint-500 mt-0.5 flex-shrink-0" aria-hidden="true">2.</span>
+            La thérapeute examinera votre demande sous 24–48&nbsp;h.
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-mint-500 mt-0.5 flex-shrink-0" aria-hidden="true">3.</span>
+            Vous recevrez un e-mail de confirmation ou de proposition de créneau alternatif.
+          </li>
+        </ul>
+      </div>
+
+      <!-- Bouton retour -->
+      <div class="text-center">
+        <a
+          href="/"
+          class="
+            inline-flex items-center gap-2 px-6 py-3 rounded-xl
+            bg-mint-600 text-white font-medium font-sans text-sm
+            hover:bg-mint-700 active:bg-mint-800
+            focus:outline-none focus:ring-2 focus:ring-mint-400 focus:ring-offset-2
+            transition-colors min-h-[44px]
+          "
+        >
+          <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fill-rule="evenodd" d="M9.707 14.707a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 1.414L7.414 9H15a1 1 0 110 2H7.414l2.293 2.293a1 1 0 010 1.414z" clip-rule="evenodd" />
+          </svg>
+          Retour à l'accueil
+        </a>
+      </div>
+
+    </div>
+  </main>
+</Layout>
