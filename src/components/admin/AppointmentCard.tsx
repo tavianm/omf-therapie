@@ -9,9 +9,9 @@
  *   declined / cancelled  → lecture seule
  */
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { Appointment, AppointmentStatus } from "../../types/appointment";
-import { getTypeLabel, getModeLabel } from "../../lib/pricing";
+import { getTypeLabel, getModeLabel, calculatePrice, SOLIDARITY_DISCOUNT } from "../../lib/pricing";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -139,6 +139,15 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
   const [rescheduleDate, setRescheduleDate] = useState("");
   const [rescheduleMessage, setRescheduleMessage] = useState("");
 
+  // États tarification (modale Confirmer)
+  const [overrideFirstSession, setOverrideFirstSession] = useState(appointment.is_first_session);
+  const [isSolidarity, setIsSolidarity] = useState(false);
+
+  const livePrice = useMemo(
+    () => calculatePrice(appointment.appointment_type, appointment.duration, overrideFirstSession, isSolidarity),
+    [appointment.appointment_type, appointment.duration, overrideFirstSession, isSolidarity],
+  );
+
   const { status } = appointment;
   const isReadOnly = status === "declined" || status === "cancelled";
 
@@ -172,6 +181,8 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
   async function handleConfirm() {
     await callPatch({
       action: "confirm",
+      override_first_session: overrideFirstSession,
+      is_solidarity: isSolidarity,
       ...(videoLink ? { video_link: videoLink } : {}),
     });
   }
@@ -490,6 +501,51 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
       {/* ── Modal : Confirmer ─────────────────────────────────────────────── */}
       {modal === "confirm" && (
         <Modal title="Confirmer le rendez-vous" onClose={() => setModal(null)}>
+          {/* ── Tarification ───────────────────────────────────────── */}
+          <div className="mb-5 rounded-xl border border-sage-200 bg-sage-50 p-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-sage-500 font-sans">
+              Tarification
+            </p>
+            <div className="space-y-2">
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={overrideFirstSession && !isSolidarity}
+                  onChange={e => {
+                    if (e.target.checked) { setOverrideFirstSession(true); setIsSolidarity(false); }
+                    else setOverrideFirstSession(false);
+                  }}
+                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+                />
+                <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
+                  Remise nouveau client <span className="text-sage-400">(−15€ première séance)</span>
+                </span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={isSolidarity}
+                  onChange={e => {
+                    if (e.target.checked) { setIsSolidarity(true); setOverrideFirstSession(false); }
+                    else setIsSolidarity(false);
+                  }}
+                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+                />
+                <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
+                  Tarif solidaire <span className="text-sage-400">(−{SOLIDARITY_DISCOUNT}€ · RSA / ASS / Étudiant)</span>
+                </span>
+              </label>
+            </div>
+            <div className="mt-3 flex items-center justify-between border-t border-sage-200 pt-3">
+              <span className="text-xs text-sage-500 font-sans">
+                Base {livePrice.basePrice}€
+                {livePrice.discount > 0 && <span className="text-mint-700"> · remise −{livePrice.discount}€</span>}
+              </span>
+              <span className="text-base font-semibold text-sage-900 font-sans">
+                À régler : {livePrice.finalPrice}€
+              </span>
+            </div>
+          </div>
           {appointment.appointment_mode === "video" && (
             <div className="mb-5">
               <label

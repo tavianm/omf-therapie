@@ -10,7 +10,7 @@ export type AppointmentMode = 'in-person' | 'video';
 export interface PricingResult {
   /** Prix de base en euros */
   basePrice: number;
-  /** Remise en euros (0 ou 15) */
+  /** Remise en euros (0, 10 ou 15) */
   discount: number;
   /** Prix final à payer */
   finalPrice: number;
@@ -32,6 +32,9 @@ const PRICE_GRID: Record<AppointmentType, Record<AppointmentDuration, number>> =
 /** Réduction première séance (en euros) */
 const FIRST_SESSION_DISCOUNT = 15;
 
+/** Réduction tarif solidaire (RSA / ASS / Étudiant) en euros */
+export const SOLIDARITY_DISCOUNT = 10;
+
 // ---------------------------------------------------------------------------
 // Fonctions pures
 // ---------------------------------------------------------------------------
@@ -39,22 +42,28 @@ const FIRST_SESSION_DISCOUNT = 15;
 /**
  * Calcule le tarif d'une séance.
  *
- * @param type          - Type de thérapie
- * @param duration      - Durée en minutes (60 ou 90)
- * @param isFirstSession - Appliquer la réduction première séance (-15€)
+ * Les remises sont mutuellement exclusives : `isSolidarity` est prioritaire.
+ *
+ * @param type           - Type de thérapie
+ * @param duration       - Durée en minutes (60 ou 90)
+ * @param isFirstSession - Appliquer la réduction première séance (−15€)
+ * @param isSolidarity   - Appliquer le tarif solidaire (−10€, RSA/ASS/Étudiant)
  */
 export function calculatePrice(
   type: AppointmentType,
   duration: AppointmentDuration,
   isFirstSession: boolean,
+  isSolidarity = false,
 ): PricingResult {
   const basePrice = PRICE_GRID[type][duration];
-  const discount = isFirstSession ? FIRST_SESSION_DISCOUNT : 0;
+  const discount = isSolidarity
+    ? SOLIDARITY_DISCOUNT
+    : isFirstSession ? FIRST_SESSION_DISCOUNT : 0;
   const finalPrice = basePrice - discount;
 
-  const label = discount > 0
-    ? `${finalPrice}€ (–${discount}€ première séance)`
-    : `${finalPrice}€`;
+  const label = isSolidarity
+    ? `${finalPrice}€ (–${discount}€ tarif solidaire)`
+    : discount > 0 ? `${finalPrice}€ (–${discount}€ première séance)` : `${finalPrice}€`;
 
   return { basePrice, discount, finalPrice, label };
 }

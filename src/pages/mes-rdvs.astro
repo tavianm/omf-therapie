@@ -12,6 +12,7 @@ export const prerender = false;
 import Layout from '../layouts/Layout.astro';
 import Navbar from '../components/islands/Navbar';
 import { AppointmentCard } from '../components/admin/AppointmentCard';
+import { AdminCreateButton } from '../components/admin/AdminCreateButton';
 import { auth } from '../lib/auth';
 import { supabaseAdmin } from '../lib/supabase';
 import type { Appointment, AppointmentStatus } from '../types/appointment';
@@ -88,23 +89,28 @@ for (const appt of appointments) {
             {counts['pending'] ? ` · ${counts['pending']} en attente` : ''}
           </p>
         </div>
-        <button
-          id="signout-btn"
-          type="button"
-          class="
-            inline-flex items-center gap-2 px-4 py-2 text-sm font-medium font-sans
-            rounded-xl border border-sage-300 text-sage-600
-            hover:bg-sage-100 hover:text-sage-800
-            focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1
-            transition-colors min-h-[40px]
-          "
-          aria-label="Se déconnecter"
-        >
-          <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-            <path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clip-rule="evenodd" />
-          </svg>
-          Déconnexion
-        </button>
+        <div class="flex flex-wrap items-center gap-3">
+          <!-- Nouveau rendez-vous (island React — gère l'état open/close de la modale) -->
+          <AdminCreateButton client:load />
+          <!-- Déconnexion -->
+          <button
+            id="signout-btn"
+            type="button"
+            class="
+              inline-flex items-center gap-2 px-4 py-2 text-sm font-medium font-sans
+              rounded-xl border border-sage-300 text-sage-600
+              hover:bg-sage-100 hover:text-sage-800
+              focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1
+              transition-colors min-h-[40px]
+            "
+            aria-label="Se déconnecter"
+          >
+            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clip-rule="evenodd" />
+            </svg>
+            Déconnexion
+          </button>
+        </div>
       </div>
 
       <!-- Filtres par statut -->

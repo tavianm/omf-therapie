@@ -628,6 +628,9 @@ function PatientInfoStep({
             {reasonLength} / {MAX_REASON}
           </span>
         </div>
+        <p className="mt-2 text-xs leading-relaxed text-sage-400">
+          Si vous traversez une période financière difficile (RSA, ASS, études, chômage…), n'hésitez pas à le mentionner ici — un tarif adapté peut être proposé.
+        </p>
       </div>
 
       {/* Navigation */}

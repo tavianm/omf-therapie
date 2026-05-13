@@ -6,7 +6,7 @@ import { auth } from '../../../lib/auth';
 import { supabaseAdmin } from '../../../lib/supabase';
 import { sendEmail } from '../../../lib/resend';
 import { generateGoogleCalendarLink, generateICSDataUri, CABINET_ADDRESS } from '../../../lib/ics';
-import { getTypeLabel, getModeLabel } from '../../../lib/pricing';
+import { getTypeLabel, getModeLabel, calculatePrice } from '../../../lib/pricing';
 import { stripe, createAppointmentPaymentLink } from '../../../lib/stripe';
 import { isWednesdayParis, isWithinBusinessHours } from '../../../utils/date';
 import AppointmentConfirmed from '../../../emails/AppointmentConfirmed';
@@ -74,7 +74,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     return errorResponse(400, 'Corps de requête JSON invalide');
   }
 
-  const { action, video_link, stripe_payment_intent_id, therapist_notes, rescheduled_to } = body;
+  const { action, video_link, stripe_payment_intent_id, therapist_notes, rescheduled_to, override_first_session, is_solidarity } = body;
 
   if (!action || !['confirm', 'decline', 'reschedule', 'save_notes'].includes(action as string))
     return errorResponse(422, 'Action invalide (confirm | decline | reschedule | save_notes)');
@@ -110,6 +110,19 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       therapist_notes: therapist_notes ?? appointment.therapist_notes,
     };
 
+    // Recalcul tarifaire si l'admin a modifié les options de remise
+    const hasOverride = override_first_session !== undefined || is_solidarity !== undefined;
+    if (hasOverride) {
+      const pricing = calculatePrice(
+        appointment.appointment_type,
+        appointment.duration,
+        typeof override_first_session === 'boolean' ? override_first_session : appointment.is_first_session,
+        typeof is_solidarity === 'boolean' ? is_solidarity : false,
+      );
+      updateData.discount    = pricing.discount * 100;    // → centimes
+      updateData.final_price = pricing.finalPrice * 100;  // → centimes
+    }
+
     // Validation URL vidéo
     if (video_link) {
       const ALLOWED_VIDEO_HOSTS = ['meet.google.com', 'zoom.us', 'teams.microsoft.com', 'whereby.com', 'jitsi.org'];
@@ -135,7 +148,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           appointmentId: appointment.id,
           patientEmail: appointment.patient_email,
           patientName: appointment.patient_name,
-          amount: appointment.final_price,
+          amount: typeof updateData.final_price === 'number' ? updateData.final_price : appointment.final_price,
           description,
           successUrl,
         });
