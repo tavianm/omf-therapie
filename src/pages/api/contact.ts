@@ -15,6 +15,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { type ReactElement, type CSSProperties, createElement } from 'react';
 import { sendEmail } from '../../lib/resend';
+import { checkRateLimit, rateLimitResponse } from '../../lib/rate-limit';
 
 // ---------------------------------------------------------------------------
 // Validation
@@ -145,6 +146,11 @@ function ContactEmailTemplate({
 // ---------------------------------------------------------------------------
 
 export const POST: APIRoute = async ({ request }) => {
+  // 0. Rate limiting — 3 requêtes par IP sur 10 minutes
+  const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const rl = checkRateLimit(clientIp, 'contact', { limit: 3, windowSeconds: 600 });
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
+
   // 1. Parser le corps
   let rawBody: unknown;
   try {

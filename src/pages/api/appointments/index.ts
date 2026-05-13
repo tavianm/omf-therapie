@@ -8,6 +8,7 @@ import { sendEmail } from '../../../lib/resend';
 import AppointmentRequestReceived from '../../../emails/AppointmentRequestReceived';
 import AppointmentRequestNotification from '../../../emails/AppointmentRequestNotification';
 import type { AppointmentType, AppointmentDuration, AppointmentMode } from '../../../types/appointment';
+import { checkRateLimit, rateLimitResponse } from '../../../lib/rate-limit';
 
 // ---------------------------------------------------------------------------
 // Validation helpers
@@ -70,6 +71,11 @@ function isWithinBusinessHours(isoDate: string, durationMin: number): boolean {
 // ---------------------------------------------------------------------------
 
 export const POST: APIRoute = async ({ request }) => {
+  // 0. Rate limiting — 5 requêtes par IP sur 15 minutes
+  const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const rl = checkRateLimit(clientIp, 'appointments', { limit: 5, windowSeconds: 900 });
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
+
   // 1. Parse body
   let body: Record<string, unknown>;
   try {
@@ -145,13 +151,12 @@ export const POST: APIRoute = async ({ request }) => {
   const slotStart = scheduledDate;
   const slotEnd = new Date(scheduledDate.getTime() + (duration as number) * 60 * 1000);
 
-  const { data: conflictingRows, error: conflictError } = await supabaseAdmin
+  const { data: conflicts, error: conflictError } = await supabaseAdmin
     .from('appointments')
     .select('id')
-    .neq('status', 'cancelled')
-    .neq('status', 'declined')
     .lt('scheduled_at', slotEnd.toISOString())
-    .gt('scheduled_at', new Date(slotStart.getTime() - (duration as number) * 60 * 1000).toISOString())
+    .gt('scheduled_end', slotStart.toISOString())
+    .not('status', 'in', '("cancelled","declined")')
     .limit(1);
 
   if (conflictError) {
@@ -159,8 +164,8 @@ export const POST: APIRoute = async ({ request }) => {
     return errorResponse(500, 'Erreur lors de la vérification du créneau');
   }
 
-  if (conflictingRows && conflictingRows.length > 0)
-    return errorResponse(409, 'Ce créneau n\'est plus disponible, veuillez en choisir un autre.');
+  if (conflicts && conflicts.length > 0)
+    return errorResponse(409, 'Ce créneau n\'est plus disponible. Veuillez sélectionner un autre horaire.');
 
   // 5. Calcul du prix (en centimes)
   const pricing = calculatePrice(

@@ -21,12 +21,9 @@
  * et ne peuvent pas être importés ici. Les clients sont instanciés localement.
  */
 
-// @ts-expect-error — @netlify/functions est une dépendance transitive, pas encore déclarée
 import type { Config } from '@netlify/functions';
 import { createElement } from 'react';
-// @ts-expect-error — @supabase/supabase-js pas encore installé (voir ci-dessus)
 import { createClient } from '@supabase/supabase-js';
-// @ts-expect-error — resend pas encore installé (voir ci-dessus)
 import { Resend } from 'resend';
 import AppointmentReminder from '../../src/emails/AppointmentReminder';
 import type { Appointment } from '../../src/types/appointment';
@@ -115,6 +112,7 @@ export default async function handler(): Promise<void> {
     .gte('scheduled_at', windowStart.toISOString())
     .lte('scheduled_at', windowEnd.toISOString())
     .in('status', ['confirmed', 'payment_received'])
+    .is('reminder_sent_at', null)
     .is('deleted_at', null);
 
   if (fetchError) {
@@ -162,6 +160,10 @@ export default async function handler(): Promise<void> {
         failed++;
       } else {
         sent++;
+        await supabaseAdmin
+          .from('appointments')
+          .update({ reminder_sent_at: new Date().toISOString() })
+          .eq('id', appt.id);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
