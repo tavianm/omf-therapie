@@ -30,7 +30,7 @@ const PRICE_GRID: Record<AppointmentType, Record<AppointmentDuration, number>> =
 };
 
 /** Réduction première séance (en euros) */
-const FIRST_SESSION_DISCOUNT = 15;
+export const FIRST_SESSION_DISCOUNT = 15;
 
 /** Réduction tarif solidaire (RSA / ASS / Étudiant) en euros */
 export const SOLIDARITY_DISCOUNT = 10;

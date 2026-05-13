@@ -7,8 +7,9 @@ import { useState, useMemo } from "react";
 import {
   calculatePrice,
   SOLIDARITY_DISCOUNT,
+  FIRST_SESSION_DISCOUNT,
 } from "../../lib/pricing";
-import type { AppointmentType, AppointmentDuration } from "../../lib/pricing";
+import type { AppointmentType, AppointmentDuration, AppointmentMode } from "../../lib/pricing";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -23,6 +24,7 @@ interface FormState {
   duration: AppointmentDuration;
   scheduled_at: string;
   patient_reason: string;
+  override_first_session: boolean;
   is_solidarity: boolean;
   send_email: boolean;
   video_link: string;
@@ -57,6 +59,7 @@ const INITIAL_STATE: FormState = {
   duration: 60,
   scheduled_at: "",
   patient_reason: "",
+  override_first_session: false,
   is_solidarity: false,
   send_email: true,
   video_link: "",
@@ -151,8 +154,8 @@ function AdminCreateModal({ onClose }: { onClose: () => void }) {
   }
 
   const livePrice = useMemo(
-    () => calculatePrice(form.appointment_type, form.duration, false, form.is_solidarity),
-    [form.appointment_type, form.duration, form.is_solidarity],
+    () => calculatePrice(form.appointment_type, form.duration, form.override_first_session, form.is_solidarity),
+    [form.appointment_type, form.duration, form.override_first_session, form.is_solidarity],
   );
 
   async function handleSubmit(e: React.FormEvent) {
@@ -170,6 +173,7 @@ function AdminCreateModal({ onClose }: { onClose: () => void }) {
         duration: form.duration,
         scheduled_at: form.scheduled_at,
         patient_reason: form.patient_reason.trim(),
+        override_first_session: form.override_first_session,
         is_solidarity: form.is_solidarity,
         send_email: form.send_email,
       };
@@ -351,18 +355,38 @@ function AdminCreateModal({ onClose }: { onClose: () => void }) {
             <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-sage-500 font-sans">
               Tarification
             </p>
-            <label className="flex items-center gap-3 cursor-pointer group">
-              <input
-                type="checkbox"
-                checked={form.is_solidarity}
-                onChange={e => update("is_solidarity", e.target.checked)}
-                className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
-              />
-              <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
-                Appliquer le tarif solidaire{" "}
-                <span className="text-sage-400">(−{SOLIDARITY_DISCOUNT}€ · RSA / ASS / Étudiant)</span>
-              </span>
-            </label>
+            <div className="space-y-2">
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={form.override_first_session && !form.is_solidarity}
+                  onChange={e => {
+                    if (e.target.checked) { update("override_first_session", true); update("is_solidarity", false); }
+                    else update("override_first_session", false);
+                  }}
+                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+                />
+                <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
+                  Remise nouveau client{" "}
+                  <span className="text-sage-400">(−{FIRST_SESSION_DISCOUNT}€ première séance)</span>
+                </span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={form.is_solidarity}
+                  onChange={e => {
+                    if (e.target.checked) { update("is_solidarity", true); update("override_first_session", false); }
+                    else update("is_solidarity", false);
+                  }}
+                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+                />
+                <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
+                  Tarif solidaire{" "}
+                  <span className="text-sage-400">(−{SOLIDARITY_DISCOUNT}€ · RSA / ASS / Étudiant)</span>
+                </span>
+              </label>
+            </div>
             <div className="mt-3 flex items-center justify-between border-t border-sage-200 pt-3">
               <span className="text-xs text-sage-500 font-sans">
                 Base {livePrice.basePrice}€

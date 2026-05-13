@@ -58,6 +58,7 @@ export const POST: APIRoute = async ({ request }) => {
     duration,
     scheduled_at,
     patient_reason,
+    override_first_session,
     is_solidarity,
     send_email: shouldSendEmail = true,
     video_link,
@@ -98,7 +99,11 @@ export const POST: APIRoute = async ({ request }) => {
     .in('status', ['confirmed', 'completed'])
     .limit(1);
 
-  const isFirstSession = !existingAppointments || existingAppointments.length === 0;
+  const autoDetectedFirstSession = !existingAppointments || existingAppointments.length === 0;
+  // override_first_session allows admin to manually force/disable first-session discount
+  const isFirstSession = typeof override_first_session === 'boolean'
+    ? override_first_session
+    : autoDetectedFirstSession;
   const pricing = calculatePrice(
     appointment_type as AppointmentType,
     Number(duration) as AppointmentDuration,
