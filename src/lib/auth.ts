@@ -18,24 +18,21 @@
 //   pnpm add better-auth@1.6.9
 
 import { betterAuth } from 'better-auth';
-import { supabaseAdapter } from 'better-auth/adapters/supabase';
 import { createAuthClient } from 'better-auth/client';
-
-import { supabaseAdmin } from './supabase';
+import { Pool } from 'pg';
 
 // ---------------------------------------------------------------------------
 // Instance BetterAuth — configuration serveur
 // ---------------------------------------------------------------------------
 
 export const auth = betterAuth({
-  // ── Adapteur de base de données ──────────────────────────────────────────
-  // BetterAuth v1.x avec Supabase : l'adapter lit/écrit directement dans les
-  // tables gérées par BetterAuth (user, session, account, verification).
-  // Ces tables sont créées via `npx better-auth migrate` ou le schéma SQL
-  // fourni dans la doc BetterAuth.
-  database: supabaseAdapter(supabaseAdmin, {
-    // BetterAuth génère ses propres UUIDs — désactiver si Supabase génère les IDs
-    generateId: false,
+  // ── Connexion PostgreSQL (Supabase) ──────────────────────────────────────
+  // BetterAuth v1.x détecte automatiquement un pg.Pool (via "connect" in db)
+  // et l'encapsule dans un PostgresDialect Kysely.
+  // DATABASE_URL = connection string Supabase PostgreSQL (pooler ou direct)
+  database: new Pool({
+    connectionString: import.meta.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
   }),
 
   // ── Authentification par email + mot de passe ────────────────────────────
@@ -74,6 +71,14 @@ export const auth = betterAuth({
       httpOnly: true,
       sameSite: 'lax',
     },
+  },
+
+  // ── Rate limiting (protection brute force sur /sign-in/email) ────────────
+  // 5 tentatives par fenêtre de 10 minutes — renvoie 429 au-delà.
+  rateLimit: {
+    enabled: true,
+    window: 10 * 60, // 10 minutes (secondes)
+    max: 5,          // tentatives maximum par fenêtre
   },
 
   // ── Hook : bloquer toute inscription supplémentaire ───────────────────────

@@ -32,3 +32,8 @@ dist/
 audit-screenshots/
 audit-results.json
 .claude/
+
+# Variables d'environnement — ne jamais committer
+.env
+.env.local
+.env.*.local

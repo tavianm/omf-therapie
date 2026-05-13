@@ -31,6 +31,13 @@ function buildICSEvent(appt: Appointment) {
 }
 
 export const POST: APIRoute = async ({ request }) => {
+  // 0. Vérifier que le secret webhook est configuré
+  const webhookSecret = import.meta.env.STRIPE_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    console.error('[stripe-webhook] STRIPE_WEBHOOK_SECRET absent — webhooks désactivés');
+    return new Response('Configuration webhook manquante', { status: 500 });
+  }
+
   // 1. Lire le raw body (obligatoire pour la vérification de signature Stripe)
   const rawBody = await request.text();
   const signature = request.headers.get('stripe-signature');
@@ -45,12 +52,12 @@ export const POST: APIRoute = async ({ request }) => {
     event = stripe.webhooks.constructEvent(
       rawBody,
       signature,
-      import.meta.env.STRIPE_WEBHOOK_SECRET,
+      webhookSecret,
     );
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Erreur inconnue';
-    console.error('[stripe-webhook] Signature invalide:', msg);
-    return new Response(`Webhook signature invalide: ${msg}`, { status: 400 });
+    // Logguer en interne, retourner un message générique (pas de détails techniques)
+    console.error('[stripe-webhook] Signature invalide:', err instanceof Error ? err.message : err);
+    return new Response('Signature invalide', { status: 400 });
   }
 
   // 3. Traiter les événements pertinents

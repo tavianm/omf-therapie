@@ -235,10 +235,25 @@ export const POST: APIRoute = async ({ request }) => {
     }),
   ]).catch(err => console.error('[appointments] Erreur envoi emails:', err));
 
-  // 8. Réponse 201
+  // 8. Réponse 201 — ne retourner que les champs utiles au patient
+  // (jamais therapist_notes, stripe_*, video_link — champs admin-only)
+  const publicAppointment = {
+    id: inserted.id,
+    patient_name: inserted.patient_name,
+    patient_email: inserted.patient_email,
+    appointment_type: inserted.appointment_type,
+    appointment_mode: inserted.appointment_mode,
+    duration: inserted.duration,
+    is_first_session: inserted.is_first_session,
+    final_price: inserted.final_price,
+    scheduled_at: inserted.scheduled_at,
+    status: inserted.status,
+    created_at: inserted.created_at,
+  };
+
   return new Response(
     JSON.stringify({
-      appointment: inserted,
+      appointment: publicAppointment,
       message: 'Votre demande a bien été enregistrée.',
     }),
     {
