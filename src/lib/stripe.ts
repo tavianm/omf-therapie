@@ -5,7 +5,6 @@
  *   npm add stripe
  */
 
-// @ts-expect-error — stripe pas encore installé, sera résolu à l'install
 import Stripe from 'stripe';
 
 if (!import.meta.env.STRIPE_SECRET_KEY) {
@@ -68,6 +67,11 @@ export async function createAppointmentPaymentLink(
     after_completion: {
       type: 'redirect',
       redirect: { url: successUrl },
+    },
+    // checkout_session_data.metadata propage appointment_id à la CheckoutSession
+    // (PaymentLink.metadata seul ne se propage pas — Stripe limitation)
+    checkout_session_data: {
+      metadata: { appointment_id: appointmentId },
     },
     metadata: {
       appointment_id: appointmentId,

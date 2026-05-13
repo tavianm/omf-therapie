@@ -62,7 +62,7 @@ function buildAuthClient(): Auth.JWT {
   return new google.auth.JWT({
     email,
     key: privateKey,
-    scopes: ['https://www.googleapis.com/auth/calendar'],
+    scopes: ['https://www.googleapis.com/auth/calendar.events'],
   });
 }
 

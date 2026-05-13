@@ -65,8 +65,10 @@ export const POST: APIRoute = async ({ request }) => {
 
   const { appointmentId, therapistNote } = body;
 
-  if (!appointmentId || typeof appointmentId !== 'string' || appointmentId.trim() === '') {
-    return jsonError(400, 'Paramètre manquant : appointmentId est requis');
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  if (!appointmentId || typeof appointmentId !== 'string' || !UUID_RE.test(appointmentId.trim())) {
+    return jsonError(400, 'Paramètre manquant ou invalide : appointmentId doit être un UUID valide');
   }
 
   if (therapistNote !== undefined && typeof therapistNote !== 'string') {

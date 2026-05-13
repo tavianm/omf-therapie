@@ -26,6 +26,11 @@ if (!email || !password) {
   process.exit(1);
 }
 
+if (password.length < 16) {
+  console.error('❌ ADMIN_PASSWORD doit faire au moins 16 caractères (majuscules + minuscules + chiffres + symboles)');
+  process.exit(1);
+}
+
 async function seedAdmin() {
   console.log(`\n🔑 Création du compte admin : ${email}`);
   console.log(`   Endpoint : ${baseURL}/api/auth/sign-up/email\n`);

@@ -133,7 +133,7 @@ export const GET: APIRoute = async ({ request }) => {
     if (err instanceof GoogleCalendarError) {
       // Erreur métier Google Calendar (quota, config, permissions)
       console.error('[api/availability] GoogleCalendarError :', err.message, err.cause);
-      return jsonError(err.message, 503);
+      return jsonError('Le service de disponibilités est temporairement indisponible.', 503);
     }
 
     // Erreur inattendue

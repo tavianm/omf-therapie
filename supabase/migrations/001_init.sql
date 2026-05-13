@@ -35,7 +35,12 @@ CREATE TABLE IF NOT EXISTS appointments (
   final_price INTEGER NOT NULL,                -- prix à régler
 
   -- Planification
-  scheduled_at TIMESTAMPTZ NOT NULL,
+  scheduled_at  TIMESTAMPTZ NOT NULL,
+  -- Colonne calculée : utilisée pour les requêtes de conflits et rappels
+  scheduled_end TIMESTAMPTZ GENERATED ALWAYS AS (scheduled_at + duration * interval '1 minute') STORED,
+
+  -- Rappel J-1 (NULL = pas encore envoyé — idempotence cron)
+  reminder_sent_at TIMESTAMPTZ,
 
   -- Workflow statut
   status TEXT NOT NULL DEFAULT 'pending'
@@ -107,13 +112,8 @@ CREATE POLICY "admin full access" ON appointments
   FOR ALL
   USING (auth.role() = 'service_role');
 
--- Les visiteurs anonymes peuvent soumettre une prise de rendez-vous
-CREATE POLICY "anon can insert" ON appointments
-  FOR INSERT
-  WITH CHECK (true);
-
--- Note : les anon ne peuvent pas lire les rendez-vous (pas de politique SELECT).
--- La confirmation de RDV se fait par email (transactionnel), pas par requête.
+-- Note : toutes les insertions passent par l'API serveur (supabaseAdmin, service_role).
+-- Aucune politique anon INSERT — le service_role bypasse RLS et valide côté serveur.
 
 -- =============================================================================
 -- TABLES BETTERAUTH (v1.6.9)
