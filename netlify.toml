@@ -4,6 +4,33 @@
 
 [build.environment]
   NODE_VERSION = "20"
+  # ---------------------------------------------------------------------------
+  # Variables d'environnement requises
+  # (à configurer dans le dashboard Netlify — NE PAS committer de valeurs ici)
+  # ---------------------------------------------------------------------------
+  # SUPABASE_URL                  — URL du projet Supabase
+  # SUPABASE_ANON_KEY             — Clé publique Supabase (client anon)
+  # SUPABASE_SERVICE_ROLE_KEY     — Clé service_role Supabase (server-side uniquement)
+  #
+  # BETTER_AUTH_SECRET            — Secret de signature Better Auth
+  # BETTER_AUTH_URL               — URL publique du site (ex. https://omf-therapie.fr)
+  #
+  # GOOGLE_SERVICE_ACCOUNT_EMAIL  — Email du compte de service Google Calendar
+  # GOOGLE_PRIVATE_KEY            — Clé privée RSA du compte de service (PEM)
+  # GOOGLE_CALENDAR_ID            — ID du calendrier Google à synchroniser
+  #
+  # RESEND_API_KEY                — Clé API Resend pour l'envoi d'emails
+  # RESEND_FROM_EMAIL             — Adresse expéditeur (ex. OMF Thérapie <contact@omf-therapie.fr>)
+  #
+  # STRIPE_SECRET_KEY             — Clé secrète Stripe (sk_live_… ou sk_test_…)
+  # STRIPE_WEBHOOK_SECRET         — Secret de signature des webhooks Stripe (whsec_…)
+  # STRIPE_PUBLISHABLE_KEY        — Clé publique Stripe (pk_live_… ou pk_test_…)
+  #
+  # ADMIN_EMAIL                   — Email de la thérapeute (destinataire des formulaires)
+  #
+  # GOOGLE_BUSINESS_URL           — Lien Google Business Profile (optionnel)
+  # PAGES_JAUNES_URL              — Lien Pages Jaunes (optionnel)
+  # PSYCHOLOGUE_NET_URL           — Lien profil Psychologue.net (optionnel)
 
 [dev]
   framework = "astro"
@@ -43,3 +70,12 @@
   from = "/Formations"
   to = "/#qualifications"
   status = 301
+
+# ---------------------------------------------------------------------------
+# Note : routes /api/* (stripe-webhook, contact, rendez-vous…)
+# ---------------------------------------------------------------------------
+# Le site utilise @astrojs/netlify avec output: 'hybrid'.
+# L'adaptateur Netlify déploie automatiquement chaque fichier
+# src/pages/api/*.ts (avec prerender = false) comme une Netlify Function
+# sous /.netlify/functions/. Les URLs /api/* sont résolues nativement
+# par Astro — AUCUN redirect manuel vers /.netlify/functions/ n'est requis.

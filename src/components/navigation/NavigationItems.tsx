@@ -11,10 +11,10 @@ export const useNavigationItems = () => {
       { name: "Blog", href: "/blog", path: "/blog", page: true },
       { name: "Contact", href: "/contact", path: "/contact", page: true },
       {
-        name: "RDV en ligne",
-        href: "https://www.psychologue.net/cabinets/oriane-montabonnet",
-        external: true,
-        path: "/",
+        name: "Prendre RDV",
+        href: "/rendez-vous",
+        path: "/rendez-vous",
+        page: true,
       },
     ],
     []
