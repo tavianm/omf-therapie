@@ -7,8 +7,8 @@ import { supabaseAdmin } from '../../../lib/supabase';
 import { sendEmail } from '../../../lib/resend';
 import { generateGoogleCalendarLink, generateICSDataUri, CABINET_ADDRESS } from '../../../lib/ics';
 import { getTypeLabel, getModeLabel } from '../../../lib/pricing';
-import { createAppointmentPaymentLink } from '../../../lib/stripe';
-import { isWednesdayParis } from '../../../utils/date';
+import { stripe, createAppointmentPaymentLink } from '../../../lib/stripe';
+import { isWednesdayParis, isWithinBusinessHours } from '../../../utils/date';
 import AppointmentConfirmed from '../../../emails/AppointmentConfirmed';
 import AppointmentDeclined from '../../../emails/AppointmentDeclined';
 import AppointmentRescheduled from '../../../emails/AppointmentRescheduled';
@@ -62,6 +62,9 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
   const { id } = params;
   if (!id) return errorResponse(400, 'Identifiant manquant');
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(id)) return errorResponse(400, 'Identifiant de rendez-vous invalide');
 
   // 2. Parse body
   let body: Record<string, unknown>;
@@ -253,12 +256,27 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (appointment.appointment_mode === 'in-person' && !isWednesdayParis(rescheduled_to as string))
       return errorResponse(422, 'Les rendez-vous en présentiel ont lieu le mercredi uniquement.');
 
+    if (!isWithinBusinessHours(rescheduled_to as string, appointment.duration))
+      return errorResponse(422, 'Le créneau doit être dans les plages horaires (8h-12h ou 14h-19h).');
+
+    // Expire l'ancien Payment Link Stripe s'il existe (évite le double-paiement)
+    if (appointment.stripe_payment_link_id) {
+      try {
+        await stripe.paymentLinks.update(appointment.stripe_payment_link_id, { active: false });
+      } catch (stripeErr) {
+        console.error('[appointments/patch] Erreur expiration Payment Link Stripe:', stripeErr);
+        // Non-bloquant : on continue, le lien expiré est préférable à bloquer le report
+      }
+    }
+
     const { data: updated, error: updateError } = await supabaseAdmin
       .from('appointments')
       .update({
         status: 'rescheduled',
         rescheduled_to: newDate.toISOString(),
         therapist_notes: therapist_notes ?? appointment.therapist_notes,
+        stripe_payment_link_id: null,
+        stripe_payment_link_url: null,
       })
       .eq('id', id)
       .select()

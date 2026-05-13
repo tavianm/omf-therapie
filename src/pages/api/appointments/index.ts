@@ -9,6 +9,7 @@ import AppointmentRequestReceived from '../../../emails/AppointmentRequestReceiv
 import AppointmentRequestNotification from '../../../emails/AppointmentRequestNotification';
 import type { AppointmentType, AppointmentDuration, AppointmentMode } from '../../../types/appointment';
 import { checkRateLimit, rateLimitResponse } from '../../../lib/rate-limit';
+import { isWednesdayParis, isWithinBusinessHours } from '../../../utils/date';
 
 // ---------------------------------------------------------------------------
 // Validation helpers
@@ -29,50 +30,21 @@ function errorResponse(status: number, message: string, field?: string): Respons
   });
 }
 
-/** Vérifie que scheduled_at tombe un mercredi en heure Paris */
-function isWednesdayParis(isoDate: string): boolean {
-  const date = new Date(isoDate);
-  const parisDay = new Intl.DateTimeFormat('fr-FR', {
-    timeZone: 'Europe/Paris',
-    weekday: 'long',
-  }).format(date);
-  return parisDay === 'mercredi';
-}
-
-/** Vérifie que la séance est dans les plages horaires (8h-12h ou 14h-19h) en heure Paris */
-function isWithinBusinessHours(isoDate: string, durationMin: number): boolean {
-  const start = new Date(isoDate);
-  const end = new Date(start.getTime() + durationMin * 60 * 1000);
-
-  const toParisMinutes = (d: Date): number => {
-    const parts = new Intl.DateTimeFormat('fr-FR', {
-      timeZone: 'Europe/Paris',
-      hour: 'numeric',
-      minute: 'numeric',
-      hour12: false,
-    }).formatToParts(d);
-    const h = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
-    const m = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
-    return h * 60 + m;
-  };
-
-  const startMin = toParisMinutes(start);
-  const endMin = toParisMinutes(end);
-
-  // Plages : 8h00-12h00 (480-720) ou 14h00-19h00 (840-1140)
-  const inMorning = startMin >= 480 && endMin <= 720;
-  const inAfternoon = startMin >= 840 && endMin <= 1140;
-
-  return inMorning || inAfternoon;
-}
-
 // ---------------------------------------------------------------------------
-// POST handler
+// Validation helpers (fonctions locales supprimées — voir src/utils/date.ts)
+// ---------------------------------------------------------------------------
+
+
 // ---------------------------------------------------------------------------
 
 export const POST: APIRoute = async ({ request }) => {
   // 0. Rate limiting — 5 requêtes par IP sur 15 minutes
-  const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  // x-nf-client-connection-ip est défini exclusivement par Netlify (non falsifiable).
+  // x-forwarded-for en fallback (leftmost = client-controlled, moins fiable).
+  const clientIp =
+    request.headers.get('x-nf-client-connection-ip') ??
+    request.headers.get('x-forwarded-for')?.split(',').at(-1)?.trim() ??
+    'unknown';
   const rl = checkRateLimit(clientIp, 'appointments', { limit: 5, windowSeconds: 900 });
   if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 

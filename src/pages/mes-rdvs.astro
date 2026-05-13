@@ -23,9 +23,20 @@ if (!session) {
 }
 
 // ── Fetch appointments ───────────────────────────────────────────────────────
+// Colonnes explicites : exclut les champs sensibles non nécessaires à AppointmentCard
+// (évite la sérialisation de données PII/cliniques dans les props Astro island).
+const APPOINTMENT_COLUMNS = [
+  'id', 'status', 'scheduled_at', 'rescheduled_to',
+  'appointment_type', 'appointment_mode', 'duration', 'final_price',
+  'patient_name', 'patient_email', 'patient_phone', 'patient_postal_code',
+  'patient_reason', 'therapist_notes',
+  'video_link', 'stripe_payment_link_url', 'stripe_payment_link_id',
+  'created_at', 'updated_at',
+].join(',');
+
 const { data: rows, error } = await supabaseAdmin
   .from('appointments')
-  .select('*')
+  .select(APPOINTMENT_COLUMNS)
   .is('deleted_at', null)
   .order('scheduled_at', { ascending: false });
 

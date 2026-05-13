@@ -59,7 +59,9 @@ CREATE TABLE IF NOT EXISTS appointments (
   stripe_payment_link_url    TEXT,
   stripe_payment_intent_id   TEXT,
 
-  -- Idempotence Stripe webhook
+  -- Idempotence Stripe webhook.
+  -- UNIQUE with NULLs: PostgreSQL treats NULL ≠ NULL, so multiple rows can have NULL
+  -- (in-person appointments without a Stripe event). Only non-NULL values are deduplicated.
   stripe_event_id TEXT UNIQUE,
 
   -- Lien Google Meet (renseigné manuellement par la thérapeute)

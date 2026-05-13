@@ -1,6 +1,19 @@
 /**
- * Simple in-memory rate limiter for Netlify Functions.
- * Uses a sliding window per IP. Not distributed — suitable for low-traffic sites.
+ * Simple in-memory rate limiter for Netlify serverless functions.
+ *
+ * ⚠️  LIMITATIONS:
+ *   1. Cold-start reset — each new Lambda instance starts with an empty store.
+ *      On Netlify Functions, instances may spin up and down independently.
+ *      Under concurrent load, multiple instances run in parallel, each with their
+ *      own counter. Effective limit is approximately `limit × N_instances`.
+ *
+ *   2. IP extraction requires a trusted header — use `x-nf-client-connection-ip`
+ *      (set exclusively by Netlify infrastructure, not spoofable by the client)
+ *      rather than `x-forwarded-for` (leftmost entry is client-controlled).
+ *
+ * For production-grade distributed rate limiting, replace this store with
+ * an Upstash Redis counter or a Supabase INSERT … ON CONFLICT increment.
+ * This implementation is adequate for low-volume single-warm-instance traffic.
  */
 
 interface RateLimitEntry {

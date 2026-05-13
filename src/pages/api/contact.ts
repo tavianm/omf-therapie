@@ -147,7 +147,11 @@ function ContactEmailTemplate({
 
 export const POST: APIRoute = async ({ request }) => {
   // 0. Rate limiting — 3 requêtes par IP sur 10 minutes
-  const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  // x-nf-client-connection-ip est défini exclusivement par Netlify (non falsifiable).
+  const clientIp =
+    request.headers.get('x-nf-client-connection-ip') ??
+    request.headers.get('x-forwarded-for')?.split(',').at(-1)?.trim() ??
+    'unknown';
   const rl = checkRateLimit(clientIp, 'contact', { limit: 3, windowSeconds: 600 });
   if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
