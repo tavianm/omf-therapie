@@ -36,8 +36,8 @@ CREATE TABLE IF NOT EXISTS appointments (
 
   -- Planification
   scheduled_at  TIMESTAMPTZ NOT NULL,
-  -- Colonne calculée : utilisée pour les requêtes de conflits et rappels
-  scheduled_end TIMESTAMPTZ GENERATED ALWAYS AS (scheduled_at + duration * interval '1 minute') STORED,
+  -- Colonne calculée via trigger (GENERATED AS TIMESTAMPTZ n'est pas IMMUTABLE sur PostgreSQL)
+  scheduled_end TIMESTAMPTZ,
 
   -- Rappel J-1 (NULL = pas encore envoyé — idempotence cron)
   reminder_sent_at TIMESTAMPTZ,
@@ -102,6 +102,23 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER appointments_updated_at
   BEFORE UPDATE ON appointments
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- TRIGGER : calcul automatique de scheduled_end
+-- (GENERATED ALWAYS AS TIMESTAMPTZ n'est pas IMMUTABLE sur PostgreSQL standard)
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION compute_scheduled_end()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.scheduled_end := NEW.scheduled_at + NEW.duration * interval '1 minute';
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER appointments_scheduled_end
+  BEFORE INSERT OR UPDATE OF scheduled_at, duration ON appointments
+  FOR EACH ROW EXECUTE FUNCTION compute_scheduled_end();
 
 -- ---------------------------------------------------------------------------
 -- ROW LEVEL SECURITY : appointments
