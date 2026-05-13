@@ -8,6 +8,7 @@ import { sendEmail } from '../../../lib/resend';
 import { generateGoogleCalendarLink, generateICSDataUri, CABINET_ADDRESS } from '../../../lib/ics';
 import { getTypeLabel, getModeLabel, calculatePrice } from '../../../lib/pricing';
 import { stripe, createAppointmentPaymentLink } from '../../../lib/stripe';
+import { createCalendarEvent } from '../../../lib/google-calendar';
 import { isWednesdayParis, isWithinBusinessHours } from '../../../utils/date';
 import AppointmentConfirmed from '../../../emails/AppointmentConfirmed';
 import AppointmentDeclined from '../../../emails/AppointmentDeclined';
@@ -56,17 +57,7 @@ function buildICSEvent(appt: Appointment) {
 // ---------------------------------------------------------------------------
 
 export const PATCH: APIRoute = async ({ request, params }) => {
-  // 1. Auth guard
-  const session = await auth.api.getSession({ headers: request.headers });
-  if (!session) return errorResponse(401, 'Non autorisé');
-
-  const { id } = params;
-  if (!id) return errorResponse(400, 'Identifiant manquant');
-
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!UUID_RE.test(id)) return errorResponse(400, 'Identifiant de rendez-vous invalide');
-
-  // 2. Parse body
+  // 1. Parse body FIRST — needed before the auth guard to check action
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -76,8 +67,18 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
   const { action, video_link, stripe_payment_intent_id, therapist_notes, rescheduled_to, override_first_session, is_solidarity } = body;
 
-  if (!action || !['confirm', 'decline', 'reschedule', 'save_notes'].includes(action as string))
-    return errorResponse(422, 'Action invalide (confirm | decline | reschedule | save_notes)');
+  // 2. Auth guard — accept_reschedule est public (lien email patient), toutes les autres actions requièrent une session
+  const session = await auth.api.getSession({ headers: request.headers });
+  if (action !== 'accept_reschedule' && !session) return errorResponse(401, 'Non autorisé');
+
+  const { id } = params;
+  if (!id) return errorResponse(400, 'Identifiant manquant');
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(id)) return errorResponse(400, 'Identifiant de rendez-vous invalide');
+
+  if (!action || !['confirm', 'decline', 'reschedule', 'save_notes', 'accept_reschedule'].includes(action as string))
+    return errorResponse(422, 'Action invalide (confirm | decline | reschedule | save_notes | accept_reschedule)');
 
   // 3. Récupérer le rendez-vous
   const { data: appt, error: fetchError } = await supabaseAdmin
@@ -157,6 +158,29 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       } catch (stripeErr) {
         console.error('[appointments/patch] Erreur Stripe Payment Link:', stripeErr);
         return errorResponse(500, 'Erreur lors de la génération du lien de paiement Stripe');
+      }
+    }
+
+    // Génération automatique du lien Google Meet pour les séances vidéo directement confirmées (edge case)
+    if (appointment.appointment_mode === 'video' && newStatus === 'confirmed' && !updateData.video_link) {
+      try {
+        const start = new Date(appointment.scheduled_at);
+        const end = new Date(start.getTime() + appointment.duration * 60 * 1000);
+        const meetResult = await createCalendarEvent({
+          title: `Séance OMF Thérapie — ${getTypeLabel(appointment.appointment_type)}`,
+          start: start.toISOString(),
+          end: end.toISOString(),
+          description: `${getTypeLabel(appointment.appointment_type)} (${getModeLabel(appointment.appointment_mode)}) · ${appointment.duration} min`,
+          attendeeEmail: appointment.patient_email,
+          withMeet: true,
+          appointmentId: id,
+        });
+        if (meetResult.meetLink) {
+          updateData.video_link = meetResult.meetLink;
+        }
+      } catch (meetErr) {
+        // Dégradation gracieuse : la confirmation n'est pas bloquée par une erreur Meet
+        console.error('[appointments/patch] Erreur génération Google Meet:', meetErr);
       }
     }
 
@@ -313,7 +337,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         duration: updatedAppt.duration,
         finalPrice: updatedAppt.final_price,
         therapistNote: typeof therapist_notes === 'string' ? therapist_notes : undefined,
-        bookingUrl: `${baseUrl}/rendez-vous`,
+        appointmentId: updatedAppt.id,
       }),
     }).catch(err => console.error('[appointments/patch] Erreur email reschedule:', err));
 

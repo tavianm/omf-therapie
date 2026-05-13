@@ -553,14 +553,14 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
                 className="block text-sm font-medium text-sage-700 font-sans mb-1.5"
               >
                 Lien visio Google Meet{" "}
-                <span className="text-sage-400 font-normal">(optionnel)</span>
+                <span className="text-sage-400 font-normal">(optionnel — auto-généré si vide)</span>
               </label>
               <input
                 id="video-link-input"
                 type="url"
                 value={videoLink}
                 onChange={(e) => setVideoLink(e.target.value)}
-                placeholder="https://meet.google.com/xxx-xxxx-xxx"
+                placeholder="Laissez vide pour auto-génération Google Meet"
                 className="w-full px-4 py-2.5 rounded-xl border border-sage-200 bg-sage-50 text-sage-900 placeholder-sage-400 font-sans text-sm focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent transition-colors"
               />
             </div>

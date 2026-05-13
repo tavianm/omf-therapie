@@ -9,6 +9,7 @@ import { supabaseAdmin } from '../../lib/supabase';
 import { sendEmail } from '../../lib/resend';
 import { generateGoogleCalendarLink, generateICSDataUri, CABINET_ADDRESS } from '../../lib/ics';
 import { getTypeLabel, getModeLabel } from '../../lib/pricing';
+import { createCalendarEvent } from '../../lib/google-calendar';
 import AppointmentConfirmed from '../../emails/AppointmentConfirmed';
 import type { Appointment } from '../../types/appointment';
 
@@ -135,9 +136,38 @@ async function handlePaymentSucceeded(appointmentId: string, paymentIntentId: st
 
   const updatedAppt = updated as Appointment;
 
+  // Génération automatique du lien Google Meet pour les séances vidéo (non-bloquant)
+  let videoLink = updatedAppt.video_link ?? undefined;
+  if (updatedAppt.appointment_mode === 'video' && !videoLink) {
+    try {
+      const start = new Date(updatedAppt.scheduled_at);
+      const end = new Date(start.getTime() + updatedAppt.duration * 60 * 1000);
+      const result = await createCalendarEvent({
+        title: `Séance OMF Thérapie — ${getTypeLabel(updatedAppt.appointment_type)}`,
+        start: start.toISOString(),
+        end: end.toISOString(),
+        description: `${getTypeLabel(updatedAppt.appointment_type)} (${getModeLabel(updatedAppt.appointment_mode)}) · ${updatedAppt.duration} min`,
+        attendeeEmail: updatedAppt.patient_email,
+        withMeet: true,
+        appointmentId: updatedAppt.id,
+      });
+      if (result.meetLink) {
+        videoLink = result.meetLink;
+        await supabaseAdmin
+          .from('appointments')
+          .update({ video_link: result.meetLink })
+          .eq('id', updatedAppt.id);
+      }
+    } catch (meetErr) {
+      // Dégradation gracieuse : la séance est confirmée même si Meet échoue
+      console.error('[stripe-webhook] Erreur génération Google Meet:', meetErr);
+    }
+  }
+
   // 2. Envoyer l'email de confirmation avec ICS (non-bloquant)
   try {
-    const icsEvent = buildICSEvent(updatedAppt);
+    const apptForIcs = videoLink ? { ...updatedAppt, video_link: videoLink } : updatedAppt;
+    const icsEvent = buildICSEvent(apptForIcs);
     const googleCalendarLink = generateGoogleCalendarLink(icsEvent);
     const icsDataUri = generateICSDataUri(icsEvent);
 
@@ -153,7 +183,7 @@ async function handlePaymentSucceeded(appointmentId: string, paymentIntentId: st
         scheduledAt: updatedAppt.scheduled_at,
         duration: updatedAppt.duration,
         finalPrice: updatedAppt.final_price,
-        videoLink: updatedAppt.video_link ?? undefined,
+        videoLink,
         googleCalendarLink,
         icsDataUri,
         cabinetAddress: undefined, // vidéo uniquement

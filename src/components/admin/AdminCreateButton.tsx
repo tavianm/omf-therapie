@@ -326,13 +326,13 @@ function AdminCreateModal({ onClose }: { onClose: () => void }) {
           {/* Lien vidéo (conditionnel) */}
           {form.appointment_mode === "video" && (
             <div>
-              <Label htmlFor="cm-video">Lien de téléconsultation</Label>
+              <Label htmlFor="cm-video">Lien de téléconsultation <span className="font-normal text-sage-400">(optionnel — généré automatiquement si vide)</span></Label>
               <Input
                 id="cm-video"
                 type="url"
                 value={form.video_link}
                 onChange={v => update("video_link", v)}
-                placeholder="https://meet.google.com/…"
+                placeholder="Laissez vide pour auto-génération Google Meet"
               />
             </div>
           )}

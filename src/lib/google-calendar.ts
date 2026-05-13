@@ -396,18 +396,36 @@ export interface CreateEventParams {
   end: string;    // ISO 8601
   description?: string;
   attendeeEmail?: string;
+  /** Si true, crée automatiquement une conférence Google Meet */
+  withMeet?: boolean;
+  /** Identifiant du rendez-vous — utilisé comme requestId pour l'idempotence */
+  appointmentId?: string;
+}
+
+export interface CreateEventResult {
+  /** Identifiant de l'événement Google Calendar */
+  eventId: string;
+  /** URL Google Meet (présente uniquement si withMeet était true) */
+  meetLink?: string;
 }
 
 /**
  * Crée un événement dans Google Calendar après confirmation d'un rendez-vous.
- * Retourne l'eventId Google Calendar.
+ * Retourne { eventId, meetLink? }.
  */
 export async function createCalendarEvent(
   params: CreateEventParams,
-): Promise<string> {
+): Promise<CreateEventResult> {
   if (MOCK_MODE) {
     console.log(`[calendar-mock] Creating event: ${params.title} at ${params.start}`);
-    return `mock-event-${Date.now()}`;
+    const { withMeet, appointmentId } = params;
+    const eventId = `mock-event-${Date.now()}`;
+    return {
+      eventId,
+      meetLink: withMeet
+        ? `https://meet.google.com/mock-${(appointmentId ?? 'xxxxxxxx').slice(0, 8)}`
+        : undefined,
+    };
   }
 
   const calendarId = import.meta.env.GOOGLE_CALENDAR_ID;
@@ -422,10 +440,13 @@ export async function createCalendarEvent(
     ? [{ email: params.attendeeEmail }]
     : undefined;
 
+  const requestId = params.appointmentId ?? Date.now().toString(36);
+
   try {
     const response = await calendar.events.insert({
       calendarId,
       sendUpdates: params.attendeeEmail ? 'all' : 'none',
+      ...(params.withMeet ? { conferenceDataVersion: 1 } : {}),
       requestBody: {
         summary: params.title,
         description: params.description,
@@ -438,6 +459,9 @@ export async function createCalendarEvent(
           timeZone: TIMEZONE,
         },
         attendees,
+        ...(params.withMeet
+          ? { conferenceData: { createRequest: { requestId } } }
+          : {}),
       },
     });
 
@@ -448,7 +472,12 @@ export async function createCalendarEvent(
       );
     }
 
-    return eventId;
+    const meetLink =
+      response.data.conferenceData?.entryPoints?.[0]?.uri ??
+      response.data.hangoutLink ??
+      undefined;
+
+    return { eventId, meetLink: meetLink ?? undefined };
   } catch (err: unknown) {
     if (err instanceof GoogleCalendarError) throw err;
 
