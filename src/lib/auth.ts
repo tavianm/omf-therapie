@@ -7,6 +7,7 @@
  * Variables d'env requises :
  *   BETTER_AUTH_SECRET  — chaîne secrète aléatoire (min 32 chars)
  *   BETTER_AUTH_URL     — URL de base du site (ex: https://omf-therapie.fr)
+ *   DATABASE_URL        — connection string PostgreSQL Supabase (pooler ou direct)
  *   ADMIN_EMAIL         — email de l'admin unique (utilisé par le script CLI de seed)
  *
  * Architecture : un seul compte admin (la thérapeute).
@@ -14,12 +15,18 @@
  * La création du compte admin se fait via le script `scripts/seed-admin.ts`.
  */
 
-// NOTE: `better-auth` n'est pas encore installé. Ajouter via :
-//   pnpm add better-auth@1.6.9
-
 import { betterAuth } from 'better-auth';
 import { createAuthClient } from 'better-auth/client';
 import { Pool } from 'pg';
+
+// ---------------------------------------------------------------------------
+// Pool PostgreSQL partagé (BetterAuth + hook anti-inscription)
+// ---------------------------------------------------------------------------
+
+const pool = new Pool({
+  connectionString: import.meta.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
 
 // ---------------------------------------------------------------------------
 // Instance BetterAuth — configuration serveur
@@ -30,10 +37,7 @@ export const auth = betterAuth({
   // BetterAuth v1.x détecte automatiquement un pg.Pool (via "connect" in db)
   // et l'encapsule dans un PostgresDialect Kysely.
   // DATABASE_URL = connection string Supabase PostgreSQL (pooler ou direct)
-  database: new Pool({
-    connectionString: import.meta.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
-  }),
+  database: pool,
 
   // ── Authentification par email + mot de passe ────────────────────────────
   emailAndPassword: {
@@ -92,35 +96,27 @@ export const auth = betterAuth({
           return context.path === '/sign-up/email';
         },
         async handler(_context) {
-          // Vérifier si un utilisateur existe déjà dans la table `user`
-          // gérée par BetterAuth (table distincte des tables Supabase auth.*).
-          const { data, error } = await supabaseAdmin
-            .from('user') // Table BetterAuth — pas auth.users de Supabase
-            .select('id')
-            .limit(1)
-            .maybeSingle();
-
-          if (error) {
-            // En cas d'erreur DB, on refuse par sécurité
+          // Vérifier si un utilisateur existe déjà dans la table "user" BetterAuth
+          try {
+            const result = await pool.query<{ id: string }>(
+              'SELECT id FROM "user" LIMIT 1',
+            );
+            if (result.rowCount && result.rowCount > 0) {
+              return new Response(
+                JSON.stringify({
+                  error: 'Inscription désactivée. Ce site n\'accepte pas de nouveaux comptes.',
+                }),
+                { status: 403, headers: { 'Content-Type': 'application/json' } },
+              );
+            }
+          } catch (error) {
             console.error('[auth] Erreur lors de la vérification admin :', error);
             return new Response(
               JSON.stringify({ error: 'Erreur interne — inscription impossible.' }),
               { status: 500, headers: { 'Content-Type': 'application/json' } },
             );
           }
-
-          if (data) {
-            // Un utilisateur existe déjà → inscription bloquée
-            return new Response(
-              JSON.stringify({
-                error: 'Inscription désactivée. Ce site n\'accepte pas de nouveaux comptes.',
-              }),
-              { status: 403, headers: { 'Content-Type': 'application/json' } },
-            );
-          }
-
           // Aucun utilisateur → première création autorisée (script de seed)
-          // On laisse BetterAuth continuer normalement
         },
       },
     ],
