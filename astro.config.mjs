@@ -35,5 +35,16 @@ export default defineConfig({
         },
       },
     },
+    // Legacy components (Footer.tsx, SEO.tsx) imported react-router-dom / react-helmet-async
+    // which are no longer installed. Mark them as external to prevent dev-server scan errors.
+    resolve: {
+      alias: {
+        'react-router-dom': '/dev/null',
+        'react-helmet-async': '/dev/null',
+      },
+    },
+    optimizeDeps: {
+      exclude: ['react-router-dom', 'react-helmet-async'],
+    },
   },
 });
