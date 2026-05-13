@@ -72,7 +72,7 @@ export const POST: APIRoute = async ({ request }) => {
           break;
         }
 
-        await handlePaymentSucceeded(appointmentId, paymentIntent.id);
+        await handlePaymentSucceeded(appointmentId, paymentIntent.id, event.id);
         break;
       }
 
@@ -88,7 +88,7 @@ export const POST: APIRoute = async ({ request }) => {
           break;
         }
 
-        await handlePaymentSucceeded(appointmentId, paymentIntentId ?? '');
+        await handlePaymentSucceeded(appointmentId, paymentIntentId ?? '', event.id);
         break;
       }
 
@@ -112,46 +112,30 @@ export const POST: APIRoute = async ({ request }) => {
 // Handler interne — paiement reçu
 // ---------------------------------------------------------------------------
 
-async function handlePaymentSucceeded(appointmentId: string, paymentIntentId: string): Promise<void> {
-  // 1. Récupérer le rendez-vous
-  const { data: appt, error: fetchError } = await supabaseAdmin
-    .from('appointments')
-    .select('*')
-    .eq('id', appointmentId)
-    .single();
-
-  if (fetchError || !appt) {
-    console.error('[stripe-webhook] Rendez-vous introuvable:', appointmentId);
-    return;
-  }
-
-  const appointment = appt as Appointment;
-
-  // 2. Idempotence : ignorer si déjà traité
-  if (appointment.status !== 'payment_pending') {
-    console.info('[stripe-webhook] Paiement déjà traité pour:', appointmentId);
-    return;
-  }
-
-  // 3. Mettre à jour le statut
-  const { data: updated, error: updateError } = await supabaseAdmin
+async function handlePaymentSucceeded(appointmentId: string, paymentIntentId: string, eventId: string): Promise<void> {
+  // Atomic idempotency: only update if status is still payment_pending AND stripe_event_id is null
+  const { data: updated, error: updateErr } = await supabaseAdmin
     .from('appointments')
     .update({
       status: 'payment_received',
-      stripe_payment_intent_id: paymentIntentId || appointment.stripe_payment_intent_id,
+      stripe_event_id: eventId,
+      stripe_payment_intent_id: paymentIntentId || undefined,
     })
     .eq('id', appointmentId)
+    .eq('status', 'payment_pending')
+    .is('stripe_event_id', null)
     .select()
     .single();
 
-  if (updateError || !updated) {
-    console.error('[stripe-webhook] Erreur mise à jour statut:', updateError);
-    throw new Error('Erreur DB lors de la mise à jour du statut');
+  if (updateErr || !updated) {
+    // Already processed or not in payment_pending state — idempotent, return 200
+    console.info('[stripe-webhook] Événement déjà traité ou RDV non en attente de paiement:', appointmentId);
+    return;
   }
 
   const updatedAppt = updated as Appointment;
 
-  // 4. Envoyer l'email de confirmation avec ICS (non-bloquant)
+  // 2. Envoyer l'email de confirmation avec ICS (non-bloquant)
   try {
     const icsEvent = buildICSEvent(updatedAppt);
     const googleCalendarLink = generateGoogleCalendarLink(icsEvent);

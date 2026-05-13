@@ -54,6 +54,9 @@ CREATE TABLE IF NOT EXISTS appointments (
   stripe_payment_link_url    TEXT,
   stripe_payment_intent_id   TEXT,
 
+  -- Idempotence Stripe webhook
+  stripe_event_id TEXT UNIQUE,
+
   -- Lien Google Meet (renseigné manuellement par la thérapeute)
   video_link TEXT,
 

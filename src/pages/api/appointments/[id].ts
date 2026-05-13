@@ -26,16 +26,6 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
-/** Vérifie que scheduled_at tombe un mercredi en heure Paris */
-function isWednesdayParis(isoDate: string): boolean {
-  const date = new Date(isoDate);
-  const parisDay = new Intl.DateTimeFormat('fr-FR', {
-    timeZone: 'Europe/Paris',
-    weekday: 'long',
-  }).format(date);
-  return parisDay === 'mercredi';
-}
-
 /** Construit l'événement ICS pour un rendez-vous confirmé */
 function buildICSEvent(appt: Appointment) {
   const start = new Date(appt.scheduled_at);
