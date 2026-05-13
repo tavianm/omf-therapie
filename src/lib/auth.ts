@@ -95,7 +95,7 @@ export const auth = betterAuth({
           // Intercepter uniquement la route d'inscription
           return context.path === '/sign-up/email';
         },
-        async handler(_context) {
+        async handler() {
           // Vérifier si un utilisateur existe déjà dans la table "user" BetterAuth
           try {
             const result = await pool.query<{ id: string }>(

@@ -1,6 +1,5 @@
 ---
 import '../index.css';
-import { auth } from '../lib/auth';
 
 interface Props {
   title: string;
@@ -24,11 +23,6 @@ const {
 
 const canonicalURL = canonical ?? new URL(Astro.url.pathname, Astro.site).href;
 const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
-
-// Calcul de la session — utilisé par les pages via leur propre guard.
-// Le Navbar détecte l'état d'auth côté client automatiquement.
-const session = await auth.api.getSession({ headers: Astro.request.headers }).catch(() => null);
-const _isAuthenticated = !!session; // disponible pour usage futur dans ce layout
 ---
 
 <!DOCTYPE html>

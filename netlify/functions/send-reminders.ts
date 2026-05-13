@@ -21,12 +21,12 @@
  * et ne peuvent pas être importés ici. Les clients sont instanciés localement.
  */
 
-// @ts-ignore — @netlify/functions est une dépendance transitive, pas encore déclarée
+// @ts-expect-error — @netlify/functions est une dépendance transitive, pas encore déclarée
 import type { Config } from '@netlify/functions';
 import { createElement } from 'react';
-// @ts-ignore — @supabase/supabase-js pas encore installé (voir ci-dessus)
+// @ts-expect-error — @supabase/supabase-js pas encore installé (voir ci-dessus)
 import { createClient } from '@supabase/supabase-js';
-// @ts-ignore — resend pas encore installé (voir ci-dessus)
+// @ts-expect-error — resend pas encore installé (voir ci-dessus)
 import { Resend } from 'resend';
 import AppointmentReminder from '../../src/emails/AppointmentReminder';
 import type { Appointment } from '../../src/types/appointment';

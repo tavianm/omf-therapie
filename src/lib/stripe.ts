@@ -5,7 +5,7 @@
  *   npm add stripe
  */
 
-// @ts-ignore — stripe pas encore installé, sera résolu à l'install
+// @ts-expect-error — stripe pas encore installé, sera résolu à l'install
 import Stripe from 'stripe';
 
 if (!import.meta.env.STRIPE_SECRET_KEY) {

@@ -4,7 +4,7 @@
  * Sujet : "Rappel : votre rendez-vous demain"
  */
 
-import { Button, Hr, Link, Section, Text } from '@react-email/components';
+import { Button, Link, Section, Text } from '@react-email/components';
 import { BaseLayout } from './BaseLayout';
 import { getModeLabel } from '../lib/pricing';
 import {

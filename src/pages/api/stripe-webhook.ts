@@ -2,7 +2,7 @@ export const prerender = false;
 
 import type { APIRoute } from 'astro';
 import { createElement } from 'react';
-// @ts-ignore — stripe pas encore installé
+// @ts-expect-error — stripe pas encore installé
 import type Stripe from 'stripe';
 import { stripe } from '../../lib/stripe';
 import { supabaseAdmin } from '../../lib/supabase';
