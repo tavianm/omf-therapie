@@ -1,24 +1,45 @@
 /**
- * Resend email client — OMF Thérapie
+ * Email client — OMF Thérapie
  *
- * Packages requis (à ajouter aux dépendances) :
- *   "resend": "^4.x"
+ * Deux chemins d'envoi :
+ *  - SMTP (nodemailer + Mailpit) : activé si `SMTP_HOST` est défini → dev local
+ *  - Resend SDK               : chemin production par défaut
  *
- * Variables d'environnement requises :
- *   RESEND_API_KEY   — clé API Resend (obligatoire)
+ * Variables d'environnement :
+ *   SMTP_HOST        — hôte SMTP (ex : "localhost") ; active le chemin SMTP si présent
+ *   SMTP_PORT        — port SMTP (défaut : 1025)
+ *   RESEND_API_KEY   — clé API Resend (obligatoire en production)
  *   RESEND_FROM_EMAIL — adresse expéditeur (optionnel, fallback : contact@omf-therapie.fr)
  */
 
 import { Resend } from 'resend';
+import { render } from '@react-email/components';
+import nodemailer from 'nodemailer';
 import type { ReactElement } from 'react';
 
 // ---------------------------------------------------------------------------
-// Client singleton
+// Transport selection — resolved once at module init
+// ---------------------------------------------------------------------------
+
+const smtpHost = import.meta.env.SMTP_HOST as string | undefined;
+const smtpPort = Number((import.meta.env.SMTP_PORT as string | undefined) ?? 1025);
+
+/** Nodemailer transport — non-null only when SMTP_HOST is set */
+const smtpTransport = smtpHost
+  ? nodemailer.createTransport({ host: smtpHost, port: smtpPort, secure: false })
+  : null;
+
+if (smtpTransport) {
+  console.info(`[smtp] Transport SMTP initialisé → ${smtpHost}:${smtpPort}`);
+}
+
+// ---------------------------------------------------------------------------
+// Resend client singleton (always constructed, only used when SMTP is absent)
 // ---------------------------------------------------------------------------
 
 const resendApiKey = import.meta.env.RESEND_API_KEY as string | undefined;
 
-if (!resendApiKey) {
+if (!smtpTransport && !resendApiKey) {
   // Avertissement au démarrage — ne bloque pas le build mais log clairement
   console.warn('[resend] RESEND_API_KEY manquante. Les emails ne seront pas envoyés.');
 }
@@ -47,25 +68,44 @@ export interface SendEmailResult {
 }
 
 // ---------------------------------------------------------------------------
-// Helper principal
+// SMTP path (dev local — Mailpit)
 // ---------------------------------------------------------------------------
 
-/**
- * Envoie un email transactionnel via Resend.
- *
- * @example
- * const result = await sendEmail({
- *   to: 'patient@example.com',
- *   subject: 'Confirmation de rendez-vous',
- *   react: <ConfirmationEmail {...props} />,
- * });
- */
-export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
+async function sendEmailViaSMTP(
+  params: SendEmailParams,
+  fromEmail: string,
+): Promise<SendEmailResult> {
   const { to, subject, react, replyTo } = params;
 
-  const fromEmail =
-    (import.meta.env.RESEND_FROM_EMAIL as string | undefined) ??
-    'OMF Thérapie <contact@omf-therapie.fr>';
+  try {
+    const html = await render(react);
+
+    const info = await smtpTransport!.sendMail({
+      from: fromEmail,
+      to: Array.isArray(to) ? to.join(', ') : to,
+      subject,
+      html,
+      ...(replyTo ? { replyTo } : {}),
+    });
+
+    console.info('[smtp] Email envoyé :', info.messageId);
+    return { success: true, id: info.messageId };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Erreur inconnue';
+    console.error(`[smtp] Exception lors de l'envoi de l'email :`, message);
+    return { success: false, error: message };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Resend path (production)
+// ---------------------------------------------------------------------------
+
+async function sendEmailViaResend(
+  params: SendEmailParams,
+  fromEmail: string,
+): Promise<SendEmailResult> {
+  const { to, subject, react, replyTo } = params;
 
   try {
     const { data, error } = await resendClient.emails.send({
@@ -78,22 +118,42 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
 
     if (error) {
       console.error('[resend] Erreur API Resend :', error);
-      return {
-        success: false,
-        error: error.message,
-      };
+      return { success: false, error: error.message };
     }
 
-    return {
-      success: true,
-      id: data?.id,
-    };
+    return { success: true, id: data?.id };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Erreur inconnue';
     console.error(`[resend] Exception lors de l'envoi de l'email :`, message);
-    return {
-      success: false,
-      error: message,
-    };
+    return { success: false, error: message };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Public helper — dispatches to the appropriate transport
+// ---------------------------------------------------------------------------
+
+/**
+ * Envoie un email transactionnel.
+ *
+ * En dev local (SMTP_HOST défini) : via nodemailer → Mailpit
+ * En production                   : via Resend SDK
+ *
+ * @example
+ * const result = await sendEmail({
+ *   to: 'patient@example.com',
+ *   subject: 'Confirmation de rendez-vous',
+ *   react: <ConfirmationEmail {...props} />,
+ * });
+ */
+export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
+  const fromEmail =
+    (import.meta.env.RESEND_FROM_EMAIL as string | undefined) ??
+    'OMF Thérapie <contact@omf-therapie.fr>';
+
+  if (smtpTransport) {
+    return sendEmailViaSMTP(params, fromEmail);
+  }
+
+  return sendEmailViaResend(params, fromEmail);
 }

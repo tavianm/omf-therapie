@@ -24,6 +24,12 @@ export type AppointmentMode = 'in-person' | 'video';
 export type AppointmentDuration = 60 | 90;
 
 // ---------------------------------------------------------------------------
+// Mock mode
+// ---------------------------------------------------------------------------
+
+const MOCK_MODE = import.meta.env.GOOGLE_CALENDAR_MOCK === 'true';
+
+// ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
@@ -254,6 +260,50 @@ export async function getAvailableSlots(
   duration: AppointmentDuration,
   mode: AppointmentMode,
 ): Promise<TimeSlot[]> {
+  if (MOCK_MODE) {
+    console.log('[calendar-mock] getAvailableSlots called — returning mock Wednesday slots');
+
+    /** Périodes mock : 09:00–12:00 et 14:00–18:00 (heure Paris) */
+    const MOCK_PERIODS: Array<{ startHour: number; endHour: number }> = [
+      { startHour: 9, endHour: 12 },
+      { startHour: 14, endHour: 18 },
+    ];
+
+    const mockSlots: TimeSlot[] = [];
+    const minStart = new Date(Date.now() + MIN_NOTICE_MS);
+
+    // Itère jour par jour en ne retenant que les mercredis
+    let currentDay = startOfParisDay(startDate);
+
+    while (currentDay < endDate) {
+      // Mercredi = ISO weekday 3
+      if (getParisISOWeekday(currentDay) === 3) {
+        const { year, month, day } = toParisLocalParts(currentDay);
+
+        for (const period of MOCK_PERIODS) {
+          // Créneaux horaires (pas de 1h) dans la plage
+          for (let slotHour = period.startHour; slotHour < period.endHour; slotHour++) {
+            const slotStart = parisLocalToUTC(year, month, day, slotHour, 0);
+            const slotEnd = new Date(slotStart.getTime() + duration * 60 * 1000);
+
+            // Respecte le délai minimum de 24h
+            if (slotStart >= minStart) {
+              mockSlots.push({
+                start: slotStart.toISOString(),
+                end: slotEnd.toISOString(),
+                available: true,
+              });
+            }
+          }
+        }
+      }
+
+      currentDay = new Date(currentDay.getTime() + 24 * 60 * 60 * 1000);
+    }
+
+    return mockSlots;
+  }
+
   const calendarId = import.meta.env.GOOGLE_CALENDAR_ID;
   if (!calendarId) {
     throw new Error('Configuration manquante : GOOGLE_CALENDAR_ID non défini.');
@@ -342,6 +392,11 @@ export interface CreateEventParams {
 export async function createCalendarEvent(
   params: CreateEventParams,
 ): Promise<string> {
+  if (MOCK_MODE) {
+    console.log(`[calendar-mock] Creating event: ${params.title} at ${params.start}`);
+    return `mock-event-${Date.now()}`;
+  }
+
   const calendarId = import.meta.env.GOOGLE_CALENDAR_ID;
   if (!calendarId) {
     throw new Error('Configuration manquante : GOOGLE_CALENDAR_ID non défini.');
