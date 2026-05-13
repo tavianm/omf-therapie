@@ -316,4 +316,4 @@ Potential enhancements (not currently implemented):
 - Multi-language support (i18n)
 - Automated testing (Playwright e2e)
 - Newsletter subscription system
-- Online appointment booking integration
+- Patient portal (online documents, session history)

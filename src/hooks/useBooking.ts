@@ -164,7 +164,7 @@ export function useBooking() {
     setState(prev => ({ ...prev, isSubmitting: true, submitError: null }));
 
     try {
-      const response = await fetch('/api/appointments', {
+      const response = await fetch('/api/appointments/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

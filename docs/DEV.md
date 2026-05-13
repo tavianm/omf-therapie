@@ -60,6 +60,16 @@ Accédez ensuite à **http://localhost:4321/login** avec ces identifiants.
 
 ## Tester les paiements Stripe
 
+### Mode mock (par défaut)
+
+Avec `STRIPE_SECRET_KEY=sk_test_placeholder` dans `.env`, le **mode Stripe mock** est actif :
+- La confirmation admin d'une téléconsultation → statut `payment_pending`
+- L'email de demande de paiement est envoyé dans Mailpit avec un lien fictif (`/rdv/merci?mock=1&...`)
+- Aucun appel réseau vers Stripe — idéal pour tester le flux complet admin
+
+### Mode réel (clés de test Stripe)
+
+Pour tester le vrai tunnel de paiement :
 1. Récupérer vos clés de test sur [dashboard.stripe.com/test/apikeys](https://dashboard.stripe.com/test/apikeys)
 2. Les renseigner dans `.env` : `STRIPE_SECRET_KEY=sk_test_...` et `STRIPE_PUBLISHABLE_KEY=pk_test_...`
 3. Lancer le webhook forwarder :
@@ -105,22 +115,29 @@ npm run lint        # Vérifier le code
 
 ```
 docker-compose.yml
-  ├── postgres:16-alpine  → port 5432
+  ├── postgres:16-alpine      → port 5432 (BetterAuth + schéma appointments)
   │   └── init: supabase/migrations/001_init.sql
-  └── axllent/mailpit     → port 1025 (SMTP) + 8025 (UI)
+  ├── postgrest               → port 3000 (API REST directe, debug uniquement)
+  ├── nginx (supabase-rest)   → port 3001 /rest/v1/ → PostgREST (simule Supabase)
+  └── axllent/mailpit         → port 1025 (SMTP) + 8025 (UI emails)
 ```
+
+> **Pourquoi nginx ?** Le SDK `@supabase/supabase-js` envoie ses requêtes à `SUPABASE_URL/rest/v1/` — nginx relaie vers PostgREST pour simuler l'API Supabase.
 
 ## Architecture locale vs production
 
 | Composant | Local | Production |
 |-----------|-------|-----------|
 | Base de données | PostgreSQL Docker | Supabase (PostgreSQL) |
+| API REST DB | PostgREST + nginx (port 3001) | Supabase REST API |
 | Emails | Mailpit (SMTP local) | Resend (API) |
-| Paiements | Stripe CLI + clés test | Stripe live |
+| Paiements | Stripe mock (lien fictif) | Stripe live |
 | Calendrier | Mock (créneaux factices) | Google Calendar API |
 | Hébergement | `astro dev` | Netlify |
 | API routes | `astro dev` (natif) | Netlify Functions |
 | Cron rappels J-1 | Manuel (`npx tsx netlify/functions/send-reminders.ts`) | Netlify Scheduled Functions |
+
+> **Stripe mock** : avec `STRIPE_SECRET_KEY=sk_test_placeholder`, la confirmation d'une téléconsultation crée un lien de paiement fictif (pas d'appel Stripe réel). Utile pour tester le flux admin complet sans clé Stripe valide.
 
 ## Résolution de problèmes
 

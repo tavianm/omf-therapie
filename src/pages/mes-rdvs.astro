@@ -19,7 +19,7 @@ import type { Appointment, AppointmentStatus } from '../types/appointment';
 // ── Auth guard ───────────────────────────────────────────────────────────────
 const session = await auth.api.getSession({ headers: Astro.request.headers });
 if (!session) {
-  return Astro.redirect('/login?redirect=/mes-rdvs');
+  return Astro.redirect('/login/?redirect=/mes-rdvs/');
 }
 
 // ── Fetch appointments ───────────────────────────────────────────────────────
@@ -188,12 +188,12 @@ for (const appt of appointments) {
   signoutBtn?.addEventListener('click', async () => {
     signoutBtn.setAttribute('disabled', 'true');
     try {
-      await fetch('/api/auth/sign-out', {
+      await fetch('/api/auth/sign-out/', {
         method: 'POST',
         credentials: 'same-origin',
       });
     } finally {
-      window.location.href = '/login';
+      window.location.href = '/login/';
     }
   });
 

@@ -46,5 +46,9 @@ export default defineConfig({
     optimizeDeps: {
       exclude: ['react-router-dom', 'react-helmet-async'],
     },
+    ssr: {
+      // nodemailer is CommonJS — let Node.js handle it natively in SSR
+      external: ['nodemailer'],
+    },
   },
 });

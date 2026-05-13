@@ -148,7 +148,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
     setActionLoading(true);
     setActionError(null);
     try {
-      const res = await fetch(`/api/appointments/${appointment.id}`, {
+      const res = await fetch(`/api/appointments/${appointment.id}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
@@ -199,7 +199,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
     setActionLoading(true);
     setActionError(null);
     try {
-      const res = await fetch("/api/send-review-email", {
+      const res = await fetch("/api/send-review-email/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
@@ -222,7 +222,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
     setNotesSaved(false);
     setActionError(null);
     try {
-      const res = await fetch(`/api/appointments/${appointment.id}`, {
+      const res = await fetch(`/api/appointments/${appointment.id}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",

@@ -25,7 +25,7 @@ const session = await auth.api.getSession({
 
 // Si l'utilisateur est déjà connecté, rediriger vers l'espace admin
 if (session) {
-  return Astro.redirect('/mes-rdvs');
+  return Astro.redirect('/mes-rdvs/');
 }
 ---
 
@@ -255,11 +255,12 @@ if (session) {
     setLoading(true);
 
     try {
-      // BetterAuth v1.x endpoint : POST /api/auth/sign-in/email
-      const response = await fetch('/api/auth/sign-in/email', {
+      // BetterAuth v1.x endpoint : POST /api/auth/sign-in/email/
+      const response = await fetch('/api/auth/sign-in/email/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Origin': window.location.origin,
         },
         // Inclure les cookies dans la requête (nécessaire pour la gestion de session)
         credentials: 'same-origin',
@@ -268,7 +269,7 @@ if (session) {
 
       if (response.ok) {
         // Connexion réussie — BetterAuth a défini le cookie de session
-        window.location.href = '/mes-rdvs';
+        window.location.href = '/mes-rdvs/';
         return;
       }
 

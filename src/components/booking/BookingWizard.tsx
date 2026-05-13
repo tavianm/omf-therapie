@@ -357,7 +357,7 @@ function DatetimeStep({
     setFetchError(null);
 
     fetch(
-      `/api/availability?mode=${state.appointment_mode}&duration=${state.duration}&weeks=4`,
+      `/api/availability/?mode=${state.appointment_mode}&duration=${state.duration}&weeks=4`,
     )
       .then(res => {
         if (!res.ok) throw new Error('Impossible de charger les disponibilités.');

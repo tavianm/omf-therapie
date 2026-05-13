@@ -129,7 +129,7 @@ function parisLocalToUTC(
   const diffMinutes = minute - local.minute;
 
   return new Date(
-    Date.UTC(year, month - 1, day, hour - diffHours, minute - diffMinutes),
+    Date.UTC(year, month - 1, day, hour + diffHours, minute + diffMinutes),
   );
 }
 

@@ -22,7 +22,7 @@ const Navbar = memo(({ className = "", isHomePage: isHomePageProp, isAuthenticat
   // Détection côté client si le hint serveur n'est pas fourni
   useEffect(() => {
     if (isAuthenticatedProp !== undefined) return;
-    fetch("/api/auth/get-session", { credentials: "same-origin" })
+    fetch("/api/auth/get-session/", { credentials: "same-origin" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { session?: unknown } | null) => {
         setIsAuthenticated(!!data?.session);

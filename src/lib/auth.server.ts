@@ -43,6 +43,8 @@ export const auth = betterAuth({
 
   trustedOrigins: [
     import.meta.env.BETTER_AUTH_URL ?? 'https://omf-therapie.fr',
+    'http://localhost:4321',
+    'http://127.0.0.1:4321',
   ],
 
   // ── Session ──────────────────────────────────────────────────────────────

@@ -7,12 +7,17 @@
 
 import Stripe from 'stripe';
 
-if (!import.meta.env.STRIPE_SECRET_KEY) {
+const stripeKey = import.meta.env.STRIPE_SECRET_KEY ?? '';
+
+if (!stripeKey) {
   console.warn('[stripe] ⚠️  STRIPE_SECRET_KEY est absent. Les paiements Stripe échoueront.');
 }
 
+/** True when running in dev/test with placeholder Stripe keys */
+export const isStripeMock = !stripeKey || stripeKey === 'sk_test_placeholder' || stripeKey.startsWith('sk_test_placeholder');
+
 /** Instance Stripe singleton */
-export const stripe: Stripe = new Stripe(import.meta.env.STRIPE_SECRET_KEY ?? '', {
+export const stripe: Stripe = new Stripe(stripeKey, {
   apiVersion: '2024-12-18.acacia' as Stripe.LatestApiVersion,
 });
 
@@ -51,6 +56,15 @@ export async function createAppointmentPaymentLink(
   params: CreatePaymentLinkParams,
 ): Promise<PaymentLinkResult> {
   const { appointmentId, amount, description, successUrl } = params;
+
+  // Dev/test bypass: return a mock payment link when Stripe key is placeholder
+  if (isStripeMock) {
+    console.warn('[stripe] 🔧 Mode dev — lien de paiement simulé (clé Stripe placeholder)');
+    return {
+      id: `mock_pl_${appointmentId}`,
+      url: `${successUrl}?mock=1&appointment_id=${appointmentId}`,
+    };
+  }
 
   // 1. Créer un prix one-time
   const price = await stripe.prices.create({

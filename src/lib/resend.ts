@@ -44,7 +44,8 @@ if (!smtpTransport && !resendApiKey) {
   console.warn('[resend] RESEND_API_KEY manquante. Les emails ne seront pas envoyés.');
 }
 
-const resendClient = new Resend(resendApiKey ?? '');
+// Resend client is only used when SMTP is absent (production path)
+const resendClient = resendApiKey ? new Resend(resendApiKey) : null;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -105,6 +106,11 @@ async function sendEmailViaResend(
   params: SendEmailParams,
   fromEmail: string,
 ): Promise<SendEmailResult> {
+  if (!resendClient) {
+    console.error('[resend] Resend client non initialisé — RESEND_API_KEY manquante.');
+    return { success: false, error: 'RESEND_API_KEY manquante' };
+  }
+
   const { to, subject, react, replyTo } = params;
 
   try {

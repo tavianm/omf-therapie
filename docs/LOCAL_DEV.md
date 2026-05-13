@@ -291,4 +291,20 @@ Vérifier `GOOGLE_CALENDAR_MOCK=true` dans `.env`. En mode mock, seuls les **mer
 
 ### Stripe — paiements non fonctionnels
 
-Remplacer les valeurs `*_placeholder` par de vraies clés de test Stripe dans `.env`.
+Avec `STRIPE_SECRET_KEY=sk_test_placeholder` (valeur par défaut), le mode **Stripe mock** est actif :
+- La confirmation d'une téléconsultation passe en statut `payment_pending` et envoie un email de demande de paiement avec un **lien fictif** (pas de vrai appel Stripe).
+- Aucune erreur 500 — le bypass est intentionnel pour le développement local.
+
+Pour tester le vrai tunnel de paiement, remplacer par de vraies clés de test [dashboard.stripe.com/test/apikeys](https://dashboard.stripe.com/test/apikeys).
+
+### BetterAuth — erreur `INVALID_ORIGIN` à la connexion
+
+Si la page de connexion retourne `{"message":"Invalid origin","code":"INVALID_ORIGIN"}` :
+- Cause : le navigateur se connecte via `http://localhost:4321` mais `BETTER_AUTH_URL=http://127.0.0.1:4321` (origines différentes malgré même serveur).
+- Solution : les deux origines sont désormais déclarées dans `trustedOrigins` (`src/lib/auth.server.ts`). S'assurer que `BETTER_AUTH_URL=http://localhost:4321` dans `.env` (valeur par défaut correcte).
+
+### Créneaux de RDV décalés (mauvaise heure)
+
+Si les créneaux affichés sont décalés de ±4h par rapport à l'heure prévue :
+- Cause historique : bug dans `parisLocalToUTC` (corrigé — `hour + diffHours`).
+- Si le bug réapparaît, vérifier `src/lib/google-calendar.ts` fonction `parisLocalToUTC`.
