@@ -18,6 +18,7 @@ import {
   type AppointmentMode,
   type TimeSlot,
 } from '@/lib/google-calendar';
+import { supabaseAdmin } from '@/lib/supabase';
 
 // Désactiver le pré-rendu : cette route est toujours dynamique (SSR)
 export const prerender = false;
@@ -36,9 +37,47 @@ const VALID_DURATIONS: ReadonlySet<number> = new Set<AppointmentDuration>([
   90,
 ]);
 
+const BLOCKING_STATUSES = [
+  'pending',
+  'confirmed',
+  'payment_pending',
+  'payment_received',
+  'rescheduled',
+] as const;
+
 const MIN_WEEKS = 1;
 const MAX_WEEKS = 8;
 const DEFAULT_WEEKS = 4;
+
+// ---------------------------------------------------------------------------
+// DB busy periods
+// ---------------------------------------------------------------------------
+
+async function fetchDbBusyPeriods(
+  from: Date,
+  to: Date,
+): Promise<Array<{ start: string; end: string }>> {
+  const { data, error } = await supabaseAdmin
+    .from('appointments')
+    .select('scheduled_at, scheduled_end')
+    .in('status', BLOCKING_STATUSES)
+    .is('deleted_at', null)
+    .gte('scheduled_at', from.toISOString())
+    .lte('scheduled_at', to.toISOString());
+
+  if (error) {
+    console.error('[api/availability] Erreur DB busy periods :', error.message);
+    return []; // dégradation gracieuse — pas pire qu'avant ce fix (AC-5)
+  }
+
+  return (data ?? [])
+    .filter(
+      (row): row is { scheduled_at: string; scheduled_end: string } =>
+        typeof row.scheduled_at === 'string' &&
+        typeof row.scheduled_end === 'string',
+    )
+    .map((row) => ({ start: row.scheduled_at, end: row.scheduled_end }));
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -125,9 +164,11 @@ export const GET: APIRoute = async ({ request }) => {
   const now = new Date();
   const endDate = new Date(now.getTime() + weeks * 7 * 24 * 60 * 60 * 1000);
 
-  // --- Appel Google Calendar ---
+  // --- Appel Google Calendar (+ DB busy periods en parallèle) ---
   try {
-    const slots = await getAvailableSlots(now, endDate, duration, mode);
+    const dbBusyPromise = fetchDbBusyPeriods(now, endDate);
+    const dbBusy = await dbBusyPromise;
+    const slots = await getAvailableSlots(now, endDate, duration, mode, dbBusy);
     return jsonSuccess(slots);
   } catch (err: unknown) {
     if (err instanceof GoogleCalendarError) {

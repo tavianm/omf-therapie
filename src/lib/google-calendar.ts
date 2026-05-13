@@ -259,6 +259,7 @@ export async function getAvailableSlots(
   endDate: Date,
   duration: AppointmentDuration,
   mode: AppointmentMode,
+  dbBusyPeriods: Array<{ start: string; end: string }> = [],
 ): Promise<TimeSlot[]> {
   if (MOCK_MODE) {
     console.log('[calendar-mock] getAvailableSlots called — returning mock Wednesday slots');
@@ -301,7 +302,17 @@ export async function getAvailableSlots(
       currentDay = new Date(currentDay.getTime() + 24 * 60 * 60 * 1000);
     }
 
-    return mockSlots;
+    if (dbBusyPeriods.length === 0) return mockSlots;
+
+    return mockSlots.filter((slot) => {
+      const slotStart = new Date(slot.start).getTime();
+      const slotEnd   = new Date(slot.end).getTime();
+      return !dbBusyPeriods.some((busy) => {
+        const busyStart = new Date(busy.start).getTime();
+        const busyEnd   = new Date(busy.end).getTime();
+        return slotStart < busyEnd && slotEnd > busyStart;
+      });
+    });
   }
 
   const calendarId = import.meta.env.GOOGLE_CALENDAR_ID;
@@ -356,12 +367,14 @@ export async function getAvailableSlots(
   }
 
   // Marque les créneaux occupés et filtre
+  const allBusy = [...busyPeriods, ...dbBusyPeriods];
+
   return candidates
     .map((slot) => {
       const slotStart = new Date(slot.start).getTime();
       const slotEnd = new Date(slot.end).getTime();
 
-      const isBusy = busyPeriods.some((busy) => {
+      const isBusy = allBusy.some((busy) => {
         const busyStart = new Date(busy.start).getTime();
         const busyEnd = new Date(busy.end).getTime();
         // Chevauchement : (slotStart < busyEnd) && (slotEnd > busyStart)
