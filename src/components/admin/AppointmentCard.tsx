@@ -392,7 +392,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
       {/* Boutons d'action */}
       {!isReadOnly && (
         <div className="flex flex-wrap gap-2 mb-4">
-          {(status === "pending" || status === "rescheduled") && (
+          {status === "pending" && (
             <>
               <button
                 onClick={() => { setModal("confirm"); setActionError(null); }}
@@ -408,17 +408,27 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
               >
                 Refuser
               </button>
-              {status === "pending" && (
-                <button
-                  onClick={() => { setModal("reschedule"); setActionError(null); }}
-                  disabled={actionLoading}
-                  className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
-                >
-                  Reporter
-                </button>
-              )}
+              <button
+                onClick={() => { setModal("reschedule"); setActionError(null); }}
+                disabled={actionLoading}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+              >
+                Reporter
+              </button>
             </>
           )}
+
+          {status === "rescheduled" &&
+            appointment.rescheduled_to &&
+            appointment.rescheduled_to > new Date().toISOString() && (
+              <button
+                onClick={() => callPatch({ action: "decline" })}
+                disabled={actionLoading}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-red-300 text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+              >
+                {actionLoading ? "En cours…" : "Annuler la proposition"}
+              </button>
+            )}
 
           {status === "payment_pending" && (
             <>

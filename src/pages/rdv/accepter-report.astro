@@ -1,0 +1,265 @@
+---
+/**
+ * /rdv/accepter-report — Page d'acceptation d'un report de rendez-vous
+ *
+ * SSR (prerender = false).
+ * Le patient arrive ici depuis le lien dans l'email AppointmentRescheduled.
+ * Paramètre URL requis : ?id=<uuid du rendez-vous>
+ */
+export const prerender = false;
+
+import Layout from '../../layouts/Layout.astro';
+import Navbar from '../../components/islands/Navbar';
+import { supabaseAdmin } from '../../lib/supabase';
+import { getTypeLabel, getModeLabel } from '../../lib/pricing';
+import type { Appointment } from '../../types/appointment';
+
+// ── Paramètre URL ─────────────────────────────────────────────────────────────
+
+const appointmentId = Astro.url.searchParams.get('id');
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// UUID malformé → redirect
+if (!appointmentId || !UUID_RE.test(appointmentId)) {
+  return Astro.redirect('/rendez-vous?error=lien-invalide');
+}
+
+// ── Fetch rendez-vous ─────────────────────────────────────────────────────────
+
+const { data, error } = await supabaseAdmin
+  .from('appointments')
+  .select('*')
+  .eq('id', appointmentId)
+  .single();
+
+// Not found → redirect
+if (error || !data) {
+  return Astro.redirect('/rendez-vous?error=rdv-introuvable');
+}
+
+const appt = data as Appointment;
+
+// ── État du rendez-vous ───────────────────────────────────────────────────────
+
+const now = new Date().toISOString();
+
+const isAlreadyUsed = appt.status !== 'rescheduled';
+const isExpired = !appt.rescheduled_to || appt.rescheduled_to <= now;
+
+// ── Formatage des dates (pour affichage) ─────────────────────────────────────
+
+function formatDate(iso: string): string {
+  return new Intl.DateTimeFormat('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Paris',
+  }).format(new Date(iso));
+}
+
+const originalDate  = formatDate(appt.scheduled_at);
+const proposedDate  = appt.rescheduled_to ? formatDate(appt.rescheduled_to) : '';
+const typeLabel     = getTypeLabel(appt.appointment_type);
+const modeLabel     = getModeLabel(appt.appointment_mode);
+const priceFormatted = `${Math.round(appt.final_price / 100)}\u00a0€`;
+---
+
+<Layout
+  title="Accepter le nouveau créneau — OMF Thérapie"
+  description="Confirmez votre nouveau créneau de rendez-vous proposé par la thérapeute."
+  noindex={true}
+>
+  <Navbar client:load />
+
+  <main class="min-h-screen bg-sage-50 flex items-start justify-center pt-24 pb-16 px-4">
+    <div class="w-full max-w-lg">
+
+      {/* ── Cas : lien déjà utilisé ────────────────────────────────────── */}
+      {isAlreadyUsed && (
+        <div class="bg-white rounded-2xl border border-sage-100 shadow-sm p-8 text-center">
+          <div class="flex justify-center mb-6">
+            <div class="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center" aria-hidden="true">
+              <svg class="w-8 h-8 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+            </div>
+          </div>
+          <h1 class="font-serif text-2xl font-semibold text-sage-900 mb-3">
+            Lien déjà utilisé
+          </h1>
+          <p class="text-sage-600 font-sans leading-relaxed">
+            Ce lien a déjà été utilisé ou est invalide.
+            <br />
+            Votre rendez-vous a peut-être déjà été confirmé.
+          </p>
+          <a href="/mes-rdvs" class="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-mint-600 text-white text-sm font-medium font-sans hover:bg-mint-700 transition-colors min-h-[40px]">
+            Voir mes rendez-vous
+          </a>
+        </div>
+      )}
+
+      {/* ── Cas : créneau expiré ───────────────────────────────────────── */}
+      {!isAlreadyUsed && isExpired && (
+        <div class="bg-white rounded-2xl border border-sage-100 shadow-sm p-8 text-center">
+          <div class="flex justify-center mb-6">
+            <div class="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center" aria-hidden="true">
+              <svg class="w-8 h-8 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+            </div>
+          </div>
+          <h1 class="font-serif text-2xl font-semibold text-sage-900 mb-3">
+            Créneau expiré
+          </h1>
+          <p class="text-sage-600 font-sans leading-relaxed">
+            Ce créneau proposé a expiré.
+            <br />
+            Contactez la thérapeute pour convenir d'un nouveau créneau.
+          </p>
+          <a href="/contact" class="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-mint-600 text-white text-sm font-medium font-sans hover:bg-mint-700 transition-colors min-h-[40px]">
+            Contacter la thérapeute
+          </a>
+        </div>
+      )}
+
+      {/* ── Happy path : récapitulatif + bouton accepter ───────────────── */}
+      {!isAlreadyUsed && !isExpired && (
+        <>
+          {/* Titre */}
+          <div class="text-center mb-8">
+            <h1 class="font-serif text-3xl font-semibold text-sage-900 mb-3">
+              Nouveau créneau proposé
+            </h1>
+            <p class="text-sage-600 font-sans leading-relaxed">
+              La thérapeute vous propose un nouveau créneau.
+              <br />
+              Confirmez-le en cliquant sur le bouton ci-dessous.
+            </p>
+          </div>
+
+          {/* Comparaison créneaux */}
+          <div class="space-y-3 mb-6">
+            {/* Ancien créneau */}
+            <div class="bg-red-50 border border-red-200 rounded-xl px-5 py-4">
+              <p class="text-xs font-semibold uppercase tracking-wide text-red-600 font-sans mb-1">
+                ✕ Créneau initial (indisponible)
+              </p>
+              <p class="text-sage-500 line-through font-sans">
+                {originalDate}
+              </p>
+            </div>
+
+            {/* Flèche */}
+            <div class="text-center text-sage-400 text-xl" aria-hidden="true">↓</div>
+
+            {/* Nouveau créneau */}
+            <div class="bg-mint-50 border-2 border-mint-400 rounded-xl px-5 py-4">
+              <p class="text-xs font-semibold uppercase tracking-wide text-mint-700 font-sans mb-1">
+                ✓ Nouveau créneau proposé
+              </p>
+              <p class="text-sage-900 font-semibold font-sans capitalize">
+                {proposedDate}
+              </p>
+            </div>
+          </div>
+
+          {/* Récapitulatif séance */}
+          <div class="bg-white rounded-2xl border border-sage-100 shadow-sm px-6 py-5 mb-6 font-sans">
+            <h2 class="text-sm font-semibold text-sage-500 uppercase tracking-wide mb-4">
+              Détails de la séance
+            </h2>
+            <dl class="space-y-3">
+              <div class="flex justify-between gap-4">
+                <dt class="text-sage-500 text-sm">Type</dt>
+                <dd class="text-sage-900 text-sm font-medium text-right">{typeLabel}</dd>
+              </div>
+              <div class="flex justify-between gap-4">
+                <dt class="text-sage-500 text-sm">Mode</dt>
+                <dd class="text-sage-900 text-sm font-medium text-right">{modeLabel}</dd>
+              </div>
+              <div class="flex justify-between gap-4">
+                <dt class="text-sage-500 text-sm">Durée</dt>
+                <dd class="text-sage-900 text-sm font-medium text-right">{appt.duration} minutes</dd>
+              </div>
+              <div class="flex justify-between gap-4 border-t border-sage-100 pt-3">
+                <dt class="text-sage-500 text-sm font-semibold">Tarif</dt>
+                <dd class="text-sage-900 text-sm font-semibold text-right">{priceFormatted}</dd>
+              </div>
+            </dl>
+          </div>
+
+          {/* Zone de retour d'erreur */}
+          <div id="accept-error" role="alert" class="hidden mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm font-sans"></div>
+
+          {/* CTA principal */}
+          <div class="text-center">
+            <button
+              id="accept-btn"
+              type="button"
+              class="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl bg-mint-600 text-white font-semibold font-sans text-base hover:bg-mint-700 active:bg-mint-800 focus:outline-none focus:ring-2 focus:ring-mint-400 focus:ring-offset-2 transition-colors min-h-[48px] disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              Accepter ce nouveau créneau
+            </button>
+          </div>
+
+          <p class="text-center text-xs text-sage-400 font-sans mt-4">
+            Ce créneau ne vous convient pas ?{' '}
+            <a href="/rendez-vous" class="text-mint-600 hover:underline">
+              Choisir un autre créneau
+            </a>
+          </p>
+        </>
+      )}
+
+    </div>
+  </main>
+</Layout>
+
+{!isAlreadyUsed && !isExpired && (
+  <script define:vars={{ appointmentId }}>
+    const btn = document.getElementById('accept-btn');
+    const errorBox = document.getElementById('accept-error');
+
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = 'Confirmation en cours…';
+      errorBox.classList.add('hidden');
+      errorBox.textContent = '';
+
+      try {
+        const res = await fetch(`/api/appointments/${appointmentId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'accept_reschedule' }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error ?? `Erreur HTTP ${res.status}`);
+        }
+
+        // Redirection selon le statut retourné
+        if (data.status === 'payment_pending') {
+          window.location.href = '/rdv/merci?paiement=en-attente';
+        } else {
+          window.location.href = '/rdv/merci';
+        }
+      } catch (err) {
+        errorBox.textContent = err instanceof Error
+          ? err.message
+          : 'Une erreur est survenue. Veuillez réessayer.';
+        errorBox.classList.remove('hidden');
+        btn.disabled = false;
+        btn.textContent = 'Accepter ce nouveau créneau';
+      }
+    });
+  </script>
+)}

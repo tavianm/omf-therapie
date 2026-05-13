@@ -28,7 +28,7 @@ interface Props {
   duration: 60 | 90;
   finalPrice: number; // centimes
   therapistNote?: string;
-  bookingUrl: string;
+  appointmentId: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -43,8 +43,9 @@ export default function AppointmentRescheduled({
   duration,
   finalPrice,
   therapistNote,
-  bookingUrl,
+  appointmentId,
 }: Props) {
+  const acceptUrl = `https://omf-therapie.fr/rdv/accepter-report?id=${appointmentId}`;
   return (
     <BaseLayout preview="Proposition de nouveau créneau — OMF Thérapie">
 
@@ -175,7 +176,7 @@ export default function AppointmentRescheduled({
 
       {/* CTA principal */}
       <Section style={S.btnWrapper}>
-        <Button href={bookingUrl} style={S.btnPrimary}>
+        <Button href={acceptUrl} style={S.btnPrimary}>
           Accepter ce nouveau créneau
         </Button>
       </Section>

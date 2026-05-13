@@ -363,5 +363,116 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     return jsonResponse({ appointment: updated as Appointment, message: 'Notes sauvegardées.' });
   }
 
+  // ---------------------------------------------------------------------------
+  // Action: accept_reschedule (public — appelée depuis la page /rdv/accepter-report)
+  // ---------------------------------------------------------------------------
+  if (action === 'accept_reschedule') {
+    // Idempotency : le statut doit être 'rescheduled'
+    if (appointment.status !== 'rescheduled')
+      return errorResponse(409, 'Ce lien a déjà été utilisé ou est invalide');
+
+    // Le créneau proposé doit être dans le futur
+    if (!appointment.rescheduled_to || appointment.rescheduled_to <= new Date().toISOString())
+      return errorResponse(410, 'Ce créneau proposé a expiré. Contactez le thérapeute.');
+
+    let newStatus: Appointment['status'];
+    if (appointment.appointment_mode === 'video') {
+      newStatus = 'payment_pending';
+    } else {
+      newStatus = 'confirmed';
+    }
+
+    const updateData: Record<string, unknown> = {
+      status: newStatus,
+      scheduled_at: appointment.rescheduled_to,
+      rescheduled_to: null,
+    };
+
+    // Génération du Payment Link Stripe pour les séances vidéo
+    if (appointment.appointment_mode === 'video') {
+      try {
+        const successUrl = import.meta.env.STRIPE_SUCCESS_URL ?? (`${baseUrl}/rdv/merci`);
+        const description = `Séance ${getTypeLabel(appointment.appointment_type)} — OMF Thérapie (${appointment.duration} min)`;
+        const paymentLink = await createAppointmentPaymentLink({
+          appointmentId: appointment.id,
+          patientEmail: appointment.patient_email,
+          patientName: appointment.patient_name,
+          amount: appointment.final_price,
+          description,
+          successUrl,
+        });
+        updateData.stripe_payment_link_id = paymentLink.id;
+        updateData.stripe_payment_link_url = paymentLink.url;
+      } catch (stripeErr) {
+        console.error('[appointments/patch] accept_reschedule Erreur Stripe Payment Link:', stripeErr);
+        return errorResponse(500, 'Erreur lors de la génération du lien de paiement Stripe');
+      }
+    }
+
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from('appointments')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError || !updated) {
+      console.error('[appointments/patch] Erreur accept_reschedule update:', updateError);
+      return errorResponse(500, 'Erreur lors de la mise à jour');
+    }
+
+    const updatedAppt = updated as Appointment;
+
+    // Email : demande de paiement pour les séances vidéo
+    if (newStatus === 'payment_pending' && updatedAppt.stripe_payment_link_url) {
+      sendEmail({
+        to: updatedAppt.patient_email,
+        subject: `Prépaiement de votre séance — ${new Intl.DateTimeFormat('fr-FR', {
+          day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
+        }).format(new Date(updatedAppt.scheduled_at))}`,
+        react: createElement(PaymentRequest, {
+          patientName: updatedAppt.patient_name,
+          scheduledAt: updatedAppt.scheduled_at,
+          appointmentType: updatedAppt.appointment_type,
+          duration: updatedAppt.duration,
+          finalPrice: updatedAppt.final_price,
+          stripePaymentUrl: updatedAppt.stripe_payment_link_url,
+        }),
+      }).catch(err => console.error('[appointments/patch] Erreur email accept_reschedule PaymentRequest:', err));
+    }
+
+    // Email : confirmation pour les séances en présentiel
+    if (newStatus === 'confirmed') {
+      const icsEvent = buildICSEvent(updatedAppt);
+      const googleCalendarLink = generateGoogleCalendarLink(icsEvent);
+      const icsDataUri = generateICSDataUri(icsEvent);
+
+      sendEmail({
+        to: updatedAppt.patient_email,
+        subject: `Votre rendez-vous est confirmé — ${new Intl.DateTimeFormat('fr-FR', {
+          day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
+        }).format(new Date(updatedAppt.scheduled_at))}`,
+        react: createElement(AppointmentConfirmed, {
+          patientName: updatedAppt.patient_name,
+          appointmentType: updatedAppt.appointment_type,
+          appointmentMode: updatedAppt.appointment_mode,
+          scheduledAt: updatedAppt.scheduled_at,
+          duration: updatedAppt.duration,
+          finalPrice: updatedAppt.final_price,
+          videoLink: updatedAppt.video_link ?? undefined,
+          googleCalendarLink,
+          icsDataUri,
+          cabinetAddress: updatedAppt.appointment_mode === 'in-person' ? CABINET_ADDRESS : undefined,
+        }),
+      }).catch(err => console.error('[appointments/patch] Erreur email accept_reschedule confirm:', err));
+    }
+
+    return jsonResponse({
+      appointment: updatedAppt,
+      status: newStatus,
+      message: newStatus === 'confirmed' ? 'Rendez-vous confirmé.' : 'Lien de paiement envoyé.',
+    });
+  }
+
   return errorResponse(422, 'Action non reconnue');
 };
