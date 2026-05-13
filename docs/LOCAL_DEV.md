@@ -44,13 +44,10 @@ Guide complet pour démarrer, développer et tester le projet en local avec Dock
 
 ## 1. Démarrer l'infrastructure Docker
 
-Le `docker-compose.yml` est dans la branche **`feat/19-docker-local-dev`** (worktree `.claude/worktrees/19-docker-local-dev/`).
+Le `docker-compose.yml` est à la **racine du projet**.
 
 ```bash
-# Depuis la racine du dépôt
-cd .claude/worktrees/19-docker-local-dev
-
-# Démarrer tous les services en arrière-plan
+# Depuis la racine du projet
 docker compose up -d
 
 # Vérifier que tout est healthy
@@ -60,11 +57,11 @@ docker compose ps
 Résultat attendu :
 
 ```
-NAME                              STATUS
-19-docker-local-dev-postgres-1    Up (healthy)
-19-docker-local-dev-postgrest-1   Up
-19-docker-local-dev-supabase-rest-1  Up
-19-docker-local-dev-mailpit-1     Up (healthy)
+NAME                                      STATUS
+15-prise-de-rendez-vous-postgres-1        Up (healthy)
+15-prise-de-rendez-vous-postgrest-1       Up
+15-prise-de-rendez-vous-supabase-rest-1   Up
+15-prise-de-rendez-vous-mailpit-1         Up (healthy)
 ```
 
 ### Ports exposés
@@ -91,18 +88,20 @@ docker compose logs -f postgres
 docker compose logs -f postgrest
 
 # Accéder à la base de données directement
-docker exec -it 19-docker-local-dev-postgres-1 psql -U postgres -d omf_therapie
+docker exec -it 15-prise-de-rendez-vous-postgres-1 psql -U postgres -d omf_therapie
+
+# Réinitialiser le schéma (drop + re-apply migrations)
+npm run db:reset
 ```
 
 ---
 
 ## 2. Configurer les variables d'environnement
 
-Créer le fichier `.env` dans le worktree `feat/15-prise-de-rendez-vous` :
+Créer le fichier `.env` à la racine du projet :
 
 ```bash
-cd .claude/worktrees/15-prise-de-rendez-vous
-cp .env.example .env   # ou copier le bloc ci-dessous
+cp .env.local.example .env   # ou copier le bloc ci-dessous
 ```
 
 Contenu `.env` pour le développement local :
@@ -161,7 +160,6 @@ PSYCHOLOGUE_NET_URL=https://www.psychologue.net/votre-profil
 BetterAuth gère l'authentification via PostgreSQL. Après le premier `docker compose up`, la base est vide — créer le compte thérapeute avec le script de seed :
 
 ```bash
-cd .claude/worktrees/15-prise-de-rendez-vous
 npx tsx scripts/seed-admin.ts
 ```
 
@@ -178,7 +176,6 @@ Résultat attendu :
 ## 4. Démarrer le serveur de développement
 
 ```bash
-cd .claude/worktrees/15-prise-de-rendez-vous
 npm install          # si premier démarrage
 npm run dev -- --port 4321
 ```
@@ -248,11 +245,11 @@ npm run audit:a11y        # Audit pa11y (nécessite le dev server actif)
 ## Récapitulatif — démarrage rapide
 
 ```bash
-# 1. Infrastructure
-cd .claude/worktrees/19-docker-local-dev && docker compose up -d
+# 1. Infrastructure (depuis la racine du projet)
+docker compose up -d
 
-# 2. Variables d'env (copier le bloc .env de la section 2)
-cd ../15-prise-de-rendez-vous && cp .env.example .env
+# 2. Variables d'env
+cp .env.local.example .env
 
 # 3. Dépendances + seed admin
 npm install && npx tsx scripts/seed-admin.ts
