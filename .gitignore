@@ -37,3 +37,9 @@ audit-results.json
 .env
 .env.local
 .env.*.local
+
+# Playwright MCP snapshots
+.playwright-mcp/
+
+# Test scripts
+test-booking.cjs
