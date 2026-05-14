@@ -82,9 +82,8 @@ export async function createAppointmentPaymentLink(
       type: 'redirect',
       redirect: { url: successUrl },
     },
-    // checkout_session_data.metadata propage appointment_id à la CheckoutSession
-    // (PaymentLink.metadata seul ne se propage pas — Stripe limitation)
-    checkout_session_data: {
+    // Metadata propagated to the Checkout Session's PaymentIntent.
+    payment_intent_data: {
       metadata: { appointment_id: appointmentId },
     },
     metadata: {
