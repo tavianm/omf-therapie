@@ -2,7 +2,7 @@
 issue: 22
 tier: F-lite
 spec: artifacts/specs/22-admin-creation-manuelle-rdv-spec.md
-status: approved
+status: implemented
 ---
 
 ## Tasks

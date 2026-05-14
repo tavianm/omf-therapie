@@ -2,7 +2,7 @@
 issue: 21
 title: "Admin : contrôle des tarifs (remise nouveau client + tarif solidaire)"
 tier: F-lite
-status: approved
+status: implemented
 ---
 
 ## Goal

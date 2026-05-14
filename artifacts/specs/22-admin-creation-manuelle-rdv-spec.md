@@ -2,7 +2,7 @@
 issue: 22
 title: "Admin : création manuelle d'un rendez-vous (patient téléphone)"
 tier: F-lite
-status: approved
+status: implemented
 ---
 
 ## Goal

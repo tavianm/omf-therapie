@@ -2,7 +2,7 @@
 issue: 21
 tier: F-lite
 spec: artifacts/specs/21-admin-controle-tarifs-spec.md
-status: approved
+status: implemented
 ---
 
 ## Tasks

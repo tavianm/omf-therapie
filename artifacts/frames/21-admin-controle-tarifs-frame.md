@@ -1,7 +1,7 @@
 ---
 issue: 21
 title: "Admin : contrôle des tarifs (remise nouveau client + tarif solidaire) lors de la validation RDV"
-status: approved
+status: implemented
 tier: F-lite
 created: 2026-05-13
 ---

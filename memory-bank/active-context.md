@@ -8,9 +8,11 @@ This document tracks current work in progress, recent changes, and immediate nex
 
 **Project State:** 🚀 Feature branch `feat/15-prise-de-rendez-vous` — PR #18 ouverte vers `main`
 
-**Recent Activity:** Système complet de prise de rendez-vous (issues #15, #21, #22, #24–#27) — tests E2E validés
+**Recent Activity:** Système complet de prise de rendez-vous (issues #15, #21, #22, #24–#27) — tests E2E validés, artifacts mis à jour `implemented`, issues à fermer sur GitHub
 
-**Active Work:** PR #18 en attente de review
+**Active Work:** PR #18 prête à merger — issues #21, #22, #24, #25, #26, #27 à fermer
+
+**Remaining (P2):** Issue #23 — Vue patients admin (historique + nouveau RDV pré-rempli) — pas encore commencé
 
 ## Recent Changes
 

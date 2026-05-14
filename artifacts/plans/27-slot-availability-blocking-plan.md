@@ -2,7 +2,7 @@
 issue: 27
 tier: F-lite
 spec: artifacts/specs/27-slot-availability-blocking-spec.md
-status: approved
+status: implemented
 ---
 
 ## Overview
