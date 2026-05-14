@@ -7,6 +7,12 @@ interface DesktopNavProps {
   isAuthenticated?: boolean;
 }
 
+function normalizePathname(pathname: string): string {
+  if (!pathname) return "/";
+  if (pathname === "/") return "/";
+  return pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+}
+
 export const DesktopNav = ({
   navigation,
   isActive,
@@ -35,14 +41,16 @@ export const DesktopNav = ({
     {isAuthenticated && (
       <li role="listitem">
         <a
-          href="/mes-rdvs"
+          href="/mes-rdvs/"
           className={`${
-            typeof window !== "undefined" && window.location.pathname === "/mes-rdvs"
+            typeof window !== "undefined" &&
+            normalizePathname(window.location.pathname) === "/mes-rdvs"
               ? "text-mint-600"
               : "text-sage-600 hover:text-mint-500"
           } transition-colors duration-200 font-medium min-h-[44px] min-w-[44px] flex items-center justify-center`}
           aria-current={
-            typeof window !== "undefined" && window.location.pathname === "/mes-rdvs"
+            typeof window !== "undefined" &&
+            normalizePathname(window.location.pathname) === "/mes-rdvs"
               ? "page"
               : undefined
           }

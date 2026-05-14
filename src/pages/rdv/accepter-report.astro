@@ -4,12 +4,13 @@
  *
  * SSR (prerender = false).
  * Le patient arrive ici depuis le lien dans l'email AppointmentRescheduled.
- * Paramètre URL requis : ?id=<uuid du rendez-vous>
+ * Paramètres URL requis : ?id=<uuid du rendez-vous>&token=<jeton signé>
  */
 export const prerender = false;
 
 import Layout from '../../layouts/Layout.astro';
 import Navbar from '../../components/islands/Navbar';
+import { verifySecureLinkToken } from '../../lib/secure-links';
 import { supabaseAdmin } from '../../lib/supabase';
 import { getTypeLabel, getModeLabel } from '../../lib/pricing';
 import type { Appointment } from '../../types/appointment';
@@ -17,12 +18,13 @@ import type { Appointment } from '../../types/appointment';
 // ── Paramètre URL ─────────────────────────────────────────────────────────────
 
 const appointmentId = Astro.url.searchParams.get('id');
+const rescheduleToken = Astro.url.searchParams.get('token');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // UUID malformé → redirect
-if (!appointmentId || !UUID_RE.test(appointmentId)) {
-  return Astro.redirect('/rendez-vous?error=lien-invalide');
+if (!appointmentId || !UUID_RE.test(appointmentId) || !rescheduleToken) {
+  return Astro.redirect('/rendez-vous/?error=lien-invalide');
 }
 
 // ── Fetch rendez-vous ─────────────────────────────────────────────────────────
@@ -35,10 +37,19 @@ const { data, error } = await supabaseAdmin
 
 // Not found → redirect
 if (error || !data) {
-  return Astro.redirect('/rendez-vous?error=rdv-introuvable');
+  return Astro.redirect('/rendez-vous/?error=rdv-introuvable');
 }
 
 const appt = data as Appointment;
+const isTokenValid = verifySecureLinkToken({
+  token: rescheduleToken,
+  appointmentId,
+  purpose: 'accept-reschedule',
+  nonce: appt.rescheduled_to ?? '',
+});
+if (!isTokenValid) {
+  return Astro.redirect('/rendez-vous/?error=lien-invalide');
+}
 
 // ── État du rendez-vous ───────────────────────────────────────────────────────
 
@@ -98,7 +109,7 @@ const priceFormatted = `${Math.round(appt.final_price / 100)}\u00a0€`;
             <br />
             Votre rendez-vous a peut-être déjà été confirmé.
           </p>
-          <a href="/mes-rdvs" class="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-mint-600 text-white text-sm font-medium font-sans hover:bg-mint-700 transition-colors min-h-[40px]">
+          <a href="/mes-rdvs/" class="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-mint-600 text-white text-sm font-medium font-sans hover:bg-mint-700 transition-colors min-h-[40px]">
             Voir mes rendez-vous
           </a>
         </div>
@@ -123,7 +134,7 @@ const priceFormatted = `${Math.round(appt.final_price / 100)}\u00a0€`;
             <br />
             Contactez la thérapeute pour convenir d'un nouveau créneau.
           </p>
-          <a href="/contact" class="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-mint-600 text-white text-sm font-medium font-sans hover:bg-mint-700 transition-colors min-h-[40px]">
+          <a href="/contact/" class="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-mint-600 text-white text-sm font-medium font-sans hover:bg-mint-700 transition-colors min-h-[40px]">
             Contacter la thérapeute
           </a>
         </div>
@@ -211,7 +222,7 @@ const priceFormatted = `${Math.round(appt.final_price / 100)}\u00a0€`;
 
           <p class="text-center text-xs text-sage-400 font-sans mt-4">
             Ce créneau ne vous convient pas ?{' '}
-            <a href="/rendez-vous" class="text-mint-600 hover:underline">
+            <a href="/rendez-vous/" class="text-mint-600 hover:underline">
               Choisir un autre créneau
             </a>
           </p>
@@ -223,7 +234,7 @@ const priceFormatted = `${Math.round(appt.final_price / 100)}\u00a0€`;
 </Layout>
 
 {!isAlreadyUsed && !isExpired && (
-  <script define:vars={{ appointmentId }}>
+  <script define:vars={{ appointmentId, rescheduleToken }}>
     const btn = document.getElementById('accept-btn');
     const errorBox = document.getElementById('accept-error');
 
@@ -237,7 +248,7 @@ const priceFormatted = `${Math.round(appt.final_price / 100)}\u00a0€`;
         const res = await fetch(`/api/appointments/${appointmentId}/`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'accept_reschedule' }),
+          body: JSON.stringify({ action: 'accept_reschedule', token: rescheduleToken }),
         });
 
         const data = await res.json();
@@ -248,9 +259,9 @@ const priceFormatted = `${Math.round(appt.final_price / 100)}\u00a0€`;
 
         // Redirection selon le statut retourné
         if (data.status === 'payment_pending') {
-          window.location.href = '/rdv/merci/?paiement=en-attente';
+          window.location.href = '/rdv/merci/?source=payment-pending';
         } else {
-          window.location.href = '/rdv/merci/';
+          window.location.href = '/rdv/merci/?source=request-confirmed';
         }
       } catch (err) {
         errorBox.textContent = err instanceof Error

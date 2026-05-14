@@ -215,3 +215,31 @@ export function generateGoogleCalendarLink(event: ICSEvent): string {
 
   return `${base}?${params.toString()}`;
 }
+
+/**
+ * Génère un lien Outlook Web "native compose" pour créer l'événement.
+ */
+export function generateOutlookCalendarLink(event: ICSEvent): string {
+  const base = 'https://outlook.live.com/calendar/0/deeplink/compose';
+  const params = new URLSearchParams({
+    subject: event.summary,
+    startdt: event.start.toISOString(),
+    enddt: event.end.toISOString(),
+    ...(event.description ? { body: event.description } : {}),
+    ...(event.location ? { location: event.location } : {}),
+  });
+  return `${base}?${params.toString()}`;
+}
+
+/**
+ * Génère un lien HTTP vers l'invitation ICS hébergée côté serveur.
+ * Compatible Apple Calendar (iOS/macOS) et clients desktop.
+ */
+export function generateAppleCalendarInviteLink(baseUrl: string, appointmentId: string, token?: string): string {
+  const root = baseUrl.replace(/\/+$/, '');
+  const url = new URL(`${root}/api/calendar/invite/${appointmentId}/`);
+  if (token) {
+    url.searchParams.set('token', token);
+  }
+  return url.toString();
+}

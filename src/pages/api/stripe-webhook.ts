@@ -7,7 +7,8 @@ import type Stripe from 'stripe';
 import { stripe } from '../../lib/stripe';
 import { supabaseAdmin } from '../../lib/supabase';
 import { sendEmail } from '../../lib/resend';
-import { generateGoogleCalendarLink, generateICSDataUri, CABINET_ADDRESS } from '../../lib/ics';
+import { generateGoogleCalendarLink, generateOutlookCalendarLink, generateAppleCalendarInviteLink, CABINET_ADDRESS } from '../../lib/ics';
+import { createSecureLinkToken } from '../../lib/secure-links';
 import { getTypeLabel, getModeLabel } from '../../lib/pricing';
 import { createCalendarEvent } from '../../lib/google-calendar';
 import AppointmentConfirmed from '../../emails/AppointmentConfirmed';
@@ -190,8 +191,14 @@ async function handlePaymentSucceeded(appointmentId: string, paymentIntentId: st
   if (updatedAppt.appointment_mode === 'video' && !videoLink) {
     const start = new Date(updatedAppt.scheduled_at);
     const end = new Date(start.getTime() + updatedAppt.duration * 60 * 1000);
-    const title = `Séance OMF Thérapie — ${getTypeLabel(updatedAppt.appointment_type)}`;
-    const description = `${getTypeLabel(updatedAppt.appointment_type)} (${getModeLabel(updatedAppt.appointment_mode)}) · ${updatedAppt.duration} min`;
+    const title = `🎥 ${updatedAppt.patient_name} — ${getTypeLabel(updatedAppt.appointment_type)} (${updatedAppt.duration} min)`;
+    const description = [
+      `Patient: ${updatedAppt.patient_name}`,
+      `Email: ${updatedAppt.patient_email}`,
+      `Mode: ${getModeLabel(updatedAppt.appointment_mode)}`,
+      `Type: ${getTypeLabel(updatedAppt.appointment_type)}`,
+      `Durée: ${updatedAppt.duration} min`,
+    ].join('\n');
 
     try {
       const result = await createCalendarEvent({
@@ -199,9 +206,11 @@ async function handlePaymentSucceeded(appointmentId: string, paymentIntentId: st
         start: start.toISOString(),
         end: end.toISOString(),
         description,
+        location: 'Téléconsultation',
         attendeeEmail: updatedAppt.patient_email,
         withMeet: !videoLink,
         appointmentId: updatedAppt.id,
+        colorId: '11',
       });
       calendarEventCreated = true;
       if (result.meetLink) {
@@ -210,26 +219,34 @@ async function handlePaymentSucceeded(appointmentId: string, paymentIntentId: st
           .from('appointments')
           .update({ video_link: result.meetLink })
           .eq('id', updatedAppt.id);
+      } else {
+        throw new Error('Meet non retourné par Google Calendar');
       }
     } catch (meetErr) {
       console.error('[stripe-webhook] Erreur création événement Meet, fallback sans Meet:', meetErr);
+      const fallbackVideoLink = buildFallbackVideoLink(updatedAppt.id);
+      videoLink = fallbackVideoLink;
       try {
-        const fallbackVideoLink = buildFallbackVideoLink(updatedAppt.id);
+        await supabaseAdmin
+          .from('appointments')
+          .update({ video_link: fallbackVideoLink })
+          .eq('id', updatedAppt.id);
+      } catch (persistErr) {
+        console.error('[stripe-webhook] Échec persistance fallback vidéo:', persistErr);
+      }
+      try {
         await createCalendarEvent({
           title,
           start: start.toISOString(),
           end: end.toISOString(),
           description: `${description}\nLien visio: ${fallbackVideoLink}`,
+          location: 'Téléconsultation',
           attendeeEmail: updatedAppt.patient_email,
           withMeet: false,
           appointmentId: `${updatedAppt.id}-fallback`,
+          colorId: '11',
         });
         calendarEventCreated = true;
-        videoLink = fallbackVideoLink;
-        await supabaseAdmin
-          .from('appointments')
-          .update({ video_link: fallbackVideoLink })
-          .eq('id', updatedAppt.id);
       } catch (calendarErr) {
         console.error('[stripe-webhook] Échec fallback événement calendrier:', calendarErr);
       }
@@ -237,8 +254,15 @@ async function handlePaymentSucceeded(appointmentId: string, paymentIntentId: st
   } else if (updatedAppt.appointment_mode === 'video') {
     const start = new Date(updatedAppt.scheduled_at);
     const end = new Date(start.getTime() + updatedAppt.duration * 60 * 1000);
-    const title = `Séance OMF Thérapie — ${getTypeLabel(updatedAppt.appointment_type)}`;
-    const description = `${getTypeLabel(updatedAppt.appointment_type)} (${getModeLabel(updatedAppt.appointment_mode)}) · ${updatedAppt.duration} min${videoLink ? `\nLien visio: ${videoLink}` : ''}`;
+    const title = `🎥 ${updatedAppt.patient_name} — ${getTypeLabel(updatedAppt.appointment_type)} (${updatedAppt.duration} min)`;
+    const description = [
+      `Patient: ${updatedAppt.patient_name}`,
+      `Email: ${updatedAppt.patient_email}`,
+      `Mode: ${getModeLabel(updatedAppt.appointment_mode)}`,
+      `Type: ${getTypeLabel(updatedAppt.appointment_type)}`,
+      `Durée: ${updatedAppt.duration} min`,
+      ...(videoLink ? [`Lien visio: ${videoLink}`] : []),
+    ].join('\n');
 
     try {
       await createCalendarEvent({
@@ -246,9 +270,11 @@ async function handlePaymentSucceeded(appointmentId: string, paymentIntentId: st
         start: start.toISOString(),
         end: end.toISOString(),
         description,
+        location: 'Téléconsultation',
         attendeeEmail: updatedAppt.patient_email,
         withMeet: false,
         appointmentId: `${updatedAppt.id}-event`,
+        colorId: '11',
       });
       calendarEventCreated = true;
     } catch (calendarErr) {
@@ -261,8 +287,15 @@ async function handlePaymentSucceeded(appointmentId: string, paymentIntentId: st
     const apptForIcs = videoLink ? { ...updatedAppt, video_link: videoLink } : updatedAppt;
     const icsEvent = buildICSEvent(apptForIcs);
     const googleCalendarLink = generateGoogleCalendarLink(icsEvent);
-    const icsDataUri = generateICSDataUri(icsEvent);
+    const outlookCalendarLink = generateOutlookCalendarLink(icsEvent);
     const baseUrl = import.meta.env.BETTER_AUTH_URL ?? 'https://omf-therapie.fr';
+    const inviteToken = createSecureLinkToken({
+      appointmentId: updatedAppt.id,
+      purpose: 'ics-invite',
+      expiresInSeconds: 60 * 60 * 24 * 180,
+      nonce: updatedAppt.scheduled_at,
+    });
+    const appleCalendarLink = generateAppleCalendarInviteLink(baseUrl, updatedAppt.id, inviteToken);
 
     await Promise.allSettled([
       sendEmail({
@@ -279,7 +312,8 @@ async function handlePaymentSucceeded(appointmentId: string, paymentIntentId: st
           finalPrice: updatedAppt.final_price,
           videoLink,
           googleCalendarLink,
-          icsDataUri,
+          appleCalendarLink,
+          outlookCalendarLink,
           cabinetAddress: undefined, // vidéo uniquement
         }),
       }),
@@ -295,7 +329,7 @@ async function handlePaymentSucceeded(appointmentId: string, paymentIntentId: st
           duration: updatedAppt.duration,
           finalPrice: updatedAppt.final_price,
           videoLink,
-          dashboardUrl: `${baseUrl}/mes-rdvs`,
+          dashboardUrl: `${baseUrl}/mes-rdvs/`,
           calendarEventCreated,
         }),
       }),

@@ -3,11 +3,13 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { createElement } from 'react';
 import { auth } from '../../../../lib/auth';
+import { isAdminSession } from '../../../../lib/authz';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import { calculatePrice } from '../../../../lib/pricing';
 import { sendEmail } from '../../../../lib/resend';
 import { createAppointmentPaymentLink } from '../../../../lib/stripe';
-import { generateGoogleCalendarLink, generateICSDataUri, CABINET_ADDRESS } from '../../../../lib/ics';
+import { generateGoogleCalendarLink, generateOutlookCalendarLink, generateAppleCalendarInviteLink, CABINET_ADDRESS } from '../../../../lib/ics';
+import { createSecureLinkToken } from '../../../../lib/secure-links';
 import AppointmentConfirmed from '../../../../emails/AppointmentConfirmed';
 import PaymentRequest from '../../../../emails/PaymentRequest';
 import type { AppointmentType, AppointmentDuration } from '../../../../types/appointment';
@@ -39,6 +41,9 @@ export const POST: APIRoute = async ({ request }) => {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user) {
     return errorResponse(401, 'Non authentifié');
+  }
+  if (!isAdminSession(session)) {
+    return errorResponse(403, 'Accès refusé');
   }
 
   // 2. Parse body
@@ -148,7 +153,8 @@ export const POST: APIRoute = async ({ request }) => {
 
   // 7. Envoi email
   if (shouldSendEmail) {
-    const successUrl = `${new URL(request.url).origin}/rendez-vous/confirmation?id=${appointment.id}`;
+    const origin = new URL(request.url).origin;
+    const successUrl = import.meta.env.STRIPE_SUCCESS_URL ?? `${origin}/rdv/merci/?source=payment-success`;
 
     if (isVideo) {
       // Créer le lien Stripe et envoyer une demande de paiement
@@ -184,21 +190,29 @@ export const POST: APIRoute = async ({ request }) => {
       }
     } else {
       // Confirmer directement et envoyer l'email de confirmation
-      const gcalLink = generateGoogleCalendarLink({
-        title: 'Séance de thérapie — OMF Therapie',
-        startDate: new Date(appointment.scheduled_at),
-        durationMinutes: appointment.duration,
-        description: 'Séance de thérapie avec Oriane Montabonnet',
-        location: CABINET_ADDRESS,
+      const start = new Date(appointment.scheduled_at);
+      const end = new Date(start.getTime() + appointment.duration * 60 * 1000);
+      const calendarEvent = {
+        uid: appointment.id,
+        summary: 'Séance de thérapie — OMF Therapie',
+        description: `Patient: ${appointment.patient_name}\nMode: ${appointment.appointment_mode === 'video' ? 'Téléconsultation' : 'Présentiel'}`,
+        location: appointment.appointment_mode === 'in-person' ? CABINET_ADDRESS : (appointment.video_link ?? undefined),
+        url: appointment.video_link ?? undefined,
+        start,
+        end,
+        organizerName: 'Oriane Montabonnet — OMF Thérapie',
+        organizerEmail: import.meta.env.RESEND_FROM_EMAIL ?? 'contact@omf-therapie.fr',
+      };
+      const gcalLink = generateGoogleCalendarLink(calendarEvent);
+      const outlookCalendarLink = generateOutlookCalendarLink(calendarEvent);
+      const baseUrl = import.meta.env.BETTER_AUTH_URL ?? new URL(request.url).origin;
+      const inviteToken = createSecureLinkToken({
+        appointmentId: appointment.id,
+        purpose: 'ics-invite',
+        expiresInSeconds: 60 * 60 * 24 * 180,
+        nonce: appointment.scheduled_at,
       });
-
-      const icsDataUri = generateICSDataUri({
-        title: 'Séance de thérapie — OMF Therapie',
-        startDate: new Date(appointment.scheduled_at),
-        durationMinutes: appointment.duration,
-        description: 'Séance de thérapie avec Oriane Montabonnet',
-        location: CABINET_ADDRESS,
-      });
+      const appleCalendarLink = generateAppleCalendarInviteLink(baseUrl, appointment.id, inviteToken);
 
       sendEmail({
         to: appointment.patient_email,
@@ -211,7 +225,8 @@ export const POST: APIRoute = async ({ request }) => {
           duration: appointment.duration,
           finalPrice: appointment.final_price,
           googleCalendarLink: gcalLink,
-          icsDataUri,
+          appleCalendarLink,
+          outlookCalendarLink,
           cabinetAddress: CABINET_ADDRESS,
         }),
       }).catch(e => console.error('[admin/appointments] email AppointmentConfirmed error:', e));

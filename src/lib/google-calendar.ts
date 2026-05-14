@@ -398,7 +398,9 @@ export interface CreateEventParams {
   start: string;  // ISO 8601
   end: string;    // ISO 8601
   description?: string;
+  location?: string;
   attendeeEmail?: string;
+  colorId?: string;
   /** Si true, crée automatiquement une conférence Google Meet */
   withMeet?: boolean;
   /** Identifiant du rendez-vous — utilisé comme requestId pour l'idempotence */
@@ -428,7 +430,11 @@ function extractEventResult(data: { id?: string | null; conferenceData?: { entry
   }
 
   const meetLink =
-    data.conferenceData?.entryPoints?.[0]?.uri ??
+    data.conferenceData?.entryPoints?.find((entryPoint) => {
+      if (!entryPoint) return false;
+      const typed = entryPoint as { uri?: string; entryPointType?: string };
+      return typed.entryPointType === 'video' && typeof typed.uri === 'string';
+    })?.uri ??
     data.hangoutLink ??
     undefined;
 
@@ -470,6 +476,8 @@ export async function createCalendarEvent(
   const baseRequestBody = {
     summary: params.title,
     description: params.description,
+    location: params.location,
+    colorId: params.colorId,
     start: {
       dateTime: params.start,
       timeZone: TIMEZONE,
