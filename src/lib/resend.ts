@@ -68,6 +68,23 @@ export interface SendEmailResult {
   error?: string;
 }
 
+interface ResendApiError {
+  name?: string;
+  statusCode?: number | null;
+  message?: string;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function isRetryableResendError(error: ResendApiError | null | undefined): boolean {
+  if (!error) return false;
+  const status = error.statusCode ?? null;
+  if (status === null || status >= 500) return true;
+  return error.name === 'application_error';
+}
+
 // ---------------------------------------------------------------------------
 // SMTP path (dev local — Mailpit)
 // ---------------------------------------------------------------------------
@@ -115,21 +132,33 @@ async function sendEmailViaResend(
 
   try {
     const html = await render(react);
-
-    const { data, error } = await resendClient.emails.send({
+    const payload = {
       from: fromEmail,
       to: Array.isArray(to) ? to : [to],
       subject,
       html,
       ...(replyTo ? { replyTo } : {}),
-    });
+    };
+    const maxAttempts = 3;
+    let lastError: ResendApiError | null = null;
 
-    if (error) {
-      console.error('[resend] Erreur API Resend :', error);
-      return { success: false, error: error.message };
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const { data, error } = await resendClient.emails.send(payload);
+
+      if (!error) {
+        return { success: true, id: data?.id };
+      }
+
+      lastError = error as ResendApiError;
+      if (!isRetryableResendError(lastError) || attempt === maxAttempts) {
+        console.error('[resend] Erreur API Resend :', lastError);
+        return { success: false, error: lastError.message ?? 'Erreur Resend inconnue' };
+      }
+
+      console.warn(`[resend] Erreur transitoire (tentative ${attempt}/${maxAttempts}), retry...`);
+      await sleep(attempt * 300);
     }
-
-    return { success: true, id: data?.id };
+    return { success: false, error: lastError?.message ?? 'Erreur Resend inconnue' };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Erreur inconnue';
     console.error(`[resend] Exception lors de l'envoi de l'email :`, message);

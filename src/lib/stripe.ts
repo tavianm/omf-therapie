@@ -42,6 +42,31 @@ export interface PaymentLinkResult {
   url: string;
 }
 
+const CHECKOUT_SESSION_PLACEHOLDER = '{CHECKOUT_SESSION_ID}';
+
+function withQueryParam(url: string, key: string, value: string): string {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.searchParams.has(key)) {
+      parsed.searchParams.set(key, value);
+    }
+    return parsed.toString();
+  } catch {
+    const hasQuery = url.includes('?');
+    const separator = hasQuery ? '&' : '?';
+    return `${url}${separator}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+  }
+}
+
+/**
+ * Ensure Stripe redirect URL always carries checkout session context.
+ * This avoids landing on /rdv/merci without session identifier.
+ */
+export function buildStripeSuccessUrl(successUrl: string): string {
+  const withSource = withQueryParam(successUrl, 'source', 'payment-success');
+  return withQueryParam(withSource, 'session_id', CHECKOUT_SESSION_PLACEHOLDER);
+}
+
 // ---------------------------------------------------------------------------
 // Helper principal
 // ---------------------------------------------------------------------------
@@ -56,13 +81,19 @@ export async function createAppointmentPaymentLink(
   params: CreatePaymentLinkParams,
 ): Promise<PaymentLinkResult> {
   const { appointmentId, amount, description, successUrl } = params;
+  const redirectUrl = buildStripeSuccessUrl(successUrl);
 
   // Dev/test bypass: return a mock payment link when Stripe key is placeholder
   if (isStripeMock) {
     console.warn('[stripe] 🔧 Mode dev — lien de paiement simulé (clé Stripe placeholder)');
+    const mockUrl = withQueryParam(
+      withQueryParam(redirectUrl, 'mock', '1'),
+      'appointment_id',
+      appointmentId,
+    );
     return {
       id: `mock_pl_${appointmentId}`,
-      url: `${successUrl}?mock=1&appointment_id=${appointmentId}`,
+      url: mockUrl,
     };
   }
 
@@ -80,7 +111,7 @@ export async function createAppointmentPaymentLink(
     line_items: [{ price: price.id, quantity: 1 }],
     after_completion: {
       type: 'redirect',
-      redirect: { url: successUrl },
+      redirect: { url: redirectUrl },
     },
     // Metadata propagated to the Checkout Session's PaymentIntent.
     payment_intent_data: {
