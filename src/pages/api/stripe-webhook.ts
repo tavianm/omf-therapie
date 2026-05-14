@@ -31,6 +31,47 @@ function buildICSEvent(appt: Appointment) {
   };
 }
 
+async function resolveAppointmentIdFromCheckoutSession(session: Stripe.Checkout.Session): Promise<string | null> {
+  if (session.metadata?.appointment_id) {
+    return session.metadata.appointment_id;
+  }
+
+  const paymentIntentId = typeof session.payment_intent === 'string'
+    ? session.payment_intent
+    : session.payment_intent?.id;
+
+  if (paymentIntentId) {
+    try {
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      const fromPaymentIntent = paymentIntent.metadata?.appointment_id;
+      if (fromPaymentIntent) return fromPaymentIntent;
+    } catch (err) {
+      console.error('[stripe-webhook] Impossible de lire le PaymentIntent pour résoudre appointment_id:', err);
+    }
+  }
+
+  const paymentLinkId = typeof session.payment_link === 'string'
+    ? session.payment_link
+    : session.payment_link?.id;
+
+  if (paymentLinkId) {
+    const { data, error } = await supabaseAdmin
+      .from('appointments')
+      .select('id')
+      .eq('stripe_payment_link_id', paymentLinkId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[stripe-webhook] Impossible de résoudre appointment_id via stripe_payment_link_id:', error);
+      return null;
+    }
+
+    return data?.id ?? null;
+  }
+
+  return null;
+}
+
 export const POST: APIRoute = async ({ request }) => {
   // 0. Vérifier que le secret webhook est configuré
   const webhookSecret = import.meta.env.STRIPE_WEBHOOK_SECRET;
@@ -77,15 +118,16 @@ export const POST: APIRoute = async ({ request }) => {
         break;
       }
 
-      case 'checkout.session.completed': {
+      case 'checkout.session.completed':
+      case 'checkout.session.async_payment_succeeded': {
         const session = event.data.object as Stripe.Checkout.Session;
-        const appointmentId = session.metadata?.appointment_id;
+        const appointmentId = await resolveAppointmentIdFromCheckoutSession(session);
         const paymentIntentId = typeof session.payment_intent === 'string'
           ? session.payment_intent
           : session.payment_intent?.id;
 
         if (!appointmentId) {
-          console.warn('[stripe-webhook] checkout.session.completed sans appointment_id');
+          console.warn('[stripe-webhook] checkout.session.completed sans appointment_id (metadata/payment_intent/payment_link)');
           break;
         }
 
