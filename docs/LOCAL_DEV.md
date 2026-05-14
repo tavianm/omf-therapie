@@ -36,7 +36,7 @@ Guide complet pour démarrer, développer et tester le projet en local avec Dock
 
 ### Pourquoi ce setup ?
 
-- **PostgREST + nginx** simule l'API Supabase : le SDK `@supabase/supabase-js` envoie ses requêtes à `SUPABASE_URL/rest/v1/` — nginx relaie vers PostgREST.
+- **PostgREST + nginx** simule l'API Supabase : le SDK `@supabase/supabase-js` envoie ses requêtes à `SUPABASE_DATABASE_URL/rest/v1/` — nginx relaie vers PostgREST.
 - **Mailpit** capture tous les emails sortants (Resend remplacé par nodemailer/SMTP local) — aucun mail n'est envoyé à de vrais destinataires.
 - **Google Calendar mock** : `GOOGLE_CALENDAR_MOCK=true` génère des créneaux fictifs les mercredis, sans appel à l'API Google.
 
@@ -70,7 +70,7 @@ NAME                                      STATUS
 |---------|------|-------|
 | PostgreSQL | `5432` | Connexion directe BetterAuth / scripts |
 | PostgREST | `3000` | API REST directe (debug) |
-| nginx / Supabase REST | `3001` | `SUPABASE_URL` dans `.env` |
+| nginx / Supabase REST | `3001` | `SUPABASE_DATABASE_URL` dans `.env` |
 | Mailpit SMTP | `1025` | Envoi d'emails depuis l'app |
 | Mailpit Web UI | `8025` | Lire les emails capturés |
 
@@ -109,10 +109,10 @@ Contenu `.env` pour le développement local :
 ```dotenv
 # ── VITE (front-end public) ──────────────────────────────────────
 VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlLWRlbW8iLCJpYXQiOjEsImV4cCI6OTk5OTk5OTk5OX0.ZIhKF4RmxuCeSKIjpZ40QRuixVpXjHKMbZp3YwjtRx0
-VITE_SUPABASE_URL=http://localhost:3001
+VITE_SUPABASE_DATABASE_URL=http://localhost:3001
 
 # ── Supabase (simulé par PostgREST + nginx) ──────────────────────
-SUPABASE_URL=http://localhost:3001
+SUPABASE_DATABASE_URL=http://localhost:3001
 SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlLWRlbW8iLCJpYXQiOjEsImV4cCI6OTk5OTk5OTk5OX0.ZIhKF4RmxuCeSKIjpZ40QRuixVpXjHKMbZp3YwjtRx0
 SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaXNzIjoic3VwYWJhc2UtZGVtbyIsImlhdCI6MSwiZXhwIjo5OTk5OTk5OTk5fQ.D3HiiB3Lagr6nnA9by_mJZaAxhG60f-ELgK28tDTpR0
 

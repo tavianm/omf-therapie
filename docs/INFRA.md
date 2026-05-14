@@ -35,7 +35,7 @@ Cela crée :
 
 | Variable | Où trouver |
 |----------|-----------|
-| `SUPABASE_URL` | Settings → API → Project URL |
+| `SUPABASE_DATABASE_URL` | Settings → API → Project URL |
 | `SUPABASE_ANON_KEY` | Settings → API → anon / public |
 | `SUPABASE_SERVICE_ROLE_KEY` | Settings → API → service_role (confidentielle) |
 | `DATABASE_URL` | Settings → Database → Connection string → URI (mode `Session` ou `Transaction`) |
@@ -141,7 +141,7 @@ Ajouter dans *Site settings → Environment variables* :
 
 | Variable | Valeur / Description |
 |----------|---------------------|
-| `SUPABASE_URL` | URL projet Supabase |
+| `SUPABASE_DATABASE_URL` | URL projet Supabase |
 | `SUPABASE_ANON_KEY` | Clé publique |
 | `SUPABASE_SERVICE_ROLE_KEY` | Clé service (confidentielle) |
 | `DATABASE_URL` | Connexion directe PostgreSQL (BetterAuth) |

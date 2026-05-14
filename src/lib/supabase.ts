@@ -18,13 +18,13 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 // Lecture + validation des variables d'environnement
 // ---------------------------------------------------------------------------
 
-const supabaseUrl = import.meta.env.SUPABASE_URL;
+const supabaseUrl = import.meta.env.SUPABASE_DATABASE_URL;
 const supabaseAnonKey = import.meta.env.SUPABASE_ANON_KEY;
 const supabaseServiceRoleKey = import.meta.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl) {
   console.warn(
-    '[supabase] ⚠️  SUPABASE_URL est absent. Les appels Supabase échoueront.',
+    '[supabase] ⚠️  SUPABASE_DATABASE_URL est absent. Les appels Supabase échoueront.',
   );
 }
 
