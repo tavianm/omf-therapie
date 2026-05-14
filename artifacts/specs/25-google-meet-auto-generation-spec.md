@@ -2,7 +2,7 @@
 issue: 25
 title: "Google Meet auto-generation via Google Calendar API"
 tier: F-lite
-status: ready
+status: implemented
 ---
 
 ## Goal

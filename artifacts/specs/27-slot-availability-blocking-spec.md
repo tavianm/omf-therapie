@@ -2,7 +2,7 @@
 issue: 27
 title: "Bloquer les créneaux dès la réservation (statuts actifs)"
 tier: F-lite
-status: draft
+status: implemented
 frame: artifacts/frames/27-slot-availability-blocking-frame.md
 ---
 

@@ -1,51 +1,46 @@
 # Active Context
 
-**Last Updated:** January 2, 2026
+**Last Updated:** May 14, 2026
 
 This document tracks current work in progress, recent changes, and immediate next steps. Update this regularly to maintain continuity between development sessions.
 
 ## Current Status
 
-**Project State:** ✅ Production deployment complete and stable
+**Project State:** 🚀 Feature branch `feat/15-prise-de-rendez-vous` — PR #18 ouverte vers `main`
 
-**Recent Activity:** Dependency update and code quality improvements (January 2, 2026)
+**Recent Activity:** Système complet de prise de rendez-vous (issues #15, #21, #22, #24–#27) — tests E2E validés
 
-**Active Work:** None - all tasks completed
+**Active Work:** PR #18 en attente de review
 
 ## Recent Changes
 
-### January 2, 2026 - Dependency Update and Code Quality
+### Mai 2026 — Système de prise de rendez-vous complet
 
-- ✅ Updated npm dependencies (npm install)
-- ✅ Fixed 10 linting errors:
-  - Removed unused `maxVisiblePages` variable in BlogPagination.tsx
-  - Fixed missing dependency in useEffect hook (useBlogPosts.ts)
-  - Fixed irregular whitespace characters in Accessibilite.tsx (replaced non-breaking spaces with regular spaces)
-  - Updated return type from `any[]` to `BlogPost[]` in blogApi.ts
-- ✅ All linting checks passed with no errors
-- ✅ Production build successful (39.15s, 2794 modules transformed)
+Issues implémentées et testées E2E (Playwright MCP) :
 
-**Security Notes:**
-- 8 vulnerabilities identified (3 low, 4 moderate, 1 high)
-- 2 moderate vulnerabilities remain: esbuild package vulnerability would require Vite 7.3.0 (breaking change)
-- Current version: Vite 5.4.21 - stable and working correctly
-- No breaking changes needed unless specifically addressing the esbuild vulnerability
+- ✅ **#15** — Wizard patient multi-étapes (`/rendez-vous/`) : type, mode, durée, créneau, infos, confirmation
+- ✅ **#21** — Contrôle des tarifs admin : remise nouveau client & tarif solidaire (cases à cocher mutuellement exclusives dans modal de confirmation)
+- ✅ **#22** — Création manuelle de RDV par l'admin (`/mes-rdvs/` → bouton "Nouveau rendez-vous")
+- ✅ **#24** — Remise nouveau client disponible aussi dans AdminCreateButton
+- ✅ **#25** — Génération automatique Google Meet via `src/lib/google-calendar.ts` (mock local, Google Calendar API en prod)
+- ✅ **#26** — Flow acceptation report patient : page `/rdv/accepter-report/[id]/`, email prépaiement (télé) ou confirmation directe (présentiel), action `cancel_reschedule` pour l'admin
+- ✅ **#27** — Blocage des créneaux dès statuts actifs (`confirmed`, `payment_pending`) — pas pour `pending`
 
-**Purpose:** Keep dependencies up-to-date and maintain code quality standards
+### Bugs corrigés durant les tests
 
-### January 14, 2025 - Memory Bank Initialization
+- Trailing slashes manquants dans `accepter-report.astro` et `AdminCreateButton.tsx`
+- `cancel_reschedule` absent de la whitelist dans `appointments/[id].ts`
+- AdminCreate 500 : colonnes NOT NULL manquantes dans l'insert (`patient_postal_code`, `patient_city`, `base_price`)
+- `.playwright-mcp/` et `test-booking.cjs` exclus du tracking git
 
-- ✅ Created memory-bank directory structure
-- ✅ Added README.md with usage guidelines
-- ✅ Created project-overview.md with project description
-- ✅ Created technical-stack.md documenting technologies
-- ✅ Created architecture.md with system design
-- ✅ Created conventions.md with coding standards
-- ✅ Created decisions.md with ADR log
-- ✅ Created active-context.md (this file)
+## Infrastructure locale
 
-**Purpose:** Establish centralized knowledge repository for project context, decisions, and conventions to ensure consistency throughout development.
+- **Docker** : PostgreSQL 16, PostgREST, nginx (supabase-rest), Mailpit
+- **Auth** : BetterAuth (monocompte thérapeute) — `admin@localhost.dev` / `DevPassword!LocalOnly123`
+- **Emails** : Mailpit sur `http://localhost:8025`
+- **Stripe** : mode mock local (pas de vraies clés nécessaires pour le dev)
+- **Google Calendar** : `GOOGLE_CALENDAR_MOCK=true` — créneaux fictifs les mercredis uniquement
 
 ## Current Branch
 
-**Branch:** main
+**Branch:** feat/15-prise-de-rendez-vous → PR #18 → main

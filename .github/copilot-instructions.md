@@ -1,6 +1,6 @@
 # Instructions pour les agents AI Copilot
 
-**Dernière mise à jour :** 14 octobre 2025
+**Dernière mise à jour :** 14 mai 2026
 
 ## 🎯 Aperçu du Projet
 
@@ -9,7 +9,7 @@ OMF Therapie est un site web professionnel pour une praticienne en thérapie, co
 - L'accessibilité (conformité WCAG)
 - Les performances (Islands Architecture — zéro JS par défaut)
 - Le contenu éducatif (système de blog via Content Collections)
-- Le contact et la prise de rendez-vous
+- Le contact et la prise de rendez-vous (système de booking complet avec admin)
 - L'expérience utilisateur responsive
 
 ## 📚 Documentation Essentielle
@@ -34,15 +34,27 @@ Entrées disponibles : Project Overview · Architecture · Coding Conventions ·
 omf-therapie/
 ├── src/
 │   ├── components/     # Composants React (islands/) et Astro
-│   │   └── islands/    # React islands hydratés côté client (Navbar, BlogClientWrapper)
+│   │   ├── admin/      # Dashboard admin (AppointmentCard, AdminCreateButton)
+│   │   ├── islands/    # React islands hydratés côté client (Navbar, BlogClientWrapper)
+│   │   └── ...         # home/, blog/, contact/, footer/, navigation/, pricing/
 │   ├── config/         # Configuration globale
 │   ├── content/        # Contenu blog (Markdown, Content Collections)
 │   │   └── blog/       # Articles au format Markdown avec frontmatter
+│   ├── emails/         # Templates React Email (Nodemailer/Resend)
 │   ├── hooks/          # Hooks React personnalisés (utilisés dans les islands)
 │   ├── layouts/        # Layouts Astro (Layout.astro, ServiceLayout.astro)
+│   ├── lib/            # Librairies serveur (auth.server.ts, pricing.ts, stripe.ts, google-calendar.ts, supabase.ts)
 │   ├── pages/          # Routes Astro (fichiers .astro → URLs)
+│   │   ├── api/        # Endpoints API SSR (appointments, auth, availability, stripe-webhook, admin/)
+│   │   ├── rdv/        # Pages patient post-booking (accepter-report, merci)
+│   │   ├── rendez-vous.astro  # Wizard de prise de rendez-vous (patient)
+│   │   ├── mes-rdvs.astro     # Dashboard admin (BetterAuth requis)
+│   │   └── login.astro        # Authentification admin
 │   ├── types/          # Définitions TypeScript
 │   └── utils/          # Utilitaires (schema.ts, blogApi.ts, etc.)
+├── supabase/
+│   └── migrations/     # Schéma PostgreSQL (001_init.sql)
+├── scripts/            # Scripts utilitaires (seed-admin.ts)
 ├── memory-bank/        # Standards de développement (astro.md, conventions.md, etc.)
 └── public/             # Assets statiques et rapports
 ```

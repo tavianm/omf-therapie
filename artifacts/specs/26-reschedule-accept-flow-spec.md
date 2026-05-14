@@ -2,7 +2,7 @@
 issue: 26
 title: "Reschedule: flow d'acceptation patient + nettoyage CTAs admin"
 tier: F-lite
-status: ready
+status: implemented
 frame: artifacts/frames/26-reschedule-accept-flow-frame.md
 ---
 

@@ -3,7 +3,7 @@ issue: 26
 title: "Reschedule: flow d'acceptation patient + nettoyage CTAs admin"
 tier: F-lite
 spec: artifacts/specs/26-reschedule-accept-flow-spec.md
-status: ready
+status: implemented
 ---
 
 ## Objectif
