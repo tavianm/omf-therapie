@@ -11,6 +11,7 @@ import { generateGoogleCalendarLink, generateICSDataUri, CABINET_ADDRESS } from 
 import { getTypeLabel, getModeLabel } from '../../lib/pricing';
 import { createCalendarEvent } from '../../lib/google-calendar';
 import AppointmentConfirmed from '../../emails/AppointmentConfirmed';
+import PaymentReceivedNotification from '../../emails/PaymentReceivedNotification';
 import type { Appointment } from '../../types/appointment';
 
 function buildICSEvent(appt: Appointment) {
@@ -70,6 +71,11 @@ async function resolveAppointmentIdFromCheckoutSession(session: Stripe.Checkout.
   }
 
   return null;
+}
+
+function buildFallbackVideoLink(appointmentId: string): string {
+  const slug = appointmentId.replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 24) || 'session';
+  return `https://meet.jit.si/omf-therapie-${slug}`;
 }
 
 export const POST: APIRoute = async ({ request }) => {
@@ -178,21 +184,26 @@ async function handlePaymentSucceeded(appointmentId: string, paymentIntentId: st
 
   const updatedAppt = updated as Appointment;
 
-  // Génération automatique du lien Google Meet pour les séances vidéo (non-bloquant)
+  // Génération événement calendrier + lien visio (non-bloquant)
   let videoLink = updatedAppt.video_link ?? undefined;
+  let calendarEventCreated = false;
   if (updatedAppt.appointment_mode === 'video' && !videoLink) {
+    const start = new Date(updatedAppt.scheduled_at);
+    const end = new Date(start.getTime() + updatedAppt.duration * 60 * 1000);
+    const title = `Séance OMF Thérapie — ${getTypeLabel(updatedAppt.appointment_type)}`;
+    const description = `${getTypeLabel(updatedAppt.appointment_type)} (${getModeLabel(updatedAppt.appointment_mode)}) · ${updatedAppt.duration} min`;
+
     try {
-      const start = new Date(updatedAppt.scheduled_at);
-      const end = new Date(start.getTime() + updatedAppt.duration * 60 * 1000);
       const result = await createCalendarEvent({
-        title: `Séance OMF Thérapie — ${getTypeLabel(updatedAppt.appointment_type)}`,
+        title,
         start: start.toISOString(),
         end: end.toISOString(),
-        description: `${getTypeLabel(updatedAppt.appointment_type)} (${getModeLabel(updatedAppt.appointment_mode)}) · ${updatedAppt.duration} min`,
+        description,
         attendeeEmail: updatedAppt.patient_email,
-        withMeet: true,
+        withMeet: !videoLink,
         appointmentId: updatedAppt.id,
       });
+      calendarEventCreated = true;
       if (result.meetLink) {
         videoLink = result.meetLink;
         await supabaseAdmin
@@ -201,38 +212,96 @@ async function handlePaymentSucceeded(appointmentId: string, paymentIntentId: st
           .eq('id', updatedAppt.id);
       }
     } catch (meetErr) {
-      // Dégradation gracieuse : la séance est confirmée même si Meet échoue
-      console.error('[stripe-webhook] Erreur génération Google Meet:', meetErr);
+      console.error('[stripe-webhook] Erreur création événement Meet, fallback sans Meet:', meetErr);
+      try {
+        const fallbackVideoLink = buildFallbackVideoLink(updatedAppt.id);
+        await createCalendarEvent({
+          title,
+          start: start.toISOString(),
+          end: end.toISOString(),
+          description: `${description}\nLien visio: ${fallbackVideoLink}`,
+          attendeeEmail: updatedAppt.patient_email,
+          withMeet: false,
+          appointmentId: `${updatedAppt.id}-fallback`,
+        });
+        calendarEventCreated = true;
+        videoLink = fallbackVideoLink;
+        await supabaseAdmin
+          .from('appointments')
+          .update({ video_link: fallbackVideoLink })
+          .eq('id', updatedAppt.id);
+      } catch (calendarErr) {
+        console.error('[stripe-webhook] Échec fallback événement calendrier:', calendarErr);
+      }
+    }
+  } else if (updatedAppt.appointment_mode === 'video') {
+    const start = new Date(updatedAppt.scheduled_at);
+    const end = new Date(start.getTime() + updatedAppt.duration * 60 * 1000);
+    const title = `Séance OMF Thérapie — ${getTypeLabel(updatedAppt.appointment_type)}`;
+    const description = `${getTypeLabel(updatedAppt.appointment_type)} (${getModeLabel(updatedAppt.appointment_mode)}) · ${updatedAppt.duration} min${videoLink ? `\nLien visio: ${videoLink}` : ''}`;
+
+    try {
+      await createCalendarEvent({
+        title,
+        start: start.toISOString(),
+        end: end.toISOString(),
+        description,
+        attendeeEmail: updatedAppt.patient_email,
+        withMeet: false,
+        appointmentId: `${updatedAppt.id}-event`,
+      });
+      calendarEventCreated = true;
+    } catch (calendarErr) {
+      console.error('[stripe-webhook] Erreur création événement calendrier:', calendarErr);
     }
   }
 
-  // 2. Envoyer l'email de confirmation avec ICS (non-bloquant)
+  // 2. Envoyer les emails (patient + thérapeute) en non-bloquant
   try {
     const apptForIcs = videoLink ? { ...updatedAppt, video_link: videoLink } : updatedAppt;
     const icsEvent = buildICSEvent(apptForIcs);
     const googleCalendarLink = generateGoogleCalendarLink(icsEvent);
     const icsDataUri = generateICSDataUri(icsEvent);
+    const baseUrl = import.meta.env.BETTER_AUTH_URL ?? 'https://omf-therapie.fr';
 
-    await sendEmail({
-      to: updatedAppt.patient_email,
-      subject: `Votre rendez-vous est confirmé — ${new Intl.DateTimeFormat('fr-FR', {
-        day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
-      }).format(new Date(updatedAppt.scheduled_at))}`,
-      react: createElement(AppointmentConfirmed, {
-        patientName: updatedAppt.patient_name,
-        appointmentType: updatedAppt.appointment_type,
-        appointmentMode: updatedAppt.appointment_mode,
-        scheduledAt: updatedAppt.scheduled_at,
-        duration: updatedAppt.duration,
-        finalPrice: updatedAppt.final_price,
-        videoLink,
-        googleCalendarLink,
-        icsDataUri,
-        cabinetAddress: undefined, // vidéo uniquement
+    await Promise.allSettled([
+      sendEmail({
+        to: updatedAppt.patient_email,
+        subject: `Votre rendez-vous est confirmé — ${new Intl.DateTimeFormat('fr-FR', {
+          day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
+        }).format(new Date(updatedAppt.scheduled_at))}`,
+        react: createElement(AppointmentConfirmed, {
+          patientName: updatedAppt.patient_name,
+          appointmentType: updatedAppt.appointment_type,
+          appointmentMode: updatedAppt.appointment_mode,
+          scheduledAt: updatedAppt.scheduled_at,
+          duration: updatedAppt.duration,
+          finalPrice: updatedAppt.final_price,
+          videoLink,
+          googleCalendarLink,
+          icsDataUri,
+          cabinetAddress: undefined, // vidéo uniquement
+        }),
       }),
-    });
+      sendEmail({
+        to: import.meta.env.ADMIN_EMAIL,
+        subject: `Prépaiement reçu — ${updatedAppt.patient_name}`,
+        react: createElement(PaymentReceivedNotification, {
+          patientName: updatedAppt.patient_name,
+          patientEmail: updatedAppt.patient_email,
+          appointmentType: updatedAppt.appointment_type,
+          appointmentMode: updatedAppt.appointment_mode,
+          scheduledAt: updatedAppt.scheduled_at,
+          duration: updatedAppt.duration,
+          finalPrice: updatedAppt.final_price,
+          videoLink,
+          dashboardUrl: `${baseUrl}/mes-rdvs`,
+          calendarEventCreated,
+        }),
+      }),
+    ]);
   } catch (emailErr) {
     // L'email ne doit pas bloquer le webhook
-    console.error('[stripe-webhook] Erreur envoi email confirmation:', emailErr);
+    console.error('[stripe-webhook] Erreur envoi emails post-paiement:', emailErr);
   }
 }
