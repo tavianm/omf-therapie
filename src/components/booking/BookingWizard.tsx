@@ -386,79 +386,81 @@ function DatetimeStep({
         ({state.duration} min).
       </p>
 
-      {/* Loading skeleton */}
-      {isLoading && (
-        <div className="space-y-4" aria-live="polite" aria-busy="true">
-          {[0, 1, 2].map(i => (
-            <div key={i} className="animate-pulse rounded-xl border border-sage-200 bg-white p-4">
-              <div className="mb-3 h-4 w-40 rounded bg-sage-100" />
-              <div className="flex flex-wrap gap-2">
-                {[0, 1, 2, 3].map(j => (
-                  <div key={j} className="h-9 w-16 rounded-lg bg-sage-100" />
-                ))}
+      <div className="max-h-[45vh] overflow-y-auto pr-1 sm:max-h-[48vh]">
+        {/* Loading skeleton */}
+        {isLoading && (
+          <div className="space-y-4" aria-live="polite" aria-busy="true">
+            {[0, 1, 2].map(i => (
+              <div key={i} className="animate-pulse rounded-xl border border-sage-200 bg-white p-4">
+                <div className="mb-3 h-4 w-40 rounded bg-sage-100" />
+                <div className="flex flex-wrap gap-2">
+                  {[0, 1, 2, 3].map(j => (
+                    <div key={j} className="h-9 w-16 rounded-lg bg-sage-100" />
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
 
-      {/* Erreur */}
-      {!isLoading && fetchError && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
-          <span className="font-semibold">Erreur :</span> {fetchError}
-        </div>
-      )}
+        {/* Erreur */}
+        {!isLoading && fetchError && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+            <span className="font-semibold">Erreur :</span> {fetchError}
+          </div>
+        )}
 
-      {/* Aucun créneau */}
-      {!isLoading && !fetchError && groups.length === 0 && (
-        <div className="rounded-xl border border-sage-200 bg-sage-50 px-5 py-8 text-center">
-          <p className="text-sm text-sage-600">
-            Aucun créneau disponible dans les 4 prochaines semaines.
-          </p>
-          <p className="mt-1 text-xs text-sage-500">
-            Vous pouvez nous contacter directement pour trouver un arrangement.
-          </p>
-        </div>
-      )}
+        {/* Aucun créneau */}
+        {!isLoading && !fetchError && groups.length === 0 && (
+          <div className="rounded-xl border border-sage-200 bg-sage-50 px-5 py-8 text-center">
+            <p className="text-sm text-sage-600">
+              Aucun créneau disponible dans les 4 prochaines semaines.
+            </p>
+            <p className="mt-1 text-xs text-sage-500">
+              Vous pouvez nous contacter directement pour trouver un arrangement.
+            </p>
+          </div>
+        )}
 
-      {/* Créneaux groupés par jour */}
-      {!isLoading && !fetchError && groups.length > 0 && (
-        <div className="space-y-4" role="list" aria-label="Créneaux disponibles">
-          {groups.map(group => (
-            <div
-              key={group.dateKey}
-              role="listitem"
-              className="rounded-xl border border-sage-200 bg-white p-4 shadow-sm"
-            >
-              <h3 className="mb-3 text-sm font-semibold text-sage-800">{group.dateLabel}</h3>
-              <div className="flex flex-wrap gap-2">
-                {group.slots.map(slot => {
-                  const isSelected = state.scheduled_at === slot.start;
-                  return (
-                    <button
-                      key={slot.start}
-                      type="button"
-                      onClick={() => updateField('scheduled_at', slot.start)}
-                      className={`
-                        rounded-lg border-2 px-3 py-2 text-sm font-medium transition-all duration-150
-                        focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2
-                        ${isSelected
-                          ? 'text-white shadow-sm'
-                          : 'border-sage-200 bg-white text-sage-700 hover:border-sage-400 hover:bg-sage-50'
-                        }
-                      `}
-                      style={isSelected ? { backgroundColor: ACCENT, borderColor: ACCENT } : undefined}
-                      aria-pressed={isSelected}
-                    >
-                      {formatTime(slot.start)}
-                    </button>
-                  );
-                })}
+        {/* Créneaux groupés par jour */}
+        {!isLoading && !fetchError && groups.length > 0 && (
+          <div className="space-y-4" role="list" aria-label="Créneaux disponibles">
+            {groups.map(group => (
+              <div
+                key={group.dateKey}
+                role="listitem"
+                className="rounded-xl border border-sage-200 bg-white p-4 shadow-sm"
+              >
+                <h3 className="mb-3 text-sm font-semibold text-sage-800">{group.dateLabel}</h3>
+                <div className="flex flex-wrap gap-2">
+                  {group.slots.map(slot => {
+                    const isSelected = state.scheduled_at === slot.start;
+                    return (
+                      <button
+                        key={slot.start}
+                        type="button"
+                        onClick={() => updateField('scheduled_at', slot.start)}
+                        className={`
+                         rounded-lg border-2 px-3 py-2 text-sm font-medium transition-all duration-150
+                         focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2
+                         ${isSelected
+                           ? 'text-white shadow-sm'
+                           : 'border-sage-200 bg-white text-sage-700 hover:border-sage-400 hover:bg-sage-50'
+                         }
+                       `}
+                        style={isSelected ? { backgroundColor: ACCENT, borderColor: ACCENT } : undefined}
+                        aria-pressed={isSelected}
+                      >
+                        {formatTime(slot.start)}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Navigation */}
       <div className="flex items-center justify-between pt-2">
