@@ -412,6 +412,29 @@ export interface CreateEventResult {
   meetLink?: string;
 }
 
+function isAttendeeDelegationError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  return msg.includes('service accounts cannot invite attendees') ||
+    msg.includes('domain-wide delegation');
+}
+
+function extractEventResult(data: { id?: string | null; conferenceData?: { entryPoints?: Array<{ uri?: string } | null> | null } | null; hangoutLink?: string | null }): CreateEventResult {
+  const eventId = data.id;
+  if (!eventId) {
+    throw new GoogleCalendarError(
+      'L\'événement a été créé mais aucun ID n\'a été retourné par l\'API.',
+    );
+  }
+
+  const meetLink =
+    data.conferenceData?.entryPoints?.[0]?.uri ??
+    data.hangoutLink ??
+    undefined;
+
+  return { eventId, meetLink: meetLink ?? undefined };
+}
+
 /**
  * Crée un événement dans Google Calendar après confirmation d'un rendez-vous.
  * Retourne { eventId, meetLink? }.
@@ -444,6 +467,21 @@ export async function createCalendarEvent(
     : undefined;
 
   const requestId = params.appointmentId ?? Date.now().toString(36);
+  const baseRequestBody = {
+    summary: params.title,
+    description: params.description,
+    start: {
+      dateTime: params.start,
+      timeZone: TIMEZONE,
+    },
+    end: {
+      dateTime: params.end,
+      timeZone: TIMEZONE,
+    },
+    ...(params.withMeet
+      ? { conferenceData: { createRequest: { requestId } } }
+      : {}),
+  };
 
   try {
     const response = await calendar.events.insert({
@@ -451,38 +489,32 @@ export async function createCalendarEvent(
       sendUpdates: params.attendeeEmail ? 'all' : 'none',
       ...(params.withMeet ? { conferenceDataVersion: 1 } : {}),
       requestBody: {
-        summary: params.title,
-        description: params.description,
-        start: {
-          dateTime: params.start,
-          timeZone: TIMEZONE,
-        },
-        end: {
-          dateTime: params.end,
-          timeZone: TIMEZONE,
-        },
+        ...baseRequestBody,
         attendees,
-        ...(params.withMeet
-          ? { conferenceData: { createRequest: { requestId } } }
-          : {}),
       },
     });
-
-    const eventId = response.data.id;
-    if (!eventId) {
-      throw new GoogleCalendarError(
-        'L\'événement a été créé mais aucun ID n\'a été retourné par l\'API.',
-      );
-    }
-
-    const meetLink =
-      response.data.conferenceData?.entryPoints?.[0]?.uri ??
-      response.data.hangoutLink ??
-      undefined;
-
-    return { eventId, meetLink: meetLink ?? undefined };
+    return extractEventResult(response.data);
   } catch (err: unknown) {
     if (err instanceof GoogleCalendarError) throw err;
+    if (params.attendeeEmail && isAttendeeDelegationError(err)) {
+      console.warn('[google-calendar] Attendee non autorisé pour service account. Retry sans invité.');
+      try {
+        const retry = await calendar.events.insert({
+          calendarId,
+          sendUpdates: 'none',
+          ...(params.withMeet ? { conferenceDataVersion: 1 } : {}),
+          requestBody: baseRequestBody,
+        });
+        return extractEventResult(retry.data);
+      } catch (retryErr: unknown) {
+        const retryMessage = retryErr instanceof Error ? retryErr.message : String(retryErr);
+        console.error('[google-calendar] Échec retry sans invité :', retryMessage);
+        throw new GoogleCalendarError(
+          'Impossible de créer le rendez-vous dans l\'agenda.',
+          retryErr,
+        );
+      }
+    }
 
     const message = err instanceof Error ? err.message : String(err);
     console.error('[google-calendar] Impossible de créer l\'événement :', message);
