@@ -47,8 +47,9 @@ export default defineConfig({
       exclude: ['react-router-dom', 'react-helmet-async'],
     },
     ssr: {
-      // nodemailer is CommonJS — let Node.js handle it natively in SSR
-      external: ['nodemailer'],
+      // Keep these as external so Vite/Rollup doesn't try to bundle them.
+      // nodemailer is CommonJS; googleapis is enormous and has CJS/ESM interop issues.
+      external: ['nodemailer', 'googleapis'],
     },
   },
 });
