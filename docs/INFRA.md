@@ -31,14 +31,14 @@ Cela crée :
 - Tables BetterAuth : `user`, `session`, `account`, `verification`
 - Politiques RLS
 
-**Variables à récupérer** dans *Settings → API* :
+**Variables à récupérer** dans *Settings → API* (ou *Settings → API Keys*) :
 
 | Variable | Où trouver |
 |----------|-----------|
-| `SUPABASE_DATABASE_URL` | Settings → API → Project URL |
-| `SUPABASE_ANON_KEY` | Settings → API → anon / public |
-| `SUPABASE_SERVICE_ROLE_KEY` | Settings → API → service_role (confidentielle) |
-| `DATABASE_URL` | Settings → Database → Connection string → URI (mode `Session` ou `Transaction`) |
+| `SUPABASE_DATABASE_URL` | Settings → API → **Project URL** |
+| `SUPABASE_ANON_KEY` | Settings → API → **anon / public** (anciens projets) ou **Publishable key** `sb_publishable_…` (nouveaux projets post-juillet 2025) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Settings → API → **service_role** (anciens projets) ou **Secret key** `sb_secret_…` (nouveaux projets) — ⚠️ confidentielle |
+| `DATABASE_URL` | Settings → **Database** → Connection string → URI (mode `Transaction` ou `Session`) |
 
 Format `DATABASE_URL` : `postgresql://postgres:[password]@db.<ref>.supabase.co:5432/postgres?sslmode=require`
 
