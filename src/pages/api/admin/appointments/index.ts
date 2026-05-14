@@ -199,7 +199,7 @@ export const POST: APIRoute = async ({ request }) => {
           .update({ stripe_payment_url: paymentLink.url })
           .eq('id', appointment.id);
 
-        sendEmail({
+        const emailResult = await sendEmail({
           to: appointment.patient_email,
           subject: buildAppointmentConversationSubject(
             `Prépaiement de votre séance — ${new Date(appointment.scheduled_at).toLocaleDateString('fr-FR')}`,
@@ -213,7 +213,10 @@ export const POST: APIRoute = async ({ request }) => {
             finalPrice: appointment.final_price,
             stripePaymentUrl: paymentLink.url,
           }),
-        }).catch(e => console.error('[admin/appointments] email PaymentRequest error:', e));
+        });
+        if (!emailResult.success) {
+          console.error('[admin/appointments] email PaymentRequest error:', emailResult.error);
+        }
       } catch (e) {
         console.error('[admin/appointments] Stripe error (non-bloquant):', e);
       }
@@ -243,7 +246,7 @@ export const POST: APIRoute = async ({ request }) => {
       });
       const appleCalendarLink = generateAppleCalendarInviteLink(baseUrl, appointment.id, inviteToken);
 
-      sendEmail({
+      const emailResult = await sendEmail({
         to: appointment.patient_email,
         subject: buildAppointmentConversationSubject(
           `Votre rendez-vous est confirmé — ${new Date(appointment.scheduled_at).toLocaleDateString('fr-FR')}`,
@@ -261,7 +264,10 @@ export const POST: APIRoute = async ({ request }) => {
           outlookCalendarLink,
           cabinetAddress: CABINET_ADDRESS,
         }),
-      }).catch(e => console.error('[admin/appointments] email AppointmentConfirmed error:', e));
+      });
+      if (!emailResult.success) {
+        console.error('[admin/appointments] email AppointmentConfirmed error:', emailResult.error);
+      }
     }
   }
 
