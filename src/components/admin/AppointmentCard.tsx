@@ -422,7 +422,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
             appointment.rescheduled_to &&
             appointment.rescheduled_to > new Date().toISOString() && (
               <button
-                onClick={() => callPatch({ action: "decline" })}
+                onClick={() => callPatch({ action: "cancel_reschedule" })}
                 disabled={actionLoading}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-red-300 text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
               >

@@ -277,6 +277,28 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   }
 
   // ---------------------------------------------------------------------------
+  // Action: cancel_reschedule — annule la proposition de report, remet en pending 
+  // ---------------------------------------------------------------------------
+  if (action === 'cancel_reschedule') {
+    if (appointment.status !== 'rescheduled')
+      return errorResponse(409, 'Ce rendez-vous n\'est pas en attente d\'acceptation de report');
+
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from('appointments')
+      .update({ status: 'pending', rescheduled_to: null })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError || !updated) {
+      console.error('[appointments/patch] Erreur cancel_reschedule:', updateError);
+      return errorResponse(500, 'Erreur lors de la mise à jour');
+    }
+
+    return jsonResponse({ appointment: updated as Appointment, message: 'Proposition de report annulée.' });
+  }
+
+  // ---------------------------------------------------------------------------
   // Action: reschedule
   // ---------------------------------------------------------------------------
   if (action === 'reschedule') {
