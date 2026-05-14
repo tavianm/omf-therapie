@@ -23,7 +23,7 @@ import type { APIRoute } from 'astro';
 import { createElement } from 'react';
 import { auth } from '../../lib/auth';
 import { supabaseAdmin } from '../../lib/supabase';
-import { sendEmail } from '../../lib/resend';
+import { sendEmail, buildAppointmentConversationSubject } from '../../lib/resend';
 import ReviewRequest from '../../emails/ReviewRequest';
 
 // ---------------------------------------------------------------------------
@@ -97,7 +97,10 @@ export const POST: APIRoute = async ({ request }) => {
   // 5. Envoyer l'email ReviewRequest
   const result = await sendEmail({
     to: patientEmail,
-    subject: 'Votre avis nous tient à cœur — OMF Thérapie',
+    subject: buildAppointmentConversationSubject(
+      'Votre avis nous tient à cœur — OMF Thérapie',
+      appointmentId.trim(),
+    ),
     react: createElement(ReviewRequest, {
       patientName,
       therapistNote: typeof therapistNote === 'string' ? therapistNote : undefined,

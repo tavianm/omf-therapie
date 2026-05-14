@@ -6,7 +6,7 @@ import { createElement } from 'react';
 import type Stripe from 'stripe';
 import { stripe } from '../../lib/stripe';
 import { supabaseAdmin } from '../../lib/supabase';
-import { sendEmail } from '../../lib/resend';
+import { sendEmail, buildAppointmentConversationSubject } from '../../lib/resend';
 import { generateGoogleCalendarLink, generateOutlookCalendarLink, generateAppleCalendarInviteLink, CABINET_ADDRESS } from '../../lib/ics';
 import { createSecureLinkToken } from '../../lib/secure-links';
 import { getTypeLabel, getModeLabel } from '../../lib/pricing';
@@ -334,9 +334,12 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
     await Promise.allSettled([
       sendEmail({
         to: updatedAppt.patient_email,
-        subject: `Votre rendez-vous est confirmé — ${new Intl.DateTimeFormat('fr-FR', {
-          day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
-        }).format(new Date(updatedAppt.scheduled_at))}`,
+        subject: buildAppointmentConversationSubject(
+          `Votre rendez-vous est confirmé — ${new Intl.DateTimeFormat('fr-FR', {
+            day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
+          }).format(new Date(updatedAppt.scheduled_at))}`,
+          updatedAppt.id,
+        ),
         react: createElement(AppointmentConfirmed, {
           patientName: updatedAppt.patient_name,
           appointmentType: updatedAppt.appointment_type,

@@ -6,7 +6,7 @@ import { auth } from '../../../../lib/auth';
 import { isAdminSession } from '../../../../lib/authz';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import { calculatePrice } from '../../../../lib/pricing';
-import { sendEmail } from '../../../../lib/resend';
+import { sendEmail, buildAppointmentConversationSubject } from '../../../../lib/resend';
 import { createAppointmentPaymentLink } from '../../../../lib/stripe';
 import { generateGoogleCalendarLink, generateOutlookCalendarLink, generateAppleCalendarInviteLink, CABINET_ADDRESS } from '../../../../lib/ics';
 import { createSecureLinkToken } from '../../../../lib/secure-links';
@@ -201,7 +201,10 @@ export const POST: APIRoute = async ({ request }) => {
 
         sendEmail({
           to: appointment.patient_email,
-          subject: `Prépaiement de votre séance — ${new Date(appointment.scheduled_at).toLocaleDateString('fr-FR')}`,
+          subject: buildAppointmentConversationSubject(
+            `Prépaiement de votre séance — ${new Date(appointment.scheduled_at).toLocaleDateString('fr-FR')}`,
+            appointment.id,
+          ),
           react: createElement(PaymentRequest, {
             patientName: appointment.patient_name,
             scheduledAt: appointment.scheduled_at,
@@ -242,7 +245,10 @@ export const POST: APIRoute = async ({ request }) => {
 
       sendEmail({
         to: appointment.patient_email,
-        subject: `Votre rendez-vous est confirmé — ${new Date(appointment.scheduled_at).toLocaleDateString('fr-FR')}`,
+        subject: buildAppointmentConversationSubject(
+          `Votre rendez-vous est confirmé — ${new Date(appointment.scheduled_at).toLocaleDateString('fr-FR')}`,
+          appointment.id,
+        ),
         react: createElement(AppointmentConfirmed, {
           patientName: appointment.patient_name,
           appointmentType: appointment.appointment_type,

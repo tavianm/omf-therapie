@@ -5,7 +5,7 @@ import { createElement } from 'react';
 import { auth } from '../../../lib/auth';
 import { isAdminSession } from '../../../lib/authz';
 import { supabaseAdmin } from '../../../lib/supabase';
-import { sendEmail } from '../../../lib/resend';
+import { sendEmail, buildAppointmentConversationSubject } from '../../../lib/resend';
 import { generateGoogleCalendarLink, generateOutlookCalendarLink, generateAppleCalendarInviteLink, CABINET_ADDRESS } from '../../../lib/ics';
 import { createSecureLinkToken, verifySecureLinkToken } from '../../../lib/secure-links';
 import { getTypeLabel, getModeLabel, calculatePrice } from '../../../lib/pricing';
@@ -264,9 +264,12 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (newStatus === 'payment_pending' && updatedAppt.stripe_payment_link_url) {
       sendEmail({
         to: updatedAppt.patient_email,
-        subject: `Prépaiement de votre séance — ${new Intl.DateTimeFormat('fr-FR', {
-          day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
-        }).format(new Date(updatedAppt.scheduled_at))}`,
+        subject: buildAppointmentConversationSubject(
+          `Prépaiement de votre séance — ${new Intl.DateTimeFormat('fr-FR', {
+            day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
+          }).format(new Date(updatedAppt.scheduled_at))}`,
+          updatedAppt.id,
+        ),
         react: createElement(PaymentRequest, {
           patientName: updatedAppt.patient_name,
           scheduledAt: updatedAppt.scheduled_at,
@@ -293,9 +296,12 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
       sendEmail({
         to: updatedAppt.patient_email,
-        subject: `Votre rendez-vous est confirmé — ${new Intl.DateTimeFormat('fr-FR', {
-          day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
-        }).format(new Date(updatedAppt.scheduled_at))}`,
+        subject: buildAppointmentConversationSubject(
+          `Votre rendez-vous est confirmé — ${new Intl.DateTimeFormat('fr-FR', {
+            day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
+          }).format(new Date(updatedAppt.scheduled_at))}`,
+          updatedAppt.id,
+        ),
         react: createElement(AppointmentConfirmed, {
           patientName: updatedAppt.patient_name,
           appointmentType: updatedAppt.appointment_type,
@@ -335,7 +341,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     sendEmail({
       to: updatedAppt.patient_email,
-      subject: 'Votre demande de rendez-vous',
+      subject: buildAppointmentConversationSubject(
+        'Votre demande de rendez-vous',
+        updatedAppt.id,
+      ),
       react: createElement(AppointmentDeclined, {
         patientName: updatedAppt.patient_name,
         scheduledAt: updatedAppt.scheduled_at,
@@ -420,7 +429,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     sendEmail({
       to: updatedAppt.patient_email,
-      subject: 'Proposition de nouveau créneau',
+      subject: buildAppointmentConversationSubject(
+        'Proposition de nouveau créneau',
+        updatedAppt.id,
+      ),
       react: createElement(AppointmentRescheduled, {
         patientName: updatedAppt.patient_name,
         originalScheduledAt: updatedAppt.scheduled_at,
@@ -566,9 +578,12 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (newStatus === 'payment_pending' && updatedAppt.stripe_payment_link_url) {
       sendEmail({
         to: updatedAppt.patient_email,
-        subject: `Prépaiement de votre séance — ${new Intl.DateTimeFormat('fr-FR', {
-          day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
-        }).format(new Date(updatedAppt.scheduled_at))}`,
+        subject: buildAppointmentConversationSubject(
+          `Prépaiement de votre séance — ${new Intl.DateTimeFormat('fr-FR', {
+            day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
+          }).format(new Date(updatedAppt.scheduled_at))}`,
+          updatedAppt.id,
+        ),
         react: createElement(PaymentRequest, {
           patientName: updatedAppt.patient_name,
           scheduledAt: updatedAppt.scheduled_at,
@@ -595,9 +610,12 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
       sendEmail({
         to: updatedAppt.patient_email,
-        subject: `Votre rendez-vous est confirmé — ${new Intl.DateTimeFormat('fr-FR', {
-          day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
-        }).format(new Date(updatedAppt.scheduled_at))}`,
+        subject: buildAppointmentConversationSubject(
+          `Votre rendez-vous est confirmé — ${new Intl.DateTimeFormat('fr-FR', {
+            day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
+          }).format(new Date(updatedAppt.scheduled_at))}`,
+          updatedAppt.id,
+        ),
         react: createElement(AppointmentConfirmed, {
           patientName: updatedAppt.patient_name,
           appointmentType: updatedAppt.appointment_type,

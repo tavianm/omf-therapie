@@ -4,7 +4,7 @@ import type { APIRoute } from 'astro';
 import { createElement } from 'react';
 import { supabaseAdmin } from '../../../lib/supabase';
 import { calculatePrice } from '../../../lib/pricing';
-import { sendEmail } from '../../../lib/resend';
+import { sendEmail, buildAppointmentConversationSubject } from '../../../lib/resend';
 import AppointmentRequestReceived from '../../../emails/AppointmentRequestReceived';
 import AppointmentRequestNotification from '../../../emails/AppointmentRequestNotification';
 import type { AppointmentType, AppointmentDuration, AppointmentMode } from '../../../types/appointment';
@@ -180,7 +180,10 @@ export const POST: APIRoute = async ({ request }) => {
   Promise.all([
     sendEmail({
       to: inserted.patient_email,
-      subject: 'Votre demande de rendez-vous a bien été reçue',
+      subject: buildAppointmentConversationSubject(
+        'Votre demande de rendez-vous a bien été reçue',
+        inserted.id,
+      ),
       react: createElement(AppointmentRequestReceived, {
         patientName: inserted.patient_name,
         appointmentType: inserted.appointment_type,

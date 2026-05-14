@@ -70,6 +70,13 @@ export interface SendEmailResult {
   error?: string;
 }
 
+export function buildAppointmentConversationSubject(subject: string, appointmentId: string): string {
+  const normalized = appointmentId.trim();
+  const shortId = normalized.split('-')[0]?.toUpperCase() ?? normalized.toUpperCase();
+  const prefix = `[RDV ${shortId}]`;
+  return subject.startsWith(prefix) ? subject : `${prefix} ${subject}`;
+}
+
 interface ResendApiError {
   name?: string;
   statusCode?: number | null;
