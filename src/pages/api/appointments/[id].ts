@@ -114,12 +114,17 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // Recalcul tarifaire si l'admin a modifié les options de remise
     const hasOverride = override_first_session !== undefined || is_solidarity !== undefined;
     if (hasOverride) {
+      const resolvedFirstSession =
+        typeof override_first_session === 'boolean'
+          ? override_first_session
+          : appointment.is_first_session;
       const pricing = calculatePrice(
         appointment.appointment_type,
         appointment.duration,
-        typeof override_first_session === 'boolean' ? override_first_session : appointment.is_first_session,
+        resolvedFirstSession,
         typeof is_solidarity === 'boolean' ? is_solidarity : false,
       );
+      updateData.is_first_session = resolvedFirstSession;
       updateData.discount    = pricing.discount * 100;    // → centimes
       updateData.final_price = pricing.finalPrice * 100;  // → centimes
     }

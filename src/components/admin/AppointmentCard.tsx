@@ -318,23 +318,20 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
         </div>
         <div>
           <span className="block text-xs text-sage-400 mb-0.5">Tarif</span>
-          <span className="font-medium text-sage-800">
-            {formatPrice(appointment.final_price)}
+          <span className="font-medium text-sage-800">{formatPrice(appointment.final_price)}</span>
+          <p className="text-xs text-sage-500 mt-0.5">
+            Base {formatPrice(appointment.base_price)}
             {appointment.discount > 0 && (
-              <span className="text-mint-600 text-xs ml-1">
-                (–{formatPrice(appointment.discount)})
-              </span>
+              <span className="text-mint-700"> · remise −{formatPrice(appointment.discount)}</span>
             )}
+          </p>
+        </div>
+        <div>
+          <span className="block text-xs text-sage-400 mb-0.5">Remise nouveau client</span>
+          <span className={`font-medium text-xs ${appointment.is_first_session ? "text-mint-600" : "text-sage-700"}`}>
+            {appointment.is_first_session ? "Oui (1ère séance)" : "Non"}
           </span>
         </div>
-        {appointment.is_first_session && (
-          <div>
-            <span className="block text-xs text-sage-400 mb-0.5">Séance</span>
-            <span className="font-medium text-mint-600 text-xs">
-              1ère séance
-            </span>
-          </div>
-        )}
         {appointment.rescheduled_to && (
           <div className="col-span-2">
             <span className="block text-xs text-sage-400 mb-0.5">
