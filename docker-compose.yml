@@ -1,0 +1,73 @@
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 16 — remplace Supabase en local
+  # Accès : postgresql://postgres:postgres@localhost:5432/omf_therapie
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: omf_therapie
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./supabase/local/000_local_compat.sql:/docker-entrypoint-initdb.d/000_local_compat.sql:ro
+      - ./supabase/migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d omf_therapie"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # PostgREST — expose PostgreSQL comme une API REST compatible Supabase
+  # API : http://localhost:3000
+  # ---------------------------------------------------------------------------
+  postgrest:
+    image: postgrest/postgrest:v12.2.3
+    environment:
+      PGRST_DB_URI: postgresql://postgres:postgres@postgres:5432/omf_therapie
+      PGRST_DB_SCHEMA: public
+      PGRST_DB_ANON_ROLE: postgres
+      PGRST_JWT_SECRET: "local-jwt-secret-must-be-at-least-32-characters"
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Nginx — reverse proxy pour simuler l'URL Supabase (/rest/v1/ → PostgREST)
+  # SUPABASE_URL=http://localhost:3001 dans .env
+  # ---------------------------------------------------------------------------
+  supabase-rest:
+    image: nginx:alpine
+    ports:
+      - "3001:80"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - postgrest
+
+  # ---------------------------------------------------------------------------
+  # Mailpit — remplace Resend en local
+  # SMTP : localhost:1025
+  # Web UI (boîte de réception) : http://localhost:8025
+  # ---------------------------------------------------------------------------
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI
+    environment:
+      MP_MAX_MESSAGES: 500
+      MP_DATABASE: /data/mailpit.db
+    volumes:
+      - mailpit_data:/data
+
+volumes:
+  postgres_data:
+  mailpit_data:

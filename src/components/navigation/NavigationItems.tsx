@@ -5,16 +5,16 @@ export const useNavigationItems = () => {
   return useMemo<NavigationItem[]>(
     () => [
       { name: "Accueil", href: "#home", path: "/" },
-      { name: "À propos", href: "/a-propos", path: "/a-propos", page: true },
-      { name: "Domaines d'Expertise", href: "/services", path: "/services", page: true },
+      { name: "À propos", href: "/a-propos/", path: "/a-propos/", page: true },
+      { name: "Domaines d'Expertise", href: "/services/", path: "/services/", page: true },
       { name: "Tarifs", href: "#pricing", path: "/" },
-      { name: "Blog", href: "/blog", path: "/blog", page: true },
-      { name: "Contact", href: "/contact", path: "/contact", page: true },
+      { name: "Blog", href: "/blog/", path: "/blog/", page: true },
+      { name: "Contact", href: "/contact/", path: "/contact/", page: true },
       {
-        name: "RDV en ligne",
-        href: "https://www.psychologue.net/cabinets/oriane-montabonnet",
-        external: true,
-        path: "/",
+        name: "Prendre RDV",
+        href: "/rendez-vous/",
+        path: "/rendez-vous/",
+        page: true,
       },
     ],
     []

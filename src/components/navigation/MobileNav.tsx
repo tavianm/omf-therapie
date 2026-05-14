@@ -8,6 +8,7 @@ interface MobileNavProps {
   isActive: (href: string, path: string) => boolean;
   navigateToSection: (href: string) => void;
   hellocareBtn?: NavigationItem;
+  isAuthenticated?: boolean;
 }
 
 export const MobileNav = ({
@@ -17,6 +18,7 @@ export const MobileNav = ({
   isActive,
   navigateToSection,
   hellocareBtn,
+  isAuthenticated = false,
 }: MobileNavProps) => (
   <div className="flex items-center lg:hidden max-[412px]:gap-2 max-sm:gap-4 gap-6">
     {hellocareBtn && (
@@ -89,6 +91,22 @@ export const MobileNav = ({
                 {item.name}
               </button>
             )
+          )}
+          {isAuthenticated && (
+            <a
+              href="/mes-rdvs/"
+              className={`${
+                typeof window !== "undefined" &&
+                (window.location.pathname === "/mes-rdvs" ||
+                  window.location.pathname === "/mes-rdvs/")
+                  ? "bg-mint-50 text-mint-600"
+                  : "text-sage-600 hover:bg-sage-50"
+              } block px-4 py-2 text-base font-medium min-h-[44px] flex items-center`}
+              onClick={() => setIsOpen(false)}
+              role="menuitem"
+            >
+              Mes RDV
+            </a>
           )}
         </div>
       </div>

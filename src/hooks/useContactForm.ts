@@ -1,4 +1,3 @@
-import emailjs from "@emailjs/browser";
 import { useCallback, useState } from "react";
 import type { FormData } from "../types/contact";
 
@@ -37,25 +36,32 @@ export const useContactForm = () => {
       setStatus({ message: "", type: "" });
 
       try {
-        const result = await emailjs.send(
-          "service_bdzolup",
-          "template_ora67us",
-          {
-            from_name: formData.name,
-            from_email: formData.email,
-            phone: formData.phone,
+        const response = await fetch("/api/contact/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: formData.name,
+            email: formData.email,
+            phone: formData.phone || undefined,
             message: formData.message,
-            to_name: "Oriane Montabonnet",
-          },
-          "a16S46gFg6v_HVO3I"
-        );
+          }),
+        });
 
-        if (result.status === 200) {
+        const result = await response.json() as { success: boolean; error?: string };
+
+        if (response.ok && result.success) {
           setStatus({
             message: "Votre message a été envoyé avec succès !",
             type: "success",
           });
           setFormData(INITIAL_FORM_STATE);
+        } else {
+          setStatus({
+            message:
+              result.error ??
+              "Une erreur est survenue lors de l'envoi du message. Veuillez réessayer.",
+            type: "error",
+          });
         }
       } catch {
         setStatus({

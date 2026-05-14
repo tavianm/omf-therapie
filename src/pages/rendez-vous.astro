@@ -1,0 +1,121 @@
+---
+/**
+ * Page publique — Prise de rendez-vous
+ *
+ * /rendez-vous
+ *
+ * SSG : pas de `export const prerender = false` → rendu statique par défaut.
+ * Le formulaire multi-étapes est un island React hydraté côté client.
+ */
+import Layout from '../layouts/Layout.astro';
+import BookingWizard from '../components/booking/BookingWizard';
+
+const canonicalUrl = new URL('/rendez-vous', Astro.site).href;
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'HealthAndBeautyBusiness',
+  name: 'OMF Thérapie — Oriane Montabonnet',
+  url: 'https://omf-therapie.fr',
+  telephone: '',
+  address: {
+    '@type': 'PostalAddress',
+    addressCountry: 'FR',
+  },
+  openingHoursSpecification: [
+    {
+      '@type': 'OpeningHoursSpecification',
+      dayOfWeek: ['Wednesday'],
+      opens: '08:00',
+      closes: '19:00',
+    },
+    {
+      '@type': 'OpeningHoursSpecification',
+      dayOfWeek: ['Monday', 'Tuesday', 'Thursday', 'Friday'],
+      opens: '08:00',
+      closes: '19:00',
+      description: 'Téléconsultation uniquement',
+    },
+  ],
+  hasMap: '',
+  priceRange: '€€',
+  description:
+    'Thérapie individuelle, de couple et familiale. Séances en présentiel (mercredi) et en téléconsultation.',
+  potentialAction: {
+    '@type': 'ReserveAction',
+    target: {
+      '@type': 'EntryPoint',
+      urlTemplate: canonicalUrl,
+      inLanguage: 'fr',
+      actionPlatform: [
+        'http://schema.org/DesktopWebPlatform',
+        'http://schema.org/MobileWebPlatform',
+      ],
+    },
+    result: {
+      '@type': 'Reservation',
+      name: 'Demande de rendez-vous OMF Thérapie',
+    },
+  },
+};
+---
+
+<Layout
+  title="Prendre rendez-vous — OMF Thérapie"
+  description="Prenez rendez-vous en ligne pour une séance de thérapie individuelle, de couple ou familiale. Consultations en présentiel le mercredi et en téléconsultation du lundi au vendredi."
+  canonical={canonicalUrl}
+  jsonLd={jsonLd}
+>
+  <main class="min-h-screen bg-sage-50 py-12">
+    <div class="max-w-2xl mx-auto px-4">
+
+      <!-- En-tête -->
+      <header class="mb-10 text-center">
+        <p class="mb-3 text-sm font-medium uppercase tracking-widest text-sage-500">
+          OMF Thérapie
+        </p>
+        <h1 class="font-serif text-3xl font-semibold text-sage-800 sm:text-4xl">
+          Prendre rendez-vous
+        </h1>
+        <p class="mx-auto mt-4 max-w-md text-sm text-sage-600">
+          Remplissez ce formulaire en quelques minutes. Oriane vous confirmera
+          votre créneau par email sous 24–48&nbsp;h.
+        </p>
+        <div class="mt-5">
+          <a
+            href="/"
+            class="inline-flex items-center gap-2 text-sm font-medium text-sage-600 hover:text-mint-600 transition-colors"
+          >
+            ← Retour à l'accueil
+          </a>
+        </div>
+      </header>
+
+      <!-- Island React — formulaire multi-étapes -->
+      <BookingWizard client:load />
+
+      <!-- Informations pratiques -->
+      <aside class="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div class="rounded-xl border border-sage-200 bg-white px-5 py-4">
+          <h2 class="mb-1.5 text-xs font-semibold uppercase tracking-widest text-sage-500">
+            Présentiel
+          </h2>
+          <p class="text-sm text-sage-700">
+            📍 Cabinet — <span class="font-medium">mercredi uniquement</span>
+          </p>
+          <p class="mt-0.5 text-xs text-sage-500">8h–12h et 14h–19h</p>
+        </div>
+        <div class="rounded-xl border border-sage-200 bg-white px-5 py-4">
+          <h2 class="mb-1.5 text-xs font-semibold uppercase tracking-widest text-sage-500">
+            Téléconsultation
+          </h2>
+          <p class="text-sm text-sage-700">
+            💻 En ligne — <span class="font-medium">lundi au vendredi</span>
+          </p>
+          <p class="mt-0.5 text-xs text-sage-500">Prépaiement Stripe requis</p>
+        </div>
+      </aside>
+
+    </div>
+  </main>
+</Layout>
