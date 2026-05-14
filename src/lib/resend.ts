@@ -13,7 +13,7 @@
  */
 
 import { Resend } from 'resend';
-import { render } from '@react-email/components';
+import { render } from '@react-email/render';
 import nodemailer from 'nodemailer';
 import type { ReactElement } from 'react';
 
@@ -114,11 +114,13 @@ async function sendEmailViaResend(
   const { to, subject, react, replyTo } = params;
 
   try {
+    const html = await render(react);
+
     const { data, error } = await resendClient.emails.send({
       from: fromEmail,
       to: Array.isArray(to) ? to : [to],
       subject,
-      react,
+      html,
       ...(replyTo ? { replyTo } : {}),
     });
 

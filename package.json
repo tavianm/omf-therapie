@@ -24,6 +24,7 @@
     "@astrojs/tailwind": "^6.0.2",
     "@emailjs/browser": "^4.4.1",
     "@react-email/components": "^1.0.12",
+    "@react-email/render": "^2.0.8",
     "@supabase/supabase-js": "^2.105.4",
     "@types/pg": "^8.20.0",
     "astro": "^5.18.1",
