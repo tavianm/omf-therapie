@@ -158,11 +158,45 @@ export const POST: APIRoute = async ({ request }) => {
   });
 };
 
+export const GET: APIRoute = async ({ url }) => {
+  const isMockMode = import.meta.env.GOOGLE_CALENDAR_MOCK === 'true';
+  if (!isMockMode) {
+    return new Response('Mode mock non activé', { status: 403 });
+  }
+
+  const mockEnabled = url.searchParams.get('mock') === '1';
+  const appointmentId = url.searchParams.get('appointment_id');
+
+  if (!mockEnabled) {
+    return new Response('Paramètre mock=1 requis', { status: 400 });
+  }
+  if (!appointmentId) {
+    return new Response('appointment_id manquant', { status: 400 });
+  }
+
+  try {
+    const paymentIntentId = `pi_mock_${appointmentId.replace(/[^a-z0-9]/gi, '').slice(0, 20)}`;
+    const eventId = `evt_mock_${appointmentId.replace(/[^a-z0-9]/gi, '').slice(0, 20)}`;
+    await handlePaymentSucceeded(appointmentId, paymentIntentId, eventId);
+
+    return new Response(JSON.stringify({ ok: true, mocked: true, appointmentId }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (err) {
+    console.error('[stripe-webhook] Erreur mock GET:', err);
+    return new Response(JSON.stringify({ ok: false, error: 'Erreur interne mock' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+};
+
 // ---------------------------------------------------------------------------
 // Handler interne — paiement reçu
 // ---------------------------------------------------------------------------
 
-async function handlePaymentSucceeded(appointmentId: string, paymentIntentId: string, eventId: string): Promise<void> {
+export async function handlePaymentSucceeded(appointmentId: string, paymentIntentId: string, eventId: string): Promise<void> {
   // Atomic idempotency: only update if status is still payment_pending AND stripe_event_id is null
   const { data: updated, error: updateErr } = await supabaseAdmin
     .from('appointments')
