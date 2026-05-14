@@ -13,6 +13,7 @@
 
  
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import ws from 'ws';
 
 // ---------------------------------------------------------------------------
 // Lecture + validation des variables d'environnement
@@ -21,6 +22,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.SUPABASE_DATABASE_URL;
 const supabaseAnonKey = import.meta.env.SUPABASE_ANON_KEY;
 const supabaseServiceRoleKey = import.meta.env.SUPABASE_SERVICE_ROLE_KEY;
+const realtimeTransport = typeof globalThis.WebSocket === 'undefined' ? ws : undefined;
 
 if (!supabaseUrl) {
   console.warn(
@@ -55,6 +57,9 @@ if (!supabaseServiceRoleKey) {
 export const supabase: SupabaseClient<any> = createClient(
   supabaseUrl ?? '',
   supabaseAnonKey ?? '',
+  {
+    ...(realtimeTransport ? { realtime: { transport: realtimeTransport } } : {}),
+  },
 );
 
 // ---------------------------------------------------------------------------
@@ -79,5 +84,6 @@ export const supabaseAdmin: SupabaseClient<any> = createClient(
       persistSession: false,
       autoRefreshToken: false,
     },
+    ...(realtimeTransport ? { realtime: { transport: realtimeTransport } } : {}),
   },
 );
