@@ -207,7 +207,7 @@ export const POST: APIRoute = async ({ request }) => {
         duration: inserted.duration,
         finalPrice: inserted.final_price,
         isFirstSession: inserted.is_first_session,
-        dashboardUrl: `${baseUrl}/mes-rdvs`,
+        dashboardUrl: `${baseUrl}/mes-rdvs/`,
       }),
     }),
   ]).catch(err => console.error('[appointments] Erreur envoi emails:', err));

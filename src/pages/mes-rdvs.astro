@@ -14,6 +14,7 @@ import Navbar from '../components/islands/Navbar';
 import { AppointmentCard } from '../components/admin/AppointmentCard';
 import { AdminCreateButton } from '../components/admin/AdminCreateButton';
 import { auth } from '../lib/auth';
+import { isAdminSession } from '../lib/authz';
 import { supabaseAdmin } from '../lib/supabase';
 import type { Appointment, AppointmentStatus } from '../types/appointment';
 
@@ -21,6 +22,9 @@ import type { Appointment, AppointmentStatus } from '../types/appointment';
 const session = await auth.api.getSession({ headers: Astro.request.headers });
 if (!session) {
   return Astro.redirect('/login/?redirect=/mes-rdvs/');
+}
+if (!isAdminSession(session)) {
+  return Astro.redirect('/login/?error=acces-refuse');
 }
 
 // ── Fetch appointments ───────────────────────────────────────────────────────
@@ -200,6 +204,7 @@ for (const appt of appointments) {
         credentials: 'same-origin',
       });
     } finally {
+      window.localStorage.removeItem('omf-admin-auth');
       window.location.href = '/login/';
     }
   });

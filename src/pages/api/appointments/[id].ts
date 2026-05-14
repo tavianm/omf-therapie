@@ -3,9 +3,11 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { createElement } from 'react';
 import { auth } from '../../../lib/auth';
+import { isAdminSession } from '../../../lib/authz';
 import { supabaseAdmin } from '../../../lib/supabase';
 import { sendEmail } from '../../../lib/resend';
-import { generateGoogleCalendarLink, generateICSDataUri, CABINET_ADDRESS } from '../../../lib/ics';
+import { generateGoogleCalendarLink, generateOutlookCalendarLink, generateAppleCalendarInviteLink, CABINET_ADDRESS } from '../../../lib/ics';
+import { createSecureLinkToken, verifySecureLinkToken } from '../../../lib/secure-links';
 import { getTypeLabel, getModeLabel, calculatePrice } from '../../../lib/pricing';
 import { stripe, createAppointmentPaymentLink } from '../../../lib/stripe';
 import { createCalendarEvent } from '../../../lib/google-calendar';
@@ -52,6 +54,11 @@ function buildICSEvent(appt: Appointment) {
   };
 }
 
+function buildFallbackVideoLink(appointmentId: string): string {
+  const slug = appointmentId.replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 24) || 'session';
+  return `https://meet.jit.si/omf-therapie-${slug}`;
+}
+
 // ---------------------------------------------------------------------------
 // PATCH handler
 // ---------------------------------------------------------------------------
@@ -65,11 +72,24 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     return errorResponse(400, 'Corps de requête JSON invalide');
   }
 
-  const { action, video_link, stripe_payment_intent_id, therapist_notes, rescheduled_to, override_first_session, is_solidarity } = body;
+  const {
+    action,
+    video_link,
+    stripe_payment_intent_id,
+    therapist_notes,
+    rescheduled_to,
+    override_first_session,
+    is_solidarity,
+    token,
+  } = body;
 
-  // 2. Auth guard — accept_reschedule est public (lien email patient), toutes les autres actions requièrent une session
+  // 2. Auth guard — accept_reschedule est public via token signé.
+  // Toutes les autres actions requièrent une session admin.
   const session = await auth.api.getSession({ headers: request.headers });
-  if (action !== 'accept_reschedule' && !session) return errorResponse(401, 'Non autorisé');
+  if (action !== 'accept_reschedule') {
+    if (!session) return errorResponse(401, 'Non autorisé');
+    if (!isAdminSession(session)) return errorResponse(403, 'Accès refusé');
+  }
 
   const { id } = params;
   if (!id) return errorResponse(400, 'Identifiant manquant');
@@ -148,7 +168,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // Génération du Payment Link Stripe côté serveur pour les séances vidéo
     if (appointment.appointment_mode === 'video' && newStatus === 'payment_pending') {
       try {
-        const successUrl = import.meta.env.STRIPE_SUCCESS_URL ?? ((import.meta.env.BETTER_AUTH_URL ?? 'https://omf-therapie.fr') + '/rdv/merci');
+        const successUrl = import.meta.env.STRIPE_SUCCESS_URL ?? ((import.meta.env.BETTER_AUTH_URL ?? 'https://omf-therapie.fr') + '/rdv/merci/?source=payment-success');
         const description = `Séance ${getTypeLabel(appointment.appointment_type)} — OMF Thérapie (${appointment.duration} min)`;
         const paymentLink = await createAppointmentPaymentLink({
           appointmentId: appointment.id,
@@ -172,20 +192,31 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         const start = new Date(appointment.scheduled_at);
         const end = new Date(start.getTime() + appointment.duration * 60 * 1000);
         const meetResult = await createCalendarEvent({
-          title: `Séance OMF Thérapie — ${getTypeLabel(appointment.appointment_type)}`,
+          title: `🎥 ${appointment.patient_name} — ${getTypeLabel(appointment.appointment_type)} (${appointment.duration} min)`,
           start: start.toISOString(),
           end: end.toISOString(),
-          description: `${getTypeLabel(appointment.appointment_type)} (${getModeLabel(appointment.appointment_mode)}) · ${appointment.duration} min`,
+          description: [
+            `Patient: ${appointment.patient_name}`,
+            `Email: ${appointment.patient_email}`,
+            `Mode: ${getModeLabel(appointment.appointment_mode)}`,
+            `Type: ${getTypeLabel(appointment.appointment_type)}`,
+            `Durée: ${appointment.duration} min`,
+          ].join('\n'),
+          location: appointment.appointment_mode === 'in-person' ? CABINET_ADDRESS : 'Téléconsultation',
           attendeeEmail: appointment.patient_email,
           withMeet: true,
           appointmentId: id,
+          colorId: appointment.appointment_mode === 'video' ? '11' : '2',
         });
         if (meetResult.meetLink) {
           updateData.video_link = meetResult.meetLink;
+        } else {
+          updateData.video_link = buildFallbackVideoLink(appointment.id);
         }
       } catch (meetErr) {
-        // Dégradation gracieuse : la confirmation n'est pas bloquée par une erreur Meet
+        // Dégradation gracieuse : fallback visio non bloquant
         console.error('[appointments/patch] Erreur génération Google Meet:', meetErr);
+        updateData.video_link = buildFallbackVideoLink(appointment.id);
       }
     }
 
@@ -225,7 +256,14 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (newStatus === 'confirmed') {
       const icsEvent = buildICSEvent(updatedAppt);
       const googleCalendarLink = generateGoogleCalendarLink(icsEvent);
-      const icsDataUri = generateICSDataUri(icsEvent);
+      const outlookCalendarLink = generateOutlookCalendarLink(icsEvent);
+      const inviteToken = createSecureLinkToken({
+        appointmentId: updatedAppt.id,
+        purpose: 'ics-invite',
+        expiresInSeconds: 60 * 60 * 24 * 180,
+        nonce: updatedAppt.scheduled_at,
+      });
+      const appleCalendarLink = generateAppleCalendarInviteLink(baseUrl, updatedAppt.id, inviteToken);
 
       sendEmail({
         to: updatedAppt.patient_email,
@@ -241,7 +279,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           finalPrice: updatedAppt.final_price,
           videoLink: updatedAppt.video_link ?? undefined,
           googleCalendarLink,
-          icsDataUri,
+          appleCalendarLink,
+          outlookCalendarLink,
           cabinetAddress: updatedAppt.appointment_mode === 'in-person' ? CABINET_ADDRESS : undefined,
         }),
       }).catch(err => console.error('[appointments/patch] Erreur email confirm:', err));
@@ -364,7 +403,15 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         duration: updatedAppt.duration,
         finalPrice: updatedAppt.final_price,
         therapistNote: typeof therapist_notes === 'string' ? therapist_notes : undefined,
-        appointmentId: updatedAppt.id,
+        acceptUrl: (() => {
+          const acceptToken = createSecureLinkToken({
+            appointmentId: updatedAppt.id,
+            purpose: 'accept-reschedule',
+            expiresInSeconds: 60 * 60 * 24 * 14,
+            nonce: updatedAppt.rescheduled_to ?? '',
+          });
+          return `${baseUrl.replace(/\/+$/, '')}/rdv/accepter-report/?id=${updatedAppt.id}&token=${encodeURIComponent(acceptToken)}`;
+        })(),
       }),
     }).catch(err => console.error('[appointments/patch] Erreur email reschedule:', err));
 
@@ -394,6 +441,19 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // Action: accept_reschedule (public — appelée depuis la page /rdv/accepter-report)
   // ---------------------------------------------------------------------------
   if (action === 'accept_reschedule') {
+    if (typeof token !== 'string' || token.length < 32) {
+      return errorResponse(403, 'Lien de confirmation invalide');
+    }
+    const isValidToken = verifySecureLinkToken({
+      token,
+      appointmentId: appointment.id,
+      purpose: 'accept-reschedule',
+      nonce: appointment.rescheduled_to ?? '',
+    });
+    if (!isValidToken) {
+      return errorResponse(403, 'Lien de confirmation invalide');
+    }
+
     // Idempotency : le statut doit être 'rescheduled'
     if (appointment.status !== 'rescheduled')
       return errorResponse(409, 'Ce lien a déjà été utilisé ou est invalide');
@@ -418,7 +478,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // Génération du Payment Link Stripe pour les séances vidéo
     if (appointment.appointment_mode === 'video') {
       try {
-        const successUrl = import.meta.env.STRIPE_SUCCESS_URL ?? (`${baseUrl}/rdv/merci`);
+        const successUrl = import.meta.env.STRIPE_SUCCESS_URL ?? (`${baseUrl}/rdv/merci/?source=payment-success`);
         const description = `Séance ${getTypeLabel(appointment.appointment_type)} — OMF Thérapie (${appointment.duration} min)`;
         const paymentLink = await createAppointmentPaymentLink({
           appointmentId: appointment.id,
@@ -472,7 +532,14 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (newStatus === 'confirmed') {
       const icsEvent = buildICSEvent(updatedAppt);
       const googleCalendarLink = generateGoogleCalendarLink(icsEvent);
-      const icsDataUri = generateICSDataUri(icsEvent);
+      const outlookCalendarLink = generateOutlookCalendarLink(icsEvent);
+      const inviteToken = createSecureLinkToken({
+        appointmentId: updatedAppt.id,
+        purpose: 'ics-invite',
+        expiresInSeconds: 60 * 60 * 24 * 180,
+        nonce: updatedAppt.scheduled_at,
+      });
+      const appleCalendarLink = generateAppleCalendarInviteLink(baseUrl, updatedAppt.id, inviteToken);
 
       sendEmail({
         to: updatedAppt.patient_email,
@@ -488,7 +555,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           finalPrice: updatedAppt.final_price,
           videoLink: updatedAppt.video_link ?? undefined,
           googleCalendarLink,
-          icsDataUri,
+          appleCalendarLink,
+          outlookCalendarLink,
           cabinetAddress: updatedAppt.appointment_mode === 'in-person' ? CABINET_ADDRESS : undefined,
         }),
       }).catch(err => console.error('[appointments/patch] Erreur email accept_reschedule confirm:', err));

@@ -28,7 +28,7 @@ interface Props {
   duration: 60 | 90;
   finalPrice: number; // centimes
   therapistNote?: string;
-  appointmentId: string;
+  acceptUrl: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -43,9 +43,8 @@ export default function AppointmentRescheduled({
   duration,
   finalPrice,
   therapistNote,
-  appointmentId,
+  acceptUrl,
 }: Props) {
-  const acceptUrl = `https://omf-therapie.fr/rdv/accepter-report?id=${appointmentId}`;
   return (
     <BaseLayout preview="Proposition de nouveau créneau — OMF Thérapie">
 

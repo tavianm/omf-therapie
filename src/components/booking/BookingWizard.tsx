@@ -753,7 +753,7 @@ function ReviewStep({
       <div className="space-y-2 rounded-xl bg-sage-50 px-4 py-3">
         <p className="text-xs text-sage-600">
           🔒 Vos données sont traitées conformément à notre{' '}
-          <a href="/confidentialite" className="underline hover:text-sage-800">
+          <a href="/confidentialite/" className="underline hover:text-sage-800">
             politique de confidentialité
           </a>.
         </p>

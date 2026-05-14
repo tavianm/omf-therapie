@@ -94,10 +94,11 @@ export const MobileNav = ({
           )}
           {isAuthenticated && (
             <a
-              href="/mes-rdvs"
+              href="/mes-rdvs/"
               className={`${
                 typeof window !== "undefined" &&
-                window.location.pathname === "/mes-rdvs"
+                (window.location.pathname === "/mes-rdvs" ||
+                  window.location.pathname === "/mes-rdvs/")
                   ? "bg-mint-50 text-mint-600"
                   : "text-sage-600 hover:bg-sage-50"
               } block px-4 py-2 text-base font-medium min-h-[44px] flex items-center`}

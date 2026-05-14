@@ -269,6 +269,7 @@ if (session) {
 
       if (response.ok) {
         // Connexion réussie — BetterAuth a défini le cookie de session
+        window.localStorage.setItem('omf-admin-auth', '1');
         window.location.href = '/mes-rdvs/';
         return;
       }

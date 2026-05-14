@@ -1,16 +1,19 @@
 ---
 /**
- * /rdv/merci — Page de confirmation après soumission du formulaire de RDV
+ * /rdv/merci — Page de confirmation contextualisée (demande, paiement, report)
  *
  * SSG (pas de prerender = false).
  * Affiche un message de succès + récapitulatif optionnel depuis les params URL.
  *
  * Params URL supportés (optionnels) :
+ *   ?source=request-submitted|request-confirmed|payment-pending|payment-success
+ *   ?paiement=en-attente (legacy alias)
  *   ?type=individual|couple|family
  *   ?mode=in-person|video
  *   ?date=<ISO 8601>
  *   ?name=<prénom patient>
  */
+export const prerender = false;
 
 import Layout from '../../layouts/Layout.astro';
 import Navbar from '../../components/islands/Navbar';
@@ -23,6 +26,11 @@ const paramType  = url.searchParams.get('type')  as AppointmentType | null;
 const paramMode  = url.searchParams.get('mode')  as AppointmentMode | null;
 const paramDate  = url.searchParams.get('date');
 const paramName  = url.searchParams.get('name');
+const sourceParam = url.searchParams.get('source');
+const legacyPaiement = url.searchParams.get('paiement');
+const hasStripeSessionId = url.searchParams.has('session_id');
+const isMockPayment = url.searchParams.get('mock') === '1';
+const mockAppointmentId = url.searchParams.get('appointment_id');
 
 const VALID_TYPES  = new Set(['individual', 'couple', 'family']);
 const VALID_MODES  = new Set(['in-person', 'video']);
@@ -47,16 +55,55 @@ if (paramDate) {
 }
 
 const hasRecap = typeLabel || modeLabel || formattedDate;
+
+type MerciVariant =
+  | 'request-submitted'
+  | 'request-confirmed'
+  | 'payment-pending'
+  | 'payment-success';
+
+const variant: MerciVariant =
+  sourceParam === 'request-confirmed' ? 'request-confirmed'
+  : sourceParam === 'payment-pending' || legacyPaiement === 'en-attente' ? 'payment-pending'
+  : sourceParam === 'payment-success' || hasStripeSessionId || isMockPayment ? 'payment-success'
+  : 'request-submitted';
+
+if (isMockPayment && mockAppointmentId) {
+  try {
+    const webhookMockUrl = new URL('/api/stripe-webhook/', url);
+    webhookMockUrl.searchParams.set('mock', '1');
+    webhookMockUrl.searchParams.set('appointment_id', mockAppointmentId);
+    await fetch(webhookMockUrl, { method: 'GET' });
+  } catch (err) {
+    console.error('[rdv/merci] Erreur déclenchement webhook mock:', err);
+  }
+}
+
+const pageTitle = variant === 'payment-success'
+  ? 'Paiement reçu — OMF Thérapie'
+  : variant === 'payment-pending'
+    ? 'Paiement en attente — OMF Thérapie'
+    : variant === 'request-confirmed'
+      ? 'Rendez-vous confirmé — OMF Thérapie'
+      : 'Demande envoyée — OMF Thérapie';
+
+const pageDescription = variant === 'payment-success'
+  ? 'Votre paiement est confirmé. Votre rendez-vous est validé, vous recevrez votre confirmation complète par email.'
+  : variant === 'payment-pending'
+    ? 'Votre nouveau créneau est bien pris en compte. Finalisez le prépaiement pour confirmer votre séance vidéo.'
+    : variant === 'request-confirmed'
+      ? 'Votre nouveau créneau est confirmé.'
+      : 'Votre demande de rendez-vous a bien été reçue. Vous recevrez un email de confirmation dans les 24-48h.';
 ---
 
 <Layout
-  title="Demande envoyée — OMF Thérapie"
-  description="Votre demande de rendez-vous a bien été reçue. Vous recevrez un email de confirmation dans les 24-48h."
+  title={pageTitle}
+  description={pageDescription}
   noindex={true}
 >
   <Navbar client:load />
 
-  <main class="min-h-screen bg-sage-50 flex items-start justify-center pt-24 pb-16 px-4">
+  <main class="min-h-screen bg-sage-50 flex items-center justify-center px-4 py-24">
     <div class="w-full max-w-lg">
 
       <!-- Icône de succès -->
@@ -82,13 +129,42 @@ const hasRecap = typeLabel || modeLabel || formattedDate;
       <!-- Message principal -->
       <div class="text-center mb-8">
         <h1 class="font-serif text-3xl font-semibold text-sage-900 mb-3">
-          {paramName ? `Merci, ${paramName}\u00a0!` : 'Demande envoyée\u00a0!'}
+          {variant === 'payment-success'
+            ? (paramName ? `Paiement confirmé, ${paramName}\u00a0!` : 'Paiement confirmé\u00a0!')
+            : variant === 'payment-pending'
+              ? (paramName ? `Créneau réservé, ${paramName}\u00a0!` : 'Créneau réservé\u00a0!')
+              : variant === 'request-confirmed'
+                ? (paramName ? `Merci, ${paramName}\u00a0!` : 'Rendez-vous confirmé\u00a0!')
+                : (paramName ? `Merci, ${paramName}\u00a0!` : 'Demande envoyée\u00a0!')
+          }
         </h1>
         <p class="text-sage-600 font-sans leading-relaxed">
-          Votre demande de rendez-vous a bien été reçue.
-          <br />
-          Vous recevrez un e-mail de confirmation dans les{' '}
-          <strong class="text-sage-800">24–48&nbsp;h</strong>.
+          {variant === 'payment-success' ? (
+            <>
+              Votre prépaiement a bien été reçu.
+              <br />
+              Votre séance est <strong class="text-sage-800">confirmée</strong>.
+            </>
+          ) : variant === 'payment-pending' ? (
+            <>
+              Votre nouveau créneau est bien enregistré.
+              <br />
+              Finalisez le <strong class="text-sage-800">prépaiement</strong> via l'email reçu.
+            </>
+          ) : variant === 'request-confirmed' ? (
+            <>
+              Votre rendez-vous a été confirmé.
+              <br />
+              Vous recevrez les détails par email.
+            </>
+          ) : (
+            <>
+              Votre demande de rendez-vous a bien été reçue.
+              <br />
+              Vous recevrez un e-mail de confirmation dans les{' '}
+              <strong class="text-sage-800">24–48&nbsp;h</strong>.
+            </>
+          )}
         </p>
       </div>
 
@@ -127,18 +203,55 @@ const hasRecap = typeLabel || modeLabel || formattedDate;
           Prochaines étapes
         </h2>
         <ul class="space-y-2 text-sm text-sage-700">
-          <li class="flex items-start gap-2">
-            <span class="text-mint-500 mt-0.5 flex-shrink-0" aria-hidden="true">1.</span>
-            Vous recevrez un e-mail de confirmation de réception.
-          </li>
-          <li class="flex items-start gap-2">
-            <span class="text-mint-500 mt-0.5 flex-shrink-0" aria-hidden="true">2.</span>
-            La thérapeute examinera votre demande sous 24–48&nbsp;h.
-          </li>
-          <li class="flex items-start gap-2">
-            <span class="text-mint-500 mt-0.5 flex-shrink-0" aria-hidden="true">3.</span>
-            Vous recevrez un e-mail de confirmation ou de proposition de créneau alternatif.
-          </li>
+          {variant === 'payment-success' ? (
+            <>
+              <li class="flex items-start gap-2">
+                <span class="text-mint-500 mt-0.5 flex-shrink-0" aria-hidden="true">1.</span>
+                Vous recevrez un email de confirmation avec le lien de connexion.
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-mint-500 mt-0.5 flex-shrink-0" aria-hidden="true">2.</span>
+                Ajoutez la séance à votre calendrier en un clic.
+              </li>
+            </>
+          ) : variant === 'payment-pending' ? (
+            <>
+              <li class="flex items-start gap-2">
+                <span class="text-mint-500 mt-0.5 flex-shrink-0" aria-hidden="true">1.</span>
+                Ouvrez l'email de prépaiement envoyé juste après votre acceptation.
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-mint-500 mt-0.5 flex-shrink-0" aria-hidden="true">2.</span>
+                Une fois payé, votre rendez-vous sera automatiquement confirmé.
+              </li>
+            </>
+          ) : variant === 'request-confirmed' ? (
+            <>
+              <li class="flex items-start gap-2">
+                <span class="text-mint-500 mt-0.5 flex-shrink-0" aria-hidden="true">1.</span>
+                Votre nouveau créneau est confirmé.
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-mint-500 mt-0.5 flex-shrink-0" aria-hidden="true">2.</span>
+                Vérifiez votre boîte mail pour les détails pratiques.
+              </li>
+            </>
+          ) : (
+            <>
+              <li class="flex items-start gap-2">
+                <span class="text-mint-500 mt-0.5 flex-shrink-0" aria-hidden="true">1.</span>
+                Vous recevrez un e-mail de confirmation de réception.
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-mint-500 mt-0.5 flex-shrink-0" aria-hidden="true">2.</span>
+                La thérapeute examinera votre demande sous 24–48&nbsp;h.
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-mint-500 mt-0.5 flex-shrink-0" aria-hidden="true">3.</span>
+                Vous recevrez un e-mail de confirmation ou de proposition de créneau alternatif.
+              </li>
+            </>
+          )}
         </ul>
       </div>
 
