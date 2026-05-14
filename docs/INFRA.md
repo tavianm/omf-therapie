@@ -65,7 +65,6 @@ Générer un secret robuste :
 
 ```bash
 openssl rand -base64 32   # → BETTER_AUTH_SECRET
-MjWSawhAXz1CfltQQ8xBFtYKcyCN2cXC8NVsylIN1RE=
 ```
 
 **Créer le compte admin** (une seule fois par environnement, après le déploiement) :
