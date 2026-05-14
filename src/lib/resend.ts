@@ -91,7 +91,13 @@ interface EmailThreadState {
   thread_subject: string;
   root_message_id: string;
   last_message_id: string;
-  references: string;
+  thread_references: string;
+}
+
+interface ThreadSendContext {
+  thread: EmailThreadState | null;
+  subject: string;
+  headers?: Record<string, string>;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -109,6 +115,12 @@ function toResendMessageId(id: string): string {
   return `<${id}@resend.dev>`;
 }
 
+function normalizeMessageId(id: string): string {
+  const trimmed = id.trim();
+  if (!trimmed) return trimmed;
+  return /^<.+>$/.test(trimmed) ? trimmed : `<${trimmed}>`;
+}
+
 function appendReferences(existing: string, nextMessageId: string): string {
   const refs = existing
     .split(' ')
@@ -121,7 +133,7 @@ function appendReferences(existing: string, nextMessageId: string): string {
 async function loadThreadState(threadKey: string): Promise<EmailThreadState | null> {
   const { data, error } = await supabaseAdmin
     .from('email_threads')
-    .select('thread_key, thread_subject, root_message_id, last_message_id, references')
+    .select('thread_key, thread_subject, root_message_id, last_message_id, thread_references')
     .eq('thread_key', threadKey)
     .maybeSingle();
 
@@ -146,7 +158,7 @@ async function persistThreadState(
         thread_subject: threadSubject,
         root_message_id: messageId,
         last_message_id: messageId,
-        references: messageId,
+        thread_references: messageId,
       });
     if (error) {
       console.error('[resend] Impossible de créer le thread email :', error);
@@ -158,13 +170,40 @@ async function persistThreadState(
     .from('email_threads')
     .update({
       last_message_id: messageId,
-      references: appendReferences(currentThread.references, messageId),
+      thread_references: appendReferences(currentThread.thread_references, messageId),
     })
     .eq('thread_key', threadKey);
 
   if (error) {
     console.error('[resend] Impossible de mettre à jour le thread email :', error);
   }
+}
+
+async function prepareThreadSendContext(
+  threadKey: string | undefined,
+  subject: string,
+): Promise<ThreadSendContext> {
+  const normalizedThreadKey = threadKey?.trim();
+  if (!normalizedThreadKey) {
+    return { thread: null, subject };
+  }
+
+  const thread = await loadThreadState(normalizedThreadKey);
+  if (!thread) {
+    return { thread: null, subject };
+  }
+
+  const normalizedSubject = /^Re:/i.test(thread.thread_subject)
+    ? thread.thread_subject
+    : `Re: ${thread.thread_subject}`;
+  return {
+    thread,
+    subject: normalizedSubject,
+    headers: {
+      'In-Reply-To': thread.last_message_id,
+      References: thread.thread_references,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -175,19 +214,31 @@ async function sendEmailViaSMTP(
   params: SendEmailParams,
   fromEmail: string,
 ): Promise<SendEmailResult> {
-  const { to, bcc, subject, react, replyTo } = params;
+  const { to, bcc, subject, react, replyTo, threadKey } = params;
 
   try {
     const html = await render(react);
+    const normalizedThreadKey = threadKey?.trim();
+    const threadContext = await prepareThreadSendContext(normalizedThreadKey, subject);
 
     const info = await smtpTransport!.sendMail({
       from: fromEmail,
       to: Array.isArray(to) ? to.join(', ') : to,
       ...(bcc ? { bcc: Array.isArray(bcc) ? bcc.join(', ') : bcc } : {}),
-      subject,
+      subject: threadContext.subject,
       html,
+      ...(threadContext.headers ? { headers: threadContext.headers } : {}),
       ...(replyTo ? { replyTo } : {}),
     });
+
+    if (normalizedThreadKey && info.messageId) {
+      await persistThreadState(
+        normalizedThreadKey,
+        threadContext.thread?.thread_subject ?? subject,
+        normalizeMessageId(info.messageId),
+        threadContext.thread,
+      );
+    }
 
     console.info('[smtp] Email envoyé :', info.messageId);
     return { success: true, id: info.messageId };
@@ -216,27 +267,15 @@ async function sendEmailViaResend(
   try {
     const html = await render(react);
     const normalizedThreadKey = threadKey?.trim();
-    const currentThread = normalizedThreadKey
-      ? await loadThreadState(normalizedThreadKey)
-      : null;
-    const headers: Record<string, string> = {};
-
-    let normalizedSubject = subject;
-    if (currentThread) {
-      headers['In-Reply-To'] = currentThread.last_message_id;
-      headers['References'] = currentThread.references;
-      normalizedSubject = /^Re:/i.test(currentThread.thread_subject)
-        ? currentThread.thread_subject
-        : `Re: ${currentThread.thread_subject}`;
-    }
+    const threadContext = await prepareThreadSendContext(normalizedThreadKey, subject);
 
     const payload = {
       from: fromEmail,
       to: Array.isArray(to) ? to : [to],
       ...(bcc ? { bcc: Array.isArray(bcc) ? bcc : [bcc] } : {}),
-      subject: normalizedSubject,
+      subject: threadContext.subject,
       html,
-      ...(Object.keys(headers).length > 0 ? { headers } : {}),
+      ...(threadContext.headers ? { headers: threadContext.headers } : {}),
       ...(replyTo ? { replyTo } : {}),
     };
     const maxAttempts = 3;
@@ -248,12 +287,12 @@ async function sendEmailViaResend(
       if (!error) {
         if (normalizedThreadKey && data?.id) {
           const messageId = toResendMessageId(data.id);
-          const threadSubject = currentThread?.thread_subject ?? subject;
+          const threadSubject = threadContext.thread?.thread_subject ?? subject;
           await persistThreadState(
             normalizedThreadKey,
             threadSubject,
             messageId,
-            currentThread,
+            threadContext.thread,
           );
         }
         return { success: true, id: data?.id };
