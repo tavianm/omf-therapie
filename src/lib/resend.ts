@@ -54,6 +54,8 @@ const resendClient = resendApiKey ? new Resend(resendApiKey) : null;
 export interface SendEmailParams {
   /** Destinataire(s) */
   to: string | string[];
+  /** Copie cachée (optionnelle) */
+  bcc?: string | string[];
   /** Objet de l'email */
   subject: string;
   /** Composant React Email rendu côté serveur */
@@ -93,7 +95,7 @@ async function sendEmailViaSMTP(
   params: SendEmailParams,
   fromEmail: string,
 ): Promise<SendEmailResult> {
-  const { to, subject, react, replyTo } = params;
+  const { to, bcc, subject, react, replyTo } = params;
 
   try {
     const html = await render(react);
@@ -101,6 +103,7 @@ async function sendEmailViaSMTP(
     const info = await smtpTransport!.sendMail({
       from: fromEmail,
       to: Array.isArray(to) ? to.join(', ') : to,
+      ...(bcc ? { bcc: Array.isArray(bcc) ? bcc.join(', ') : bcc } : {}),
       subject,
       html,
       ...(replyTo ? { replyTo } : {}),
@@ -128,13 +131,14 @@ async function sendEmailViaResend(
     return { success: false, error: 'RESEND_API_KEY manquante' };
   }
 
-  const { to, subject, react, replyTo } = params;
+  const { to, bcc, subject, react, replyTo } = params;
 
   try {
     const html = await render(react);
     const payload = {
       from: fromEmail,
       to: Array.isArray(to) ? to : [to],
+      ...(bcc ? { bcc: Array.isArray(bcc) ? bcc : [bcc] } : {}),
       subject,
       html,
       ...(replyTo ? { replyTo } : {}),
@@ -187,10 +191,23 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
   const fromEmail =
     (import.meta.env.RESEND_FROM_EMAIL as string | undefined) ??
     'OMF Thérapie <contact@omf-therapie.fr>';
+  const adminEmail = (import.meta.env.ADMIN_EMAIL as string | undefined)?.trim().toLowerCase();
+  const toList = (Array.isArray(params.to) ? params.to : [params.to])
+    .map(email => email.trim().toLowerCase());
+  const explicitBccList = (params.bcc ? (Array.isArray(params.bcc) ? params.bcc : [params.bcc]) : [])
+    .map(email => email.trim());
+  const adminAlreadyTargeted =
+    !!adminEmail &&
+    (toList.includes(adminEmail) || explicitBccList.some(email => email.toLowerCase() === adminEmail));
+
+  const resolvedParams: SendEmailParams =
+    adminEmail && !adminAlreadyTargeted
+      ? { ...params, bcc: [...explicitBccList, adminEmail] }
+      : params;
 
   if (smtpTransport) {
-    return sendEmailViaSMTP(params, fromEmail);
+    return sendEmailViaSMTP(resolvedParams, fromEmail);
   }
 
-  return sendEmailViaResend(params, fromEmail);
+  return sendEmailViaResend(resolvedParams, fromEmail);
 }

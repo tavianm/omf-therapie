@@ -10,6 +10,7 @@ import { sendEmail } from '../../../../lib/resend';
 import { createAppointmentPaymentLink } from '../../../../lib/stripe';
 import { generateGoogleCalendarLink, generateOutlookCalendarLink, generateAppleCalendarInviteLink, CABINET_ADDRESS } from '../../../../lib/ics';
 import { createSecureLinkToken } from '../../../../lib/secure-links';
+import { createCalendarEvent } from '../../../../lib/google-calendar';
 import AppointmentConfirmed from '../../../../emails/AppointmentConfirmed';
 import PaymentRequest from '../../../../emails/PaymentRequest';
 import type { AppointmentType, AppointmentDuration } from '../../../../types/appointment';
@@ -149,6 +150,31 @@ export const POST: APIRoute = async ({ request }) => {
   if (dbError || !appointment) {
     console.error('[admin/appointments] DB insert error:', dbError);
     return errorResponse(500, 'Erreur lors de la création du rendez-vous');
+  }
+
+  if (!isVideo) {
+    try {
+      const start = new Date(appointment.scheduled_at);
+      const end = new Date(start.getTime() + appointment.duration * 60 * 1000);
+      await createCalendarEvent({
+        title: `${appointment.patient_name} — séance présentielle (${appointment.duration} min)`,
+        start: start.toISOString(),
+        end: end.toISOString(),
+        description: [
+          `Patient: ${appointment.patient_name}`,
+          `Email: ${appointment.patient_email}`,
+          `Mode: Présentiel`,
+          `Durée: ${appointment.duration} min`,
+        ].join('\n'),
+        location: CABINET_ADDRESS,
+        attendeeEmail: appointment.patient_email,
+        withMeet: false,
+        appointmentId: `${appointment.id}-admin-inperson`,
+        colorId: '2',
+      });
+    } catch (calendarErr) {
+      console.error('[admin/appointments] Erreur création événement agenda (présentiel):', calendarErr);
+    }
   }
 
   // 7. Envoi email

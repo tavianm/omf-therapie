@@ -234,6 +234,32 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     const updatedAppt = updated as Appointment;
 
+    if (newStatus === 'confirmed' && updatedAppt.appointment_mode === 'in-person') {
+      const start = new Date(updatedAppt.scheduled_at);
+      const end = new Date(start.getTime() + updatedAppt.duration * 60 * 1000);
+      try {
+        await createCalendarEvent({
+          title: `${updatedAppt.patient_name} — ${getTypeLabel(updatedAppt.appointment_type)} (${updatedAppt.duration} min)`,
+          start: start.toISOString(),
+          end: end.toISOString(),
+          description: [
+            `Patient: ${updatedAppt.patient_name}`,
+            `Email: ${updatedAppt.patient_email}`,
+            `Mode: ${getModeLabel(updatedAppt.appointment_mode)}`,
+            `Type: ${getTypeLabel(updatedAppt.appointment_type)}`,
+            `Durée: ${updatedAppt.duration} min`,
+          ].join('\n'),
+          location: CABINET_ADDRESS,
+          attendeeEmail: updatedAppt.patient_email,
+          withMeet: false,
+          appointmentId: `${updatedAppt.id}-inperson-confirm`,
+          colorId: '2',
+        });
+      } catch (calendarErr) {
+        console.error('[appointments/patch] Erreur création événement agenda (présentiel):', calendarErr);
+      }
+    }
+
     // Envoyer email de demande de paiement si payment_pending (séance vidéo)
     if (newStatus === 'payment_pending' && updatedAppt.stripe_payment_link_url) {
       sendEmail({
@@ -509,6 +535,32 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     }
 
     const updatedAppt = updated as Appointment;
+
+    if (newStatus === 'confirmed' && updatedAppt.appointment_mode === 'in-person') {
+      const start = new Date(updatedAppt.scheduled_at);
+      const end = new Date(start.getTime() + updatedAppt.duration * 60 * 1000);
+      try {
+        await createCalendarEvent({
+          title: `${updatedAppt.patient_name} — ${getTypeLabel(updatedAppt.appointment_type)} (${updatedAppt.duration} min)`,
+          start: start.toISOString(),
+          end: end.toISOString(),
+          description: [
+            `Patient: ${updatedAppt.patient_name}`,
+            `Email: ${updatedAppt.patient_email}`,
+            `Mode: ${getModeLabel(updatedAppt.appointment_mode)}`,
+            `Type: ${getTypeLabel(updatedAppt.appointment_type)}`,
+            `Durée: ${updatedAppt.duration} min`,
+          ].join('\n'),
+          location: CABINET_ADDRESS,
+          attendeeEmail: updatedAppt.patient_email,
+          withMeet: false,
+          appointmentId: `${updatedAppt.id}-inperson-reschedule`,
+          colorId: '2',
+        });
+      } catch (calendarErr) {
+        console.error('[appointments/patch] Erreur création événement agenda après acceptation de report:', calendarErr);
+      }
+    }
 
     // Email : demande de paiement pour les séances vidéo
     if (newStatus === 'payment_pending' && updatedAppt.stripe_payment_link_url) {
