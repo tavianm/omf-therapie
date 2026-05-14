@@ -241,5 +241,6 @@ export function generateAppleCalendarInviteLink(baseUrl: string, appointmentId: 
   if (token) {
     url.searchParams.set('token', token);
   }
-  return url.toString();
+  // URL.protocol won't keep unknown schemes like "webcal", so convert as string.
+  return url.toString().replace(/^https?:\/\//i, 'webcal://');
 }

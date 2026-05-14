@@ -29,6 +29,8 @@ const paramName  = url.searchParams.get('name');
 const sourceParam = url.searchParams.get('source');
 const legacyPaiement = url.searchParams.get('paiement');
 const hasStripeSessionId = url.searchParams.has('session_id');
+const isMockPayment = url.searchParams.get('mock') === '1';
+const mockAppointmentId = url.searchParams.get('appointment_id');
 
 const VALID_TYPES  = new Set(['individual', 'couple', 'family']);
 const VALID_MODES  = new Set(['in-person', 'video']);
@@ -63,8 +65,19 @@ type MerciVariant =
 const variant: MerciVariant =
   sourceParam === 'request-confirmed' ? 'request-confirmed'
   : sourceParam === 'payment-pending' || legacyPaiement === 'en-attente' ? 'payment-pending'
-  : sourceParam === 'payment-success' || hasStripeSessionId ? 'payment-success'
+  : sourceParam === 'payment-success' || hasStripeSessionId || isMockPayment ? 'payment-success'
   : 'request-submitted';
+
+if (isMockPayment && mockAppointmentId) {
+  try {
+    const webhookMockUrl = new URL('/api/stripe-webhook/', url);
+    webhookMockUrl.searchParams.set('mock', '1');
+    webhookMockUrl.searchParams.set('appointment_id', mockAppointmentId);
+    await fetch(webhookMockUrl, { method: 'GET' });
+  } catch (err) {
+    console.error('[rdv/merci] Erreur déclenchement webhook mock:', err);
+  }
+}
 
 const pageTitle = variant === 'payment-success'
   ? 'Paiement reçu — OMF Thérapie'
@@ -90,7 +103,7 @@ const pageDescription = variant === 'payment-success'
 >
   <Navbar client:load />
 
-  <main class="min-h-screen bg-sage-50 flex items-start justify-center pt-24 pb-16 px-4">
+  <main class="min-h-screen bg-sage-50 flex items-center justify-center px-4 py-24">
     <div class="w-full max-w-lg">
 
       <!-- Icône de succès -->
@@ -243,21 +256,7 @@ const pageDescription = variant === 'payment-success'
       </div>
 
       <!-- Bouton retour -->
-      <div class="text-center space-y-3">
-        <div>
-          <a
-            href="/rendez-vous/"
-            class="
-              inline-flex items-center gap-2 px-6 py-3 rounded-xl
-              border border-sage-200 bg-white text-sage-700 font-medium font-sans text-sm
-              hover:bg-sage-50
-              focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-2
-              transition-colors min-h-[44px]
-            "
-          >
-            Revenir à la page rendez-vous
-          </a>
-        </div>
+      <div class="text-center">
         <a
           href="/"
           class="
