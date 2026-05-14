@@ -1,5 +1,5 @@
 /**
- * Google Calendar API wrapper (service account authentication)
+ * Google Calendar API wrapper (OAuth utilisateur ou service account)
  *
  * Gère la génération des créneaux candidats et la vérification
  * de disponibilité via l'API Freebusy de Google Calendar.
@@ -48,18 +48,12 @@ const MIN_NOTICE_MS = 24 * 60 * 60 * 1000;
 // Authentification Google
 // ---------------------------------------------------------------------------
 
-/**
- * Construit un client JWT authentifié avec le service account.
- * Lance une erreur claire si les variables d'environnement manquent.
- */
-function buildAuthClient(): Auth.JWT {
+function buildServiceAccountClient(): Auth.JWT | null {
   const email = import.meta.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const rawKey = import.meta.env.GOOGLE_PRIVATE_KEY;
 
   if (!email || !rawKey) {
-    throw new Error(
-      'Configuration manquante : GOOGLE_SERVICE_ACCOUNT_EMAIL et/ou GOOGLE_PRIVATE_KEY non définis.',
-    );
+    return null;
   }
 
   // Les clés privées sont souvent stockées avec des "\n" littéraux
@@ -88,6 +82,18 @@ function buildOAuthClient(): Auth.OAuth2Client | null {
   const client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
   client.setCredentials({ refresh_token: refreshToken });
   return client;
+}
+
+function resolveCalendarAuth(): Auth.OAuth2Client | Auth.JWT {
+  const oauth = buildOAuthClient();
+  if (oauth) return oauth;
+
+  const serviceAccount = buildServiceAccountClient();
+  if (serviceAccount) return serviceAccount;
+
+  throw new Error(
+    'Configuration Google Calendar manquante : configurez OAuth (GOOGLE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN) ou Service Account (GOOGLE_SERVICE_ACCOUNT_EMAIL/GOOGLE_PRIVATE_KEY).',
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -344,7 +350,7 @@ export async function getAvailableSlots(
     return [];
   }
 
-  const auth = buildAuthClient();
+  const auth = resolveCalendarAuth();
   const calendar = google.calendar({ version: 'v3', auth });
 
   // Une seule requête Freebusy pour toute la plage
@@ -584,10 +590,17 @@ export async function createCalendarEvent(
     }
   }
 
-  const auth = buildAuthClient();
-  const calendar = google.calendar({ version: 'v3', auth });
+  const serviceAccountAuth = buildServiceAccountClient();
+  const calendar = serviceAccountAuth
+    ? google.calendar({ version: 'v3', auth: serviceAccountAuth })
+    : null;
 
   try {
+    if (!calendar) {
+      throw new GoogleCalendarError(
+        'Aucun fallback Service Account configuré après échec OAuth.',
+      );
+    }
     return await upsertEvent(
       calendar,
       params.attendeeEmail ? 'all' : 'none',
