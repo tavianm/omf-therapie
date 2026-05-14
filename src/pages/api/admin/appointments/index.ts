@@ -201,6 +201,7 @@ export const POST: APIRoute = async ({ request }) => {
 
         const emailResult = await sendEmail({
           to: appointment.patient_email,
+          threadKey: `appointment:${appointment.id}:patient`,
           subject: buildAppointmentConversationSubject(
             `Prépaiement de votre séance — ${new Date(appointment.scheduled_at).toLocaleDateString('fr-FR')}`,
             appointment.id,
@@ -248,6 +249,7 @@ export const POST: APIRoute = async ({ request }) => {
 
       const emailResult = await sendEmail({
         to: appointment.patient_email,
+        threadKey: `appointment:${appointment.id}:patient`,
         subject: buildAppointmentConversationSubject(
           `Votre rendez-vous est confirmé — ${new Date(appointment.scheduled_at).toLocaleDateString('fr-FR')}`,
           appointment.id,

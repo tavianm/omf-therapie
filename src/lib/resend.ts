@@ -16,6 +16,7 @@ import { Resend } from 'resend';
 import { render } from '@react-email/render';
 import nodemailer from 'nodemailer';
 import type { ReactElement } from 'react';
+import { supabaseAdmin } from './supabase';
 
 // ---------------------------------------------------------------------------
 // Transport selection — resolved once at module init
@@ -56,6 +57,8 @@ export interface SendEmailParams {
   to: string | string[];
   /** Copie cachée (optionnelle) */
   bcc?: string | string[];
+  /** Identifiant de fil (thread) pour enchaîner les emails d'une même conversation */
+  threadKey?: string;
   /** Objet de l'email */
   subject: string;
   /** Composant React Email rendu côté serveur */
@@ -83,6 +86,14 @@ interface ResendApiError {
   message?: string;
 }
 
+interface EmailThreadState {
+  thread_key: string;
+  thread_subject: string;
+  root_message_id: string;
+  last_message_id: string;
+  references: string;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -92,6 +103,68 @@ function isRetryableResendError(error: ResendApiError | null | undefined): boole
   const status = error.statusCode ?? null;
   if (status === null || status >= 500) return true;
   return error.name === 'application_error';
+}
+
+function toResendMessageId(id: string): string {
+  return `<${id}@resend.dev>`;
+}
+
+function appendReferences(existing: string, nextMessageId: string): string {
+  const refs = existing
+    .split(' ')
+    .map(part => part.trim())
+    .filter(Boolean);
+  if (!refs.includes(nextMessageId)) refs.push(nextMessageId);
+  return refs.join(' ');
+}
+
+async function loadThreadState(threadKey: string): Promise<EmailThreadState | null> {
+  const { data, error } = await supabaseAdmin
+    .from('email_threads')
+    .select('thread_key, thread_subject, root_message_id, last_message_id, references')
+    .eq('thread_key', threadKey)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[resend] Impossible de charger le thread email :', error);
+    return null;
+  }
+  return (data as EmailThreadState | null) ?? null;
+}
+
+async function persistThreadState(
+  threadKey: string,
+  threadSubject: string,
+  messageId: string,
+  currentThread: EmailThreadState | null,
+): Promise<void> {
+  if (!currentThread) {
+    const { error } = await supabaseAdmin
+      .from('email_threads')
+      .insert({
+        thread_key: threadKey,
+        thread_subject: threadSubject,
+        root_message_id: messageId,
+        last_message_id: messageId,
+        references: messageId,
+      });
+    if (error) {
+      console.error('[resend] Impossible de créer le thread email :', error);
+    }
+    return;
+  }
+
+  const { error } = await supabaseAdmin
+    .from('email_threads')
+    .update({
+      last_message_id: messageId,
+      references: appendReferences(currentThread.references, messageId),
+    })
+    .eq('thread_key', threadKey);
+
+  if (error) {
+    console.error('[resend] Impossible de mettre à jour le thread email :', error);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -138,16 +211,32 @@ async function sendEmailViaResend(
     return { success: false, error: 'RESEND_API_KEY manquante' };
   }
 
-  const { to, bcc, subject, react, replyTo } = params;
+  const { to, bcc, subject, react, replyTo, threadKey } = params;
 
   try {
     const html = await render(react);
+    const normalizedThreadKey = threadKey?.trim();
+    const currentThread = normalizedThreadKey
+      ? await loadThreadState(normalizedThreadKey)
+      : null;
+    const headers: Record<string, string> = {};
+
+    let normalizedSubject = subject;
+    if (currentThread) {
+      headers['In-Reply-To'] = currentThread.last_message_id;
+      headers['References'] = currentThread.references;
+      normalizedSubject = /^Re:/i.test(currentThread.thread_subject)
+        ? currentThread.thread_subject
+        : `Re: ${currentThread.thread_subject}`;
+    }
+
     const payload = {
       from: fromEmail,
       to: Array.isArray(to) ? to : [to],
       ...(bcc ? { bcc: Array.isArray(bcc) ? bcc : [bcc] } : {}),
-      subject,
+      subject: normalizedSubject,
       html,
+      ...(Object.keys(headers).length > 0 ? { headers } : {}),
       ...(replyTo ? { replyTo } : {}),
     };
     const maxAttempts = 3;
@@ -157,6 +246,16 @@ async function sendEmailViaResend(
       const { data, error } = await resendClient.emails.send(payload);
 
       if (!error) {
+        if (normalizedThreadKey && data?.id) {
+          const messageId = toResendMessageId(data.id);
+          const threadSubject = currentThread?.thread_subject ?? subject;
+          await persistThreadState(
+            normalizedThreadKey,
+            threadSubject,
+            messageId,
+            currentThread,
+          );
+        }
         return { success: true, id: data?.id };
       }
 

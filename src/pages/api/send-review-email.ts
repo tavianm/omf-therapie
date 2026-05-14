@@ -97,6 +97,7 @@ export const POST: APIRoute = async ({ request }) => {
   // 5. Envoyer l'email ReviewRequest
   const result = await sendEmail({
     to: patientEmail,
+    threadKey: `appointment:${appointmentId.trim()}:patient`,
     subject: buildAppointmentConversationSubject(
       'Votre avis nous tient à cœur — OMF Thérapie',
       appointmentId.trim(),

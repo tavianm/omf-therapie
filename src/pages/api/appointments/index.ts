@@ -180,6 +180,7 @@ export const POST: APIRoute = async ({ request }) => {
   Promise.all([
     sendEmail({
       to: inserted.patient_email,
+      threadKey: `appointment:${inserted.id}:patient`,
       subject: buildAppointmentConversationSubject(
         'Votre demande de rendez-vous a bien été reçue',
         inserted.id,

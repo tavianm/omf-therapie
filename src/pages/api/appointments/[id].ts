@@ -264,6 +264,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (newStatus === 'payment_pending' && updatedAppt.stripe_payment_link_url) {
       sendEmail({
         to: updatedAppt.patient_email,
+        threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
           `Prépaiement de votre séance — ${new Intl.DateTimeFormat('fr-FR', {
             day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
@@ -296,6 +297,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
       sendEmail({
         to: updatedAppt.patient_email,
+        threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
           `Votre rendez-vous est confirmé — ${new Intl.DateTimeFormat('fr-FR', {
             day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
@@ -341,6 +343,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     sendEmail({
       to: updatedAppt.patient_email,
+      threadKey: `appointment:${updatedAppt.id}:patient`,
       subject: buildAppointmentConversationSubject(
         'Votre demande de rendez-vous',
         updatedAppt.id,
@@ -429,6 +432,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     sendEmail({
       to: updatedAppt.patient_email,
+      threadKey: `appointment:${updatedAppt.id}:patient`,
       subject: buildAppointmentConversationSubject(
         'Proposition de nouveau créneau',
         updatedAppt.id,
@@ -578,6 +582,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (newStatus === 'payment_pending' && updatedAppt.stripe_payment_link_url) {
       sendEmail({
         to: updatedAppt.patient_email,
+        threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
           `Prépaiement de votre séance — ${new Intl.DateTimeFormat('fr-FR', {
             day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
@@ -610,6 +615,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
       sendEmail({
         to: updatedAppt.patient_email,
+        threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
           `Votre rendez-vous est confirmé — ${new Intl.DateTimeFormat('fr-FR', {
             day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
