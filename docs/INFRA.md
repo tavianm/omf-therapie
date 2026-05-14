@@ -4,15 +4,30 @@ Ce document décrit les services externes à configurer pour que la fonctionnali
 
 ---
 
+## Stratégie staging / production
+
+Le plan free Supabase ne propose pas le branching de base de données. Pour éviter toute **contamination des données de production par les previews Netlify**, deux projets Supabase distincts sont utilisés :
+
+| Contexte | Projet Supabase | Netlify deploy context |
+|----------|----------------|------------------------|
+| **Production** | `omf-therapie` (EU West) | `production` |
+| **Staging / Previews** | `omf-therapie-staging` (EU West) | `deploy-preview` + `branch-deploy` |
+
+Les variables qui diffèrent entre les deux contextes (`SUPABASE_DATABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, `BETTER_AUTH_URL`, `STRIPE_*`, `STRIPE_SUCCESS_URL`) doivent être configurées **séparément** dans Netlify : *Site settings → Environment variables → chaque variable → Edit → Add a new scope*.
+
+---
+
 ## Ordre de mise en place recommandé
 
 ```
-1. Supabase   → créer projet + exécuter migration SQL
-2. Resend     → vérifier domaine DNS (peut prendre 24-48h)
-3. Google     → compte de service + partage calendrier
-4. Stripe     → activer compte + configurer webhook
-5. Netlify    → ajouter toutes les env vars + déployer
-6. seed-admin → créer le compte thérapeute (site déployé requis)
+1. Supabase prod    → créer projet + exécuter migration SQL
+2. Supabase staging → créer projet + exécuter migration SQL
+3. Resend           → vérifier domaine DNS (peut prendre 24-48h)
+4. Google           → compte de service + partage calendrier
+5. Stripe           → activer compte prod + configurer webhook prod
+                      activer compte test + configurer webhook staging
+6. Netlify          → ajouter toutes les env vars par contexte + déployer
+7. seed-admin       → créer le compte thérapeute sur prod ET staging
 ```
 
 ---
@@ -31,7 +46,7 @@ Cela crée :
 - Tables BetterAuth : `user`, `session`, `account`, `verification`
 - Politiques RLS
 
-**Variables à récupérer** dans *Settings → API* (ou *Settings → API Keys*) :
+**Variables à récupérer** dans *Settings → API* (ou *Settings → API Keys*) — à faire **pour chaque projet** (prod + staging) :
 
 | Variable | Où trouver |
 |----------|-----------|
@@ -50,12 +65,23 @@ Générer un secret robuste :
 
 ```bash
 openssl rand -base64 32   # → BETTER_AUTH_SECRET
+MjWSawhAXz1CfltQQ8xBFtYKcyCN2cXC8NVsylIN1RE=
 ```
 
-**Créer le compte admin** (une seule fois, après le premier déploiement) :
+**Créer le compte admin** (une seule fois par environnement, après le déploiement) :
 
 ```bash
+# Production
 BETTER_AUTH_URL=https://omf-therapie.fr \
+DATABASE_URL=<DATABASE_URL_PROD> \
+ADMIN_EMAIL=contact@omf-therapie.fr \
+ADMIN_PASSWORD=<MotDePasse16chars!> \
+ADMIN_NAME="Oriane Montabonnet" \
+npx tsx scripts/seed-admin.ts
+
+# Staging
+BETTER_AUTH_URL=https://staging--omf-therapie.netlify.app \
+DATABASE_URL=<DATABASE_URL_STAGING> \
 ADMIN_EMAIL=contact@omf-therapie.fr \
 ADMIN_PASSWORD=<MotDePasse16chars!> \
 ADMIN_NAME="Oriane Montabonnet" \
@@ -63,7 +89,8 @@ npx tsx scripts/seed-admin.ts
 ```
 
 > ⚠️ Un hook anti-inscription bloque toute création de compte supplémentaire après le premier.  
-> Le mot de passe doit faire **16 caractères minimum** (majuscules + minuscules + chiffres + symboles).
+> Le mot de passe doit faire **16 caractères minimum** (majuscules + minuscules + chiffres + symboles).  
+> Remplacer `staging--omf-therapie.netlify.app` par l'URL réelle du branch deploy Netlify.
 
 ---
 
@@ -137,26 +164,26 @@ Extraire depuis le JSON :
 
 ### Variables d'environnement
 
-Ajouter dans *Site settings → Environment variables* :
+Ajouter dans *Site settings → Environment variables*. Pour les variables qui diffèrent entre prod et staging, utiliser **"Add a new scope"** sur chaque variable.
 
-| Variable | Valeur / Description |
-|----------|---------------------|
-| `SUPABASE_DATABASE_URL` | URL projet Supabase |
-| `SUPABASE_ANON_KEY` | Clé publique |
-| `SUPABASE_SERVICE_ROLE_KEY` | Clé service (confidentielle) |
-| `DATABASE_URL` | Connexion directe PostgreSQL (BetterAuth) |
-| `BETTER_AUTH_SECRET` | Secret 32 caractères minimum |
-| `BETTER_AUTH_URL` | `https://omf-therapie.fr` |
-| `ADMIN_EMAIL` | Email de la thérapeute |
-| `STRIPE_SECRET_KEY` | `sk_live_…` |
-| `STRIPE_PUBLISHABLE_KEY` | `pk_live_…` |
-| `STRIPE_WEBHOOK_SECRET` | `whsec_…` |
-| `STRIPE_SUCCESS_URL` | `https://omf-therapie.fr/rdv/merci` |
-| `RESEND_API_KEY` | `re_…` |
-| `RESEND_FROM_EMAIL` | `OMF Thérapie <contact@omf-therapie.fr>` |
-| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Email compte de service Google |
-| `GOOGLE_PRIVATE_KEY` | Clé privée PEM |
-| `GOOGLE_CALENDAR_ID` | ID du calendrier Google |
+| Variable | Prod | Staging | Scope |
+|----------|------|---------|-------|
+| `SUPABASE_DATABASE_URL` | URL projet prod | URL projet staging | Par contexte |
+| `SUPABASE_ANON_KEY` | Clé publishable prod | Clé publishable staging | Par contexte |
+| `SUPABASE_SERVICE_ROLE_KEY` | Clé secrète prod | Clé secrète staging | Par contexte |
+| `DATABASE_URL` | Connection string prod | Connection string staging | Par contexte |
+| `BETTER_AUTH_URL` | `https://omf-therapie.fr` | URL branch deploy Netlify | Par contexte |
+| `BETTER_AUTH_SECRET` | Secret 32 chars | (même valeur possible) | Tous contextes |
+| `ADMIN_EMAIL` | Email thérapeute | Email thérapeute | Tous contextes |
+| `STRIPE_SECRET_KEY` | `sk_live_…` | `sk_test_…` | Par contexte |
+| `STRIPE_PUBLISHABLE_KEY` | `pk_live_…` | `pk_test_…` | Par contexte |
+| `STRIPE_WEBHOOK_SECRET` | `whsec_…` (live) | `whsec_…` (test) | Par contexte |
+| `STRIPE_SUCCESS_URL` | `https://omf-therapie.fr/rdv/merci` | URL staging `/rdv/merci` | Par contexte |
+| `RESEND_API_KEY` | `re_…` | `re_…` (même clé possible) | Tous contextes |
+| `RESEND_FROM_EMAIL` | `OMF Thérapie <contact@omf-therapie.fr>` | idem | Tous contextes |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Email compte de service | idem | Tous contextes |
+| `GOOGLE_PRIVATE_KEY` | Clé privée PEM | idem | Tous contextes |
+| `GOOGLE_CALENDAR_ID` | ID calendrier prod | ID calendrier staging (optionnel) | Par contexte |
 
 ### Variables optionnelles (invitations à noter)
 

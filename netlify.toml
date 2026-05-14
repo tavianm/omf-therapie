@@ -7,13 +7,16 @@
   # ---------------------------------------------------------------------------
   # Variables d'environnement requises
   # (à configurer dans le dashboard Netlify — NE PAS committer de valeurs ici)
+  # Certaines variables diffèrent entre prod et staging/preview — les configurer
+  # avec "Add a new scope" dans Netlify : production vs deploy-preview.
   # ---------------------------------------------------------------------------
-  # SUPABASE_URL                  — URL du projet Supabase
-  # SUPABASE_ANON_KEY             — Clé publique Supabase (client anon)
-  # SUPABASE_SERVICE_ROLE_KEY     — Clé service_role Supabase (server-side uniquement)
+  # SUPABASE_DATABASE_URL         — URL REST du projet Supabase (differ prod/staging)
+  # SUPABASE_ANON_KEY             — Clé publique Supabase (differ prod/staging)
+  # SUPABASE_SERVICE_ROLE_KEY     — Clé service_role Supabase (differ prod/staging)
+  # DATABASE_URL                  — Connexion PostgreSQL directe pour BetterAuth (differ prod/staging)
   #
   # BETTER_AUTH_SECRET            — Secret de signature Better Auth
-  # BETTER_AUTH_URL               — URL publique du site (ex. https://omf-therapie.fr)
+  # BETTER_AUTH_URL               — URL publique du site (differ prod/staging)
   #
   # GOOGLE_SERVICE_ACCOUNT_EMAIL  — Email du compte de service Google Calendar
   # GOOGLE_PRIVATE_KEY            — Clé privée RSA du compte de service (PEM)
@@ -22,15 +25,31 @@
   # RESEND_API_KEY                — Clé API Resend pour l'envoi d'emails
   # RESEND_FROM_EMAIL             — Adresse expéditeur (ex. OMF Thérapie <contact@omf-therapie.fr>)
   #
-  # STRIPE_SECRET_KEY             — Clé secrète Stripe (sk_live_… ou sk_test_…)
-  # STRIPE_WEBHOOK_SECRET         — Secret de signature des webhooks Stripe (whsec_…)
-  # STRIPE_PUBLISHABLE_KEY        — Clé publique Stripe (pk_live_… ou pk_test_…)
+  # STRIPE_SECRET_KEY             — sk_live_… (prod) ou sk_test_… (staging) — differ prod/staging
+  # STRIPE_WEBHOOK_SECRET         — Secret de signature des webhooks Stripe — differ prod/staging
+  # STRIPE_PUBLISHABLE_KEY        — pk_live_… (prod) ou pk_test_… (staging) — differ prod/staging
+  # STRIPE_SUCCESS_URL            — URL page merci — differ prod/staging
   #
   # ADMIN_EMAIL                   — Email de la thérapeute (destinataire des formulaires)
   #
   # GOOGLE_BUSINESS_URL           — Lien Google Business Profile (optionnel)
   # PAGES_JAUNES_URL              — Lien Pages Jaunes (optionnel)
   # PSYCHOLOGUE_NET_URL           — Lien profil Psychologue.net (optionnel)
+
+# ---------------------------------------------------------------------------
+# Contextes de déploiement — variables non-sensibles par contexte
+# Les variables sensibles (clés API, secrets) sont gérées dans le dashboard
+# Netlify avec le scope "production" / "deploy-preview" sur chaque variable.
+# ---------------------------------------------------------------------------
+
+[context.production]
+  [context.production.environment]
+    BETTER_AUTH_URL = "https://omf-therapie.fr"
+    STRIPE_SUCCESS_URL = "https://omf-therapie.fr/rdv/merci"
+
+# Les previews (branches + PRs) pointent vers Supabase staging
+# Les variables sensibles staging sont configurées dans le dashboard Netlify
+# avec le scope "deploy-preview"
 
 [dev]
   framework = "astro"
