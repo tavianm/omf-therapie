@@ -5,7 +5,7 @@
  * de disponibilité via l'API Freebusy de Google Calendar.
  */
 
-import { google, type Auth } from 'googleapis';
+import { google, type Auth, type calendar_v3 } from 'googleapis';
 
 // ---------------------------------------------------------------------------
 // Types publics
@@ -73,6 +73,21 @@ function buildAuthClient(): Auth.JWT {
       'https://www.googleapis.com/auth/calendar.readonly',
     ],
   });
+}
+
+function buildOAuthClient(): Auth.OAuth2Client | null {
+  const clientId = import.meta.env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = import.meta.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  const refreshToken = import.meta.env.GOOGLE_OAUTH_REFRESH_TOKEN;
+
+  if (!clientId || !clientSecret || !refreshToken) {
+    return null;
+  }
+
+  const redirectUri = import.meta.env.GOOGLE_OAUTH_REDIRECT_URI ?? 'https://developers.google.com/oauthplayground';
+  const client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+  client.setCredentials({ refresh_token: refreshToken });
+  return client;
 }
 
 // ---------------------------------------------------------------------------
@@ -441,6 +456,31 @@ function extractEventResult(data: { id?: string | null; conferenceData?: { entry
   return { eventId, meetLink: meetLink ?? undefined };
 }
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function pollMeetLink(
+  calendar: calendar_v3.Calendar,
+  calendarId: string,
+  eventId: string,
+): Promise<string | undefined> {
+  const maxAttempts = 10;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    await wait(1500);
+    const response = await calendar.events.get({
+      calendarId,
+      eventId,
+      conferenceDataVersion: 1,
+    });
+    const result = extractEventResult(response.data);
+    if (result.meetLink) return result.meetLink;
+  }
+  return undefined;
+}
+
 /**
  * Crée un événement dans Google Calendar après confirmation d'un rendez-vous.
  * Retourne { eventId, meetLink? }.
@@ -465,15 +505,12 @@ export async function createCalendarEvent(
     throw new Error('Configuration manquante : GOOGLE_CALENDAR_ID non défini.');
   }
 
-  const auth = buildAuthClient();
-  const calendar = google.calendar({ version: 'v3', auth });
-
   const attendees = params.attendeeEmail
     ? [{ email: params.attendeeEmail }]
     : undefined;
 
   const requestId = params.appointmentId ?? Date.now().toString(36);
-  const baseRequestBody = {
+  const buildRequestBody = (withConferenceSolutionKey: boolean) => ({
     summary: params.title,
     description: params.description,
     location: params.location,
@@ -487,33 +524,87 @@ export async function createCalendarEvent(
       timeZone: TIMEZONE,
     },
     ...(params.withMeet
-      ? { conferenceData: { createRequest: { requestId } } }
+      ? {
+          conferenceData: {
+            createRequest: {
+              requestId,
+              ...(withConferenceSolutionKey
+                ? { conferenceSolutionKey: { type: 'hangoutsMeet' as const } }
+                : {}),
+            },
+          },
+        }
       : {}),
-  };
+  });
 
-  try {
+  const upsertEvent = async (
+    calendar: calendar_v3.Calendar,
+    sendUpdates: 'all' | 'none',
+    withConferenceSolutionKey: boolean,
+    includeAttendees: boolean,
+  ): Promise<CreateEventResult> => {
     const response = await calendar.events.insert({
       calendarId,
-      sendUpdates: params.attendeeEmail ? 'all' : 'none',
+      sendUpdates,
       ...(params.withMeet ? { conferenceDataVersion: 1 } : {}),
       requestBody: {
-        ...baseRequestBody,
-        attendees,
+        ...buildRequestBody(withConferenceSolutionKey),
+        ...(includeAttendees && attendees ? { attendees } : {}),
       },
     });
-    return extractEventResult(response.data);
+
+    const inserted = extractEventResult(response.data);
+    if (!params.withMeet || inserted.meetLink) return inserted;
+
+    const polledMeet = await pollMeetLink(calendar, calendarId, inserted.eventId);
+    return {
+      ...inserted,
+      meetLink: polledMeet,
+    };
+  };
+
+  // Priorité OAuth utilisateur (3-legged) pour les liens Meet sur comptes perso.
+  if (params.withMeet) {
+    const oauthAuth = buildOAuthClient();
+    if (oauthAuth) {
+      const oauthCalendar = google.calendar({ version: 'v3', auth: oauthAuth });
+      try {
+        return await upsertEvent(
+          oauthCalendar,
+          params.attendeeEmail ? 'all' : 'none',
+          true,
+          Boolean(params.attendeeEmail),
+        );
+      } catch (oauthErr: unknown) {
+        const oauthMessage = oauthErr instanceof Error ? oauthErr.message : String(oauthErr);
+        console.warn('[google-calendar] Échec création Meet via OAuth utilisateur, fallback service account:', oauthMessage);
+      }
+    } else {
+      console.warn('[google-calendar] OAuth utilisateur non configuré pour la génération Meet, fallback service account.');
+    }
+  }
+
+  const auth = buildAuthClient();
+  const calendar = google.calendar({ version: 'v3', auth });
+
+  try {
+    return await upsertEvent(
+      calendar,
+      params.attendeeEmail ? 'all' : 'none',
+      false,
+      Boolean(params.attendeeEmail),
+    );
   } catch (err: unknown) {
     if (err instanceof GoogleCalendarError) throw err;
     if (params.attendeeEmail && isAttendeeDelegationError(err)) {
       console.warn('[google-calendar] Attendee non autorisé pour service account. Retry sans invité.');
       try {
-        const retry = await calendar.events.insert({
-          calendarId,
-          sendUpdates: 'none',
-          ...(params.withMeet ? { conferenceDataVersion: 1 } : {}),
-          requestBody: baseRequestBody,
-        });
-        return extractEventResult(retry.data);
+        return await upsertEvent(
+          calendar,
+          'none',
+          false,
+          false,
+        );
       } catch (retryErr: unknown) {
         const retryMessage = retryErr instanceof Error ? retryErr.message : String(retryErr);
         console.error('[google-calendar] Échec retry sans invité :', retryMessage);
