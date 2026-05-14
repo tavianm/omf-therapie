@@ -234,7 +234,7 @@ const priceFormatted = `${Math.round(appt.final_price / 100)}\u00a0€`;
       errorBox.textContent = '';
 
       try {
-        const res = await fetch(`/api/appointments/${appointmentId}`, {
+        const res = await fetch(`/api/appointments/${appointmentId}/`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'accept_reschedule' }),
@@ -248,9 +248,9 @@ const priceFormatted = `${Math.round(appt.final_price / 100)}\u00a0€`;
 
         // Redirection selon le statut retourné
         if (data.status === 'payment_pending') {
-          window.location.href = '/rdv/merci?paiement=en-attente';
+          window.location.href = '/rdv/merci/?paiement=en-attente';
         } else {
-          window.location.href = '/rdv/merci';
+          window.location.href = '/rdv/merci/';
         }
       } catch (err) {
         errorBox.textContent = err instanceof Error

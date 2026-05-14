@@ -1,0 +1,86 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - paragraph [ref=e5]: OMF Thérapie
+        - heading "Prendre rendez-vous" [level=1] [ref=e6]
+        - paragraph [ref=e7]: Remplissez ce formulaire en quelques minutes. Oriane vous confirmera votre créneau par email sous 24–48 h.
+      - generic [ref=e9]:
+        - navigation "Étapes de la réservation" [ref=e10]:
+          - list [ref=e11]:
+            - listitem [ref=e12]:
+              - generic [ref=e13]:
+                - img [ref=e109]
+                - generic [ref=e15]: Type & Mode
+            - listitem [ref=e17]:
+              - generic [ref=e18]:
+                - img [ref=e161]
+                - generic [ref=e20]: Date & Heure
+            - listitem [ref=e22]:
+              - generic [ref=e23]:
+                - generic [ref=e24]: "3"
+                - generic [ref=e25]: Informations
+            - listitem [ref=e27]:
+              - generic [ref=e28]:
+                - generic [ref=e29]: "4"
+                - generic [ref=e30]: Récapitulatif
+        - generic [ref=e163]:
+          - paragraph [ref=e164]: Ces informations resteront confidentielles et ne seront utilisées que pour la prise en charge de votre rendez-vous.
+          - generic [ref=e165]:
+            - generic [ref=e166]: Nom complet *
+            - textbox "Nom complet *" [ref=e167]:
+              - /placeholder: Marie Dupont
+          - generic [ref=e168]:
+            - generic [ref=e169]: Adresse email *
+            - textbox "Adresse email *" [ref=e170]:
+              - /placeholder: marie@example.com
+          - generic [ref=e171]:
+            - generic [ref=e172]: Téléphone *
+            - textbox "Téléphone *" [ref=e173]:
+              - /placeholder: 06 12 34 56 78
+            - paragraph [ref=e174]: "Format français : 06 xx xx xx xx ou +33 6 xx xx xx xx"
+          - generic [ref=e175]:
+            - generic [ref=e176]:
+              - generic [ref=e177]: Code postal *
+              - textbox "Code postal *" [ref=e178]:
+                - /placeholder: "75001"
+            - generic [ref=e179]:
+              - generic [ref=e180]: Ville *
+              - textbox "Ville *" [ref=e181]:
+                - /placeholder: Paris
+          - generic [ref=e182]:
+            - generic [ref=e183]: Motif de consultation *
+            - textbox "Motif de consultation *" [ref=e184]:
+              - /placeholder: Décrivez brièvement ce qui vous amène à consulter...
+            - generic [ref=e185]:
+              - generic [ref=e186]: Minimum 10 caractères
+              - generic [ref=e187]: 0 / 1500
+          - generic [ref=e188]:
+            - button "Retour" [ref=e189] [cursor=pointer]:
+              - img [ref=e190]
+              - text: Retour
+            - button "Vérifier" [disabled] [ref=e192]:
+              - text: Vérifier
+              - img [ref=e193]
+      - complementary [ref=e74]:
+        - generic [ref=e75]:
+          - heading "Présentiel" [level=2] [ref=e76]
+          - paragraph [ref=e77]: 📍 Cabinet — mercredi uniquement
+          - paragraph [ref=e78]: 8h–12h et 14h–19h
+        - generic [ref=e79]:
+          - heading "Téléconsultation" [level=2] [ref=e80]
+          - paragraph [ref=e81]: 💻 En ligne — lundi au vendredi
+          - paragraph [ref=e82]: Prépaiement Stripe requis
+  - generic [ref=e85]:
+    - button "Menu" [ref=e86]:
+      - img [ref=e88]
+      - generic: Menu
+    - button "Inspect" [ref=e92]:
+      - img [ref=e94]
+      - generic: Inspect
+    - button "Audit" [ref=e96]:
+      - img [ref=e98]
+      - generic: Audit
+    - button "Settings" [ref=e101]:
+      - img [ref=e103]
+      - generic: Settings

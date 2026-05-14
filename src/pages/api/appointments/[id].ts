@@ -77,8 +77,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!UUID_RE.test(id)) return errorResponse(400, 'Identifiant de rendez-vous invalide');
 
-  if (!action || !['confirm', 'decline', 'reschedule', 'save_notes', 'accept_reschedule'].includes(action as string))
-    return errorResponse(422, 'Action invalide (confirm | decline | reschedule | save_notes | accept_reschedule)');
+  if (!action || !['confirm', 'decline', 'reschedule', 'save_notes', 'accept_reschedule', 'cancel_reschedule'].includes(action as string))
+    return errorResponse(422, 'Action invalide (confirm | decline | reschedule | save_notes | accept_reschedule | cancel_reschedule)');
 
   // 3. Récupérer le rendez-vous
   const { data: appt, error: fetchError } = await supabaseAdmin

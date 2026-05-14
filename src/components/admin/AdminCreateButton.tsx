@@ -182,7 +182,7 @@ function AdminCreateModal({ onClose }: { onClose: () => void }) {
         payload.video_link = form.video_link.trim();
       }
 
-      const res = await fetch("/api/admin/appointments", {
+      const res = await fetch("/api/admin/appointments/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

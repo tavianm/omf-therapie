@@ -1,0 +1,80 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e3]:
+    - navigation "Navigation principale" [ref=e4]:
+      - generic [ref=e5]:
+        - link "Accueil Oriane Montabonnet" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - img [ref=e8]
+          - generic [ref=e11]: Oriane Montabonnet
+        - list [ref=e12]:
+          - listitem [ref=e13]:
+            - button "Accueil" [ref=e14] [cursor=pointer]
+          - listitem [ref=e15]:
+            - link "À propos" [ref=e16] [cursor=pointer]:
+              - /url: /a-propos
+          - listitem [ref=e17]:
+            - link "Domaines d'Expertise" [ref=e18] [cursor=pointer]:
+              - /url: /services
+          - listitem [ref=e19]:
+            - button "Tarifs" [ref=e20] [cursor=pointer]
+          - listitem [ref=e21]:
+            - link "Blog" [ref=e22] [cursor=pointer]:
+              - /url: /blog
+          - listitem [ref=e23]:
+            - link "Contact" [ref=e24] [cursor=pointer]:
+              - /url: /contact
+          - listitem [ref=e25]:
+            - link "Prendre RDV" [ref=e26] [cursor=pointer]:
+              - /url: /rendez-vous
+          - listitem [ref=e82]:
+            - link "Mes RDV" [ref=e83] [cursor=pointer]:
+              - /url: /mes-rdvs
+  - main [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - heading "Nouveau créneau proposé" [level=1] [ref=e30]
+        - paragraph [ref=e31]:
+          - text: La thérapeute vous propose un nouveau créneau.
+          - text: Confirmez-le en cliquant sur le bouton ci-dessous.
+      - generic [ref=e32]:
+        - generic [ref=e33]:
+          - paragraph [ref=e34]: ✕ Créneau initial (indisponible)
+          - paragraph [ref=e35]: mercredi 20 mai 2026 à 09:00
+        - generic [ref=e36]: ↓
+        - generic [ref=e37]:
+          - paragraph [ref=e38]: ✓ Nouveau créneau proposé
+          - paragraph [ref=e39]: mercredi 3 juin 2026 à 10:00
+      - generic [ref=e40]:
+        - heading "Détails de la séance" [level=2] [ref=e41]
+        - generic [ref=e42]:
+          - generic [ref=e43]:
+            - term [ref=e44]: Type
+            - definition [ref=e45]: Thérapie individuelle
+          - generic [ref=e46]:
+            - term [ref=e47]: Mode
+            - definition [ref=e48]: Téléconsultation
+          - generic [ref=e49]:
+            - term [ref=e50]: Durée
+            - definition [ref=e51]: 60 minutes
+          - generic [ref=e52]:
+            - term [ref=e53]: Tarif
+            - definition [ref=e54]: 50 €
+      - alert [ref=e84]: Unexpected token '<', "<!doctype "... is not valid JSON
+      - button "Accepter ce nouveau créneau" [ref=e56] [cursor=pointer]
+      - paragraph [ref=e57]:
+        - text: Ce créneau ne vous convient pas ?
+        - link "Choisir un autre créneau" [ref=e58] [cursor=pointer]:
+          - /url: /rendez-vous
+  - generic [ref=e61]:
+    - button "Menu" [ref=e62]:
+      - img [ref=e64]
+      - generic: Menu
+    - button "Inspect" [ref=e68]:
+      - img [ref=e70]
+      - generic: Inspect
+    - button "Audit" [ref=e72]:
+      - img [ref=e74]
+      - generic: Audit
+    - button "Settings" [ref=e77]:
+      - img [ref=e79]
+      - generic: Settings

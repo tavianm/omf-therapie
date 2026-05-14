@@ -1,0 +1,52 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e3]:
+    - navigation "Navigation principale" [ref=e4]:
+      - generic [ref=e5]:
+        - link "Accueil Oriane Montabonnet" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - img [ref=e8]
+          - generic [ref=e11]: Oriane Montabonnet
+        - list [ref=e12]:
+          - listitem [ref=e13]:
+            - button "Accueil" [ref=e14] [cursor=pointer]
+          - listitem [ref=e15]:
+            - link "À propos" [ref=e16] [cursor=pointer]:
+              - /url: /a-propos
+          - listitem [ref=e17]:
+            - link "Domaines d'Expertise" [ref=e18] [cursor=pointer]:
+              - /url: /services
+          - listitem [ref=e19]:
+            - button "Tarifs" [ref=e20] [cursor=pointer]
+          - listitem [ref=e21]:
+            - link "Blog" [ref=e22] [cursor=pointer]:
+              - /url: /blog
+          - listitem [ref=e23]:
+            - link "Contact" [ref=e24] [cursor=pointer]:
+              - /url: /contact
+          - listitem [ref=e25]:
+            - link "Prendre RDV" [ref=e26] [cursor=pointer]:
+              - /url: /rendez-vous
+          - listitem [ref=e27]:
+            - link "Mes RDV" [ref=e28] [cursor=pointer]:
+              - /url: /mes-rdvs
+  - main [ref=e29]:
+    - generic [ref=e30]:
+      - generic [ref=e31]:
+        - generic [ref=e32]:
+          - heading "Mes rendez-vous" [level=1] [ref=e33]
+          - paragraph [ref=e34]: 0 rendez-vous
+        - generic [ref=e35]:
+          - button "Créer un rendez-vous manuellement" [ref=e37] [cursor=pointer]:
+            - img [ref=e38]
+            - text: Nouveau rendez-vous
+          - button "Se déconnecter" [ref=e40] [cursor=pointer]:
+            - img [ref=e41]
+            - text: Déconnexion
+      - group "Filtrer par statut" [ref=e43]:
+        - button "Tous 0" [pressed] [ref=e44] [cursor=pointer]:
+          - text: Tous
+          - generic [ref=e45]: "0"
+      - generic [ref=e46]:
+        - img [ref=e48]
+        - paragraph [ref=e50]: Aucun rendez-vous
+        - paragraph [ref=e51]: Les nouvelles demandes apparaîtront ici.

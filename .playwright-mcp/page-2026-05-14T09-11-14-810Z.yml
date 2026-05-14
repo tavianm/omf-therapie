@@ -1,0 +1,113 @@
+- generic [ref=e1]:
+  - banner [ref=e3]:
+    - navigation "Navigation principale" [ref=e4]:
+      - generic [ref=e5]:
+        - link "Accueil Oriane Montabonnet" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - img [ref=e8]
+          - generic [ref=e11]: Oriane Montabonnet
+        - list [ref=e12]:
+          - listitem [ref=e13]:
+            - button "Accueil" [ref=e14] [cursor=pointer]
+          - listitem [ref=e15]:
+            - link "À propos" [ref=e16] [cursor=pointer]:
+              - /url: /a-propos
+          - listitem [ref=e17]:
+            - link "Domaines d'Expertise" [ref=e18] [cursor=pointer]:
+              - /url: /services
+          - listitem [ref=e19]:
+            - button "Tarifs" [ref=e20] [cursor=pointer]
+          - listitem [ref=e21]:
+            - link "Blog" [ref=e22] [cursor=pointer]:
+              - /url: /blog
+          - listitem [ref=e23]:
+            - link "Contact" [ref=e24] [cursor=pointer]:
+              - /url: /contact
+          - listitem [ref=e25]:
+            - link "Prendre RDV" [ref=e26] [cursor=pointer]:
+              - /url: /rendez-vous
+          - listitem [ref=e27]:
+            - link "Mes RDV" [ref=e28] [cursor=pointer]:
+              - /url: /mes-rdvs
+  - main [ref=e29]:
+    - generic [ref=e30]:
+      - generic [ref=e31]:
+        - generic [ref=e32]:
+          - heading "Mes rendez-vous" [level=1] [ref=e33]
+          - paragraph [ref=e34]: 5 rendez-vous
+        - generic [ref=e35]:
+          - button "Créer un rendez-vous manuellement" [ref=e37] [cursor=pointer]:
+            - img [ref=e38]
+            - text: Nouveau rendez-vous
+          - button "Se déconnecter" [ref=e40] [cursor=pointer]:
+            - img [ref=e41]
+            - text: Déconnexion
+      - group "Filtrer par statut" [ref=e43]:
+        - button "Tous 5" [ref=e44] [cursor=pointer]:
+          - text: Tous
+          - generic [ref=e45]: "5"
+        - button "Reportés 1" [active] [pressed] [ref=e46] [cursor=pointer]:
+          - text: Reportés
+          - generic [ref=e47]: "1"
+        - button "Paiement en attente 2" [ref=e48] [cursor=pointer]:
+          - text: Paiement en attente
+          - generic [ref=e49]: "2"
+        - button "Confirmés 1" [ref=e50] [cursor=pointer]:
+          - text: Confirmés
+          - generic [ref=e51]: "1"
+        - button "Refusés 1" [ref=e52] [cursor=pointer]:
+          - text: Refusés
+          - generic [ref=e53]: "1"
+      - article [ref=e191]:
+        - generic [ref=e192]:
+          - generic [ref=e193]:
+            - heading "Jean Dupont" [level=3] [ref=e194]
+            - paragraph [ref=e195]:
+              - link "jean.dupont@example.com" [ref=e196] [cursor=pointer]:
+                - /url: mailto:jean.dupont@example.com
+              - text: ·
+              - link "0612345678" [ref=e197] [cursor=pointer]:
+                - /url: tel:0612345678
+            - paragraph [ref=e198]: "75001"
+          - generic [ref=e199]: Reporté
+        - generic [ref=e200]:
+          - generic [ref=e201]:
+            - generic [ref=e202]: Type
+            - text: Thérapie individuelle
+          - generic [ref=e203]:
+            - generic [ref=e204]: Mode
+            - text: Téléconsultation
+          - generic [ref=e205]:
+            - generic [ref=e206]: Durée
+            - generic [ref=e207]: 60 min
+          - generic [ref=e208]:
+            - generic [ref=e209]: Date prévue
+            - text: 20 mai 2026 à 09:00
+          - generic [ref=e210]:
+            - generic [ref=e211]: Tarif
+            - text: 50€
+          - generic [ref=e212]:
+            - generic [ref=e213]: Reporté au
+            - text: 27 mai 2026 à 10:00
+        - group [ref=e214]:
+          - generic "Motif de consultation" [ref=e215] [cursor=pointer]
+        - button "Annuler la proposition" [ref=e217] [cursor=pointer]
+        - generic [ref=e218]:
+          - generic [ref=e219]: Notes thérapeute (internes)
+          - textbox "Notes thérapeute (internes)" [ref=e220]:
+            - /placeholder: Notes internes…
+            - text: Je vous propose un nouveau créneau la semaine suivante.
+          - button "Sauvegarder" [ref=e222] [cursor=pointer]
+  - generic [ref=e225]:
+    - button "Menu" [ref=e226]:
+      - img [ref=e228]
+      - generic: Menu
+    - button "Inspect" [ref=e232]:
+      - img [ref=e234]
+      - generic: Inspect
+    - button "Audit" [ref=e236]:
+      - img [ref=e238]
+      - generic: Audit
+    - button "Settings" [ref=e241]:
+      - img [ref=e243]
+      - generic: Settings

@@ -1,0 +1,106 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - paragraph [ref=e5]: OMF Thérapie
+        - heading "Prendre rendez-vous" [level=1] [ref=e6]
+        - paragraph [ref=e7]: Remplissez ce formulaire en quelques minutes. Oriane vous confirmera votre créneau par email sous 24–48 h.
+      - generic [ref=e9]:
+        - navigation "Étapes de la réservation" [ref=e10]:
+          - list [ref=e11]:
+            - listitem [ref=e12]:
+              - generic [ref=e13]:
+                - img [ref=e109]
+                - generic [ref=e15]: Type & Mode
+            - listitem [ref=e17]:
+              - generic [ref=e18]:
+                - img [ref=e161]
+                - generic [ref=e20]: Date & Heure
+            - listitem [ref=e22]:
+              - generic [ref=e23]:
+                - img [ref=e195]
+                - generic [ref=e25]: Informations
+            - listitem [ref=e27]:
+              - generic [ref=e28]:
+                - generic [ref=e29]: "4"
+                - generic [ref=e30]: Récapitulatif
+        - generic [ref=e197]:
+          - paragraph [ref=e198]: Vérifiez vos informations avant d'envoyer votre demande de rendez-vous.
+          - generic [ref=e199]:
+            - heading "Séance" [level=3] [ref=e200]
+            - generic [ref=e201]:
+              - generic [ref=e202]:
+                - generic [ref=e203]: Type
+                - generic [ref=e204]: Thérapie individuelle
+              - generic [ref=e205]:
+                - generic [ref=e206]: Mode
+                - generic [ref=e207]: Téléconsultation
+              - generic [ref=e208]:
+                - generic [ref=e209]: Date & heure
+                - generic [ref=e210]: Mercredi 20 mai 2026 à 09:00
+              - generic [ref=e211]:
+                - generic [ref=e212]: Durée
+                - generic [ref=e213]: 60 minutes
+              - generic [ref=e214]:
+                - generic [ref=e215]: Première séance
+                - generic [ref=e216]: Non
+              - generic [ref=e217]:
+                - generic [ref=e218]: Tarif
+                - generic [ref=e219]: 50€
+          - generic [ref=e220]:
+            - heading "Vos informations" [level=3] [ref=e221]
+            - generic [ref=e222]:
+              - generic [ref=e223]:
+                - generic [ref=e224]: Nom
+                - generic [ref=e225]: Jean Dupont
+              - generic [ref=e226]:
+                - generic [ref=e227]: Email
+                - generic [ref=e228]: jean.dupont@example.com
+              - generic [ref=e229]:
+                - generic [ref=e230]: Téléphone
+                - generic [ref=e231]: 06 12 34 56 78
+              - generic [ref=e232]:
+                - generic [ref=e233]: Localisation
+                - generic [ref=e234]: 75001 Paris
+              - generic [ref=e235]:
+                - text: Motif
+                - paragraph [ref=e236]: Je souhaite consulter pour mieux gérer mon anxiété au quotidien.
+          - generic [ref=e237]:
+            - paragraph [ref=e238]:
+              - text: 🔒 Vos données sont traitées conformément à notre
+              - link "politique de confidentialité" [ref=e239] [cursor=pointer]:
+                - /url: /confidentialite
+              - text: .
+            - paragraph [ref=e240]:
+              - text: 💳 Pour les séances en téléconsultation, un
+              - strong [ref=e241]: prépaiement sécurisé
+              - text: vous sera demandé après confirmation.
+          - generic [ref=e242]:
+            - button "Modifier" [ref=e243] [cursor=pointer]:
+              - img [ref=e244]
+              - text: Modifier
+            - button "Envoyer ma demande" [ref=e246] [cursor=pointer]:
+              - text: Envoyer ma demande
+              - img [ref=e247]
+      - complementary [ref=e74]:
+        - generic [ref=e75]:
+          - heading "Présentiel" [level=2] [ref=e76]
+          - paragraph [ref=e77]: 📍 Cabinet — mercredi uniquement
+          - paragraph [ref=e78]: 8h–12h et 14h–19h
+        - generic [ref=e79]:
+          - heading "Téléconsultation" [level=2] [ref=e80]
+          - paragraph [ref=e81]: 💻 En ligne — lundi au vendredi
+          - paragraph [ref=e82]: Prépaiement Stripe requis
+  - generic [ref=e85]:
+    - button "Menu" [ref=e86]:
+      - img [ref=e88]
+      - generic: Menu
+    - button "Inspect" [ref=e92]:
+      - img [ref=e94]
+      - generic: Inspect
+    - button "Audit" [ref=e96]:
+      - img [ref=e98]
+      - generic: Audit
+    - button "Settings" [ref=e101]:
+      - img [ref=e103]
+      - generic: Settings

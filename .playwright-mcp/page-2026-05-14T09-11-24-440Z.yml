@@ -1,0 +1,259 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e3]:
+    - navigation "Navigation principale" [ref=e4]:
+      - generic [ref=e5]:
+        - link "Accueil Oriane Montabonnet" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - img [ref=e8]
+          - generic [ref=e11]: Oriane Montabonnet
+        - list [ref=e12]:
+          - listitem [ref=e13]:
+            - button "Accueil" [ref=e14] [cursor=pointer]
+          - listitem [ref=e15]:
+            - link "À propos" [ref=e16] [cursor=pointer]:
+              - /url: /a-propos
+          - listitem [ref=e17]:
+            - link "Domaines d'Expertise" [ref=e18] [cursor=pointer]:
+              - /url: /services
+          - listitem [ref=e19]:
+            - button "Tarifs" [ref=e20] [cursor=pointer]
+          - listitem [ref=e21]:
+            - link "Blog" [ref=e22] [cursor=pointer]:
+              - /url: /blog
+          - listitem [ref=e23]:
+            - link "Contact" [ref=e24] [cursor=pointer]:
+              - /url: /contact
+          - listitem [ref=e25]:
+            - link "Prendre RDV" [ref=e26] [cursor=pointer]:
+              - /url: /rendez-vous
+          - listitem [ref=e27]:
+            - link "Mes RDV" [ref=e28] [cursor=pointer]:
+              - /url: /mes-rdvs
+  - main [ref=e29]:
+    - generic [ref=e30]:
+      - generic [ref=e31]:
+        - generic [ref=e32]:
+          - heading "Mes rendez-vous" [level=1] [ref=e33]
+          - paragraph [ref=e34]: 5 rendez-vous · 1 en attente
+        - generic [ref=e35]:
+          - button "Créer un rendez-vous manuellement" [ref=e37] [cursor=pointer]:
+            - img [ref=e38]
+            - text: Nouveau rendez-vous
+          - button "Se déconnecter" [ref=e40] [cursor=pointer]:
+            - img [ref=e41]
+            - text: Déconnexion
+      - group "Filtrer par statut" [ref=e43]:
+        - button "Tous 5" [pressed] [ref=e44] [cursor=pointer]:
+          - text: Tous
+          - generic [ref=e45]: "5"
+        - button "En attente 1" [ref=e46] [cursor=pointer]:
+          - text: En attente
+          - generic [ref=e47]: "1"
+        - button "Paiement en attente 2" [ref=e48] [cursor=pointer]:
+          - text: Paiement en attente
+          - generic [ref=e49]: "2"
+        - button "Confirmés 1" [ref=e50] [cursor=pointer]:
+          - text: Confirmés
+          - generic [ref=e51]: "1"
+        - button "Refusés 1" [ref=e52] [cursor=pointer]:
+          - text: Refusés
+          - generic [ref=e53]: "1"
+      - generic [ref=e54]:
+        - article [ref=e57]:
+          - generic [ref=e58]:
+            - generic [ref=e59]:
+              - heading "Sophie Bernard" [level=3] [ref=e60]
+              - paragraph [ref=e61]:
+                - link "sophie.bernard@example.com" [ref=e62] [cursor=pointer]:
+                  - /url: mailto:sophie.bernard@example.com
+                - text: ·
+                - link "0687654321" [ref=e63] [cursor=pointer]:
+                  - /url: tel:0687654321
+              - paragraph [ref=e64]: "69002"
+            - generic [ref=e65]: Paiement en attente
+          - generic [ref=e66]:
+            - generic [ref=e67]:
+              - generic [ref=e68]: Type
+              - text: Thérapie individuelle
+            - generic [ref=e69]:
+              - generic [ref=e70]: Mode
+              - text: Téléconsultation
+            - generic [ref=e71]:
+              - generic [ref=e72]: Durée
+              - generic [ref=e73]: 60 min
+            - generic [ref=e74]:
+              - generic [ref=e75]: Date prévue
+              - text: 27 mai 2026 à 11:00
+            - generic [ref=e76]:
+              - generic [ref=e77]: Tarif
+              - text: 50€
+            - generic [ref=e78]:
+              - generic [ref=e79]: Lien Stripe
+              - link "http://localhost:4321/rdv/merci?mock=1&appointment_id=26319544-5f31-4bb5-bc4b-af7a71df7e4b" [ref=e80] [cursor=pointer]:
+                - /url: http://localhost:4321/rdv/merci?mock=1&appointment_id=26319544-5f31-4bb5-bc4b-af7a71df7e4b
+          - group [ref=e81]:
+            - generic "Motif de consultation" [ref=e82] [cursor=pointer]
+          - generic [ref=e83]:
+            - link "Voir lien paiement" [ref=e84] [cursor=pointer]:
+              - /url: http://localhost:4321/rdv/merci?mock=1&appointment_id=26319544-5f31-4bb5-bc4b-af7a71df7e4b
+            - button "Refuser" [ref=e85] [cursor=pointer]
+          - generic [ref=e86]:
+            - generic [ref=e87]: Notes thérapeute (internes)
+            - textbox "Notes thérapeute (internes)" [ref=e88]:
+              - /placeholder: Notes internes…
+            - button "Sauvegarder" [ref=e90] [cursor=pointer]
+        - article [ref=e93]:
+          - generic [ref=e94]:
+            - generic [ref=e95]:
+              - heading "Jean Dupont Test" [level=3] [ref=e96]
+              - paragraph [ref=e97]:
+                - link "patient.test@example.com" [ref=e98] [cursor=pointer]:
+                  - /url: mailto:patient.test@example.com
+                - text: ·
+                - link "0612345678" [ref=e99] [cursor=pointer]:
+                  - /url: tel:0612345678
+              - paragraph [ref=e100]: "75001"
+            - generic [ref=e101]: Paiement en attente
+          - generic [ref=e102]:
+            - generic [ref=e103]:
+              - generic [ref=e104]: Type
+              - text: Thérapie individuelle
+            - generic [ref=e105]:
+              - generic [ref=e106]: Mode
+              - text: Téléconsultation
+            - generic [ref=e107]:
+              - generic [ref=e108]: Durée
+              - generic [ref=e109]: 60 min
+            - generic [ref=e110]:
+              - generic [ref=e111]: Date prévue
+              - text: 27 mai 2026 à 10:00
+            - generic [ref=e112]:
+              - generic [ref=e113]: Tarif
+              - text: 35€
+            - generic [ref=e114]:
+              - generic [ref=e115]: Lien Stripe
+              - link "http://localhost:4321/rdv/merci?mock=1&appointment_id=dc8ce749-51b3-40cd-a1de-f5e8b09a39c0" [ref=e116] [cursor=pointer]:
+                - /url: http://localhost:4321/rdv/merci?mock=1&appointment_id=dc8ce749-51b3-40cd-a1de-f5e8b09a39c0
+          - group [ref=e117]:
+            - generic "Motif de consultation" [ref=e118] [cursor=pointer]
+          - generic [ref=e119]:
+            - link "Voir lien paiement" [ref=e120] [cursor=pointer]:
+              - /url: http://localhost:4321/rdv/merci?mock=1&appointment_id=dc8ce749-51b3-40cd-a1de-f5e8b09a39c0
+            - button "Refuser" [ref=e121] [cursor=pointer]
+          - generic [ref=e122]:
+            - generic [ref=e123]: Notes thérapeute (internes)
+            - textbox "Notes thérapeute (internes)" [ref=e124]:
+              - /placeholder: Notes internes…
+            - button "Sauvegarder" [ref=e126] [cursor=pointer]
+        - article [ref=e129]:
+          - generic [ref=e130]:
+            - generic [ref=e131]:
+              - heading "Jean Dupont" [level=3] [ref=e132]
+              - paragraph [ref=e133]:
+                - link "jean.dupont@test.fr" [ref=e134] [cursor=pointer]:
+                  - /url: mailto:jean.dupont@test.fr
+                - text: ·
+                - link "0612345678" [ref=e135] [cursor=pointer]:
+                  - /url: tel:0612345678
+              - paragraph [ref=e136]: "75001"
+            - generic [ref=e137]: Refusé
+          - generic [ref=e138]:
+            - generic [ref=e139]:
+              - generic [ref=e140]: Type
+              - text: Thérapie individuelle
+            - generic [ref=e141]:
+              - generic [ref=e142]: Mode
+              - text: Téléconsultation
+            - generic [ref=e143]:
+              - generic [ref=e144]: Durée
+              - generic [ref=e145]: 60 min
+            - generic [ref=e146]:
+              - generic [ref=e147]: Date prévue
+              - text: 20 mai 2026 à 10:00
+            - generic [ref=e148]:
+              - generic [ref=e149]: Tarif
+              - text: 50€
+          - group [ref=e150]:
+            - generic "Motif de consultation" [ref=e151] [cursor=pointer]
+          - generic [ref=e152]:
+            - generic [ref=e153]: Notes thérapeute (internes)
+            - textbox "Notes thérapeute (internes)" [ref=e154]:
+              - /placeholder: Notes internes…
+              - text: Je ne suis pas disponible sur ce créneau. N'hésitez pas à reformuler une demande.
+            - button "Sauvegarder" [ref=e156] [cursor=pointer]
+        - article [ref=e159]:
+          - generic [ref=e160]:
+            - generic [ref=e161]:
+              - heading "Marie Martin" [level=3] [ref=e162]
+              - paragraph [ref=e163]:
+                - link "marie.martin@example.com" [ref=e164] [cursor=pointer]:
+                  - /url: mailto:marie.martin@example.com
+                - text: ·
+                - link "0798765432" [ref=e165] [cursor=pointer]:
+                  - /url: tel:0798765432
+              - paragraph [ref=e166]: "69001"
+            - generic [ref=e167]: Confirmé
+          - generic [ref=e168]:
+            - generic [ref=e169]:
+              - generic [ref=e170]: Type
+              - text: Thérapie individuelle
+            - generic [ref=e171]:
+              - generic [ref=e172]: Mode
+              - text: Présentiel (cabinet)
+            - generic [ref=e173]:
+              - generic [ref=e174]: Durée
+              - generic [ref=e175]: 60 min
+            - generic [ref=e176]:
+              - generic [ref=e177]: Date prévue
+              - text: 20 mai 2026 à 10:00
+            - generic [ref=e178]:
+              - generic [ref=e179]: Tarif
+              - text: 50€
+          - group [ref=e180]:
+            - generic "Motif de consultation" [ref=e181] [cursor=pointer]
+          - button "Envoyer rappel avis" [ref=e183] [cursor=pointer]
+          - generic [ref=e184]:
+            - generic [ref=e185]: Notes thérapeute (internes)
+            - textbox "Notes thérapeute (internes)" [ref=e186]:
+              - /placeholder: Notes internes…
+            - button "Sauvegarder" [ref=e188] [cursor=pointer]
+        - article [ref=e191]:
+          - generic [ref=e192]:
+            - generic [ref=e193]:
+              - heading "Jean Dupont" [level=3] [ref=e194]
+              - paragraph [ref=e195]:
+                - link "jean.dupont@example.com" [ref=e196] [cursor=pointer]:
+                  - /url: mailto:jean.dupont@example.com
+                - text: ·
+                - link "0612345678" [ref=e197] [cursor=pointer]:
+                  - /url: tel:0612345678
+              - paragraph [ref=e198]: "75001"
+            - generic [ref=e199]: En attente
+          - generic [ref=e200]:
+            - generic [ref=e201]:
+              - generic [ref=e202]: Type
+              - text: Thérapie individuelle
+            - generic [ref=e203]:
+              - generic [ref=e204]: Mode
+              - text: Téléconsultation
+            - generic [ref=e205]:
+              - generic [ref=e206]: Durée
+              - generic [ref=e207]: 60 min
+            - generic [ref=e208]:
+              - generic [ref=e209]: Date prévue
+              - text: 20 mai 2026 à 09:00
+            - generic [ref=e210]:
+              - generic [ref=e211]: Tarif
+              - text: 50€
+          - group [ref=e212]:
+            - generic "Motif de consultation" [ref=e213] [cursor=pointer]
+          - generic [ref=e214]:
+            - button "Confirmer" [ref=e215] [cursor=pointer]
+            - button "Refuser" [ref=e216] [cursor=pointer]
+            - button "Reporter" [ref=e217] [cursor=pointer]
+          - generic [ref=e218]:
+            - generic [ref=e219]: Notes thérapeute (internes)
+            - textbox "Notes thérapeute (internes)" [ref=e220]:
+              - /placeholder: Notes internes…
+              - text: Je vous propose un nouveau créneau la semaine suivante.
+            - button "Sauvegarder" [ref=e222] [cursor=pointer]

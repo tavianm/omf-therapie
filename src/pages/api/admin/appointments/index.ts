@@ -123,7 +123,9 @@ export const POST: APIRoute = async ({ request }) => {
     .insert({
       patient_name: (patient_name as string).trim(),
       patient_email: (patient_email as string).toLowerCase(),
-      patient_phone: patient_phone ? (patient_phone as string).replace(/\s/g, '') : null,
+      patient_phone: patient_phone ? (patient_phone as string).replace(/\s/g, '') : '',
+      patient_postal_code: '',
+      patient_city: '',
       appointment_type,
       appointment_mode,
       duration: Number(duration),
@@ -131,6 +133,7 @@ export const POST: APIRoute = async ({ request }) => {
       patient_reason: patient_reason ?? '',
       is_first_session: isFirstSession,
       status: initialStatus,
+      base_price: pricing.basePrice * 100,
       discount: pricing.discount * 100,
       final_price: pricing.finalPrice * 100,
       video_link: isVideo ? (video_link ?? null) : null,

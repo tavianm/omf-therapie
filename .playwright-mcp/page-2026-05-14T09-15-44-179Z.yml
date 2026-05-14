@@ -1,0 +1,216 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - link "MailpitMailpit" [ref=e5] [cursor=pointer]:
+      - /url: /
+      - img "Mailpit" [ref=e6]
+      - text: Mailpit
+    - generic [ref=e9]:
+      - textbox "Search" [ref=e11]:
+        - /placeholder: Search mailbox
+      - button "" [ref=e12] [cursor=pointer]:
+        - generic [ref=e13]: 
+    - generic [ref=e14]:
+      - text: 
+      - combobox "The number of messages displayed per page" [ref=e15]:
+        - option "25"
+        - option "50" [selected]
+        - option "100"
+        - option "200"
+      - generic [ref=e16]: 1-17 of 17
+      - button "" [disabled]:
+        - generic: 
+      - button "" [disabled]:
+        - generic: 
+  - text:      
+  - generic [ref=e17]:
+    - generic [ref=e18]:
+      - generic [ref=e20]:
+        - button " Inbox 8" [ref=e21] [cursor=pointer]:
+          - generic [ref=e22]: 
+          - text: Inbox
+          - generic "Unread messages" [ref=e23]: "8"
+        - button " Mark all read" [ref=e24] [cursor=pointer]:
+          - generic [ref=e25]: 
+          - text: Mark all read
+        - button " Delete all" [ref=e26] [cursor=pointer]:
+          - generic [ref=e27]: 
+          - text: Delete all
+      - generic [ref=e28]:
+        - button " About" [ref=e29] [cursor=pointer]:
+          - generic [ref=e30]: 
+          - text: About
+        - button "" [ref=e31] [cursor=pointer]:
+          - generic [ref=e32]: 
+        - button "" [ref=e33] [cursor=pointer]:
+          - generic [ref=e34]: 
+    - generic [ref=e37]:
+      - 'link "OMF Thérapie To: marie.dupont@example.com Votre rendez-vous est confirmé — 20 mai 2026 Votre rendez-vous est confirmé — Mercredi 20 mai 2026 à 09:00 OMF Thérapie Oriane Montabonnet · Psychopraticienne Votre rendez-vous est confirmé 🎉 Bonjour Marie Dupont, Excellente nouvelle !... 19 kB a few seconds ago" [ref=e38] [cursor=pointer]':
+        - /url: /view/XYDC8osJwYN8pWQ2ANN4cv
+        - generic [ref=e39]:
+          - generic [ref=e41]: OMF Thérapie
+          - generic [ref=e43]: "To: marie.dupont@example.com"
+        - generic [ref=e44]:
+          - generic [ref=e45]: Votre rendez-vous est confirmé — 20 mai 2026
+          - generic [ref=e46]: Votre rendez-vous est confirmé — Mercredi 20 mai 2026 à 09:00 OMF Thérapie Oriane Montabonnet · Psychopraticienne Votre rendez-vous est confirmé 🎉 Bonjour Marie Dupont, Excellente nouvelle !...
+        - generic [ref=e47]: 19 kB
+        - generic [ref=e48]: a few seconds ago
+      - 'link "OMF Thérapie To: admin@localhost.dev Nouvelle demande de rendez-vous — Marie Dupont Nouvelle demande de RDV — Marie Dupont OMF Thérapie Oriane Montabonnet · Psychopraticienne Nouvelle demande Demande de rendez-vous reçue Une nouvelle demande de rendez-vous vient d''être soumise ... 20.4 kB a few seconds ago" [ref=e49] [cursor=pointer]':
+        - /url: /view/aLjh96a9NjLZpo4YRigkSe
+        - generic [ref=e50]:
+          - generic [ref=e52]: OMF Thérapie
+          - generic [ref=e54]: "To: admin@localhost.dev"
+        - generic [ref=e55]:
+          - generic [ref=e56]: Nouvelle demande de rendez-vous — Marie Dupont
+          - generic [ref=e57]: Nouvelle demande de RDV — Marie Dupont OMF Thérapie Oriane Montabonnet · Psychopraticienne Nouvelle demande Demande de rendez-vous reçue Une nouvelle demande de rendez-vous vient d'être soumise ...
+        - generic [ref=e58]: 20.4 kB
+        - generic [ref=e59]: a few seconds ago
+      - 'link "OMF Thérapie To: marie.dupont@example.com Votre demande de rendez-vous a bien été reçue Votre demande de rendez-vous a bien été reçue — OMF Thérapie OMF Thérapie Oriane Montabonnet · Psychopraticienne Votre demande a été reçue ✓ Bonjour Marie Dupont, Nous avons bien reçu vo... 15.6 kB a few seconds ago" [ref=e60] [cursor=pointer]':
+        - /url: /view/HAhVBmFvjxCnWsaWsm2cmz
+        - generic [ref=e61]:
+          - generic [ref=e63]: OMF Thérapie
+          - generic [ref=e65]: "To: marie.dupont@example.com"
+        - generic [ref=e66]:
+          - generic [ref=e67]: Votre demande de rendez-vous a bien été reçue
+          - generic [ref=e68]: Votre demande de rendez-vous a bien été reçue — OMF Thérapie OMF Thérapie Oriane Montabonnet · Psychopraticienne Votre demande a été reçue ✓ Bonjour Marie Dupont, Nous avons bien reçu vo...
+        - generic [ref=e69]: 15.6 kB
+        - generic [ref=e70]: a few seconds ago
+      - 'link "OMF Thérapie To: jean.dupont@example.com Prépaiement de votre séance — 3 juin 2026 Finalisez votre réservation — prépaiement de 50€ OMF Thérapie Oriane Montabonnet · Psychopraticienne Finalisez votre réservation 💳 Bonjour Jean Dupont, Votre séance de téléconsultation ... 19 kB 2 minutes ago" [ref=e71] [cursor=pointer]':
+        - /url: /view/HfqzRmsHa5KeGJMMo756Rk
+        - generic [ref=e72]:
+          - generic [ref=e74]: OMF Thérapie
+          - generic [ref=e76]: "To: jean.dupont@example.com"
+        - generic [ref=e77]:
+          - generic [ref=e78]: Prépaiement de votre séance — 3 juin 2026
+          - generic [ref=e79]: Finalisez votre réservation — prépaiement de 50€ OMF Thérapie Oriane Montabonnet · Psychopraticienne Finalisez votre réservation 💳 Bonjour Jean Dupont, Votre séance de téléconsultation ...
+        - generic [ref=e80]: 19 kB
+        - generic [ref=e81]: 2 minutes ago
+      - 'link "OMF Thérapie To: jean.dupont@example.com Proposition de nouveau créneau Proposition de nouveau créneau — OMF Thérapie OMF Thérapie Oriane Montabonnet · Psychopraticienne Proposition de nouveau créneau 📅 Bonjour Jean Dupont, Nous revenons vers vous concernant vot... 18.8 kB 4 minutes ago" [ref=e82] [cursor=pointer]':
+        - /url: /view/YV5D4FajBjzsNdDJpiBaRu
+        - generic [ref=e83]:
+          - generic [ref=e85]: OMF Thérapie
+          - generic [ref=e87]: "To: jean.dupont@example.com"
+        - generic [ref=e88]:
+          - generic [ref=e89]: Proposition de nouveau créneau
+          - generic [ref=e90]: Proposition de nouveau créneau — OMF Thérapie OMF Thérapie Oriane Montabonnet · Psychopraticienne Proposition de nouveau créneau 📅 Bonjour Jean Dupont, Nous revenons vers vous concernant vot...
+        - generic [ref=e91]: 18.8 kB
+        - generic [ref=e92]: 4 minutes ago
+      - 'link "OMF Thérapie To: patient.test@example.com Prépaiement de votre séance — 27 mai 2026 Finalisez votre réservation — prépaiement de 35€ OMF Thérapie Oriane Montabonnet · Psychopraticienne Finalisez votre réservation 💳 Bonjour Jean Dupont Test, Votre séance de téléconsulta... 19 kB 6 minutes ago" [ref=e93] [cursor=pointer]':
+        - /url: /view/TDU3tNiJPPdj3c56p4kPtK
+        - generic [ref=e94]:
+          - generic [ref=e96]: OMF Thérapie
+          - generic [ref=e98]: "To: patient.test@example.com"
+        - generic [ref=e99]:
+          - generic [ref=e100]: Prépaiement de votre séance — 27 mai 2026
+          - generic [ref=e101]: Finalisez votre réservation — prépaiement de 35€ OMF Thérapie Oriane Montabonnet · Psychopraticienne Finalisez votre réservation 💳 Bonjour Jean Dupont Test, Votre séance de téléconsulta...
+        - generic [ref=e102]: 19 kB
+        - generic [ref=e103]: 6 minutes ago
+      - 'link "OMF Thérapie To: admin@localhost.dev Nouvelle demande de rendez-vous — Jean Dupont Test Nouvelle demande de RDV — Jean Dupont Test OMF Thérapie Oriane Montabonnet · Psychopraticienne Nouvelle demande Demande de rendez-vous reçue Une nouvelle demande de rendez-vous vient d''être soum... 20.5 kB 8 minutes ago" [ref=e104] [cursor=pointer]':
+        - /url: /view/8MF3J5CxWrwikcE4qEzBL6
+        - generic [ref=e105]:
+          - generic [ref=e107]: OMF Thérapie
+          - generic [ref=e109]: "To: admin@localhost.dev"
+        - generic [ref=e110]:
+          - generic [ref=e111]: Nouvelle demande de rendez-vous — Jean Dupont Test
+          - generic [ref=e112]: Nouvelle demande de RDV — Jean Dupont Test OMF Thérapie Oriane Montabonnet · Psychopraticienne Nouvelle demande Demande de rendez-vous reçue Une nouvelle demande de rendez-vous vient d'être soum...
+        - generic [ref=e113]: 20.5 kB
+        - generic [ref=e114]: 8 minutes ago
+      - 'link "OMF Thérapie To: patient.test@example.com Votre demande de rendez-vous a bien été reçue Votre demande de rendez-vous a bien été reçue — OMF Thérapie OMF Thérapie Oriane Montabonnet · Psychopraticienne Votre demande a été reçue ✓ Bonjour Jean Dupont Test, Nous avons bien re... 17 kB 8 minutes ago" [ref=e115] [cursor=pointer]':
+        - /url: /view/33q7aZwcUHH7AhTZPKDV3m
+        - generic [ref=e116]:
+          - generic [ref=e118]: OMF Thérapie
+          - generic [ref=e120]: "To: patient.test@example.com"
+        - generic [ref=e121]:
+          - generic [ref=e122]: Votre demande de rendez-vous a bien été reçue
+          - generic [ref=e123]: Votre demande de rendez-vous a bien été reçue — OMF Thérapie OMF Thérapie Oriane Montabonnet · Psychopraticienne Votre demande a été reçue ✓ Bonjour Jean Dupont Test, Nous avons bien re...
+        - generic [ref=e124]: 17 kB
+        - generic [ref=e125]: 8 minutes ago
+      - 'link "OMF Thérapie To: marie.martin@example.com Votre avis nous tient à cœur — OMF Thérapie Votre avis compte pour nous — OMF Thérapie OMF Thérapie Oriane Montabonnet · Psychopraticienne Votre avis nous tient à cœur 🌿 Bonjour Marie Martin, J''espère sincèrement que notre travail e... 17.8 kB 11 hours ago" [ref=e126] [cursor=pointer]':
+        - /url: /view/ZML5E8MgwT4rPD3Y4XiMsZ
+        - generic [ref=e127]:
+          - generic [ref=e129]: OMF Thérapie
+          - generic [ref=e131]: "To: marie.martin@example.com"
+        - generic [ref=e132]:
+          - generic [ref=e133]: Votre avis nous tient à cœur — OMF Thérapie
+          - generic [ref=e134]: Votre avis compte pour nous — OMF Thérapie OMF Thérapie Oriane Montabonnet · Psychopraticienne Votre avis nous tient à cœur 🌿 Bonjour Marie Martin, J'espère sincèrement que notre travail e...
+        - generic [ref=e135]: 17.8 kB
+        - generic [ref=e136]: 11 hours ago
+      - 'link "OMF Thérapie To: sophie.bernard@example.com Prépaiement de votre séance — 27 mai 2026 Finalisez votre réservation — prépaiement de 50€ OMF Thérapie Oriane Montabonnet · Psychopraticienne Finalisez votre réservation 💳 Bonjour Sophie Bernard, Votre séance de téléconsultati... 19 kB 12 hours ago" [ref=e137] [cursor=pointer]':
+        - /url: /view/ECVByNrWcyd3VH24qrbb3j
+        - generic [ref=e138]:
+          - generic [ref=e140]: OMF Thérapie
+          - generic [ref=e142]: "To: sophie.bernard@example.com"
+        - generic [ref=e143]:
+          - generic [ref=e144]: Prépaiement de votre séance — 27 mai 2026
+          - generic [ref=e145]: Finalisez votre réservation — prépaiement de 50€ OMF Thérapie Oriane Montabonnet · Psychopraticienne Finalisez votre réservation 💳 Bonjour Sophie Bernard, Votre séance de téléconsultati...
+        - generic [ref=e146]: 19 kB
+        - generic [ref=e147]: 12 hours ago
+      - 'link "OMF Thérapie To: marie.martin@example.com Votre rendez-vous est confirmé — 20 mai 2026 Votre rendez-vous est confirmé — Mercredi 20 mai 2026 à 10:00 OMF Thérapie Oriane Montabonnet · Psychopraticienne Votre rendez-vous est confirmé 🎉 Bonjour Marie Martin, Excellente nouvelle !... 19 kB 12 hours ago" [ref=e148] [cursor=pointer]':
+        - /url: /view/eivPfVTaCnJFK5SxLw52Eh
+        - generic [ref=e149]:
+          - generic [ref=e151]: OMF Thérapie
+          - generic [ref=e153]: "To: marie.martin@example.com"
+        - generic [ref=e154]:
+          - generic [ref=e155]: Votre rendez-vous est confirmé — 20 mai 2026
+          - generic [ref=e156]: Votre rendez-vous est confirmé — Mercredi 20 mai 2026 à 10:00 OMF Thérapie Oriane Montabonnet · Psychopraticienne Votre rendez-vous est confirmé 🎉 Bonjour Marie Martin, Excellente nouvelle !...
+        - generic [ref=e157]: 19 kB
+        - generic [ref=e158]: 12 hours ago
+      - 'link "OMF Thérapie To: jean.dupont@example.com Proposition de nouveau créneau Proposition de nouveau créneau — OMF Thérapie OMF Thérapie Oriane Montabonnet · Psychopraticienne Proposition de nouveau créneau 📅 Bonjour Jean Dupont, Nous revenons vers vous concernant vot... 18.8 kB 12 hours ago" [ref=e159] [cursor=pointer]':
+        - /url: /view/cTuPTNvnNGQUCWBnhNRUdk
+        - generic [ref=e160]:
+          - generic [ref=e162]: OMF Thérapie
+          - generic [ref=e164]: "To: jean.dupont@example.com"
+        - generic [ref=e165]:
+          - generic [ref=e166]: Proposition de nouveau créneau
+          - generic [ref=e167]: Proposition de nouveau créneau — OMF Thérapie OMF Thérapie Oriane Montabonnet · Psychopraticienne Proposition de nouveau créneau 📅 Bonjour Jean Dupont, Nous revenons vers vous concernant vot...
+        - generic [ref=e168]: 18.8 kB
+        - generic [ref=e169]: 12 hours ago
+      - 'link "OMF Thérapie To: jean.dupont@test.fr Votre demande de rendez-vous Votre demande de rendez-vous — OMF Thérapie OMF Thérapie Oriane Montabonnet · Psychopraticienne Concernant votre demande de rendez-vous Bonjour Jean Dupont, Merci de l''intérêt que vous portez ... 16.1 kB 12 hours ago" [ref=e170] [cursor=pointer]':
+        - /url: /view/RgwcRqVbRR4yHmZE365Ayu
+        - generic [ref=e171]:
+          - generic [ref=e173]: OMF Thérapie
+          - generic [ref=e175]: "To: jean.dupont@test.fr"
+        - generic [ref=e176]:
+          - generic [ref=e177]: Votre demande de rendez-vous
+          - generic [ref=e178]: Votre demande de rendez-vous — OMF Thérapie OMF Thérapie Oriane Montabonnet · Psychopraticienne Concernant votre demande de rendez-vous Bonjour Jean Dupont, Merci de l'intérêt que vous portez ...
+        - generic [ref=e179]: 16.1 kB
+        - generic [ref=e180]: 12 hours ago
+      - 'link "OMF Thérapie To: admin@localhost.dev Nouvelle demande de rendez-vous — Jean Dupont Nouvelle demande de RDV — Jean Dupont OMF Thérapie Oriane Montabonnet · Psychopraticienne Nouvelle demande Demande de rendez-vous reçue Une nouvelle demande de rendez-vous vient d''être soumise s... 20.4 kB 12 hours ago" [ref=e181] [cursor=pointer]':
+        - /url: /view/RXGedD6hk9Jntg2qxGb6xn
+        - generic [ref=e182]:
+          - generic [ref=e184]: OMF Thérapie
+          - generic [ref=e186]: "To: admin@localhost.dev"
+        - generic [ref=e187]:
+          - generic [ref=e188]: Nouvelle demande de rendez-vous — Jean Dupont
+          - generic [ref=e189]: Nouvelle demande de RDV — Jean Dupont OMF Thérapie Oriane Montabonnet · Psychopraticienne Nouvelle demande Demande de rendez-vous reçue Une nouvelle demande de rendez-vous vient d'être soumise s...
+        - generic [ref=e190]: 20.4 kB
+        - generic [ref=e191]: 12 hours ago
+      - 'link "OMF Thérapie To: jean.dupont@example.com Votre demande de rendez-vous a bien été reçue Votre demande de rendez-vous a bien été reçue — OMF Thérapie OMF Thérapie Oriane Montabonnet · Psychopraticienne Votre demande a été reçue ✓ Bonjour Jean Dupont, Nous avons bien reçu vot... 16.3 kB 12 hours ago" [ref=e192] [cursor=pointer]':
+        - /url: /view/7fjr6R5DRwptPN3crmc8uZ
+        - generic [ref=e193]:
+          - generic [ref=e195]: OMF Thérapie
+          - generic [ref=e197]: "To: jean.dupont@example.com"
+        - generic [ref=e198]:
+          - generic [ref=e199]: Votre demande de rendez-vous a bien été reçue
+          - generic [ref=e200]: Votre demande de rendez-vous a bien été reçue — OMF Thérapie OMF Thérapie Oriane Montabonnet · Psychopraticienne Votre demande a été reçue ✓ Bonjour Jean Dupont, Nous avons bien reçu vot...
+        - generic [ref=e201]: 16.3 kB
+        - generic [ref=e202]: 12 hours ago
+      - 'link "OMF Thérapie To: jean.dupont@test.fr Votre demande de rendez-vous a bien été reçue Votre demande de rendez-vous a bien été reçue — OMF Thérapie OMF Thérapie Oriane Montabonnet · Psychopraticienne Votre demande a été reçue ✓ Bonjour Jean Dupont, Nous avons bien reçu vot... 16.3 kB 12 hours ago" [ref=e203] [cursor=pointer]':
+        - /url: /view/m5zLLGS6d2QPdddpBfvC2z
+        - generic [ref=e204]:
+          - generic [ref=e206]: OMF Thérapie
+          - generic [ref=e208]: "To: jean.dupont@test.fr"
+        - generic [ref=e209]:
+          - generic [ref=e210]: Votre demande de rendez-vous a bien été reçue
+          - generic [ref=e211]: Votre demande de rendez-vous a bien été reçue — OMF Thérapie OMF Thérapie Oriane Montabonnet · Psychopraticienne Votre demande a été reçue ✓ Bonjour Jean Dupont, Nous avons bien reçu vot...
+        - generic [ref=e212]: 16.3 kB
+        - generic [ref=e213]: 12 hours ago
+      - 'link "OMF Thérapie To: admin@localhost.dev Nouvelle demande de rendez-vous — Jean Dupont Nouvelle demande de RDV — Jean Dupont OMF Thérapie Oriane Montabonnet · Psychopraticienne Nouvelle demande Demande de rendez-vous reçue Une nouvelle demande de rendez-vous vient d''être soumise s... 20.4 kB 12 hours ago" [ref=e214] [cursor=pointer]':
+        - /url: /view/K69U3c4fZ2Ptm7fJAUw3bT
+        - generic [ref=e215]:
+          - generic [ref=e217]: OMF Thérapie
+          - generic [ref=e219]: "To: admin@localhost.dev"
+        - generic [ref=e220]:
+          - generic [ref=e221]: Nouvelle demande de rendez-vous — Jean Dupont
+          - generic [ref=e222]: Nouvelle demande de RDV — Jean Dupont OMF Thérapie Oriane Montabonnet · Psychopraticienne Nouvelle demande Demande de rendez-vous reçue Une nouvelle demande de rendez-vous vient d'être soumise s...
+        - generic [ref=e223]: 20.4 kB
+        - generic [ref=e224]: 12 hours ago

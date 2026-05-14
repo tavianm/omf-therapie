@@ -1,0 +1,41 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - paragraph [ref=e5]: OMF Thérapie
+        - heading "Prendre rendez-vous" [level=1] [ref=e6]
+        - paragraph [ref=e7]: Remplissez ce formulaire en quelques minutes. Oriane vous confirmera votre créneau par email sous 24–48 h.
+      - generic [ref=e247]:
+        - img [ref=e249]
+        - heading "Demande envoyée avec succès" [level=2] [ref=e251]
+        - paragraph [ref=e252]: Votre demande de rendez-vous a bien été transmise.
+        - paragraph [ref=e253]:
+          - text: Vous recevrez un
+          - strong [ref=e254]: email de confirmation
+          - text: sous 24–48 h après validation par Oriane.
+        - link "Retour à l'accueil" [ref=e255] [cursor=pointer]:
+          - /url: /
+          - img [ref=e256]
+          - text: Retour à l'accueil
+      - complementary [ref=e74]:
+        - generic [ref=e75]:
+          - heading "Présentiel" [level=2] [ref=e76]
+          - paragraph [ref=e77]: 📍 Cabinet — mercredi uniquement
+          - paragraph [ref=e78]: 8h–12h et 14h–19h
+        - generic [ref=e79]:
+          - heading "Téléconsultation" [level=2] [ref=e80]
+          - paragraph [ref=e81]: 💻 En ligne — lundi au vendredi
+          - paragraph [ref=e82]: Prépaiement Stripe requis
+  - generic [ref=e85]:
+    - button "Menu" [ref=e86]:
+      - img [ref=e88]
+      - generic: Menu
+    - button "Inspect" [ref=e92]:
+      - img [ref=e94]
+      - generic: Inspect
+    - button "Audit" [ref=e96]:
+      - img [ref=e98]
+      - generic: Audit
+    - button "Settings" [ref=e101]:
+      - img [ref=e103]
+      - generic: Settings
