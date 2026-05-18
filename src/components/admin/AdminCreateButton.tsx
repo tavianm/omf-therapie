@@ -149,6 +149,63 @@ function AdminCreateModal({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    previousFocusRef.current = document.activeElement as HTMLElement;
+    const FOCUSABLE =
+      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
+    const focusables = () =>
+      Array.from(containerRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []);
+    const timer = setTimeout(() => focusables()[0]?.focus(), 0);
+
+    function trap(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const els = focusables();
+      const first = els[0];
+      const last = els[els.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last?.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first?.focus();
+      }
+    }
+
+    document.addEventListener('keydown', trap);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('keydown', trap);
+      previousFocusRef.current?.focus();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function isDirty() {
+    return (
+      form.patient_name.trim() !== '' ||
+      form.patient_email.trim() !== '' ||
+      form.patient_phone.trim() !== '' ||
+      form.appointment_type !== INITIAL_STATE.appointment_type ||
+      form.appointment_mode !== INITIAL_STATE.appointment_mode ||
+      form.scheduled_at !== '' ||
+      form.patient_reason.trim() !== ''
+    );
+  }
+
+  function handleClose() {
+    if (isDirty() && !window.confirm('Abandonner ? Les données saisies seront perdues.')) return;
+    onCloseRef.current();
+  }
+
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm(prev => ({ ...prev, [key]: value }));
   }
@@ -209,14 +266,15 @@ function AdminCreateModal({ onClose }: { onClose: () => void }) {
       aria-modal="true"
       aria-labelledby="create-modal-title"
     >
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 my-4">
+      <div ref={containerRef} className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 my-4">
         {/* ── En-tête ── */}
         <div className="flex items-center justify-between mb-5">
           <h3 id="create-modal-title" className="font-serif text-lg font-semibold text-sage-800">
             Nouveau rendez-vous
           </h3>
           <button
-            onClick={onClose}
+            type="button"
+            onClick={handleClose}
             className="text-sage-400 hover:text-sage-600 transition-colors"
             aria-label="Fermer"
           >
@@ -427,7 +485,7 @@ function AdminCreateModal({ onClose }: { onClose: () => void }) {
           <div className="flex gap-3 pt-1">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               disabled={loading}
               className="flex-1 rounded-xl border-2 border-sage-200 bg-white px-4 py-2.5 text-sm font-semibold text-sage-700 font-sans transition-colors hover:border-sage-400 hover:bg-sage-50 disabled:opacity-50"
             >
