@@ -37,7 +37,10 @@ async function seedAdmin() {
 
   const response = await fetch(`${baseURL}/api/auth/sign-up/email/`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Origin': baseURL,
+    },
     body: JSON.stringify({ email, password, name }),
   });
 
