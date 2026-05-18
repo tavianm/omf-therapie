@@ -262,7 +262,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     // Envoyer email de demande de paiement si payment_pending (séance vidéo)
     if (newStatus === 'payment_pending' && updatedAppt.stripe_payment_link_url) {
-      sendEmail({
+      await sendEmail({
         to: updatedAppt.patient_email,
         threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
@@ -279,7 +279,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           finalPrice: updatedAppt.final_price,
           stripePaymentUrl: updatedAppt.stripe_payment_link_url,
         }),
-      }).catch(err => console.error('[appointments/patch] Erreur email PaymentRequest:', err));
+      });
     }
 
     // Envoyer confirmation seulement si status final = confirmed (pas payment_pending)
@@ -295,7 +295,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       });
       const appleCalendarLink = generateAppleCalendarInviteLink(baseUrl, updatedAppt.id, inviteToken);
 
-      sendEmail({
+      await sendEmail({
         to: updatedAppt.patient_email,
         threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
@@ -317,7 +317,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           outlookCalendarLink,
           cabinetAddress: updatedAppt.appointment_mode === 'in-person' ? CABINET_ADDRESS : undefined,
         }),
-      }).catch(err => console.error('[appointments/patch] Erreur email confirm:', err));
+      });
     }
 
     return jsonResponse({ appointment: updatedAppt, message: newStatus === 'confirmed' ? 'Rendez-vous confirmé.' : 'Lien de paiement à envoyer au patient.' });
@@ -341,7 +341,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     const updatedAppt = updated as Appointment;
 
-    sendEmail({
+    await sendEmail({
       to: updatedAppt.patient_email,
       threadKey: `appointment:${updatedAppt.id}:patient`,
       subject: buildAppointmentConversationSubject(
@@ -353,7 +353,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         scheduledAt: updatedAppt.scheduled_at,
         therapistNote: typeof therapist_notes === 'string' ? therapist_notes : undefined,
       }),
-    }).catch(err => console.error('[appointments/patch] Erreur email decline:', err));
+    });
 
     return jsonResponse({ appointment: updatedAppt, message: 'Rendez-vous refusé.' });
   }
@@ -430,7 +430,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     const updatedAppt = updated as Appointment;
 
-    sendEmail({
+    await sendEmail({
       to: updatedAppt.patient_email,
       threadKey: `appointment:${updatedAppt.id}:patient`,
       subject: buildAppointmentConversationSubject(
@@ -455,7 +455,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           return `${baseUrl.replace(/\/+$/, '')}/rdv/accepter-report/?id=${updatedAppt.id}&token=${encodeURIComponent(acceptToken)}`;
         })(),
       }),
-    }).catch(err => console.error('[appointments/patch] Erreur email reschedule:', err));
+    });
 
     return jsonResponse({ appointment: updatedAppt, message: 'Nouveau créneau proposé.' });
   }
@@ -580,7 +580,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     // Email : demande de paiement pour les séances vidéo
     if (newStatus === 'payment_pending' && updatedAppt.stripe_payment_link_url) {
-      sendEmail({
+      await sendEmail({
         to: updatedAppt.patient_email,
         threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
@@ -597,7 +597,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           finalPrice: updatedAppt.final_price,
           stripePaymentUrl: updatedAppt.stripe_payment_link_url,
         }),
-      }).catch(err => console.error('[appointments/patch] Erreur email accept_reschedule PaymentRequest:', err));
+      });
     }
 
     // Email : confirmation pour les séances en présentiel
@@ -613,7 +613,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       });
       const appleCalendarLink = generateAppleCalendarInviteLink(baseUrl, updatedAppt.id, inviteToken);
 
-      sendEmail({
+      await sendEmail({
         to: updatedAppt.patient_email,
         threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
@@ -635,7 +635,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           outlookCalendarLink,
           cabinetAddress: updatedAppt.appointment_mode === 'in-person' ? CABINET_ADDRESS : undefined,
         }),
-      }).catch(err => console.error('[appointments/patch] Erreur email accept_reschedule confirm:', err));
+      });
     }
 
     return jsonResponse({

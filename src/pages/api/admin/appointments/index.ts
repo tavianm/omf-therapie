@@ -196,7 +196,7 @@ export const POST: APIRoute = async ({ request }) => {
 
         await supabaseAdmin
           .from('appointments')
-          .update({ stripe_payment_url: paymentLink.url })
+          .update({ stripe_payment_link_id: paymentLink.id, stripe_payment_link_url: paymentLink.url })
           .eq('id', appointment.id);
 
         const emailResult = await sendEmail({

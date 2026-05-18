@@ -174,10 +174,11 @@ export const POST: APIRoute = async ({ request }) => {
     return errorResponse(500, 'Erreur lors de l\'enregistrement du rendez-vous');
   }
 
-  // 7. Emails en parallèle (non-bloquants)
+  // 7. Emails en parallèle — awaités pour éviter la fermeture anticipée
+  // des connexions réseau lors de l'arrêt de la fonction Netlify.
   const baseUrl = import.meta.env.BETTER_AUTH_URL ?? 'https://omf-therapie.fr';
 
-  Promise.all([
+  await Promise.allSettled([
     sendEmail({
       to: inserted.patient_email,
       threadKey: `appointment:${inserted.id}:patient`,
@@ -214,7 +215,7 @@ export const POST: APIRoute = async ({ request }) => {
         dashboardUrl: `${baseUrl}/mes-rdvs/`,
       }),
     }),
-  ]).catch(err => console.error('[appointments] Erreur envoi emails:', err));
+  ]);
 
   // 8. Réponse 201 — ne retourner que les champs utiles au patient
   // (jamais therapist_notes, stripe_*, video_link — champs admin-only)

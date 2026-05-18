@@ -282,26 +282,36 @@ async function sendEmailViaResend(
     let lastError: ResendApiError | null = null;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      const { data, error } = await resendClient.emails.send(payload);
+      try {
+        const { data, error } = await resendClient.emails.send(payload);
 
-      if (!error) {
-        if (normalizedThreadKey && data?.id) {
-          const messageId = toResendMessageId(data.id);
-          const threadSubject = threadContext.thread?.thread_subject ?? subject;
-          await persistThreadState(
-            normalizedThreadKey,
-            threadSubject,
-            messageId,
-            threadContext.thread,
-          );
+        if (!error) {
+          if (normalizedThreadKey && data?.id) {
+            const messageId = toResendMessageId(data.id);
+            const threadSubject = threadContext.thread?.thread_subject ?? subject;
+            await persistThreadState(
+              normalizedThreadKey,
+              threadSubject,
+              messageId,
+              threadContext.thread,
+            );
+          }
+          return { success: true, id: data?.id };
         }
-        return { success: true, id: data?.id };
-      }
 
-      lastError = error as ResendApiError;
-      if (!isRetryableResendError(lastError) || attempt === maxAttempts) {
-        console.error('[resend] Erreur API Resend :', lastError);
-        return { success: false, error: lastError.message ?? 'Erreur Resend inconnue' };
+        lastError = error as ResendApiError;
+        if (!isRetryableResendError(lastError) || attempt === maxAttempts) {
+          console.error('[resend] Erreur API Resend :', lastError);
+          return { success: false, error: lastError.message ?? 'Erreur Resend inconnue' };
+        }
+      } catch (networkErr: unknown) {
+        const message = networkErr instanceof Error ? networkErr.message : 'Erreur réseau inconnue';
+        lastError = { name: 'network_error', message };
+        if (attempt === maxAttempts) {
+          console.error('[resend] Exception réseau non récupérable :', message);
+          return { success: false, error: message };
+        }
+        console.warn(`[resend] Exception réseau (tentative ${attempt}/${maxAttempts}), retry...`);
       }
 
       console.warn(`[resend] Erreur transitoire (tentative ${attempt}/${maxAttempts}), retry...`);
