@@ -10,12 +10,6 @@ export const useNavigationItems = () => {
       { name: "Tarifs", href: "#pricing", path: "/" },
       { name: "Blog", href: "/blog/", path: "/blog/", page: true },
       { name: "Contact", href: "/contact/", path: "/contact/", page: true },
-      {
-        name: "Prendre RDV",
-        href: "/rendez-vous/",
-        path: "/rendez-vous/",
-        page: true,
-      },
     ],
     []
   );
