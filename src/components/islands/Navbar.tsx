@@ -6,9 +6,20 @@ import { Logo } from "../navigation/Logo";
 import { MobileNav } from "../navigation/MobileNav";
 import { useNavigationItems } from "../navigation/NavigationItems";
 
-const Navbar = memo(({ className = "", isHomePage: isHomePageProp }: NavbarProps) => {
+function normalizePathname(pathname: string): string {
+  if (!pathname) return "/";
+  if (pathname === "/") return "/";
+  return pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+}
+
+const Navbar = memo(({ className = "", isHomePage: isHomePageProp, isAuthenticated: isAuthenticatedProp }: NavbarProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("home");
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    if (isAuthenticatedProp !== undefined) return isAuthenticatedProp;
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("omf-admin-auth") === "1";
+  });
   const navigation = useNavigationItems();
   const hellocareBtn = navigation.find((item) => item.external);
   const { scrollToSection } = useScrollToSection({});
@@ -17,6 +28,41 @@ const Navbar = memo(({ className = "", isHomePage: isHomePageProp }: NavbarProps
     isHomePageProp !== undefined
       ? isHomePageProp
       : typeof window !== "undefined" && window.location.pathname === "/";
+
+  useEffect(() => {
+    if (isAuthenticatedProp === undefined) return;
+    setIsAuthenticated(isAuthenticatedProp);
+    if (typeof window !== "undefined") {
+      if (isAuthenticatedProp) {
+        window.localStorage.setItem("omf-admin-auth", "1");
+      } else {
+        window.localStorage.removeItem("omf-admin-auth");
+      }
+    }
+  }, [isAuthenticatedProp]);
+
+  // Détection côté client si le hint serveur n'est pas fourni.
+  // En cas de 429/réponse non-OK, on conserve l'état actuel pour éviter les clignotements UI.
+  useEffect(() => {
+    if (isAuthenticatedProp !== undefined) return;
+    fetch("/api/auth/get-session/", {
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache" },
+    })
+      .then((r) => (r.ok ? r.json() : undefined))
+      .then((data: { session?: unknown } | null | undefined) => {
+        if (data === undefined) return;
+        const nextAuth = !!data?.session;
+        setIsAuthenticated(nextAuth);
+        if (nextAuth) {
+          window.localStorage.setItem("omf-admin-auth", "1");
+        } else {
+          window.localStorage.removeItem("omf-admin-auth");
+        }
+      })
+      .catch(() => {});
+  }, [isAuthenticatedProp]);
 
   const handleScroll = useCallback(() => {
     if (isHomePage) {
@@ -63,9 +109,10 @@ const Navbar = memo(({ className = "", isHomePage: isHomePageProp }: NavbarProps
   const isActive = useCallback(
     (href: string, path: string) => {
       if (typeof window === "undefined") return false;
-      const pathname = window.location.pathname;
-      if (path === "/contact") return pathname === "/contact";
-      if (path === "/blog") return pathname.startsWith("/blog");
+      const pathname = normalizePathname(window.location.pathname);
+      const normalizedPath = normalizePathname(path);
+      if (normalizedPath === "/contact") return pathname === "/contact";
+      if (normalizedPath === "/blog") return pathname.startsWith("/blog");
       return pathname === "/" && activeSection === href.substring(1);
     },
     [activeSection]
@@ -84,6 +131,7 @@ const Navbar = memo(({ className = "", isHomePage: isHomePageProp }: NavbarProps
             navigation={navigation}
             isActive={isActive}
             navigateToSection={navigateToSection}
+            isAuthenticated={isAuthenticated}
           />
           <MobileNav
             navigation={navigation}
@@ -92,6 +140,7 @@ const Navbar = memo(({ className = "", isHomePage: isHomePageProp }: NavbarProps
             isActive={isActive}
             navigateToSection={navigateToSection}
             hellocareBtn={hellocareBtn}
+            isAuthenticated={isAuthenticated}
           />
         </div>
       </nav>

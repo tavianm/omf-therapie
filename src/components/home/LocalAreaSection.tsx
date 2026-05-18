@@ -1,4 +1,4 @@
-import { MapPin, Video, Car } from "lucide-react";
+import { Car, MapPin, Video } from "lucide-react";
 
 const MODES = [
   {
@@ -38,7 +38,7 @@ export default function LocalAreaSection() {
                 {description}
               </p>
               {note && (
-                <p className="mt-3 flex items-center justify-center gap-1.5 text-sage-500 text-xs">
+                <p className="mt-3 flex items-center justify-center gap-1.5 text-sage-600 text-xs">
                   <Car className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                   {note}
                 </p>

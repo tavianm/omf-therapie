@@ -1,6 +1,6 @@
 # Architecture
 
-**Last Updated:** January 14, 2025
+**Last Updated:** May 14, 2026
 
 ## Project Structure
 
@@ -10,272 +10,167 @@ omf-therapie/
 │   ├── assets/               # Images, icons, favicons
 │   ├── reports/              # Accessibility and performance reports
 │   ├── CNAME                 # Custom domain config
-│   ├── robots.txt            # Search engine directives
-│   └── sitemap.xml           # Generated sitemap
+│   └── robots.txt            # Search engine directives
 ├── src/
-│   ├── components/           # React components
+│   ├── components/           # Astro + React components
+│   │   ├── admin/           # Admin dashboard (AppointmentCard, AdminCreateButton)
 │   │   ├── blog/            # Blog-specific components
 │   │   ├── common/          # Shared components
 │   │   ├── contact/         # Contact page components
 │   │   ├── footer/          # Footer components
-│   │   ├── home/            # Home page components
-│   │   ├── navigation/      # Navigation components
+│   │   ├── home/            # Home page sections
+│   │   ├── islands/         # React islands (Navbar, BlogClientWrapper) — hydrated client-side
+│   │   ├── navigation/      # Navigation sub-components
 │   │   └── pricing/         # Pricing components
-│   ├── config/              # Configuration files
-│   ├── hooks/               # Custom React hooks
-│   ├── pages/               # Route components
+│   ├── config/              # Global config (site metadata, contacts)
+│   ├── content/             # Astro Content Collections
+│   │   └── blog/           # Markdown blog posts
+│   ├── emails/              # React Email templates (Resend/Nodemailer)
+│   ├── hooks/               # Custom React hooks (used in islands only)
+│   ├── layouts/             # Astro layouts (Layout.astro, ServiceLayout.astro)
+│   ├── lib/                 # Server-side libraries
+│   │   ├── auth.server.ts  # BetterAuth configuration
+│   │   ├── google-calendar.ts  # Google Calendar / Meet link generation
+│   │   ├── pricing.ts      # Pricing calculation (basePrice, discount, finalPrice)
+│   │   ├── stripe.ts       # Stripe payment links
+│   │   └── supabase.ts     # Supabase/PostgREST client
+│   ├── pages/               # Astro file-based routes
+│   │   ├── api/            # API endpoints (SSR)
+│   │   │   ├── admin/      # Admin-only endpoints (auth required)
+│   │   │   ├── appointments/ # Appointment CRUD + actions
+│   │   │   ├── auth/       # BetterAuth handler
+│   │   │   ├── availability.ts  # Available slots (Google Calendar mock)
+│   │   │   └── stripe-webhook.ts  # Stripe payment webhooks
+│   │   ├── rdv/            # Patient booking flow pages
+│   │   │   ├── accepter-report.astro  # Patient accepts rescheduled slot
+│   │   │   └── merci.astro # Post-booking confirmation
+│   │   ├── rendez-vous.astro  # Booking wizard (multi-step)
+│   │   ├── mes-rdvs.astro    # Admin dashboard (auth required)
+│   │   ├── login.astro       # Admin login
+│   │   └── ...               # Marketing pages (accueil, a-propos, services, blog, contact)
 │   ├── types/               # TypeScript type definitions
-│   ├── utils/               # Utility functions
-│   │   └── blogs/          # Blog content modules
-│   ├── App.tsx              # Root component
-│   ├── main.tsx             # Application entry point
-│   └── index.css            # Global styles
-├── scripts/                  # Build and utility scripts
-└── memory-bank/             # Project knowledge repository
+│   └── utils/               # Utility functions (blogApi.ts, schema.ts)
+├── scripts/                  # Utility scripts (seed-admin.ts)
+├── supabase/
+│   └── migrations/          # PostgreSQL schema (001_init.sql)
+├── docker-compose.yml        # Local dev infrastructure
+├── memory-bank/             # Project knowledge repository
+└── artifacts/               # Dev workflow artifacts (frames, specs, plans)
 ```
 
 ## Application Architecture
 
-### Single Page Application (SPA)
+### Astro 5 — Islands Architecture
 
-- Client-side routing with React Router
-- No server-side rendering (SSR)
-- Static site generation for deployment
-- Hash-free URLs with history API
+- **Static Site Generation (SSG)** by default — zero JS shipped unless needed
+- **React islands** hydrated client-side only where interactivity required (`client:load`, `client:idle`, `client:visible`)
+- **SSR API routes** (`output: 'static'` + Netlify adapter hybrid) for booking, auth, payments
+- No client-side routing — Astro file-based routing, each `.astro` = one URL
 
-### Component Hierarchy
+### Booking System Architecture
 
 ```
-App
-├── Router
-│   ├── Navbar (persistent)
-│   ├── Main Content (route-based)
-│   │   ├── Home (lazy loaded)
-│   │   ├── Contact (lazy loaded)
-│   │   ├── Blog (lazy loaded)
-│   │   ├── BlogPost (lazy loaded)
-│   │   └── Accessibilite (lazy loaded)
-│   ├── Footer (persistent)
-│   └── AutoScrollHandler
+Patient                     Admin (Thérapeute)
+   │                              │
+   ▼                              ▼
+/rendez-vous/             /mes-rdvs/  (BetterAuth)
+   │                        │
+   └── POST /api/appointments/       ← créé avec status=pending
+              │
+              ▼
+      PostgreSQL (omf_therapie)
+              │
+     ┌────────┴────────┐
+     ▼                 ▼
+  Mailpit (dev)     Resend (prod)
+  Admin notif       Patient ack
+              │
+              ▼ Admin action (confirm/decline/reschedule)
+     PATCH /api/appointments/[id]/
+              │
+    ┌─────────┼──────────┐
+    ▼         ▼          ▼
+ confirm   decline   reschedule
+    │                    │
+    │              Email patient
+    │              (bouton "Accepter")
+    │                    │
+    │              /rdv/accepter-report/[id]/
+    ▼                    ▼
+Email confirm      payment_pending (télé)
+(présentiel)       ou confirmed (présentiel)
+    │                    │
+    └────────────────────┘
+              │
+    payment_pending → Stripe link → stripe-webhook → confirmed
 ```
 
-### Routing Strategy
+### Authentication
 
-**Section-Based Navigation:**
+- **BetterAuth** — session-based, PostgreSQL backend
+- Monocompte : un seul compte thérapeute (hook `beforeUserCreated` bloque toute inscription)
+- Login : `/login/` → `/mes-rdvs/` (redirect protégée)
+- API routes admin : vérifient `session.user` via `auth.api.getSession()`
 
-- Multiple URL paths map to Home page with auto-scroll to sections
-- Configured via `pathToSectionMap` in App.tsx
-- Examples: `/Tarifs` → scrolls to #pricing, `/Services` → scrolls to #services
+### Database (PostgreSQL 16)
 
-**Dedicated Pages:**
+Schema défini dans `supabase/migrations/001_init.sql`. Table principale `appointments` :
+- Colonnes critiques NOT NULL : `patient_name`, `patient_email`, `patient_phone`, `patient_postal_code`, `patient_city`, `patient_reason`, `appointment_type`, `appointment_mode`, `duration`, `base_price`, `final_price`, `scheduled_at`
+- Statuts : `pending → confirmed | declined | rescheduled → payment_pending → confirmed | cancelled`
+- Créneaux bloqués : statuts `confirmed` et `payment_pending` uniquement (pas `pending`)
 
-- `/contact` - Contact form and information
-- `/blog` - Blog post listing with pagination
-- `/blog/:slug` - Individual blog post detail
-- `/accessibilite` - Accessibility statement
+### Pricing
 
-**404 Handling:**
+Logique dans `src/lib/pricing.ts` — retourne `{ basePrice, discount, finalPrice }` en euros :
+- Thérapie individuelle 60min : 50€ base
+- Remise nouveau client (`override_first_session`) : −15€
+- Tarif solidaire (`is_solidarity`) : −20€ (mutuellement exclusif avec remise nouveau client)
+- API stocke les prix ×100 (centimes) en base
 
-- All unmatched routes redirect to home
+### Google Calendar / Meet
 
-### Data Flow
+`src/lib/google-calendar.ts` :
+- **Local (`GOOGLE_CALENDAR_MOCK=true`)** : créneaux fictifs les mercredis, lien Meet fictif `https://meet.google.com/mock-xxx`
+- **Production** : Google Calendar API (service account) pour lire les créneaux et créer des événements avec lien Meet automatique
 
-**Blog System:**
+### Email System
 
-1. Blog posts stored as TypeScript modules in `src/utils/blogs/`
-2. Central index exports all blog metadata
-3. `useBlogPosts` hook provides listing and filtering
-4. `useBlogPost` hook fetches individual post by slug
-5. Static content - no CMS or API calls
+Templates React Email dans `src/emails/` :
+- `AppointmentAcknowledgement` — accusé réception patient
+- `AppointmentConfirmed` — confirmation (présentiel ou télé après paiement)
+- `AppointmentDeclined` — refus
+- `AppointmentRescheduled` — proposition nouveau créneau
+- `AdminNewAppointment` — notification admin
+- `PaymentRequest` — demande de prépaiement (télé)
+- `ReviewRequest` — demande d'avis post-séance
 
-**Contact Form:**
+**Local** : Nodemailer → Mailpit (SMTP `localhost:1025`)  
+**Production** : Resend API
 
-1. Form state managed by `useContactForm` hook
-2. EmailJS integration for sending emails
-3. Toast notifications for user feedback
-4. Form validation and error handling
+### Stripe Integration
 
-**Configuration:**
+- Paiement uniquement pour les téléconsultations (`appointment_mode = 'video'`)
+- Flow : admin confirme → création Payment Link Stripe → email patient → patient paie → webhook → `status = confirmed`
+- **Local mock** : si `STRIPE_SECRET_KEY` est un placeholder, lien fictif généré (pas d'erreur)
 
-- Global config in `src/config/global.config.ts`
-- Footer links in `src/config/footer.config.ts`
-- Centralized configuration approach
+## Data Flow
 
-## Component Patterns
+### Blog System
 
-### Presentation Components
+1. Posts Markdown dans `src/content/blog/` avec frontmatter YAML (validé Zod)
+2. Content Collections API (`getCollection('blog')`) — pas d'API externe
+3. `src/pages/blog/[slug].astro` — pré-rendu statique à la build
+4. `BlogClientWrapper` island — filtrage/recherche client-side
 
-- Purely visual components
-- Accept props for data and callbacks
-- No business logic or side effects
-- Examples: `PriceCard`, `BlogPostCard`, `ContactItem`
+### Contact Form
 
-### Container Components
+1. EmailJS (client-side) via `useContactForm` hook
+2. Toast notifications (react-hot-toast)
+3. Pas de backend pour le formulaire de contact
 
-- Handle data fetching and state
-- Contain business logic
-- Pass data to presentation components
-- Examples: `Blog`, `BlogPost`, `Contact`
+## Key ADRs
 
-### Layout Components
-
-- Define page structure
-- Persistent across routes
-- Examples: `Navbar`, `Footer`
-
-### Utility Components
-
-- Provide functionality without UI
-- Examples: `AutoScrollHandler`, `SEO`
-
-## Custom Hooks
-
-### Data Hooks
-
-- `useBlogPosts` - Blog listing with search/pagination
-- `useBlogPost` - Individual blog post retrieval
-
-### Feature Hooks
-
-- `useContactForm` - Contact form state and submission
-- `useScrollToSection` - Smooth scroll navigation
-- `useClipboard` - Copy to clipboard functionality
-
-### UI Hooks
-
-- `useMotionVariants` - Framer Motion animation variants
-
-## State Management
-
-### Local State
-
-- Component-level with `useState`
-- Simple, no external state library needed
-
-### Derived State
-
-- Computed values from props/state
-- Pagination calculations
-- Search filtering
-
-### URL State
-
-- Route parameters (blog slug)
-- Query parameters (future: search, filters)
-
-## Performance Optimizations
-
-### Code Splitting
-
-- Route-level lazy loading
-- React.lazy() for page components
-- Suspense boundaries with fallback UI
-
-### Asset Optimization
-
-- Responsive images with multiple sizes
-- WebP/AVIF format support
-- Lazy loading images
-
-### Bundle Optimization
-
-- Tree-shaking via Vite
-- CSS purging via Tailwind
-- Minification with Terser
-
-## Accessibility Architecture
-
-### Semantic HTML
-
-- Proper heading hierarchy (h1 → h6)
-- Landmark regions (nav, main, footer)
-- Semantic elements (article, section, aside)
-
-### ARIA Support
-
-- ARIA labels where needed
-- Role attributes for interactive elements
-- Live regions for dynamic content
-
-### Keyboard Navigation
-
-- Tab order management
-- Focus indicators
-- Skip links (main content)
-
-### Testing Strategy
-
-- Automated pa11y audits
-- Lighthouse accessibility scoring
-- Manual keyboard/screen reader testing
-
-## Build & Deployment Architecture
-
-### Build Process
-
-1. TypeScript compilation
-2. React component bundling
-3. CSS processing (Tailwind → PostCSS)
-4. Asset optimization
-5. Code splitting
-6. Minification
-
-### Deployment Pipeline
-
-- Git push to main branch
-- Netlify automatic build trigger
-- Build command: `npm run build`
-- Deploy from `dist/` directory
-- Custom domain DNS configuration
-
-### Environment Management
-
-- `.env` for sensitive configuration
-- EmailJS credentials
-- No backend/database needed
-
-## Monitoring & Auditing
-
-### Accessibility
-
-- pa11y automated testing
-- Lighthouse CI integration
-- HTML reports in `public/reports/`
-
-### Performance
-
-- Lighthouse performance audits
-- Core Web Vitals monitoring
-- Bundle size tracking
-
-## Security Considerations
-
-### Client-Side Security
-
-- No sensitive data stored client-side
-- EmailJS handles form submissions securely
-- HTTPS enforced via Netlify
-
-### Content Security
-
-- Static site with no server vulnerabilities
-- No user authentication/authorization needed
-- Public content only
-
-## Future Scalability
-
-### Current Limitations
-
-- Static blog posts (no CMS)
-- No user accounts or personalization
-- Limited to French language
-- No analytics dashboard
-
-### Potential Enhancements
-
-- Headless CMS integration (e.g., Strapi, Contentful)
-- Multi-language support (i18n)
-- Advanced analytics integration
-- Newsletter subscription system
-- Online appointment booking
-- Client portal for existing patients
+- **Astro 5 SSG** : migration depuis React SPA (2025) pour performances et SEO
+- **BetterAuth** : choisi pour session PostgreSQL native, pas de dépendance Supabase Auth
+- **PostgREST** : simule Supabase en local pour compatibilité SDK `@supabase/supabase-js`
+- **trailingSlash: 'always'** : tous les fetch() et redirects côté client DOIVENT inclure le slash final
