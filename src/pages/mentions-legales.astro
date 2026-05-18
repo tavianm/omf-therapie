@@ -2,6 +2,7 @@
 import Layout from '../layouts/Layout.astro';
 import Navbar from '../components/islands/Navbar';
 import Footer from '../components/layout/Footer.astro';
+import { COMPANY_NAME, CONTACT_INFO } from '../config/global.config';
 ---
 
 <Layout
@@ -47,21 +48,21 @@ import Footer from '../components/layout/Footer.astro';
       </h2>
       <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
       <address class="not-italic mb-8 space-y-1">
-        <p><strong>Oriane Montabonnet</strong>, psychopraticienne</p>
-        <p>1086 Av. Albert Einstein, 34000 Montpellier</p>
+        <p><strong>{COMPANY_NAME}</strong>, psychopraticienne</p>
+        <p>{CONTACT_INFO.address}</p>
         <p>
           Téléphone :
-          <a href="tel:+33650331853" class="text-mint-600 underline hover:text-mint-700">
-            06 50 33 18 53
+          <a href={`tel:${CONTACT_INFO.phoneE164}`} class="text-mint-600 underline hover:text-mint-700">
+            {CONTACT_INFO.phone}
           </a>
         </p>
         <p>
           E-mail :
           <a
-            href="mailto:contact@omf-therapie.fr"
+            href={`mailto:${CONTACT_INFO.email}`}
             class="text-mint-600 underline hover:text-mint-700"
           >
-            contact@omf-therapie.fr
+            {CONTACT_INFO.email}
           </a>
         </p>
         <p>SIRET : 90763504900022</p>
@@ -147,13 +148,13 @@ import Footer from '../components/layout/Footer.astro';
       </p>
       <p class="mb-8">
         La création de liens hypertextes vers ce site est soumise à l'accord
-        préalable et écrit d'Oriane Montabonnet. Pour toute demande, merci de
+        préalable et écrit d'{COMPANY_NAME}. Pour toute demande, merci de
         contacter :
         <a
-          href="mailto:contact@omf-therapie.fr"
+          href={`mailto:${CONTACT_INFO.email}`}
           class="text-mint-600 underline hover:text-mint-700"
         >
-          contact@omf-therapie.fr
+          {CONTACT_INFO.email}
         </a>.
       </p>
 
