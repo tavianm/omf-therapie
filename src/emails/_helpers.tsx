@@ -225,6 +225,23 @@ export const S = {
     cursor:          'pointer',
   } as CSSProperties,
 
+  btnCalendar: {
+    backgroundColor: 'transparent',
+    border:          `1px solid ${COLORS.border}`,
+    borderRadius:    '6px',
+    color:           COLORS.sage600,
+    fontFamily:      'Inter, Arial, sans-serif',
+    fontSize:        '14px',
+    fontWeight:      '500',
+    padding:         '10px 24px',
+    textDecoration:  'none',
+    display:         'block',
+    textAlign:       'center' as const,
+    cursor:          'pointer',
+    width:           '100%',
+    boxSizing:       'border-box' as const,
+  } as CSSProperties,
+
   btnWrapper: {
     textAlign: 'center' as const,
     margin:    '24px 0',

@@ -130,22 +130,22 @@ export default function AppointmentConfirmed({
         calendrier en un clic.
       </Text>
 
-      <Section style={{ textAlign: 'center' as const, margin: '16px 0 10px' }}>
-        <Button href={googleCalendarLink} style={S.btnSage}>
-          📅 Ajouter à Google Calendar
-        </Button>
-      </Section>
-
-      <Section style={{ textAlign: 'center' as const, margin: '8px 0 10px' }}>
-        <Button href={appleCalendarLink} style={S.btnOutline}>
-           Ajouter à Apple Calendar
-        </Button>
-      </Section>
-
-      <Section style={{ textAlign: 'center' as const, margin: '8px 0 24px' }}>
-        <Button href={outlookCalendarLink} style={S.btnOutline}>
-          🪟 Ajouter à Outlook
-        </Button>
+      <Section style={{ ...S.summaryBox, padding: '16px 20px', margin: '16px 0 24px' }}>
+        <Section style={{ marginBottom: '8px' }}>
+          <Button href={googleCalendarLink} style={S.btnCalendar}>
+            Google Calendar
+          </Button>
+        </Section>
+        <Section style={{ marginBottom: '8px' }}>
+          <Button href={appleCalendarLink} style={S.btnCalendar}>
+            Apple Calendar
+          </Button>
+        </Section>
+        <Section>
+          <Button href={outlookCalendarLink} style={S.btnCalendar}>
+            Outlook
+          </Button>
+        </Section>
       </Section>
 
       <SectionDivider />

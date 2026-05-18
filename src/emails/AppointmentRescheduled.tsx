@@ -15,7 +15,6 @@ import {
   formatDateFR,
   formatPrice,
 } from './_helpers';
-
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
@@ -29,6 +28,9 @@ interface Props {
   finalPrice: number; // centimes
   therapistNote?: string;
   acceptUrl: string;
+  googleCalendarLink?: string;
+  appleCalendarLink?: string;
+  outlookCalendarLink?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -44,6 +46,9 @@ export default function AppointmentRescheduled({
   finalPrice,
   therapistNote,
   acceptUrl,
+  googleCalendarLink,
+  appleCalendarLink,
+  outlookCalendarLink,
 }: Props) {
   return (
     <BaseLayout preview="Proposition de nouveau créneau — OMF Thérapie">
@@ -190,6 +195,40 @@ export default function AppointmentRescheduled({
           Choisir un autre créneau sur notre site
         </Link>
       </Text>
+
+      {/* Calendrier — affiché si les liens sont fournis */}
+      {(googleCalendarLink || appleCalendarLink || outlookCalendarLink) && (
+        <>
+          <SectionDivider />
+          <Text style={S.subtitle}>Réserver la date dans votre calendrier</Text>
+          <Text style={{ ...S.body, color: COLORS.sage600, fontSize: '14px' }}>
+            Bloquez ce créneau dès maintenant, même avant de confirmer.
+          </Text>
+          <Section style={{ ...S.summaryBox, padding: '16px 20px', margin: '16px 0 24px' }}>
+            {googleCalendarLink && (
+              <Section style={{ marginBottom: '8px' }}>
+                <Button href={googleCalendarLink} style={S.btnCalendar}>
+                  Google Calendar
+                </Button>
+              </Section>
+            )}
+            {appleCalendarLink && (
+              <Section style={{ marginBottom: googleCalendarLink ? '8px' : '0' }}>
+                <Button href={appleCalendarLink} style={S.btnCalendar}>
+                  Apple Calendar
+                </Button>
+              </Section>
+            )}
+            {outlookCalendarLink && (
+              <Section>
+                <Button href={outlookCalendarLink} style={S.btnCalendar}>
+                  Outlook
+                </Button>
+              </Section>
+            )}
+          </Section>
+        </>
+      )}
 
       <Text style={{ ...S.body, color: COLORS.sage600, fontStyle: 'italic', marginTop: '24px' }}>
         Cordialement,
