@@ -73,11 +73,8 @@ export interface SendEmailResult {
   error?: string;
 }
 
-export function buildAppointmentConversationSubject(subject: string, appointmentId: string): string {
-  const normalized = appointmentId.trim();
-  const shortId = normalized.split('-')[0]?.toUpperCase() ?? normalized.toUpperCase();
-  const prefix = `[RDV ${shortId}]`;
-  return subject.startsWith(prefix) ? subject : `${prefix} ${subject}`;
+export function buildAppointmentConversationSubject(subject: string, _appointmentId?: string): string {
+  return subject;
 }
 
 interface ResendApiError {
