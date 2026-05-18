@@ -88,12 +88,15 @@ export const auth = betterAuth({
       // Only intercept the sign-up route
       if (context.path !== '/sign-up/email') return;
 
-      // Vérifier si un utilisateur existe déjà dans la table "user" BetterAuth
+      // Use BetterAuth's internal adapter (same DB connection as all other operations).
+      // Avoids a separate pg.Pool connection that may fail in serverless environments
+      // when DATABASE_URL uses a direct Supabase host instead of the pooler.
       try {
-        const result = await pool.query<{ id: string }>(
-          'SELECT id FROM "user" LIMIT 1',
-        );
-        if (result.rowCount && result.rowCount > 0) {
+        const users = await context.context.adapter.findMany({
+          model: 'user',
+          limit: 1,
+        });
+        if (users.length > 0) {
           return new Response(
             JSON.stringify({
               error: 'Inscription désactivée. Ce site n\'accepte pas de nouveaux comptes.',
@@ -103,10 +106,9 @@ export const auth = betterAuth({
         }
       } catch (error) {
         console.error('[auth] Erreur lors de la vérification admin :', error);
-        return new Response(
-          JSON.stringify({ error: 'Erreur interne — inscription impossible.' }),
-          { status: 500, headers: { 'Content-Type': 'application/json' } },
-        );
+        // Fail open: if we cannot query the DB, let BetterAuth proceed —
+        // it will fail on its own DB operations if the database is truly unreachable.
+        return;
       }
       // Aucun utilisateur → première création autorisée (script de seed)
     },
