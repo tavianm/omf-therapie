@@ -1,0 +1,165 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/islands/Navbar';
+import Footer from '../components/layout/Footer.astro';
+---
+
+<Layout
+  title="Mentions légales — OMF Thérapie"
+  description="Mentions légales du site omf-therapie.fr conformément à la loi n°2004-575 du 21 juin 2004 pour la confiance dans l'économie numérique (LCEN)."
+  canonical="https://omf-therapie.fr/mentions-legales"
+  noindex={false}
+>
+  <Navbar client:load isHomePage={false} />
+
+  <main id="main-content" class="pt-20" tabindex="-1">
+    <section class="max-w-3xl mx-auto px-4 py-8 md:py-10">
+      <h1 class="text-3xl md:text-4xl font-serif font-semibold text-sage-800 mb-6">
+        Mentions légales
+      </h1>
+
+      <p class="text-sage-700 mb-8">
+        Conformément aux dispositions de la loi n°2004-575 du 21 juin 2004 pour
+        la confiance dans l'économie numérique (LCEN), les présentes mentions
+        légales précisent l'identité des différents intervenants dans le cadre de
+        la réalisation et du suivi du site <strong>omf-therapie.fr</strong>.
+      </p>
+
+      <!-- 1. Éditeur du site -->
+      <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+        Éditeur du site
+      </h2>
+      <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
+      <address class="not-italic mb-8 space-y-1">
+        <p><strong>Oriane Montabonnet</strong>, psychopraticienne</p>
+        <p>1086 Av. Albert Einstein, 34000 Montpellier</p>
+        <p>
+          Téléphone :
+          <a href="tel:+33650331853" class="text-mint-600 underline hover:text-mint-700">
+            06 50 33 18 53
+          </a>
+        </p>
+        <p>
+          E-mail :
+          <a
+            href="mailto:contact@omf-therapie.fr"
+            class="text-mint-600 underline hover:text-mint-700"
+          >
+            contact@omf-therapie.fr
+          </a>
+        </p>
+        <p>SIRET : [À COMPLÉTER]</p>
+        <p>Numéro ADELI : [À COMPLÉTER]</p>
+      </address>
+
+      <!-- 2. Directeur de publication -->
+      <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+        Directeur de publication
+      </h2>
+      <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
+      <p class="mb-8">
+        Oriane Montabonnet, en sa qualité d'éditrice et responsable du site.
+      </p>
+
+      <!-- 3. Hébergeur -->
+      <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+        Hébergeur
+      </h2>
+      <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
+      <address class="not-italic mb-8 space-y-1">
+        <p><strong>Netlify, Inc.</strong></p>
+        <p>2325 3rd Street, Suite 296, San Francisco, CA 94107, États-Unis</p>
+        <p>
+          Site web :
+          <a
+            href="https://www.netlify.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-mint-600 underline hover:text-mint-700"
+          >
+            https://www.netlify.com
+          </a>
+        </p>
+      </address>
+
+      <!-- 4. Propriété intellectuelle -->
+      <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+        Propriété intellectuelle
+      </h2>
+      <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
+      <p class="mb-4">
+        L'ensemble du contenu de ce site (textes, images, graphismes, logo,
+        icônes, sons, logiciels, etc.) constitue une œuvre protégée par les lois
+        françaises et internationales relatives à la propriété intellectuelle.
+      </p>
+      <p class="mb-8">
+        Toute reproduction, représentation, modification, publication, adaptation
+        de tout ou partie des éléments du site, quel que soit le moyen ou le
+        procédé utilisé, est interdite, sauf autorisation écrite préalable
+        d'Oriane Montabonnet. Toute exploitation non autorisée du site ou de l'un
+        quelconque des éléments qu'il contient est considérée comme constitutive
+        d'une contrefaçon et poursuivie.
+      </p>
+
+      <!-- 5. Responsabilité -->
+      <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+        Limitation de responsabilité
+      </h2>
+      <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
+      <p class="mb-4">
+        Les informations contenues sur ce site sont aussi précises que possible et
+        le site est périodiquement remis à jour. Toutefois, des inexactitudes ou
+        des omissions peuvent survenir. Oriane Montabonnet ne peut être tenue
+        responsable de l'utilisation faite de ces informations, ni des
+        conséquences qui pourraient en découler.
+      </p>
+      <p class="mb-8">
+        Les informations publiées sur ce site ne constituent pas un avis médical
+        ou psychiatrique et ne sauraient se substituer à une consultation
+        professionnelle de santé.
+      </p>
+
+      <!-- 6. Liens hypertextes -->
+      <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+        Liens hypertextes
+      </h2>
+      <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
+      <p class="mb-4">
+        Ce site peut contenir des liens hypertextes vers d'autres sites internet.
+        Ces liens sont fournis à titre informatif. Oriane Montabonnet n'exerce
+        aucun contrôle sur ces sites et décline toute responsabilité quant à leur
+        contenu.
+      </p>
+      <p class="mb-8">
+        La création de liens hypertextes vers ce site est soumise à l'accord
+        préalable et écrit d'Oriane Montabonnet. Pour toute demande, merci de
+        contacter :
+        <a
+          href="mailto:contact@omf-therapie.fr"
+          class="text-mint-600 underline hover:text-mint-700"
+        >
+          contact@omf-therapie.fr
+        </a>.
+      </p>
+
+      <!-- 7. Droit applicable -->
+      <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+        Droit applicable et juridiction compétente
+      </h2>
+      <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
+      <p class="mb-8">
+        Les présentes mentions légales sont régies par le droit français. En cas
+        de litige, et après échec de toute tentative de résolution amiable, les
+        tribunaux de Montpellier seront seuls compétents.
+      </p>
+
+      <hr class="my-8 border-sage-200" />
+
+      <p class="text-sage-600 text-sm">
+        <time datetime="2026-05-18">Mise à jour : 18 mai 2026</time>
+      </p>
+    </section>
+  </main>
+
+  <Footer />
+</Layout>

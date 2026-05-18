@@ -1,0 +1,306 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/islands/Navbar';
+import Footer from '../components/layout/Footer.astro';
+---
+
+<Layout
+  title="Politique de confidentialité — OMF Thérapie"
+  description="Politique de confidentialité d'OMF Thérapie conforme au RGPD (règlement UE 2016/679) et aux recommandations CNIL 2024."
+  canonical="https://omf-therapie.fr/confidentialite"
+  noindex={false}
+>
+  <Navbar client:load isHomePage={false} />
+
+  <main id="main-content" class="pt-20" tabindex="-1">
+    <section class="max-w-3xl mx-auto px-4 py-8 md:py-10">
+      <h1 class="text-3xl md:text-4xl font-serif font-semibold text-sage-800 mb-6">
+        Politique de confidentialité
+      </h1>
+
+      <p class="text-sage-700 mb-8">
+        La présente politique de confidentialité décrit la façon dont
+        <strong>Oriane Montabonnet</strong> (ci-après «&nbsp;nous&nbsp;» ou
+        «&nbsp;le responsable du traitement&nbsp;») collecte, utilise et protège
+        vos données personnelles, conformément au règlement (UE) 2016/679 du
+        Parlement européen et du Conseil du 27 avril 2016 (RGPD) et à la loi
+        n°78-17 du 6 janvier 1978 modifiée (loi Informatique et Libertés).
+      </p>
+
+      <!-- 1. Responsable du traitement -->
+      <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+        1. Responsable du traitement
+      </h2>
+      <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
+      <address class="not-italic mb-8 space-y-1">
+        <p><strong>Oriane Montabonnet</strong>, psychopraticienne</p>
+        <p>1086 Av. Albert Einstein, 34000 Montpellier</p>
+        <p>
+          E-mail :
+          <a
+            href="mailto:contact@omf-therapie.fr"
+            class="text-mint-600 underline hover:text-mint-700"
+          >
+            contact@omf-therapie.fr
+          </a>
+        </p>
+        <p>
+          Téléphone :
+          <a href="tel:+33650331853" class="text-mint-600 underline hover:text-mint-700">
+            06 50 33 18 53
+          </a>
+        </p>
+      </address>
+
+      <!-- 2. Données collectées -->
+      <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+        2. Données collectées
+      </h2>
+      <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
+
+      <h3 class="text-xl font-serif font-semibold text-sage-800 mt-6 mb-3">
+        Formulaire de contact
+      </h3>
+      <p class="mb-4">
+        Lorsque vous utilisez notre formulaire de contact, nous collectons les
+        informations suivantes :
+      </p>
+      <ul class="list-disc pl-6 space-y-2 mb-6">
+        <li>Nom et prénom</li>
+        <li>Adresse e-mail</li>
+        <li>Numéro de téléphone</li>
+        <li>Contenu de votre message</li>
+      </ul>
+
+      <h3 class="text-xl font-serif font-semibold text-sage-800 mt-6 mb-3">
+        Formulaire de prise de rendez-vous
+      </h3>
+      <p class="mb-4">
+        Lors de la réservation d'une séance en ligne, nous collectons :
+      </p>
+      <ul class="list-disc pl-6 space-y-2 mb-6">
+        <li>Nom et prénom</li>
+        <li>Adresse e-mail</li>
+        <li>Numéro de téléphone</li>
+        <li>Type de consultation souhaité (individuelle, de couple, familiale)</li>
+        <li>Durée souhaitée (60 ou 90 minutes)</li>
+        <li>Motif de consultation (facultatif)</li>
+      </ul>
+
+      <h3 class="text-xl font-serif font-semibold text-sage-800 mt-6 mb-3">
+        Cookie de session administrateur
+      </h3>
+      <p class="mb-8">
+        Un cookie de session technique (httpOnly, sécurisé) est utilisé
+        exclusivement pour l'authentification à l'espace d'administration du site.
+        Ce cookie n'effectue aucun suivi de navigation, n'est pas accessible via
+        JavaScript et n'est déposé que lors d'une connexion à l'interface
+        d'administration. <strong>Aucune donnée de navigation n'est collectée.</strong>
+        Nous n'utilisons pas d'outil d'analyse d'audience (pas de Google Analytics,
+        pas de Matomo, etc.).
+      </p>
+
+      <!-- 3. Finalités et bases légales -->
+      <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+        3. Finalités et bases légales des traitements
+      </h2>
+      <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
+      <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm border-collapse">
+          <thead>
+            <tr class="bg-sage-100 text-sage-800">
+              <th class="text-left p-3 border border-sage-200 font-semibold">Finalité</th>
+              <th class="text-left p-3 border border-sage-200 font-semibold">Base légale (RGPD)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="p-3 border border-sage-200">Répondre à vos demandes de contact</td>
+              <td class="p-3 border border-sage-200">Consentement — art. 6-1-a</td>
+            </tr>
+            <tr class="bg-sage-50">
+              <td class="p-3 border border-sage-200">Gestion des rendez-vous et facturation</td>
+              <td class="p-3 border border-sage-200">Exécution d'un contrat — art. 6-1-b</td>
+            </tr>
+            <tr>
+              <td class="p-3 border border-sage-200">Administration et sécurité du site</td>
+              <td class="p-3 border border-sage-200">Intérêt légitime — art. 6-1-f</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 4. Durée de conservation -->
+      <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+        4. Durée de conservation
+      </h2>
+      <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
+      <ul class="list-disc pl-6 space-y-2 mb-8">
+        <li>
+          <strong>Données de contact</strong> : 3 ans à compter du dernier contact,
+          conformément aux recommandations CNIL.
+        </li>
+        <li>
+          <strong>Données de rendez-vous</strong> : 5 ans à compter de la séance,
+          correspondant au délai de prescription civile (art. 2224 du Code civil).
+        </li>
+        <li>
+          <strong>Données de paiement</strong> : gérées directement par Stripe.
+          Les données comptables sont conservées 10 ans conformément aux obligations
+          légales (art. L123-22 du Code de commerce).
+        </li>
+        <li>
+          <strong>Cookie de session</strong> : supprimé à la fermeture de la session
+          ou à la déconnexion.
+        </li>
+      </ul>
+
+      <!-- 5. Destinataires et sous-traitants -->
+      <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+        5. Destinataires et sous-traitants
+      </h2>
+      <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
+      <p class="mb-4">
+        Vos données peuvent être transmises aux sous-traitants techniques
+        suivants, dans le strict cadre des finalités décrites ci-dessus. Ces
+        transferts hors Union européenne sont encadrés par des garanties
+        appropriées (clauses contractuelles types approuvées par la Commission
+        européenne) :
+      </p>
+      <ul class="list-disc pl-6 space-y-2 mb-8">
+        <li>
+          <strong>Supabase</strong> (Supabase, Inc., USA) — base de données et
+          stockage sécurisé des données de rendez-vous et de contact.
+        </li>
+        <li>
+          <strong>Resend</strong> (Resend, Inc., USA) — envoi des e-mails
+          transactionnels (confirmation de rendez-vous, accusé de réception de
+          contact).
+        </li>
+        <li>
+          <strong>Stripe</strong> (Stripe, Inc., USA) — traitement sécurisé des
+          paiements pour les téléconsultations. Les données de carte bancaire ne
+          transitent pas par nos serveurs.
+        </li>
+        <li>
+          <strong>Google</strong> (Google LLC, USA) — gestion du calendrier des
+          rendez-vous via Google Calendar.
+        </li>
+        <li>
+          <strong>Netlify</strong> (Netlify, Inc., USA) — hébergement du site web.
+        </li>
+      </ul>
+
+      <!-- 6. Vos droits -->
+      <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+        6. Vos droits
+      </h2>
+      <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
+      <p class="mb-4">
+        Conformément au RGPD, vous disposez des droits suivants concernant vos
+        données personnelles :
+      </p>
+      <ul class="list-disc pl-6 space-y-2 mb-6">
+        <li><strong>Droit d'accès</strong> (art. 15 RGPD) : obtenir la confirmation que vos données sont traitées et en recevoir une copie.</li>
+        <li><strong>Droit de rectification</strong> (art. 16 RGPD) : faire corriger des données inexactes ou incomplètes.</li>
+        <li><strong>Droit à l'effacement</strong> (art. 17 RGPD) : obtenir la suppression de vos données dans les conditions prévues par le RGPD.</li>
+        <li><strong>Droit à la portabilité</strong> (art. 20 RGPD) : recevoir vos données dans un format structuré et lisible par machine.</li>
+        <li><strong>Droit d'opposition</strong> (art. 21 RGPD) : vous opposer au traitement de vos données pour des motifs légitimes.</li>
+        <li><strong>Droit à la limitation</strong> (art. 18 RGPD) : demander la suspension temporaire du traitement de vos données.</li>
+      </ul>
+      <p class="mb-4">
+        Pour exercer vos droits, contactez-nous :
+      </p>
+      <ul class="list-disc pl-6 space-y-2 mb-6">
+        <li>
+          Par e-mail :
+          <a
+            href="mailto:contact@omf-therapie.fr"
+            class="text-mint-600 underline hover:text-mint-700"
+          >
+            contact@omf-therapie.fr
+          </a>
+        </li>
+        <li>
+          Via notre formulaire de contact :
+          <a href="/contact" class="text-mint-600 underline hover:text-mint-700">
+            Nous contacter
+          </a>
+        </li>
+      </ul>
+      <p class="mb-8">
+        Nous nous engageons à répondre dans un délai d'un mois à compter de la
+        réception de votre demande. En cas de réponse insatisfaisante, vous pouvez
+        adresser une réclamation à la
+        <a
+          href="https://www.cnil.fr/fr/plaintes"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-mint-600 underline hover:text-mint-700"
+        >
+          Commission Nationale de l'Informatique et des Libertés (CNIL)
+        </a>.
+      </p>
+
+      <!-- 7. Cookies -->
+      <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+        7. Cookies
+      </h2>
+      <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
+      <p class="mb-4">
+        Ce site utilise un seul cookie, de nature strictement technique :
+      </p>
+      <ul class="list-disc pl-6 space-y-2 mb-4">
+        <li>
+          <strong>Cookie de session administrateur</strong> : déposé uniquement lors
+          d'une connexion à l'interface d'administration. Il est httpOnly (non
+          accessible via JavaScript), sécurisé (transmis uniquement via HTTPS) et
+          est supprimé à la déconnexion ou à la fermeture du navigateur.
+        </li>
+      </ul>
+      <p class="mb-8">
+        Ce site ne dépose <strong>aucun cookie de mesure d'audience, de
+        publicité ou de suivi</strong>. Aucun consentement aux cookies n'est
+        requis pour les visiteurs du site.
+      </p>
+
+      <!-- 8. Sécurité -->
+      <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+        8. Sécurité des données
+      </h2>
+      <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
+      <p class="mb-8">
+        Nous mettons en œuvre les mesures techniques et organisationnelles
+        appropriées pour protéger vos données personnelles contre toute perte,
+        accès non autorisé, divulgation, altération ou destruction. Les données
+        sont chiffrées en transit (HTTPS/TLS) et au repos. L'accès aux données
+        est strictement limité aux personnes habilitées.
+      </p>
+
+      <!-- 9. Contact DPO -->
+      <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+        9. Contact — Responsable du traitement
+      </h2>
+      <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
+      <p class="mb-8">
+        Pour toute question relative à la présente politique de confidentialité ou
+        à l'exercice de vos droits, contactez directement le responsable du
+        traitement :
+        <a
+          href="mailto:contact@omf-therapie.fr"
+          class="text-mint-600 underline hover:text-mint-700"
+        >
+          contact@omf-therapie.fr
+        </a>.
+      </p>
+
+      <hr class="my-8 border-sage-200" />
+
+      <p class="text-sage-600 text-sm">
+        <time datetime="2026-05-18">Mise à jour : 18 mai 2026</time>
+      </p>
+    </section>
+  </main>
+
+  <Footer />
+</Layout>
