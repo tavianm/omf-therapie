@@ -10,14 +10,29 @@ import Footer from '../components/layout/Footer.astro';
   canonical="https://omf-therapie.fr/cgv"
   noindex={false}
 >
+  <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded">
+    Aller au contenu principal
+  </a>
+
   <Navbar client:load isHomePage={false} />
 
   <main id="main-content" class="pt-20" tabindex="-1">
-    <section class="max-w-3xl mx-auto px-4 py-8 md:py-10">
-      <h1 class="text-3xl md:text-4xl font-serif font-semibold text-sage-800 mb-6">
-        Conditions Générales de Vente
-      </h1>
+    <div class="bg-sage-50 py-8 px-4">
+      <div class="max-w-3xl mx-auto">
+        <nav class="mb-4 text-sm text-sage-500" aria-label="Fil d'Ariane">
+          <ol class="flex items-center gap-2 flex-wrap" role="list">
+            <li role="listitem"><a href="/" class="hover:text-mint-600 transition-colors">Accueil</a></li>
+            <li role="listitem" aria-hidden="true">›</li>
+            <li role="listitem" aria-current="page" class="text-sage-700 font-medium">Conditions Générales de Vente</li>
+          </ol>
+        </nav>
+        <h1 class="text-3xl md:text-4xl font-serif font-semibold text-sage-800">
+          Conditions Générales de Vente
+        </h1>
+      </div>
+    </div>
 
+    <section class="max-w-3xl mx-auto px-4 py-8 md:py-10">
       <p class="text-sage-700 mb-8">
         Les présentes Conditions Générales de Vente (CGV) régissent les
         relations contractuelles entre <strong>Oriane Montabonnet</strong>,
