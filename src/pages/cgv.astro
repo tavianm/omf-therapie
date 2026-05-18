@@ -2,6 +2,7 @@
 import Layout from '../layouts/Layout.astro';
 import Navbar from '../components/islands/Navbar';
 import Footer from '../components/layout/Footer.astro';
+import { PRICE_GRID, FIRST_SESSION_DISCOUNT, SOLIDARITY_DISCOUNT } from '../lib/pricing';
 ---
 
 <Layout
@@ -101,18 +102,18 @@ import Footer from '../components/layout/Footer.astro';
           <tbody>
             <tr>
               <td class="p-3 border border-sage-200">Thérapie individuelle</td>
-              <td class="p-3 border border-sage-200">50&nbsp;€</td>
-              <td class="p-3 border border-sage-200">65&nbsp;€</td>
+              <td class="p-3 border border-sage-200">{PRICE_GRID.individual[60]}&nbsp;€</td>
+              <td class="p-3 border border-sage-200">{PRICE_GRID.individual[90]}&nbsp;€</td>
             </tr>
             <tr class="bg-sage-50">
               <td class="p-3 border border-sage-200">Thérapie de couple</td>
-              <td class="p-3 border border-sage-200">75&nbsp;€</td>
-              <td class="p-3 border border-sage-200">90&nbsp;€</td>
+              <td class="p-3 border border-sage-200">{PRICE_GRID.couple[60]}&nbsp;€</td>
+              <td class="p-3 border border-sage-200">{PRICE_GRID.couple[90]}&nbsp;€</td>
             </tr>
             <tr>
               <td class="p-3 border border-sage-200">Thérapie familiale</td>
-              <td class="p-3 border border-sage-200">85&nbsp;€</td>
-              <td class="p-3 border border-sage-200">100&nbsp;€</td>
+              <td class="p-3 border border-sage-200">{PRICE_GRID.family[60]}&nbsp;€</td>
+              <td class="p-3 border border-sage-200">{PRICE_GRID.family[90]}&nbsp;€</td>
             </tr>
           </tbody>
         </table>
@@ -123,12 +124,12 @@ import Footer from '../components/layout/Footer.astro';
       </h3>
       <ul class="list-disc pl-6 space-y-2 mb-6">
         <li>
-          <strong>Première séance</strong> : réduction de <strong>15&nbsp;€</strong>
+          <strong>Première séance</strong> : réduction de <strong>{FIRST_SESSION_DISCOUNT}&nbsp;€</strong>
           sur le tarif standard.
         </li>
         <li>
           <strong>Tarif solidaire</strong> (sur justificatif) : réduction de
-          <strong>10&nbsp;€</strong> pour les bénéficiaires du RSA, de
+          <strong>{SOLIDARITY_DISCOUNT}&nbsp;€</strong> pour les bénéficiaires du RSA, de
           l'Allocation de Solidarité Spécifique (ASS) ou les étudiants.
         </li>
       </ul>
@@ -201,7 +202,7 @@ import Footer from '../components/layout/Footer.astro';
       </h3>
       <p class="mb-6">
         Le règlement s'effectue en fin de séance par l'un des moyens suivants :
-        espèces, chèque ou virement bancaire.
+        espèces ou carte bancaire.
       </p>
 
       <h3 class="text-xl font-serif font-semibold text-sage-800 mt-6 mb-3">
@@ -228,8 +229,8 @@ import Footer from '../components/layout/Footer.astro';
         </li>
         <li>
           <strong>Annulation moins de 24 heures avant ou absence non signalée</strong> :
-          la séance est facturée à <strong>50 % du tarif</strong>. Pour les
-          séances en téléconsultation prépayées, 50 % du montant est conservé.
+          la séance est due dans son intégralité. Pour les séances en
+          téléconsultation prépayées, aucun remboursement n'est effectué.
         </li>
         <li>
           <strong>Cas de force majeure ou urgence avérée</strong> (maladie
