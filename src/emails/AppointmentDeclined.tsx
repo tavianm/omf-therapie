@@ -1,7 +1,7 @@
 /**
  * Template 4 — AppointmentDeclined
  * Destinataire : Patient
- * Sujet : "Votre demande de rendez-vous"
+ * Sujet : "Votre demande de rendez-vous n'a pas pu être confirmée"
  */
 
 import { Button, Section, Text } from '@react-email/components';

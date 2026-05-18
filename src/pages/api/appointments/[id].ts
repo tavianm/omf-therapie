@@ -345,7 +345,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       to: updatedAppt.patient_email,
       threadKey: `appointment:${updatedAppt.id}:patient`,
       subject: buildAppointmentConversationSubject(
-        'Votre demande de rendez-vous',
+        "Votre demande de rendez-vous n'a pas pu être confirmée",
         updatedAppt.id,
       ),
       react: createElement(AppointmentDeclined, {
