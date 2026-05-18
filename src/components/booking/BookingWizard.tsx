@@ -5,7 +5,7 @@
  * Étapes : Type & Mode → Date & Heure → Informations → Récapitulatif → Confirmation
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useBooking } from '../../hooks/useBooking';
 import type { BookingState, BookingStep } from '../../hooks/useBooking';
 import { getTypeLabel, getModeLabel } from '../../lib/pricing';
@@ -93,6 +93,49 @@ function formatScheduledAt(isoString: string): string {
 
 const ACCENT = '#d4a96a';
 
+
+// ---------------------------------------------------------------------------
+// SVG icon helpers for therapy types and modes (replaces emoji — C2)
+// ---------------------------------------------------------------------------
+
+function TypeIcon({ value }: { value: 'individual' | 'couple' | 'family' }) {
+  if (value === 'individual') {
+    return (
+      <svg className="h-6 w-6 text-sage-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+      </svg>
+    );
+  }
+  if (value === 'couple') {
+    return (
+      <svg className="h-6 w-6 text-sage-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+      </svg>
+    );
+  }
+  return (
+    <svg className="h-6 w-6 text-sage-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+    </svg>
+  );
+}
+
+function ModeIcon({ value }: { value: 'in-person' | 'video' }) {
+  if (value === 'in-person') {
+    return (
+      <svg className="h-6 w-6 text-sage-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+      </svg>
+    );
+  }
+  return (
+    <svg className="h-6 w-6 text-sage-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+    </svg>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // StepIndicator
 // ---------------------------------------------------------------------------
@@ -117,7 +160,7 @@ function StepIndicator({ currentStep }: { currentStep: BookingStep }) {
           const isActive = index === currentIndex;
 
           return (
-            <li key={step.key} className="flex flex-1 items-center">
+            <li key={step.key} aria-current={isActive ? 'step' : undefined} className="flex flex-1 items-center">
               <div className="flex flex-col items-center gap-1">
                 <span
                   className={`
@@ -130,14 +173,20 @@ function StepIndicator({ currentStep }: { currentStep: BookingStep }) {
                   style={isActive ? { backgroundColor: ACCENT, outlineColor: ACCENT } : undefined}
                 >
                   {isDone ? (
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
+                    <>
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3} aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span className="sr-only">Étape {index + 1} sur {WIZARD_STEPS.length}, terminée</span>
+                    </>
                   ) : (
-                    index + 1
+                    <>
+                      <span aria-hidden="true">{index + 1}</span>
+                      {isActive && <span className="sr-only"> sur {WIZARD_STEPS.length}, en cours</span>}
+                    </>
                   )}
                 </span>
-                <span className={`hidden text-xs font-medium sm:block ${isActive ? 'text-sage-800' : 'text-sage-400'}`}>
+                <span className={`text-xs font-medium ${isActive ? 'block text-sage-800' : 'hidden sm:block text-sage-400'}`}>
                   {step.label}
                 </span>
               </div>
@@ -174,15 +223,15 @@ function TypeModeStep({
   isValid: boolean;
   pricingLabel: string | null;
 }) {
-  const types: { value: 'individual' | 'couple' | 'family'; label: string; emoji: string; desc: string }[] = [
-    { value: 'individual', label: 'Individuelle', emoji: '🌿', desc: 'Séance en tête-à-tête' },
-    { value: 'couple', label: 'Couple', emoji: '💞', desc: 'Thérapie de couple' },
-    { value: 'family', label: 'Familiale', emoji: '🏡', desc: 'Thérapie familiale' },
+  const types: { value: 'individual' | 'couple' | 'family'; label: string; desc: string }[] = [
+    { value: 'individual', label: 'Individuelle', desc: 'Séance en tête-à-tête' },
+    { value: 'couple', label: 'Couple', desc: 'Thérapie de couple' },
+    { value: 'family', label: 'Familiale', desc: 'Thérapie familiale' },
   ];
 
-  const modes: { value: 'in-person' | 'video'; label: string; emoji: string; desc: string }[] = [
-    { value: 'in-person', label: 'Présentiel', emoji: '📍', desc: 'Mercredi uniquement — au cabinet' },
-    { value: 'video', label: 'Téléconsultation', emoji: '💻', desc: 'Lundi au vendredi — en ligne' },
+  const modes: { value: 'in-person' | 'video'; label: string; desc: string }[] = [
+    { value: 'in-person', label: 'Présentiel', desc: 'Mercredi uniquement — au cabinet' },
+    { value: 'video', label: 'Téléconsultation', desc: 'Lundi au vendredi — en ligne' },
   ];
 
   return (
@@ -193,11 +242,13 @@ function TypeModeStep({
         <legend className="mb-4 text-base font-semibold text-sage-800">
           Type de thérapie
         </legend>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-3" role="radiogroup" aria-label="Type de thérapie">
           {types.map(type => (
             <button
               key={type.value}
               type="button"
+              role="radio"
+              aria-checked={state.appointment_type === type.value}
               onClick={() => updateField('appointment_type', type.value)}
               className={`
                 flex flex-col items-center gap-2 rounded-xl border-2 p-4 text-center transition-all duration-150
@@ -207,9 +258,8 @@ function TypeModeStep({
                   : 'border-sage-200 bg-white'
                 }
               `}
-              aria-pressed={state.appointment_type === type.value}
             >
-              <span className="text-2xl">{type.emoji}</span>
+              <TypeIcon value={type.value} />
               <span className="text-sm font-semibold text-sage-800">{type.label}</span>
               <span className="text-xs text-sage-500">{type.desc}</span>
             </button>
@@ -222,11 +272,13 @@ function TypeModeStep({
         <legend className="mb-4 text-base font-semibold text-sage-800">
           Mode de consultation
         </legend>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Mode de consultation">
           {modes.map(mode => (
             <button
               key={mode.value}
               type="button"
+              role="radio"
+              aria-checked={state.appointment_mode === mode.value}
               onClick={() => updateField('appointment_mode', mode.value)}
               className={`
                 flex flex-col items-start gap-1 rounded-xl border-2 p-4 text-left transition-all duration-150
@@ -236,9 +288,8 @@ function TypeModeStep({
                   : 'border-sage-200 bg-white'
                 }
               `}
-              aria-pressed={state.appointment_mode === mode.value}
             >
-              <span className="text-xl">{mode.emoji}</span>
+              <ModeIcon value={mode.value} />
               <span className="text-sm font-semibold text-sage-800">{mode.label}</span>
               <span className="text-xs text-sage-500">{mode.desc}</span>
             </button>
@@ -317,7 +368,7 @@ function TypeModeStep({
             focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2
             disabled:cursor-not-allowed disabled:opacity-40
           `}
-          style={{ backgroundColor: isValid ? ACCENT : undefined }}
+          style={{ backgroundColor: ACCENT }}
         >
           Choisir un créneau
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -432,13 +483,16 @@ function DatetimeStep({
                 className="rounded-xl border border-sage-200 bg-white p-4 shadow-sm"
               >
                 <h3 className="mb-3 text-sm font-semibold text-sage-800">{group.dateLabel}</h3>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={group.dateLabel}>
                   {group.slots.map(slot => {
                     const isSelected = state.scheduled_at === slot.start;
                     return (
                       <button
                         key={slot.start}
                         type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        aria-label={`${formatTime(slot.start)}, ${group.dateLabel}`}
                         onClick={() => updateField('scheduled_at', slot.start)}
                         className={`
                          rounded-lg border-2 px-3 py-2 text-sm font-medium transition-all duration-150
@@ -449,7 +503,6 @@ function DatetimeStep({
                          }
                        `}
                         style={isSelected ? { backgroundColor: ACCENT, borderColor: ACCENT } : undefined}
-                        aria-pressed={isSelected}
                       >
                         {formatTime(slot.start)}
                       </button>
@@ -479,7 +532,7 @@ function DatetimeStep({
           onClick={nextStep}
           disabled={!isValid}
           className="inline-flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
-          style={{ backgroundColor: isValid ? ACCENT : undefined }}
+          style={{ backgroundColor: ACCENT }}
         >
           Continuer
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -652,7 +705,7 @@ function PatientInfoStep({
           onClick={nextStep}
           disabled={!isValid}
           className="inline-flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
-          style={{ backgroundColor: isValid ? ACCENT : undefined }}
+          style={{ backgroundColor: ACCENT }}
         >
           Vérifier
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -872,9 +925,15 @@ function SubmittedStep() {
 export default function BookingWizard() {
   const { state, updateField, nextStep, prevStep, submitBooking, pricing, isStepValid } =
     useBooking();
+  const wizardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    wizardRef.current?.focus();
+  }, [state.step]);
 
   return (
-    <div className="rounded-2xl border border-sage-200 bg-white p-6 shadow-md sm:p-8">
+    <div ref={wizardRef} tabIndex={-1} className="rounded-2xl border border-sage-200 bg-white p-6 shadow-md sm:p-8 focus:outline-none">
       <StepIndicator currentStep={state.step} />
 
       {state.step === 'type-mode' && (

@@ -160,7 +160,7 @@ const priceFormatted = `${Math.round(appt.final_price / 100)}\u00a0€`;
             {/* Ancien créneau */}
             <div class="bg-red-50 border border-red-200 rounded-xl px-5 py-4">
               <p class="text-xs font-semibold uppercase tracking-wide text-red-600 font-sans mb-1">
-                ✕ Créneau initial (indisponible)
+                <span aria-hidden="true">✕</span><span class="sr-only">Créneau annulé :</span> Créneau initial (indisponible)
               </p>
               <p class="text-sage-500 line-through font-sans">
                 {originalDate}
@@ -173,7 +173,7 @@ const priceFormatted = `${Math.round(appt.final_price / 100)}\u00a0€`;
             {/* Nouveau créneau */}
             <div class="bg-mint-50 border-2 border-mint-400 rounded-xl px-5 py-4">
               <p class="text-xs font-semibold uppercase tracking-wide text-mint-700 font-sans mb-1">
-                ✓ Nouveau créneau proposé
+                <span aria-hidden="true">✓</span><span class="sr-only">Nouveau créneau proposé :</span> Nouveau créneau proposé
               </p>
               <p class="text-sage-900 font-semibold font-sans capitalize">
                 {proposedDate}
@@ -223,7 +223,7 @@ const priceFormatted = `${Math.round(appt.final_price / 100)}\u00a0€`;
           <p class="text-center text-xs text-sage-400 font-sans mt-4">
             Ce créneau ne vous convient pas ?{' '}
             <a href="/rendez-vous/" class="text-mint-600 hover:underline">
-              Choisir un autre créneau
+              Prendre un nouveau rendez-vous
             </a>
           </p>
         </>

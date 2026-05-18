@@ -3,7 +3,7 @@
  * Island React monté sur la page mes-rdvs avec client:load.
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import {
   calculatePrice,
   SOLIDARITY_DISCOUNT,

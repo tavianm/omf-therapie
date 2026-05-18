@@ -9,7 +9,7 @@
  *   declined / cancelled  → lecture seule
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import type { Appointment, AppointmentStatus } from "../../types/appointment";
 import { getTypeLabel, getModeLabel, calculatePrice, SOLIDARITY_DISCOUNT } from "../../lib/pricing";
 
@@ -79,6 +79,47 @@ function Modal({
   children: React.ReactNode;
   onClose: () => void;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    previousFocusRef.current = document.activeElement as HTMLElement;
+    const FOCUSABLE =
+      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
+    const focusables = () =>
+      Array.from(containerRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []);
+    // Defer focus so modal is fully painted
+    const timer = setTimeout(() => focusables()[0]?.focus(), 0);
+
+    function trap(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const els = focusables();
+      const first = els[0];
+      const last = els[els.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last?.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first?.focus();
+      }
+    }
+
+    document.addEventListener('keydown', trap);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('keydown', trap);
+      previousFocusRef.current?.focus();
+    };
+  }, []);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
@@ -86,7 +127,7 @@ function Modal({
       aria-modal="true"
       aria-labelledby="modal-title"
     >
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+      <div ref={containerRef} className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
         <div className="flex items-center justify-between mb-5">
           <h3
             id="modal-title"
@@ -127,6 +168,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
   const [modal, setModal] = useState<ModalType>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [reviewSent, setReviewSent] = useState(false);
 
   // État notes
   const [notes, setNotes] = useState(appointment.therapist_notes ?? "");
@@ -220,7 +262,8 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
         const data = (await res.json()) as { error?: string };
         throw new Error(data.error ?? `Erreur HTTP ${res.status}`);
       }
-      alert("Email de rappel avis envoyé avec succès.");
+      setReviewSent(true);
+      setTimeout(() => setReviewSent(false), 4000);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Erreur inconnue");
     } finally {
@@ -454,13 +497,27 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
           )}
 
           {(status === "confirmed" || status === "payment_received") && (
-            <button
-              onClick={handleSendReview}
-              disabled={actionLoading}
-              className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
-            >
-              {actionLoading ? "Envoi…" : "Envoyer rappel avis"}
-            </button>
+            <>
+              <button
+                onClick={handleSendReview}
+                disabled={actionLoading}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+              >
+                {actionLoading ? "Envoi…" : "Envoyer rappel avis"}
+              </button>
+              {reviewSent && (
+                <span
+                  role="status"
+                  aria-live="polite"
+                  className="inline-flex items-center gap-1 text-sm text-green-700 font-sans"
+                >
+                  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Email envoyé
+                </span>
+              )}
+            </>
           )}
         </div>
       )}
@@ -500,7 +557,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
             {notesSaving ? "Sauvegarde…" : "Sauvegarder"}
           </button>
           {notesSaved && (
-            <span className="text-xs text-green-600 font-sans">✓ Sauvegardé</span>
+            <span role="status" aria-live="polite" className="text-xs text-green-600 font-sans">✓ Sauvegardé</span>
           )}
         </div>
       </div>
@@ -596,7 +653,13 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
 
       {/* ── Modal : Refuser ───────────────────────────────────────────────── */}
       {modal === "decline" && (
-        <Modal title="Refuser le rendez-vous" onClose={() => setModal(null)}>
+        <Modal
+          title="Refuser le rendez-vous"
+          onClose={() => {
+            if (declineMessage.trim() && !window.confirm('Abandonner ? Votre message sera perdu.')) return;
+            setModal(null);
+          }}
+        >
           <p className="text-sm text-sage-600 font-sans mb-4">
             Le patient recevra un email l'informant du refus.
           </p>
@@ -622,7 +685,10 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
           )}
           <div className="flex gap-2 justify-end">
             <button
-              onClick={() => setModal(null)}
+              onClick={() => {
+                if (declineMessage.trim() && !window.confirm('Abandonner ? Votre message sera perdu.')) return;
+                setModal(null);
+              }}
               disabled={actionLoading}
               className="px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 transition-colors disabled:opacity-60 min-h-[40px]"
             >
@@ -641,7 +707,13 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
 
       {/* ── Modal : Reporter ──────────────────────────────────────────────── */}
       {modal === "reschedule" && (
-        <Modal title="Reporter le rendez-vous" onClose={() => setModal(null)}>
+        <Modal
+          title="Reporter le rendez-vous"
+          onClose={() => {
+            if ((rescheduleDate || rescheduleMessage.trim()) && !window.confirm('Abandonner ? Les données saisies seront perdues.')) return;
+            setModal(null);
+          }}
+        >
           <p className="text-sm text-sage-600 font-sans mb-4">
             Le patient recevra un email avec le nouveau créneau proposé.
           </p>
@@ -682,7 +754,10 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
           )}
           <div className="flex gap-2 justify-end">
             <button
-              onClick={() => setModal(null)}
+              onClick={() => {
+                if ((rescheduleDate || rescheduleMessage.trim()) && !window.confirm('Abandonner ? Les données saisies seront perdues.')) return;
+                setModal(null);
+              }}
               disabled={actionLoading}
               className="px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 transition-colors disabled:opacity-60 min-h-[40px]"
             >

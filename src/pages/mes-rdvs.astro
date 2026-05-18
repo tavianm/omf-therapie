@@ -214,35 +214,42 @@ for (const appt of appointments) {
   const wrappers = document.querySelectorAll<HTMLElement>('.appointment-wrapper');
   const noResult = document.getElementById('no-filter-result');
 
+  function applyFilter(filter: string) {
+    filterBtns.forEach((b) => {
+      const isActive = b.dataset['filter'] === filter;
+      b.setAttribute('aria-pressed', String(isActive));
+      if (isActive) {
+        b.classList.add('bg-mint-600', 'text-white', 'border-mint-600');
+        b.classList.remove('bg-white', 'text-sage-600', 'border-sage-200', 'hover:border-mint-400', 'hover:text-mint-700');
+      } else {
+        b.classList.remove('bg-mint-600', 'text-white', 'border-mint-600');
+        b.classList.add('bg-white', 'text-sage-600', 'border-sage-200', 'hover:border-mint-400', 'hover:text-mint-700');
+      }
+    });
+
+    let visible = 0;
+    wrappers.forEach((wrapper) => {
+      const show = filter === 'all' || wrapper.dataset['status'] === filter;
+      wrapper.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+
+    if (noResult) {
+      noResult.classList.toggle('hidden', visible > 0);
+    }
+  }
+
+  // Restore persisted filter on page load (M5)
+  const saved = sessionStorage.getItem('mes-rdvs-filter');
+  if (saved && saved !== 'all') {
+    applyFilter(saved);
+  }
+
   filterBtns.forEach((btn) => {
     btn.addEventListener('click', () => {
       const filter = btn.dataset['filter'] ?? 'all';
-
-      // Mise à jour des styles actifs
-      filterBtns.forEach((b) => {
-        const isActive = b === btn;
-        b.setAttribute('aria-pressed', String(isActive));
-        if (isActive) {
-          b.classList.add('bg-mint-600', 'text-white', 'border-mint-600');
-          b.classList.remove('bg-white', 'text-sage-600', 'border-sage-200', 'hover:border-mint-400', 'hover:text-mint-700');
-        } else {
-          b.classList.remove('bg-mint-600', 'text-white', 'border-mint-600');
-          b.classList.add('bg-white', 'text-sage-600', 'border-sage-200', 'hover:border-mint-400', 'hover:text-mint-700');
-        }
-      });
-
-      // Affichage/masquage des cartes
-      let visible = 0;
-      wrappers.forEach((wrapper) => {
-        const show = filter === 'all' || wrapper.dataset['status'] === filter;
-        wrapper.style.display = show ? '' : 'none';
-        if (show) visible++;
-      });
-
-      // Message vide si aucun résultat
-      if (noResult) {
-        noResult.classList.toggle('hidden', visible > 0);
-      }
+      sessionStorage.setItem('mes-rdvs-filter', filter);
+      applyFilter(filter);
     });
   });
 </script>
