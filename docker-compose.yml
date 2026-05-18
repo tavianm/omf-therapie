@@ -15,6 +15,8 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./supabase/local/000_local_compat.sql:/docker-entrypoint-initdb.d/000_local_compat.sql:ro
       - ./supabase/migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+      - ./supabase/migrations/002_email_threads.sql:/docker-entrypoint-initdb.d/002_email_threads.sql:ro
+      - ./supabase/migrations/003_email_threads_references_column.sql:/docker-entrypoint-initdb.d/003_email_threads_references_column.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d omf_therapie"]
       interval: 5s

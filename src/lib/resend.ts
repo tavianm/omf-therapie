@@ -193,12 +193,9 @@ async function prepareThreadSendContext(
     return { thread: null, subject };
   }
 
-  const normalizedSubject = /^Re:/i.test(thread.thread_subject)
-    ? thread.thread_subject
-    : `Re: ${thread.thread_subject}`;
   return {
     thread,
-    subject: normalizedSubject,
+    subject,
     headers: {
       'In-Reply-To': thread.last_message_id,
       References: thread.thread_references,
