@@ -23,7 +23,7 @@ export interface PricingResult {
 // ---------------------------------------------------------------------------
 
 /** Prix de base par type × durée (en euros) */
-const PRICE_GRID: Record<AppointmentType, Record<AppointmentDuration, number>> = {
+export const PRICE_GRID: Record<AppointmentType, Record<AppointmentDuration, number>> = {
   individual: { 60: 50, 90: 65 },
   couple:     { 60: 75, 90: 90 },
   family:     { 60: 85, 90: 100 },
