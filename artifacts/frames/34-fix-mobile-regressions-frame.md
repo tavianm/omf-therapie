@@ -1,9 +1,9 @@
 ---
 issue: 34
 title: "fix: mobile regressions — transitions not triggered, text missing/misrendered"
-status: approved
 tier: F-lite
-created: 2026-05-19
+status: implemented
+pr: 35
 ---
 
 ## Problem Statement
@@ -61,31 +61,48 @@ All components using `useMotionVariants`:
 
 ## Proposed Fix
 
-**Single-file fix** in `src/hooks/useMotionVariants.ts`:
+**Final implementation** (evolved from initial single-file fix after UX testing):
 
-Change `staticProps` from:
-```js
-const staticProps: MotionProps = {
-  initial: false,
-};
-```
+### Phase 1 — Fix mobile text invisibility (`src/hooks/useMotionVariants.ts`)
 
-To:
+Change `staticProps` to provide an animate target with a gentle fade:
 ```js
 const staticProps: MotionProps = {
   initial: false,
   animate: { opacity: 1, x: 0, y: 0 },
-  transition: { duration: 0 },
+  transition: {
+    opacity: { duration: 0.35, ease: "easeOut" }, // smooth fade
+    x: { duration: 0 }, // instant transform reset
+    y: { duration: 0 }, // instant transform reset
+  },
 };
 ```
+No IntersectionObserver, no `will-change`, no WAAPI stagger → safe in WKWebView.
 
-This immediately overrides SSR's `opacity: 0` with `opacity: 1` (instant, no animation). Elements become visible right on hydration.
+### Phase 2 — Eliminate SSR/hydration race (`client:visible` → `client:idle`)
 
-**Scope**: 1 file change, zero architectural impact.
+`client:visible` caused a race: user scrolls → sees `opacity:0` element → JS hydrates → 350ms fade starts. Elements were visibly invisible for ~100-200ms before the fade even began.
+
+Fix: switch all below-fold sections to `client:idle` (hydrates during browser idle time, ~1-2s after page load, before the user scrolls):
+- `index.astro`: `AboutSection`, `ServicesSection`, `ProcessSection`, `QualificationsSection`, `PricingSection`
+- `contact.astro`: `ContactInfo`, `LocationMap`
+- `services/index.astro`: `ServicesSection`
+
+### Phase 3 — Uniformise animations site-wide
+
+Additional regressions discovered during UX audit:
+- `BlogPostCard.tsx` bypassed `useMotionVariants` with hardcoded animations → still animated on mobile
+- `BlogList.tsx` loading spinner used framer-motion continuous `rotate + scale` → WKWebView unsafe
+- Desktop animation duration was 0.8s → too slow (UX guideline: ≤500ms), no easing specified
+
+Fixes:
+- `BlogPostCard.tsx`: use `useMotionVariants` hook
+- `BlogList.tsx`: replace framer-motion spinner with Tailwind `animate-spin`
+- `useMotionVariants.ts` desktop variants: 0.8s → 0.5s + `ease: "easeOut"`
 
 ## Out of Scope
 
-- Re-enabling animations on mobile (intentionally disabled for GPU performance — can be a separate task)
+- Re-enabling animations on mobile (intentionally disabled for WKWebView/GPU performance — can be a separate task)
 - Service pages / a-propos / static Astro pages (not affected — no React islands)
 - Astro View Transitions (not used in this project)
 
@@ -93,18 +110,10 @@ This immediately overrides SSR's `opacity: 0` with `opacity: 1` (instant, no ani
 
 - Must not break desktop animations
 - Must not break `prefers-reduced-motion` behavior
-- Minimal change surface — production fix, not a refactor
+- No framer-motion features that trigger WAAPI/IntersectionObserver on mobile (WKWebView crash risk)
 
-## Stakeholders
+## Resolution
 
-- Oriane Montabonnet (practice owner, all mobile visitors impacted)
-- All mobile users of omf-therapie.fr
+✅ Implemented in PR #35 — branch `fix/34-mobile-regressions`
 
-## Appetite
-
-Tier: F-lite
-Reasoning: Single-hook fix, clear scope, 1 domain (React animation layer). Validation via build + visual check.
-
-## Open Questions
-
-- Should mobile animations be re-enabled (with lighter variants) in a follow-up? The current approach of disabling all animations on mobile is aggressive.
+All original constraints met. The "brutal snap" UX issue (initial `duration:0`) was resolved by switching to `client:idle` (fade completes before user scrolls) + smooth 0.35s opacity transition as safety net.
