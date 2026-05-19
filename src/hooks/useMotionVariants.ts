@@ -7,10 +7,13 @@ interface MotionVariantOptions {
   distance?: number;
 }
 
-// Renders the element with its final appearance immediately — no observer,
-// no will-change layer, no WAAPI animation scheduled.
+// Renders the element at its final visible state immediately.
+// initial:false inherits the SSR DOM state (opacity:0 from framer-motion SSR),
+// so we must provide an animate target to override it — duration:0 keeps it instant.
 const staticProps: MotionProps = {
   initial: false,
+  animate: { opacity: 1, x: 0, y: 0 },
+  transition: { duration: 0 },
 };
 
 function shouldDisableAnimations(): boolean {
