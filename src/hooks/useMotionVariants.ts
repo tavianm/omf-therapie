@@ -44,7 +44,8 @@ export const useMotionVariants = () => {
       whileInView: { opacity: 1, y: 0 },
       viewport: { once: true },
       transition: {
-        duration: options.duration ?? 0.8,
+        duration: options.duration ?? 0.5,
+        ease: "easeOut",
         delay: options.delay ?? 0,
       },
     };
@@ -57,7 +58,8 @@ export const useMotionVariants = () => {
       whileInView: { opacity: 1 },
       viewport: { once: true },
       transition: {
-        duration: options.duration ?? 0.8,
+        duration: options.duration ?? 0.5,
+        ease: "easeOut",
         delay: options.delay ?? 0,
       },
     };
@@ -70,7 +72,8 @@ export const useMotionVariants = () => {
       whileInView: { opacity: 1, x: 0 },
       viewport: { once: true },
       transition: {
-        duration: options.duration ?? 0.8,
+        duration: options.duration ?? 0.5,
+        ease: "easeOut",
         delay: options.delay ?? 0,
       },
     };
@@ -83,7 +86,8 @@ export const useMotionVariants = () => {
       whileInView: { opacity: 1, x: 0 },
       viewport: { once: true },
       transition: {
-        duration: options.duration ?? 0.8,
+        duration: options.duration ?? 0.5,
+        ease: "easeOut",
         delay: options.delay ?? 0,
       },
     };
