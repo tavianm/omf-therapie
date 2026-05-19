@@ -24,32 +24,30 @@ export const BlogSearch = ({ onSearch, initialValue = "" }: BlogSearchProps) => 
   };
 
   return (
-    <form onSubmit={handleSubmit} className="relative">
-      <div className="relative flex items-center">
+    <form onSubmit={handleSubmit}>
+      <div className="flex items-center gap-2 border border-sage-200 rounded-lg focus-within:ring-2 focus-within:ring-mint-500">
+        <Search className="ml-4 h-5 w-5 text-sage-400 shrink-0" aria-hidden="true" />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Rechercher un article..."
-          className="w-full px-4 py-3.5 pl-12 pr-28 rounded-lg border border-sage-200 focus:ring-2 focus:ring-mint-500 focus:border-transparent"
+          className="flex-1 py-3 bg-transparent outline-none text-sage-900 placeholder:text-sage-400"
           aria-label="Rechercher un article"
         />
-        <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-sage-400" aria-hidden="true" />
-        
         {searchQuery && (
           <button
             type="button"
             onClick={handleClear}
-            className="absolute right-24 top-1/2 transform -translate-y-1/2 min-h-[44px] min-w-[44px] flex items-center justify-center text-sage-400 hover:text-sage-600"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center text-sage-400 hover:text-sage-600"
             aria-label="Effacer la recherche"
           >
             <X className="h-5 w-5" />
           </button>
         )}
-        
         <button
           type="submit"
-          className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-mint-600 text-white px-4 py-2.5 min-h-[44px] rounded-md hover:bg-mint-700 transition-colors"
+          className="mr-2 bg-mint-600 text-white px-4 min-h-[40px] rounded-md hover:bg-mint-700 transition-colors shrink-0"
         >
           Rechercher
         </button>
