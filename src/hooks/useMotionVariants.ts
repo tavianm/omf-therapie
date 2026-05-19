@@ -7,13 +7,20 @@ interface MotionVariantOptions {
   distance?: number;
 }
 
-// Renders the element at its final visible state immediately.
-// initial:false inherits the SSR DOM state (opacity:0 from framer-motion SSR),
-// so we must provide an animate target to override it — duration:0 keeps it instant.
+// Renders the element at its final visible state with a gentle opacity fade.
+// - initial:false inherits the SSR DOM state (opacity:0 + transform offsets from framer-motion SSR)
+// - animate resets transforms instantly (x/y duration:0) to avoid positional jumps
+// - opacity fades in smoothly (0.35s) so content doesn't snap brutally on scroll
+// - No WAAPI-heavy features (no IntersectionObserver, no will-change, no stagger)
+//   → safe in WKWebView (Apple Messages limited webview)
 const staticProps: MotionProps = {
   initial: false,
   animate: { opacity: 1, x: 0, y: 0 },
-  transition: { duration: 0 },
+  transition: {
+    opacity: { duration: 0.35, ease: "easeOut" },
+    x: { duration: 0 },
+    y: { duration: 0 },
+  },
 };
 
 function shouldDisableAnimations(): boolean {
