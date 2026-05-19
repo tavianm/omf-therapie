@@ -28,8 +28,7 @@ export const useMotionVariants = () => {
     if (noMotion) return staticProps;
     return {
       initial: { opacity: 0, y: options.distance ?? 20 },
-      whileInView: { opacity: 1, y: 0 },
-      viewport: { once: true },
+      animate: { opacity: 1, y: 0 },
       transition: {
         duration: options.duration ?? 0.8,
         delay: options.delay ?? 0,
@@ -41,8 +40,7 @@ export const useMotionVariants = () => {
     if (noMotion) return staticProps;
     return {
       initial: { opacity: 0 },
-      whileInView: { opacity: 1 },
-      viewport: { once: true },
+      animate: { opacity: 1 },
       transition: {
         duration: options.duration ?? 0.8,
         delay: options.delay ?? 0,
@@ -54,8 +52,7 @@ export const useMotionVariants = () => {
     if (noMotion) return staticProps;
     return {
       initial: { opacity: 0, x: -(options.distance ?? 20) },
-      whileInView: { opacity: 1, x: 0 },
-      viewport: { once: true },
+      animate: { opacity: 1, x: 0 },
       transition: {
         duration: options.duration ?? 0.8,
         delay: options.delay ?? 0,
@@ -67,8 +64,7 @@ export const useMotionVariants = () => {
     if (noMotion) return staticProps;
     return {
       initial: { opacity: 0, x: options.distance ?? 20 },
-      whileInView: { opacity: 1, x: 0 },
-      viewport: { once: true },
+      animate: { opacity: 1, x: 0 },
       transition: {
         duration: options.duration ?? 0.8,
         delay: options.delay ?? 0,
@@ -80,8 +76,7 @@ export const useMotionVariants = () => {
     if (noMotion) return staticProps;
     return {
       initial: { opacity: 0 },
-      whileInView: { opacity: 1 },
-      viewport: { once: true },
+      animate: { opacity: 1 },
       transition: {
         duration: options.duration ?? 0.3,
         staggerChildren: options.delay ?? 0.1,

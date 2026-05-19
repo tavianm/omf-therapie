@@ -13,6 +13,24 @@
   body {
     @apply bg-sage-50 text-sage-900;
   }
+
+  /*
+   * Safety fallback for framer-motion SSR elements.
+   * framer-motion pre-renders `initial` state (opacity:0) into the static HTML.
+   * If JavaScript hydration is delayed beyond 2s, this animation forces
+   * all hidden framer-motion elements to become visible.
+   */
+  @keyframes fm-reveal {
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  [style*="opacity: 0"],
+  [style*="opacity:0"] {
+    animation: fm-reveal 0s 2s both;
+  }
 }
 
 @layer components {

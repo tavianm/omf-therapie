@@ -15,7 +15,7 @@ export const BlogSidebar = ({
   const { fadeIn } = {
     fadeIn: () => ({
       initial: { opacity: 0 },
-      whileInView: { opacity: 1 },
+      animate: { opacity: 1 },
       viewport: { once: true },
       transition: { duration: 0.5 },
     }),
