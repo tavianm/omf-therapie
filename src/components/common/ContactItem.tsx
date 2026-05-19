@@ -35,7 +35,7 @@ export const ContactItem = ({
       <button
         onClick={onClick}
         className={
-          "flex items-center w-full text-left transition-colors " +
+          "flex items-center w-full min-h-[44px] text-left transition-colors " +
           classNames?.containerClass
         }
         aria-label={ariaLabel}
@@ -51,7 +51,7 @@ export const ContactItem = ({
       target="_blank"
       rel="noopener noreferrer"
       className={
-        "flex items-center transition-colors " + classNames?.containerClass
+        "flex items-center min-h-[44px] transition-colors " + classNames?.containerClass
       }
       aria-label={
         typeof text === "string" && text.trim().length > 0

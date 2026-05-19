@@ -93,7 +93,7 @@ const ServicesSection = () => {
               </ul>
               <a
                 href={service.href}
-                className="inline-flex items-center text-mint-600 hover:text-mint-700 font-medium transition-colors duration-200"
+                className="inline-flex items-center min-h-[44px] text-mint-600 hover:text-mint-700 font-medium transition-colors duration-200"
               >
                 En savoir plus →
               </a>

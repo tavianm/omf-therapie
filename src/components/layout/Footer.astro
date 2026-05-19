@@ -54,7 +54,7 @@ const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(COMPANY
                 href={link.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                class="flex items-center gap-2 text-sage-300 hover:text-mint-400 hover:underline transition-colors"
+                class="flex items-center gap-2 min-h-[44px] text-sage-300 hover:text-mint-400 hover:underline transition-colors"
                 aria-label={link.ariaLabel}
               >
                 <!-- Icône Instagram inline SVG -->
@@ -87,7 +87,7 @@ const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(COMPANY
           <li role="listitem">
             <a
               href={`tel:${CONTACT_INFO.phoneE164}`}
-              class="flex items-center gap-2 text-sage-300 hover:text-mint-400 hover:underline transition-colors"
+              class="flex items-center gap-2 min-h-[44px] text-sage-300 hover:text-mint-400 hover:underline transition-colors"
               aria-label={`Appeler le ${CONTACT_INFO.phone}`}
             >
               <!-- Icône téléphone -->
@@ -110,7 +110,7 @@ const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(COMPANY
           <li role="listitem">
             <a
               href={`mailto:${CONTACT_INFO.email}`}
-              class="flex items-center gap-2 text-sage-300 hover:text-mint-400 hover:underline transition-colors"
+              class="flex items-center gap-2 min-h-[44px] text-sage-300 hover:text-mint-400 hover:underline transition-colors"
               aria-label={`Envoyer un email à ${CONTACT_INFO.email}`}
             >
               <!-- Icône email -->
@@ -136,7 +136,7 @@ const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(COMPANY
               href={mapsUrl}
               target="_blank"
               rel="noopener noreferrer"
-              class="flex items-center gap-2 text-sage-300 hover:text-mint-400 hover:underline transition-colors"
+              class="flex items-center gap-2 min-h-[44px] text-sage-300 hover:text-mint-400 hover:underline transition-colors"
               aria-label={`Ouvrir la carte à ${COMPANY_NAME} ${CONTACT_INFO.address}`}
             >
               <!-- Icône épingle carte -->
@@ -171,7 +171,7 @@ const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(COMPANY
                   href={link.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="text-sage-300 hover:text-mint-400 hover:underline transition-colors"
+                  class="flex items-center min-h-[44px] text-sage-300 hover:text-mint-400 hover:underline transition-colors"
                   aria-label={`${link.name} (s'ouvre dans un nouvel onglet)`}
                 >
                   {link.name}
@@ -179,7 +179,7 @@ const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(COMPANY
               ) : (
                 <a
                   href={link.href}
-                  class="text-sage-300 hover:text-mint-400 hover:underline transition-colors"
+                  class="flex items-center min-h-[44px] text-sage-300 hover:text-mint-400 hover:underline transition-colors"
                 >
                   {link.name}
                 </a>
@@ -223,18 +223,18 @@ const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(COMPANY
     <div class="mt-8 pt-4 border-t border-sage-700 text-center text-sage-300 text-sm space-y-2">
       <p>©{currentYear} Oriane Montabonnet. Tous droits réservés.</p>
       <nav aria-label="Liens légaux" class="flex flex-wrap justify-center gap-x-4 gap-y-1">
-        <a href="/mentions-legales" class="hover:text-mint-400 hover:underline transition-colors">
+        <a href="/mentions-legales" class="inline-flex items-center px-2 min-h-[44px] hover:text-mint-400 hover:underline transition-colors">
           Mentions légales
         </a>
-        <a href="/confidentialite" class="hover:text-mint-400 hover:underline transition-colors">
+        <a href="/confidentialite" class="inline-flex items-center px-2 min-h-[44px] hover:text-mint-400 hover:underline transition-colors">
           Confidentialité
         </a>
-        <a href="/cgv" class="hover:text-mint-400 hover:underline transition-colors">
+        <a href="/cgv" class="inline-flex items-center px-2 min-h-[44px] hover:text-mint-400 hover:underline transition-colors">
           CGV
         </a>
         <a
           href="/accessibilite"
-          class="hover:text-mint-400 hover:underline transition-colors"
+          class="inline-flex items-center px-2 min-h-[44px] hover:text-mint-400 hover:underline transition-colors"
           aria-label="Page accessibilité — non conforme"
         >
           Accessibilité : non conforme

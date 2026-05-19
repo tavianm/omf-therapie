@@ -4,7 +4,7 @@ export const Logo = () => (
   <div className="flex items-center mr-3">
     <a
       href="/"
-      className="flex items-center"
+      className="flex items-center min-h-[44px]"
       aria-label="Accueil Oriane Montabonnet"
     >
       <Leaf className="h-8 w-8 text-mint-600" aria-hidden="true" />

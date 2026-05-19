@@ -29,7 +29,7 @@ export const BlogPostCard = ({ post }: BlogPostCardProps) => {
             <a
               key={category}
               href={`/blog?category=${encodeURIComponent(category)}`}
-              className="inline-flex items-center gap-1 text-xs font-medium text-mint-600 bg-mint-50 px-2 py-1 rounded-full hover:bg-mint-100 transition-colors"
+              className="inline-flex items-center gap-1 text-xs font-medium text-mint-600 bg-mint-50 px-3 py-2 rounded-full hover:bg-mint-100 transition-colors min-h-[44px]"
             >
               <Tag className="h-3 w-3" />
               {category}
@@ -60,7 +60,7 @@ export const BlogPostCard = ({ post }: BlogPostCardProps) => {
         <div className="flex justify-between items-center">
           <a
             href={`/blog/${post.slug}`}
-            className="text-mint-600 font-medium hover:text-mint-700 transition-colors"
+            className="inline-flex items-center min-h-[44px] text-mint-600 font-medium hover:text-mint-700 transition-colors"
           >
             Lire la suite
           </a>

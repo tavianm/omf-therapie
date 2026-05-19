@@ -33,7 +33,7 @@ export const BlogSidebar = ({
           <li>
             <button
               onClick={() => onCategorySelect(null)}
-              className={`w-full text-left px-3 py-2 rounded-md transition-colors ${
+              className={`w-full text-left px-3 py-2 min-h-[44px] rounded-md transition-colors ${
                 selectedCategory === null
                   ? "bg-mint-50 text-mint-600 font-medium"
                   : "text-sage-600 hover:bg-sage-50"
@@ -49,7 +49,7 @@ export const BlogSidebar = ({
               <li key={category.name}>
                 <button
                   onClick={() => onCategorySelect(category.name)}
-                  className={`w-full text-left px-3 py-2 rounded-md transition-colors flex justify-between items-center ${
+                  className={`w-full text-left px-3 py-2 min-h-[44px] rounded-md transition-colors flex justify-between items-center ${
                     selectedCategory === category.name
                       ? "bg-mint-50 text-mint-600 font-medium"
                       : "text-sage-600 hover:bg-sage-50"

@@ -81,7 +81,7 @@ export const BlogPagination = ({
           <button
             onClick={() => onPageChange(currentPage - 1)}
             disabled={currentPage === 1}
-            className={`flex items-center justify-center w-10 h-10 rounded-md ${
+            className={`flex items-center justify-center w-11 h-11 rounded-md ${
               currentPage === 1
                 ? "text-sage-400 cursor-not-allowed"
                 : "text-sage-600 hover:bg-sage-100"
@@ -98,7 +98,7 @@ export const BlogPagination = ({
           <button
             onClick={() => onPageChange(currentPage + 1)}
             disabled={currentPage === totalPages}
-            className={`flex items-center justify-center w-10 h-10 rounded-md ${
+            className={`flex items-center justify-center w-11 h-11 rounded-md ${
               currentPage === totalPages
                 ? "text-sage-400 cursor-not-allowed"
                 : "text-sage-600 hover:bg-sage-100"
@@ -123,7 +123,7 @@ const PaginationButton = ({ page, isActive, onClick }: PaginationButtonProps) =>
   <li>
     <button
       onClick={onClick}
-      className={`flex items-center justify-center w-10 h-10 rounded-md ${
+      className={`flex items-center justify-center w-11 h-11 rounded-md ${
         isActive
           ? "bg-mint-600 text-white"
           : "text-sage-600 hover:bg-sage-100"

@@ -50,7 +50,7 @@ export const ShareButtons = ({ post }: ShareButtonsProps) => {
           href={link.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-sage-500 hover:text-mint-600 transition-colors"
+          className="text-sage-500 hover:text-mint-600 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
           aria-label={link.ariaLabel}
         >
           <link.icon className="h-5 w-5" />
