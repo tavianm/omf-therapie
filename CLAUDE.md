@@ -115,7 +115,7 @@ React hooks live in `src/hooks/` and are used within React islands only:
 
 - `useContactForm` - Contact form state and EmailJS submission
 - `useScrollToSection` - Smooth scroll to page sections
-- `useMotionVariants` - Framer Motion animation variants (respects prefers-reduced-motion)
+- `useMotionVariants` - Framer Motion animation variants (respects prefers-reduced-motion and disables on touch/WKWebView)
 - `useClipboard` - Copy to clipboard functionality
 
 ### State Management
@@ -207,9 +207,9 @@ export default function Component({ title }: Props) {
 
 Astro renders everything as static HTML by default. React is only loaded for interactive islands:
 
-- `client:load` — hydrate immediately (Navbar, contact form)
-- `client:idle` — hydrate when browser is idle
-- `client:visible` — hydrate when element enters viewport
+- `client:load` — hydrate immediately (Navbar, contact form, above-fold islands)
+- `client:idle` — hydrate when browser is idle; **preferred for all below-fold sections** (avoids the framer-motion SSR/hydration race where `opacity:0` content becomes visible before JS runs)
+- `client:visible` — hydrate when element enters viewport; avoid for sections using `useMotionVariants` (causes visible snap on mobile)
 
 ### Build Configuration (astro.config.mjs)
 

@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import { Leaf } from "lucide-react";
 import type { BlogPost } from "../../types/blog";
 import { BlogPostCard } from "./BlogPostCard";
@@ -33,19 +32,9 @@ export const BlogList = ({ posts, isLoading, error }: BlogListProps) => {
 
 const BlogLoadingState = () => (
   <div className="flex flex-col items-center justify-center py-12">
-    <motion.div
-      animate={{
-        rotate: 360,
-        scale: [1, 1.1, 1],
-      }}
-      transition={{
-        rotate: { duration: 2, repeat: Infinity, ease: "linear" },
-        scale: { duration: 1.5, repeat: Infinity, ease: "easeInOut" },
-      }}
-      className="inline-block mb-6"
-    >
-      <Leaf className="h-12 w-12 text-mint-600" />
-    </motion.div>
+    <div className="inline-block mb-6">
+      <Leaf className="h-12 w-12 text-mint-600 animate-spin" style={{ animationDuration: "2s" }} />
+    </div>
     <h2 className="text-xl font-serif font-semibold text-sage-800 mb-3">
       Chargement des articles...
     </h2>

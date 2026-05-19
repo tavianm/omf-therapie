@@ -108,7 +108,7 @@ export default function Component({ prop }: Props) {
 ### Performance
 
 - **Zéro JS par défaut** — rendu serveur statique (SSG) via Astro
-- **Islands Architecture** — React hydraté uniquement sur les composants interactifs (`client:load`, `client:idle`, `client:visible`)
+- **Islands Architecture** — React hydraté uniquement sur les composants interactifs (`client:load` pour above-fold, `client:idle` pour below-fold, éviter `client:visible` avec framer-motion)
 - Images responsives (multiple tailles + WebP/AVIF)
 - Sitemap auto-généré par `@astrojs/sitemap`
 
@@ -136,6 +136,8 @@ Points critiques à respecter :
 - Utiliser `framer-motion` via `useMotionVariants`
 - Animations légères et performantes
 - Respecter `prefers-reduced-motion`
+- **WKWebView (iOS Messages)** : les animations framer-motion sont désactivées sur les appareils touch (`hover: none` + `pointer: coarse`) — le hook retourne `staticProps` sans IntersectionObserver ni WAAPI
+- Animations de chargement (spinners) : utiliser Tailwind `animate-spin` — **ne pas** utiliser framer-motion pour les animations continues
 
 ## 📝 Gestion du Blog
 

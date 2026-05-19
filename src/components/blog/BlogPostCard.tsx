@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { Calendar, Clock, Tag } from "lucide-react";
 import type { BlogPost } from "../../types/blog";
+import { useMotionVariants } from "../../hooks/useMotionVariants";
 import { calculateReadingTime } from "../../utils/readingTime";
 import { ShareButtons } from "./ShareButtons";
 
@@ -9,14 +10,7 @@ interface BlogPostCardProps {
 }
 
 export const BlogPostCard = ({ post }: BlogPostCardProps) => {
-  const { fadeInUp } = {
-    fadeInUp: () => ({
-      initial: { opacity: 0, y: 20 },
-      whileInView: { opacity: 1, y: 0 },
-      viewport: { once: true },
-      transition: { duration: 0.5 },
-    }),
-  };
+  const { fadeInUp } = useMotionVariants();
 
   return (
     <motion.article

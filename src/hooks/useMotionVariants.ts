@@ -7,10 +7,20 @@ interface MotionVariantOptions {
   distance?: number;
 }
 
-// Renders the element with its final appearance immediately — no observer,
-// no will-change layer, no WAAPI animation scheduled.
+// Renders the element at its final visible state with a gentle opacity fade.
+// - initial:false inherits the SSR DOM state (opacity:0 + transform offsets from framer-motion SSR)
+// - animate resets transforms instantly (x/y duration:0) to avoid positional jumps
+// - opacity fades in smoothly (0.35s) so content doesn't snap brutally on scroll
+// - No WAAPI-heavy features (no IntersectionObserver, no will-change, no stagger)
+//   → safe in WKWebView (Apple Messages limited webview)
 const staticProps: MotionProps = {
   initial: false,
+  animate: { opacity: 1, x: 0, y: 0 },
+  transition: {
+    opacity: { duration: 0.35, ease: "easeOut" },
+    x: { duration: 0 },
+    y: { duration: 0 },
+  },
 };
 
 function shouldDisableAnimations(): boolean {
@@ -34,7 +44,8 @@ export const useMotionVariants = () => {
       whileInView: { opacity: 1, y: 0 },
       viewport: { once: true },
       transition: {
-        duration: options.duration ?? 0.8,
+        duration: options.duration ?? 0.5,
+        ease: "easeOut",
         delay: options.delay ?? 0,
       },
     };
@@ -47,7 +58,8 @@ export const useMotionVariants = () => {
       whileInView: { opacity: 1 },
       viewport: { once: true },
       transition: {
-        duration: options.duration ?? 0.8,
+        duration: options.duration ?? 0.5,
+        ease: "easeOut",
         delay: options.delay ?? 0,
       },
     };
@@ -60,7 +72,8 @@ export const useMotionVariants = () => {
       whileInView: { opacity: 1, x: 0 },
       viewport: { once: true },
       transition: {
-        duration: options.duration ?? 0.8,
+        duration: options.duration ?? 0.5,
+        ease: "easeOut",
         delay: options.delay ?? 0,
       },
     };
@@ -73,7 +86,8 @@ export const useMotionVariants = () => {
       whileInView: { opacity: 1, x: 0 },
       viewport: { once: true },
       transition: {
-        duration: options.duration ?? 0.8,
+        duration: options.duration ?? 0.5,
+        ease: "easeOut",
         delay: options.delay ?? 0,
       },
     };

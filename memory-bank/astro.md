@@ -85,7 +85,7 @@ const blog = defineCollection({
 
 ### Performance Optimization
 - Default to zero JavaScript - only add interactivity where needed
-- Use client directives strategically (`client:load`, `client:idle`, `client:visible`)
+- Use client directives strategically: `client:load` for above-fold / interactive islands, `client:idle` for below-fold sections (prevents framer-motion SSR/hydration race where `opacity:0` content stays invisible until JS runs), avoid `client:visible` on islands using `useMotionVariants`
 - Implement lazy loading for images and components
 - Optimize static assets with Astro's built-in optimization
 - Leverage Content Layer API for faster content loading and builds

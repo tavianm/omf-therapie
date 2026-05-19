@@ -42,25 +42,25 @@ const jsonLd = [
     <IntroSection client:load />
 
     <section id="about" aria-label="À propos">
-      <AboutSection client:visible />
+      <AboutSection client:idle />
     </section>
 
     <section id="services" aria-label="Domaines d'expertise">
-      <ServicesSection client:visible />
+      <ServicesSection client:idle />
     </section>
 
     <section id="process" aria-label="Processus thérapeutique">
-      <ProcessSection client:visible />
+      <ProcessSection client:idle />
     </section>
 
     <LocalAreaSection />
 
     <section id="qualifications" aria-label="Formations et qualifications">
-      <QualificationsSection client:visible />
+      <QualificationsSection client:idle />
     </section>
 
     <section id="pricing" aria-label="Tarifs des séances">
-      <PricingSection client:visible />
+      <PricingSection client:idle />
     </section>
 
     <FAQSection faqs={FAQ_ITEMS} />
