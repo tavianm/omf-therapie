@@ -104,6 +104,28 @@ import { COMPANY_NAME, CONTACT_INFO } from '../config/global.config';
       </ul>
 
       <h3 class="text-xl font-serif font-semibold text-sage-800 mt-6 mb-3">
+        Intégration Google Calendar (usage interne uniquement)
+      </h3>
+      <p class="mb-4">
+        Dans le cadre de la gestion des rendez-vous, l'application accède au compte
+        Google Calendar du responsable du traitement (la praticienne) afin de :
+      </p>
+      <ul class="list-disc pl-6 space-y-2 mb-4">
+        <li>vérifier les disponibilités en temps réel (données de disponibilité utilisées à la volée, jamais stockées) ;</li>
+        <li>créer des événements de rendez-vous avec lien Google Meet pour les téléconsultations.</li>
+      </ul>
+      <p class="mb-4">
+        L'identifiant d'événement Google Calendar et le lien Google Meet sont conservés
+        dans notre base de données le temps du rendez-vous, puis soumis à la politique
+        de conservation standard (5 ans).
+      </p>
+      <p class="mb-8">
+        <strong>Aucune donnée Google d'un patient ou visiteur n'est jamais collectée.</strong>
+        Les patients ne se connectent pas avec Google. L'accès à l'API Google Calendar
+        est réalisé exclusivement côté serveur ; aucune donnée n'est exposée au navigateur.
+      </p>
+
+      <h3 class="text-xl font-serif font-semibold text-sage-800 mt-6 mb-3">
         Cookie de session administrateur
       </h3>
       <p class="mb-8">
@@ -198,8 +220,19 @@ import { COMPANY_NAME, CONTACT_INFO } from '../config/global.config';
           transitent pas par nos serveurs.
         </li>
         <li>
-          <strong>Google</strong> (Google LLC, USA) — gestion du calendrier des
-          rendez-vous via Google Calendar.
+          <strong>Google</strong> (Google LLC, USA) — accès au calendrier de la
+          praticienne via l'API Google Calendar (scopes :
+          <code class="text-sm bg-sage-100 px-1 rounded">calendar.events</code> et
+          <code class="text-sm bg-sage-100 px-1 rounded">calendar.readonly</code>)
+          pour la vérification des disponibilités et la création d'événements avec
+          lien Google Meet pour les téléconsultations. Aucune donnée Google des
+          patients n'est traitée. —
+          <a
+            href="https://policies.google.com/privacy"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-mint-600 underline hover:text-mint-700"
+          >Politique de confidentialité Google</a>.
         </li>
         <li>
           <strong>Netlify</strong> (Netlify, Inc., USA) — hébergement du site web.
@@ -312,7 +345,7 @@ import { COMPANY_NAME, CONTACT_INFO } from '../config/global.config';
       <hr class="my-8 border-sage-200" />
 
       <p class="text-sage-600 text-sm">
-        <time datetime="2026-05-18">Mise à jour : 18 mai 2026</time>
+        <time datetime="2026-05-20">Mise à jour : 20 mai 2026</time>
       </p>
     </section>
   </main>
