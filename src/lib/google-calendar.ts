@@ -202,12 +202,17 @@ async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | null> {
     } catch (err: unknown) {
       const errData = (err as { response?: { data?: { error?: string } } })?.response?.data;
       if (errData?.error === 'invalid_grant') {
+        // Store only the safe error code — do NOT pass raw err (GaxiosError may
+        // carry client_secret / refresh_token in response.config.data)
         throw new CalendarAuthError(
           'OAuth consent revoked — re-authorize via Google Cloud Console',
-          err,
+          { googleErrorCode: errData.error },
         );
       }
-      throw new CalendarNetworkError('Token refresh failed', err);
+      throw new CalendarNetworkError(
+        'Token refresh failed',
+        { message: err instanceof Error ? err.message : String(err) },
+      );
     }
   }
 

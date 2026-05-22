@@ -187,7 +187,12 @@ export const GET: APIRoute = async ({ request }) => {
   } catch (err: unknown) {
     if (err instanceof GoogleCalendarError) {
       // Erreur métier Google Calendar (quota, config, permissions)
-      console.error('[api/availability] GoogleCalendarError :', err.message, err.cause);
+      console.error(
+        '[api/availability] GoogleCalendarError :',
+        err.message,
+        // err.cause intentionally NOT logged — may contain OAuth credentials via GaxiosError
+        err.cause instanceof Error ? err.cause.message : typeof err.cause === 'object' && err.cause !== null ? (err.cause as Record<string, unknown>)['googleErrorCode'] ?? 'unknown' : String(err.cause ?? ''),
+      );
       return jsonError('Le service de disponibilités est temporairement indisponible.', 503);
     }
 

@@ -564,7 +564,14 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       .from('appointments')
       .update(updateData)
       .eq('id', id)
-      .select()
+      .select([
+        'id', 'status', 'scheduled_at', 'rescheduled_to',
+        'appointment_mode', 'appointment_type', 'duration',
+        'patient_name', 'patient_email', 'final_price',
+        'video_link', 'stripe_payment_link_url',
+        'google_calendar_event_id',
+        // therapist_notes, stripe_payment_intent_id, stripe_payment_link_id excluded — unauthenticated caller
+      ].join(', '))
       .single();
 
     if (updateError || !updated) {
