@@ -404,6 +404,9 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // Action: reschedule
   // ---------------------------------------------------------------------------
   if (action === 'reschedule') {
+    if (!['pending', 'payment_pending', 'payment_received', 'confirmed', 'rescheduled'].includes(appointment.status))
+      return errorResponse(409, 'Ce rendez-vous ne peut pas être reporté dans son état actuel');
+
     if (!rescheduled_to || typeof rescheduled_to !== 'string')
       return errorResponse(422, 'Nouveau créneau requis pour un report');
 

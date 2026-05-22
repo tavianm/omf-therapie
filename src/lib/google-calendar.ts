@@ -1,5 +1,5 @@
 /**
- * Google Calendar API wrapper (OAuth utilisateur ou service account)
+ * Google Calendar API wrapper (OAuth utilisateur)
  *
  * Gère la génération des créneaux candidats et la vérification
  * de disponibilité via l'API Freebusy de Google Calendar.
@@ -123,27 +123,6 @@ const MIN_NOTICE_MS = 24 * 60 * 60 * 1000;
 // Authentification Google
 // ---------------------------------------------------------------------------
 
-function buildServiceAccountClient(): Auth.JWT | null {
-  const email = import.meta.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const rawKey = import.meta.env.GOOGLE_PRIVATE_KEY;
-
-  if (!email || !rawKey) {
-    return null;
-  }
-
-  // Les clés privées sont souvent stockées avec des "\n" littéraux
-  const privateKey = rawKey.replace(/\\n/g, '\n');
-
-  return new google.auth.JWT({
-    email,
-    key: privateKey,
-    scopes: [
-      'https://www.googleapis.com/auth/calendar.events',
-      'https://www.googleapis.com/auth/calendar.readonly',
-    ],
-  });
-}
-
 
 /**
  * Returns a configured OAuth2Client with a valid access token, persisting
@@ -225,15 +204,12 @@ async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | null> {
   return oauth2Client;
 }
 
-async function resolveCalendarAuth(): Promise<Auth.OAuth2Client | Auth.JWT> {
+async function resolveCalendarAuth(): Promise<Auth.OAuth2Client> {
   const oauth = await getPersistedOAuthClient();
   if (oauth) return oauth;
 
-  const serviceAccount = buildServiceAccountClient();
-  if (serviceAccount) return serviceAccount;
-
   throw new GoogleCalendarError(
-    'Configuration Google Calendar manquante : configurez OAuth (GOOGLE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN) ou Service Account (GOOGLE_SERVICE_ACCOUNT_EMAIL/GOOGLE_PRIVATE_KEY).',
+    'Configuration Google Calendar manquante : configurez OAuth (GOOGLE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN).',
   );
 }
 
@@ -576,12 +552,6 @@ export interface CreateEventResult {
   meetLink?: string;
 }
 
-function isAttendeeDelegationError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  const msg = err.message.toLowerCase();
-  return msg.includes('service accounts cannot invite attendees') ||
-    msg.includes('domain-wide delegation');
-}
 
 function extractEventResult(data: { id?: string | null; conferenceData?: { entryPoints?: Array<{ uri?: string } | null> | null } | null; hangoutLink?: string | null }): CreateEventResult {
   const eventId = data.id;
@@ -765,65 +735,24 @@ export async function createCalendarEvent(
     };
   };
 
-  // Priorité OAuth utilisateur (3-legged) pour les liens Meet sur comptes perso.
-  if (params.withMeet) {
-    const oauthAuth = await getPersistedOAuthClient();
-    if (oauthAuth) {
-      const oauthCalendar = google.calendar({ version: 'v3', auth: oauthAuth });
-      try {
-        return await upsertEvent(
-          oauthCalendar,
-          params.attendeeEmail ? 'all' : 'none',
-          true,
-          Boolean(params.attendeeEmail),
-        );
-      } catch (oauthErr: unknown) {
-        const oauthMessage = oauthErr instanceof Error ? oauthErr.message : String(oauthErr);
-        console.warn('[google-calendar] Échec création Meet via OAuth utilisateur, fallback service account:', oauthMessage);
-      }
-    } else {
-      console.warn('[google-calendar] OAuth utilisateur non configuré pour la génération Meet, fallback service account.');
-    }
+  // Use OAuth for all event types (Meet and in-person).
+  const oauthAuth = await getPersistedOAuthClient();
+  if (!oauthAuth) {
+    throw new GoogleCalendarError(
+      'OAuth non configuré : impossible de créer le rendez-vous dans l\'agenda.',
+    );
   }
 
-  const serviceAccountAuth = buildServiceAccountClient();
-  const calendar = serviceAccountAuth
-    ? google.calendar({ version: 'v3', auth: serviceAccountAuth })
-    : null;
-
+  const oauthCalendar = google.calendar({ version: 'v3', auth: oauthAuth });
   try {
-    if (!calendar) {
-      throw new GoogleCalendarError(
-        'Aucun fallback Service Account configuré après échec OAuth.',
-      );
-    }
     return await upsertEvent(
-      calendar,
+      oauthCalendar,
       params.attendeeEmail ? 'all' : 'none',
-      false,
+      Boolean(params.withMeet),
       Boolean(params.attendeeEmail),
     );
   } catch (err: unknown) {
     if (err instanceof GoogleCalendarError) throw err;
-    if (params.attendeeEmail && isAttendeeDelegationError(err)) {
-      console.warn('[google-calendar] Attendee non autorisé pour service account. Retry sans invité.');
-      try {
-        return await upsertEvent(
-          calendar,
-          'none',
-          false,
-          false,
-        );
-      } catch (retryErr: unknown) {
-        const retryMessage = retryErr instanceof Error ? retryErr.message : String(retryErr);
-        console.error('[google-calendar] Échec retry sans invité :', retryMessage);
-        throw new GoogleCalendarError(
-          'Impossible de créer le rendez-vous dans l\'agenda.',
-          retryErr,
-        );
-      }
-    }
-
     const message = err instanceof Error ? err.message : String(err);
     console.error('[google-calendar] Impossible de créer l\'événement :', message);
     throw new GoogleCalendarError(

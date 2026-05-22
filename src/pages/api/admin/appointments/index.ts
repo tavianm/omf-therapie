@@ -280,7 +280,14 @@ export const POST: APIRoute = async ({ request }) => {
     }
   }
 
-  return new Response(JSON.stringify({ appointment }), {
+  // Refetch to include any calendar event ID set after the initial insert
+  const { data: finalAppointment } = await supabaseAdmin
+    .from('appointments')
+    .select('*')
+    .eq('id', appointment.id)
+    .single();
+
+  return new Response(JSON.stringify({ appointment: finalAppointment ?? appointment }), {
     status: 201,
     headers: { 'Content-Type': 'application/json' },
   });

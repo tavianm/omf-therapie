@@ -17,3 +17,6 @@ ALTER TABLE google_oauth_tokens ENABLE ROW LEVEL SECURITY;
 -- Link calendar events to appointments for lifecycle management
 ALTER TABLE appointments
   ADD COLUMN IF NOT EXISTS google_calendar_event_id TEXT;
+
+-- Reload PostgREST schema cache so google_oauth_tokens is immediately queryable
+NOTIFY pgrst, 'reload schema';
