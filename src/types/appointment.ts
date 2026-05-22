@@ -69,6 +69,9 @@ export interface Appointment {
   // Google Meet (renseigné manuellement par la thérapeute)
   video_link: string | null;
 
+  // Google Calendar event ID (for lifecycle management: update/delete on reschedule/decline)
+  google_calendar_event_id: string | null;
+
   // Usage interne
   therapist_notes: string | null;
 
@@ -103,6 +106,7 @@ export type CreateAppointmentData = Omit<
   | 'video_link'
   | 'therapist_notes'
   | 'rescheduled_to'
+  | 'google_calendar_event_id'
 >;
 
 // ---------------------------------------------------------------------------
@@ -123,6 +127,7 @@ export type UpdateAppointmentData = Partial<
     | 'video_link'
     | 'therapist_notes'
     | 'rescheduled_to'
+    | 'google_calendar_event_id'
   >
 >;
 

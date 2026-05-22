@@ -10,8 +10,9 @@ import { generateGoogleCalendarLink, generateOutlookCalendarLink, generateAppleC
 import { createSecureLinkToken, verifySecureLinkToken } from '../../../lib/secure-links';
 import { getTypeLabel, getModeLabel, calculatePrice } from '../../../lib/pricing';
 import { stripe, createAppointmentPaymentLink } from '../../../lib/stripe';
-import { createCalendarEvent } from '../../../lib/google-calendar';
+import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from '../../../lib/google-calendar';
 import { isWednesdayParis, isWithinBusinessHours } from '../../../utils/date';
+import { invalidateAvailabilityCache } from '../../../lib/calendar-cache.js';
 import AppointmentConfirmed from '../../../emails/AppointmentConfirmed';
 import AppointmentDeclined from '../../../emails/AppointmentDeclined';
 import AppointmentRescheduled from '../../../emails/AppointmentRescheduled';
@@ -191,27 +192,31 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       try {
         const start = new Date(appointment.scheduled_at);
         const end = new Date(start.getTime() + appointment.duration * 60 * 1000);
-        const meetResult = await createCalendarEvent({
-          title: `🎥 ${appointment.patient_name} — ${getTypeLabel(appointment.appointment_type)} (${appointment.duration} min)`,
-          start: start.toISOString(),
-          end: end.toISOString(),
-          description: [
-            `Patient: ${appointment.patient_name}`,
-            `Email: ${appointment.patient_email}`,
-            `Mode: ${getModeLabel(appointment.appointment_mode)}`,
-            `Type: ${getTypeLabel(appointment.appointment_type)}`,
-            `Durée: ${appointment.duration} min`,
-          ].join('\n'),
-          location: appointment.appointment_mode === 'in-person' ? CABINET_ADDRESS : 'Téléconsultation',
-          attendeeEmail: appointment.patient_email,
-          withMeet: true,
-          appointmentId: id,
-          colorId: appointment.appointment_mode === 'video' ? '11' : '2',
-        });
-        if (meetResult.meetLink) {
-          updateData.video_link = meetResult.meetLink;
-        } else {
-          updateData.video_link = buildFallbackVideoLink(appointment.id);
+        // Idempotency: skip if event already exists
+        if (!appointment.google_calendar_event_id) {
+          const meetResult = await createCalendarEvent({
+            title: `🎥 ${appointment.patient_name} — ${getTypeLabel(appointment.appointment_type)} (${appointment.duration} min)`,
+            start: start.toISOString(),
+            end: end.toISOString(),
+            description: [
+              `Patient: ${appointment.patient_name}`,
+              `Email: ${appointment.patient_email}`,
+              `Mode: ${getModeLabel(appointment.appointment_mode)}`,
+              `Type: ${getTypeLabel(appointment.appointment_type)}`,
+              `Durée: ${appointment.duration} min`,
+            ].join('\n'),
+            location: appointment.appointment_mode === 'in-person' ? CABINET_ADDRESS : 'Téléconsultation',
+            attendeeEmail: appointment.patient_email,
+            withMeet: true,
+            appointmentId: id,
+            colorId: appointment.appointment_mode === 'video' ? '11' : '2',
+          });
+          if (meetResult.meetLink) {
+            updateData.video_link = meetResult.meetLink;
+          } else {
+            updateData.video_link = buildFallbackVideoLink(appointment.id);
+          }
+          updateData.google_calendar_event_id = meetResult.eventId;
         }
       } catch (meetErr) {
         // Dégradation gracieuse : fallback visio non bloquant
@@ -234,11 +239,13 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     const updatedAppt = updated as Appointment;
 
-    if (newStatus === 'confirmed' && updatedAppt.appointment_mode === 'in-person') {
+    await invalidateAvailabilityCache().catch(console.error);
+
+    if (newStatus === 'confirmed' && updatedAppt.appointment_mode === 'in-person' && !updatedAppt.google_calendar_event_id) {
       const start = new Date(updatedAppt.scheduled_at);
       const end = new Date(start.getTime() + updatedAppt.duration * 60 * 1000);
       try {
-        await createCalendarEvent({
+        const calResult = await createCalendarEvent({
           title: `${updatedAppt.patient_name} — ${getTypeLabel(updatedAppt.appointment_type)} (${updatedAppt.duration} min)`,
           start: start.toISOString(),
           end: end.toISOString(),
@@ -255,6 +262,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           appointmentId: `${updatedAppt.id}-inperson-confirm`,
           colorId: '2',
         });
+        await supabaseAdmin
+          .from('appointments')
+          .update({ google_calendar_event_id: calResult.eventId })
+          .eq('id', updatedAppt.id);
       } catch (calendarErr) {
         console.error('[appointments/patch] Erreur création événement agenda (présentiel):', calendarErr);
       }
@@ -341,6 +352,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     const updatedAppt = updated as Appointment;
 
+    await invalidateAvailabilityCache().catch(console.error);
+
     await sendEmail({
       to: updatedAppt.patient_email,
       threadKey: `appointment:${updatedAppt.id}:patient`,
@@ -354,6 +367,13 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         therapistNote: typeof therapist_notes === 'string' ? therapist_notes : undefined,
       }),
     });
+
+    // Delete calendar event if exists (non-blocking — don't fail the decline if calendar fails)
+    if (appointment.google_calendar_event_id) {
+      await deleteCalendarEvent(appointment.google_calendar_event_id).catch((calendarErr: unknown) => {
+        console.error('[appointments/patch] Erreur suppression événement agenda (decline):', calendarErr);
+      });
+    }
 
     return jsonResponse({ appointment: updatedAppt, message: 'Rendez-vous refusé.' });
   }
@@ -429,6 +449,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     }
 
     const updatedAppt = updated as Appointment;
+
+    await invalidateAvailabilityCache().catch(console.error);
 
     await sendEmail({
       to: updatedAppt.patient_email,
@@ -552,29 +574,41 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     const updatedAppt = updated as Appointment;
 
+    await invalidateAvailabilityCache().catch(console.error);
+
     if (newStatus === 'confirmed' && updatedAppt.appointment_mode === 'in-person') {
       const start = new Date(updatedAppt.scheduled_at);
       const end = new Date(start.getTime() + updatedAppt.duration * 60 * 1000);
       try {
-        await createCalendarEvent({
-          title: `${updatedAppt.patient_name} — ${getTypeLabel(updatedAppt.appointment_type)} (${updatedAppt.duration} min)`,
-          start: start.toISOString(),
-          end: end.toISOString(),
-          description: [
-            `Patient: ${updatedAppt.patient_name}`,
-            `Email: ${updatedAppt.patient_email}`,
-            `Mode: ${getModeLabel(updatedAppt.appointment_mode)}`,
-            `Type: ${getTypeLabel(updatedAppt.appointment_type)}`,
-            `Durée: ${updatedAppt.duration} min`,
-          ].join('\n'),
-          location: CABINET_ADDRESS,
-          attendeeEmail: updatedAppt.patient_email,
-          withMeet: false,
-          appointmentId: `${updatedAppt.id}-inperson-reschedule`,
-          colorId: '2',
-        });
+        if (appointment.google_calendar_event_id) {
+          // Patch existing event to the accepted reschedule date
+          await updateCalendarEvent(appointment.google_calendar_event_id, { start, end });
+        } else {
+          // No existing event — create one
+          const calResult = await createCalendarEvent({
+            title: `${updatedAppt.patient_name} — ${getTypeLabel(updatedAppt.appointment_type)} (${updatedAppt.duration} min)`,
+            start: start.toISOString(),
+            end: end.toISOString(),
+            description: [
+              `Patient: ${updatedAppt.patient_name}`,
+              `Email: ${updatedAppt.patient_email}`,
+              `Mode: ${getModeLabel(updatedAppt.appointment_mode)}`,
+              `Type: ${getTypeLabel(updatedAppt.appointment_type)}`,
+              `Durée: ${updatedAppt.duration} min`,
+            ].join('\n'),
+            location: CABINET_ADDRESS,
+            attendeeEmail: updatedAppt.patient_email,
+            withMeet: false,
+            appointmentId: `${updatedAppt.id}-inperson-reschedule`,
+            colorId: '2',
+          });
+          await supabaseAdmin
+            .from('appointments')
+            .update({ google_calendar_event_id: calResult.eventId })
+            .eq('id', updatedAppt.id);
+        }
       } catch (calendarErr) {
-        console.error('[appointments/patch] Erreur création événement agenda après acceptation de report:', calendarErr);
+        console.error('[appointments/patch] Erreur mise à jour événement agenda après acceptation de report:', calendarErr);
       }
     }
 

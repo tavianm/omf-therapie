@@ -6,6 +6,81 @@
  */
 
 import { google, type Auth, type calendar_v3 } from 'googleapis';
+import { supabaseAdmin } from './supabase.js';
+
+// ---------------------------------------------------------------------------
+// Erreur typée
+// ---------------------------------------------------------------------------
+
+export class GoogleCalendarError extends Error {
+  public readonly cause: unknown;
+
+  constructor(message: string, cause?: unknown) {
+    super(message);
+    this.name = 'GoogleCalendarError';
+    this.cause = cause;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Typed subclasses
+// ---------------------------------------------------------------------------
+
+export class CalendarAuthError extends GoogleCalendarError {
+  readonly type = 'CalendarAuthError' as const;
+  constructor(message: string, cause?: unknown) { super(message, cause); this.name = 'CalendarAuthError'; }
+}
+
+export class CalendarPermissionError extends GoogleCalendarError {
+  readonly type = 'CalendarPermissionError' as const;
+  constructor(message: string, cause?: unknown) { super(message, cause); this.name = 'CalendarPermissionError'; }
+}
+
+export class CalendarQuotaError extends GoogleCalendarError {
+  readonly type = 'CalendarQuotaError' as const;
+  constructor(message: string, cause?: unknown) { super(message, cause); this.name = 'CalendarQuotaError'; }
+}
+
+export class CalendarNetworkError extends GoogleCalendarError {
+  readonly type = 'CalendarNetworkError' as const;
+  constructor(message: string, cause?: unknown) { super(message, cause); this.name = 'CalendarNetworkError'; }
+}
+
+// ---------------------------------------------------------------------------
+// Error parser + retry helper
+// ---------------------------------------------------------------------------
+
+function parseGoogleError(err: unknown): GoogleCalendarError {
+  const asRecord = typeof err === 'object' && err !== null ? (err as Record<string, unknown>) : null;
+  const responseStatus = asRecord?.['response'] != null
+    ? (asRecord['response'] as Record<string, unknown>)['status']
+    : undefined;
+  const status = responseStatus ?? asRecord?.['code'];
+  if (status === 401) return new CalendarAuthError('Authentication failed', err);
+  if (status === 403) return new CalendarPermissionError('Calendar access denied', err);
+  if (status === 429) return new CalendarQuotaError('Google API quota exceeded', err);
+  return new CalendarNetworkError('Calendar API error', err);
+}
+
+export async function withCalendarRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
+  let lastError: GoogleCalendarError = new CalendarNetworkError('Unknown error');
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const parsed = parseGoogleError(err);
+      lastError = parsed;
+      // No retry for auth/permission errors
+      if (parsed instanceof CalendarAuthError || parsed instanceof CalendarPermissionError) {
+        throw parsed;
+      }
+      if (attempt < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+      }
+    }
+  }
+  throw lastError;
+}
 
 // ---------------------------------------------------------------------------
 // Types publics
@@ -69,29 +144,90 @@ function buildServiceAccountClient(): Auth.JWT | null {
   });
 }
 
-function buildOAuthClient(): Auth.OAuth2Client | null {
+
+/**
+ * Returns a configured OAuth2Client with a valid access token, persisting
+ * token rotation in the `google_oauth_tokens` Supabase table.
+ * Falls back to bootstrapping from env vars on first run.
+ */
+async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | null> {
   const clientId = import.meta.env.GOOGLE_OAUTH_CLIENT_ID;
   const clientSecret = import.meta.env.GOOGLE_OAUTH_CLIENT_SECRET;
-  const refreshToken = import.meta.env.GOOGLE_OAUTH_REFRESH_TOKEN;
-
-  if (!clientId || !clientSecret || !refreshToken) {
-    return null;
-  }
+  if (!clientId || !clientSecret) return null;
 
   const redirectUri = import.meta.env.GOOGLE_OAUTH_REDIRECT_URI ?? 'https://developers.google.com/oauthplayground';
-  const client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
-  client.setCredentials({ refresh_token: refreshToken });
-  return client;
+  const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+
+  // 1. Load persisted tokens from DB
+  let { data: tokens } = await supabaseAdmin
+    .from('google_oauth_tokens')
+    .select('*')
+    .eq('id', 'therapist')
+    .single();
+
+  if (!tokens) {
+    // 2. Bootstrap from env vars on first run
+    const refreshToken = import.meta.env.GOOGLE_OAUTH_REFRESH_TOKEN;
+    if (!refreshToken) return null;
+
+    tokens = {
+      id: 'therapist',
+      access_token: '',
+      refresh_token: refreshToken,
+      expiry_date: 0, // Forces immediate refresh below
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    await supabaseAdmin.from('google_oauth_tokens').upsert(tokens);
+  }
+
+  // 3. Proactive refresh: refresh if token expires within 5 minutes
+  if (!tokens.expiry_date || tokens.expiry_date < Date.now() + 5 * 60 * 1000) {
+    oauth2Client.setCredentials({ refresh_token: tokens.refresh_token });
+    try {
+      const { credentials } = await oauth2Client.refreshAccessToken();
+      const updated = {
+        access_token: credentials.access_token ?? '',
+        // Persist rotated refresh_token if Google returns one (token rotation policy)
+        refresh_token: credentials.refresh_token ?? tokens.refresh_token,
+        expiry_date: credentials.expiry_date ?? (Date.now() + 3600 * 1000),
+        updated_at: new Date().toISOString(),
+      };
+      await supabaseAdmin
+        .from('google_oauth_tokens')
+        .update(updated)
+        .eq('id', 'therapist');
+      oauth2Client.setCredentials(credentials);
+      return oauth2Client;
+    } catch (err: unknown) {
+      const errData = (err as { response?: { data?: { error?: string } } })?.response?.data;
+      if (errData?.error === 'invalid_grant') {
+        throw new CalendarAuthError(
+          'OAuth consent revoked — re-authorize via Google Cloud Console',
+          err,
+        );
+      }
+      throw new CalendarNetworkError('Token refresh failed', err);
+    }
+  }
+
+  // 4. Token is still valid — use as-is
+  oauth2Client.setCredentials({
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    expiry_date: tokens.expiry_date,
+  });
+  return oauth2Client;
 }
 
-function resolveCalendarAuth(): Auth.OAuth2Client | Auth.JWT {
-  const oauth = buildOAuthClient();
+async function resolveCalendarAuth(): Promise<Auth.OAuth2Client | Auth.JWT> {
+  const oauth = await getPersistedOAuthClient();
   if (oauth) return oauth;
 
   const serviceAccount = buildServiceAccountClient();
   if (serviceAccount) return serviceAccount;
 
-  throw new Error(
+  throw new GoogleCalendarError(
     'Configuration Google Calendar manquante : configurez OAuth (GOOGLE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN) ou Service Account (GOOGLE_SERVICE_ACCOUNT_EMAIL/GOOGLE_PRIVATE_KEY).',
   );
 }
@@ -350,7 +486,7 @@ export async function getAvailableSlots(
     return [];
   }
 
-  const auth = resolveCalendarAuth();
+  const auth = await resolveCalendarAuth();
   const calendar = google.calendar({ version: 'v3', auth });
 
   // Une seule requête Freebusy pour toute la plage
@@ -473,7 +609,7 @@ async function pollMeetLink(
   calendarId: string,
   eventId: string,
 ): Promise<string | undefined> {
-  const maxAttempts = 10;
+  const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     await wait(1500);
     const response = await calendar.events.get({
@@ -485,6 +621,61 @@ async function pollMeetLink(
     if (result.meetLink) return result.meetLink;
   }
   return undefined;
+}
+
+/**
+ * Updates an existing Google Calendar event (e.g., on reschedule acceptance).
+ * Only moves the event once the patient accepts — not on proposal.
+ */
+export async function updateCalendarEvent(
+  eventId: string,
+  patch: { start?: Date; end?: Date; summary?: string },
+): Promise<void> {
+  if (MOCK_MODE) {
+    console.log(`[calendar-mock] Updating event ${eventId}:`, patch);
+    return;
+  }
+
+  const calendarId = import.meta.env.GOOGLE_CALENDAR_ID;
+  if (!calendarId) throw new GoogleCalendarError('GOOGLE_CALENDAR_ID non défini.');
+
+  await withCalendarRetry(async () => {
+    const auth = await resolveCalendarAuth();
+    const calendar = google.calendar({ version: 'v3', auth });
+    const body: calendar_v3.Schema$Event = {};
+    if (patch.start) body.start = { dateTime: patch.start.toISOString(), timeZone: TIMEZONE };
+    if (patch.end) body.end = { dateTime: patch.end.toISOString(), timeZone: TIMEZONE };
+    if (patch.summary) body.summary = patch.summary;
+    await calendar.events.patch({
+      calendarId,
+      eventId,
+      requestBody: body,
+      sendUpdates: 'all',
+    });
+  });
+}
+
+/**
+ * Deletes a Google Calendar event (e.g., on decline or cancellation).
+ */
+export async function deleteCalendarEvent(eventId: string): Promise<void> {
+  if (MOCK_MODE) {
+    console.log(`[calendar-mock] Deleting event ${eventId}`);
+    return;
+  }
+
+  const calendarId = import.meta.env.GOOGLE_CALENDAR_ID;
+  if (!calendarId) throw new GoogleCalendarError('GOOGLE_CALENDAR_ID non défini.');
+
+  await withCalendarRetry(async () => {
+    const auth = await resolveCalendarAuth();
+    const calendar = google.calendar({ version: 'v3', auth });
+    await calendar.events.delete({
+      calendarId,
+      eventId,
+      sendUpdates: 'all',
+    });
+  });
 }
 
 /**
@@ -571,7 +762,7 @@ export async function createCalendarEvent(
 
   // Priorité OAuth utilisateur (3-legged) pour les liens Meet sur comptes perso.
   if (params.withMeet) {
-    const oauthAuth = buildOAuthClient();
+    const oauthAuth = await getPersistedOAuthClient();
     if (oauthAuth) {
       const oauthCalendar = google.calendar({ version: 'v3', auth: oauthAuth });
       try {
@@ -634,19 +825,5 @@ export async function createCalendarEvent(
       'Impossible de créer le rendez-vous dans l\'agenda.',
       err,
     );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Erreur typée
-// ---------------------------------------------------------------------------
-
-export class GoogleCalendarError extends Error {
-  public readonly cause: unknown;
-
-  constructor(message: string, cause?: unknown) {
-    super(message);
-    this.name = 'GoogleCalendarError';
-    this.cause = cause;
   }
 }

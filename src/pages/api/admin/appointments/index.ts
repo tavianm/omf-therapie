@@ -14,6 +14,7 @@ import { createCalendarEvent } from '../../../../lib/google-calendar';
 import AppointmentConfirmed from '../../../../emails/AppointmentConfirmed';
 import PaymentRequest from '../../../../emails/PaymentRequest';
 import type { AppointmentType, AppointmentDuration } from '../../../../types/appointment';
+import { invalidateAvailabilityCache } from '../../../../lib/calendar-cache.js';
 
 // ---------------------------------------------------------------------------
 // Validation helpers
@@ -152,11 +153,13 @@ export const POST: APIRoute = async ({ request }) => {
     return errorResponse(500, 'Erreur lors de la création du rendez-vous');
   }
 
-  if (!isVideo) {
+  await invalidateAvailabilityCache().catch(console.error);
+
+  if (!isVideo && !appointment.google_calendar_event_id) {
     try {
       const start = new Date(appointment.scheduled_at);
       const end = new Date(start.getTime() + appointment.duration * 60 * 1000);
-      await createCalendarEvent({
+      const calResult = await createCalendarEvent({
         title: `${appointment.patient_name} — séance présentielle (${appointment.duration} min)`,
         start: start.toISOString(),
         end: end.toISOString(),
@@ -172,6 +175,10 @@ export const POST: APIRoute = async ({ request }) => {
         appointmentId: `${appointment.id}-admin-inperson`,
         colorId: '2',
       });
+      await supabaseAdmin
+        .from('appointments')
+        .update({ google_calendar_event_id: calResult.eventId })
+        .eq('id', appointment.id);
     } catch (calendarErr) {
       console.error('[admin/appointments] Erreur création événement agenda (présentiel):', calendarErr);
     }

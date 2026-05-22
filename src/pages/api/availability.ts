@@ -19,6 +19,11 @@ import {
   type TimeSlot,
 } from '@/lib/google-calendar';
 import { supabaseAdmin } from '@/lib/supabase';
+import {
+  getCachedAvailability,
+  setCachedAvailability,
+  buildAvailabilityCacheKey,
+} from '../../lib/calendar-cache.js';
 
 // Désactiver le pré-rendu : cette route est toujours dynamique (SSR)
 export const prerender = false;
@@ -166,9 +171,18 @@ export const GET: APIRoute = async ({ request }) => {
 
   // --- Appel Google Calendar (+ DB busy periods en parallèle) ---
   try {
+    const cacheKey = buildAvailabilityCacheKey(mode, duration, weeks, now);
+    const cached = await getCachedAvailability(cacheKey);
+    if (cached) {
+      return jsonSuccess(cached);
+    }
+
     const dbBusyPromise = fetchDbBusyPeriods(now, endDate);
     const dbBusy = await dbBusyPromise;
     const slots = await getAvailableSlots(now, endDate, duration, mode, dbBusy);
+
+    await setCachedAvailability(cacheKey, slots).catch(() => {});
+
     return jsonSuccess(slots);
   } catch (err: unknown) {
     if (err instanceof GoogleCalendarError) {
