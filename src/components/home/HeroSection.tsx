@@ -48,7 +48,7 @@ export const HeroSection = () => {
             >
               <li role="listitem">
                 <a
-                  href="/contact"
+                  href="/rendez-vous/"
                   className="btn-primary"
                   aria-label="Prendre rendez-vous"
                 >

@@ -8,8 +8,7 @@ export const QUICK_LINKS: FooterLink[] = [
   { name: "Contact", href: "/contact", path: "/contact" },
   {
     name: "Prendre rendez-vous",
-    href: "https://www.psychologue.net/cabinets/oriane-montabonnet",
-    external: true,
-    path: "/",
+    href: "/rendez-vous",
+    path: "/rendez-vous",
   },
 ];
