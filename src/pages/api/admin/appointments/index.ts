@@ -11,10 +11,12 @@ import { createAppointmentPaymentLink } from '../../../../lib/stripe';
 import { generateGoogleCalendarLink, generateOutlookCalendarLink, generateAppleCalendarInviteLink, CABINET_ADDRESS } from '../../../../lib/ics';
 import { createSecureLinkToken } from '../../../../lib/secure-links';
 import { createCalendarEvent } from '../../../../lib/google-calendar';
+import { hasAppointmentConflict } from '../../../../lib/appointment-conflicts';
 import AppointmentConfirmed from '../../../../emails/AppointmentConfirmed';
 import PaymentRequest from '../../../../emails/PaymentRequest';
 import type { AppointmentType, AppointmentDuration } from '../../../../types/appointment';
 import { invalidateAvailabilityCache } from '../../../../lib/calendar-cache.js';
+import { isWednesdayParis, isWithinBusinessHours } from '../../../../utils/date';
 
 // ---------------------------------------------------------------------------
 // Validation helpers
@@ -96,6 +98,30 @@ export const POST: APIRoute = async ({ request }) => {
   if (appointment_mode === 'video' && video_link && typeof video_link !== 'string')
     return errorResponse(400, 'Lien vidéo invalide', 'video_link');
 
+  const scheduledDate = new Date(scheduled_at);
+  if (scheduledDate.getTime() < Date.now())
+    return errorResponse(400, 'La date de séance doit être dans le futur', 'scheduled_at');
+
+  if (appointment_mode === 'in-person' && !isWednesdayParis(scheduled_at))
+    return errorResponse(400, 'Les rendez-vous en présentiel ont lieu le mercredi uniquement.', 'scheduled_at');
+
+  if (!isWithinBusinessHours(scheduled_at, Number(duration)))
+    return errorResponse(400, 'Le créneau doit être dans les plages horaires (8h-12h ou 14h-19h).', 'scheduled_at');
+
+  try {
+    const slotEnd = new Date(scheduledDate.getTime() + Number(duration) * 60 * 1000);
+    const hasConflict = await hasAppointmentConflict({
+      slotStartIso: scheduledDate.toISOString(),
+      slotEndIso: slotEnd.toISOString(),
+    });
+    if (hasConflict) {
+      return errorResponse(409, 'Ce créneau n\'est plus disponible. Veuillez sélectionner un autre horaire.', 'scheduled_at');
+    }
+  } catch (conflictError) {
+    console.error('[admin/appointments] Erreur vérification doublon:', conflictError);
+    return errorResponse(500, 'Erreur lors de la vérification du créneau');
+  }
+
   // 4. Calcul tarifaire
   // Pour une création manuelle, on calcule toujours la remise nouveau client si applicable.
   // L'admin peut activer le tarif solidaire via is_solidarity.
@@ -136,7 +162,7 @@ export const POST: APIRoute = async ({ request }) => {
       appointment_type,
       appointment_mode,
       duration: Number(duration),
-      scheduled_at,
+      scheduled_at: scheduledDate.toISOString(),
       patient_reason: patient_reason ?? '',
       is_first_session: isFirstSession,
       status: initialStatus,

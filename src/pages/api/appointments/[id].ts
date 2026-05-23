@@ -11,6 +11,7 @@ import { createSecureLinkToken, verifySecureLinkToken } from '../../../lib/secur
 import { getTypeLabel, getModeLabel, calculatePrice } from '../../../lib/pricing';
 import { stripe, createAppointmentPaymentLink } from '../../../lib/stripe';
 import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from '../../../lib/google-calendar';
+import { hasAppointmentConflict } from '../../../lib/appointment-conflicts';
 import { isWednesdayParis, isWithinBusinessHours } from '../../../utils/date';
 import { invalidateAvailabilityCache } from '../../../lib/calendar-cache.js';
 import AppointmentConfirmed from '../../../emails/AppointmentConfirmed';
@@ -423,6 +424,21 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (!isWithinBusinessHours(rescheduled_to as string, appointment.duration))
       return errorResponse(422, 'Le créneau doit être dans les plages horaires (8h-12h ou 14h-19h).');
 
+    try {
+      const slotEnd = new Date(newDate.getTime() + appointment.duration * 60 * 1000);
+      const hasConflict = await hasAppointmentConflict({
+        slotStartIso: newDate.toISOString(),
+        slotEndIso: slotEnd.toISOString(),
+        excludeAppointmentId: appointment.id,
+      });
+      if (hasConflict) {
+        return errorResponse(409, 'Ce créneau n\'est plus disponible. Veuillez sélectionner un autre horaire.');
+      }
+    } catch (conflictError) {
+      console.error('[appointments/patch] Erreur vérification doublon (reschedule):', conflictError);
+      return errorResponse(500, 'Erreur lors de la vérification du créneau');
+    }
+
     // Expire l'ancien Payment Link Stripe s'il existe (évite le double-paiement)
     if (appointment.stripe_payment_link_id) {
       try {
@@ -528,6 +544,22 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // Le créneau proposé doit être dans le futur
     if (!appointment.rescheduled_to || appointment.rescheduled_to <= new Date().toISOString())
       return errorResponse(410, 'Ce créneau proposé a expiré. Contactez le thérapeute.');
+
+    try {
+      const acceptedStart = new Date(appointment.rescheduled_to);
+      const acceptedEnd = new Date(acceptedStart.getTime() + appointment.duration * 60 * 1000);
+      const hasConflict = await hasAppointmentConflict({
+        slotStartIso: acceptedStart.toISOString(),
+        slotEndIso: acceptedEnd.toISOString(),
+        excludeAppointmentId: appointment.id,
+      });
+      if (hasConflict) {
+        return errorResponse(409, 'Ce créneau n\'est plus disponible. Contactez la thérapeute pour une nouvelle proposition.');
+      }
+    } catch (conflictError) {
+      console.error('[appointments/patch] Erreur vérification doublon (accept_reschedule):', conflictError);
+      return errorResponse(500, 'Erreur lors de la vérification du créneau');
+    }
 
     let newStatus: Appointment['status'];
     if (appointment.appointment_mode === 'video') {

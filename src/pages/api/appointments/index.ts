@@ -10,6 +10,7 @@ import AppointmentRequestNotification from '../../../emails/AppointmentRequestNo
 import type { AppointmentType, AppointmentDuration, AppointmentMode } from '../../../types/appointment';
 import { checkRateLimit, rateLimitResponse } from '../../../lib/rate-limit';
 import { isWednesdayParis, isWithinBusinessHours } from '../../../utils/date';
+import { hasAppointmentConflict } from '../../../lib/appointment-conflicts';
 
 // ---------------------------------------------------------------------------
 // Validation helpers
@@ -119,25 +120,22 @@ export const POST: APIRoute = async ({ request }) => {
   if (!isWithinBusinessHours(scheduled_at as string, duration as number))
     return errorResponse(422, 'Le créneau est en dehors des horaires d\'ouverture (8h-12h et 14h-19h).');
 
-  // 4. Anti-doublon : vérifier qu'aucun rdv ne chevauche ce créneau
-  const slotStart = scheduledDate;
+  // 4. Anti-doublon : vérifier qu'aucun rdv (incluant reports proposés) ne chevauche ce créneau
   const slotEnd = new Date(scheduledDate.getTime() + (duration as number) * 60 * 1000);
 
-  const { data: conflicts, error: conflictError } = await supabaseAdmin
-    .from('appointments')
-    .select('id')
-    .lt('scheduled_at', slotEnd.toISOString())
-    .gt('scheduled_end', slotStart.toISOString())
-    .not('status', 'in', '("cancelled","declined")')
-    .limit(1);
+  try {
+    const hasConflict = await hasAppointmentConflict({
+      slotStartIso: scheduledDate.toISOString(),
+      slotEndIso: slotEnd.toISOString(),
+    });
 
-  if (conflictError) {
+    if (hasConflict) {
+      return errorResponse(409, 'Ce créneau n\'est plus disponible. Veuillez sélectionner un autre horaire.');
+    }
+  } catch (conflictError) {
     console.error('[appointments] Erreur vérification doublon:', conflictError);
     return errorResponse(500, 'Erreur lors de la vérification du créneau');
   }
-
-  if (conflicts && conflicts.length > 0)
-    return errorResponse(409, 'Ce créneau n\'est plus disponible. Veuillez sélectionner un autre horaire.');
 
   // 5. Calcul du prix (en centimes)
   const pricing = calculatePrice(

@@ -64,11 +64,13 @@ async function fetchDbBusyPeriods(
 ): Promise<Array<{ start: string; end: string }>> {
   const { data, error } = await supabaseAdmin
     .from('appointments')
-    .select('scheduled_at, scheduled_end')
+    .select('status, duration, scheduled_at, scheduled_end, rescheduled_to')
     .in('status', BLOCKING_STATUSES)
     .is('deleted_at', null)
-    .gte('scheduled_at', from.toISOString())
-    .lte('scheduled_at', to.toISOString());
+    .or([
+      `and(scheduled_at.gte.${from.toISOString()},scheduled_at.lte.${to.toISOString()})`,
+      `and(rescheduled_to.gte.${from.toISOString()},rescheduled_to.lte.${to.toISOString()})`,
+    ].join(','));
 
   if (error) {
     console.error('[api/availability] Erreur DB busy periods :', error.message);
@@ -76,12 +78,22 @@ async function fetchDbBusyPeriods(
   }
 
   return (data ?? [])
-    .filter(
-      (row): row is { scheduled_at: string; scheduled_end: string } =>
-        typeof row.scheduled_at === 'string' &&
-        typeof row.scheduled_end === 'string',
-    )
-    .map((row) => ({ start: row.scheduled_at, end: row.scheduled_end }));
+    .flatMap((row) => {
+      if (typeof row.duration !== 'number') return [];
+
+      // For rescheduled appointments, reserve proposed slot (rescheduled_to)
+      // so it cannot be double-booked before patient accepts.
+      if (row.status === 'rescheduled' && typeof row.rescheduled_to === 'string') {
+        const start = new Date(row.rescheduled_to);
+        const end = new Date(start.getTime() + row.duration * 60 * 1000);
+        return [{ start: start.toISOString(), end: end.toISOString() }];
+      }
+
+      if (typeof row.scheduled_at !== 'string' || typeof row.scheduled_end !== 'string') {
+        return [];
+      }
+      return [{ start: row.scheduled_at, end: row.scheduled_end }];
+    });
 }
 
 // ---------------------------------------------------------------------------
