@@ -622,11 +622,20 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       const start = new Date(updatedAppt.scheduled_at);
       const end = new Date(start.getTime() + updatedAppt.duration * 60 * 1000);
       try {
-        if (appointment.google_calendar_event_id) {
-          // Patch existing event to the accepted reschedule date
-          await updateCalendarEvent(appointment.google_calendar_event_id, { start, end });
-        } else {
-          // No existing event — create one
+        let syncedEventId = appointment.google_calendar_event_id ?? updatedAppt.google_calendar_event_id ?? null;
+
+        if (syncedEventId) {
+          // Patch existing event; if orphaned/missing on Google, fallback to create.
+          try {
+            await updateCalendarEvent(syncedEventId, { start, end });
+          } catch (patchErr) {
+            console.warn('[appointments/patch] Patch événement échoué après acceptation de report, fallback création:', patchErr);
+            syncedEventId = null;
+          }
+        }
+
+        if (!syncedEventId) {
+          // No existing event (or patch failed) — create one
           const calResult = await createCalendarEvent({
             title: `${updatedAppt.patient_name} — ${getTypeLabel(updatedAppt.appointment_type)} (${updatedAppt.duration} min)`,
             start: start.toISOString(),
@@ -644,13 +653,31 @@ export const PATCH: APIRoute = async ({ request, params }) => {
             appointmentId: `${updatedAppt.id}-inperson-reschedule`,
             colorId: '2',
           });
-          await supabaseAdmin
+          syncedEventId = calResult.eventId;
+        }
+
+        if (syncedEventId && syncedEventId !== updatedAppt.google_calendar_event_id) {
+          const { data: refreshedAfterCalendar, error: refreshError } = await supabaseAdmin
             .from('appointments')
-            .update({ google_calendar_event_id: calResult.eventId })
-            .eq('id', updatedAppt.id);
+            .update({ google_calendar_event_id: syncedEventId })
+            .eq('id', updatedAppt.id)
+            .select([
+              'id', 'status', 'scheduled_at', 'rescheduled_to',
+              'appointment_mode', 'appointment_type', 'duration',
+              'patient_name', 'patient_email', 'final_price',
+              'video_link', 'stripe_payment_link_url',
+              'google_calendar_event_id',
+            ].join(', '))
+            .single();
+          if (refreshError || !refreshedAfterCalendar) {
+            console.error('[appointments/patch] Erreur persistance google_calendar_event_id après acceptation de report:', refreshError);
+            return errorResponse(500, 'Erreur lors de la synchronisation agenda');
+          }
+          updatedAppt = refreshedAfterCalendar as Appointment;
         }
       } catch (calendarErr) {
         console.error('[appointments/patch] Erreur mise à jour événement agenda après acceptation de report:', calendarErr);
+        return errorResponse(500, 'Erreur lors de la synchronisation agenda');
       }
     }
 
