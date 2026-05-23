@@ -118,6 +118,22 @@ function jsonSuccess(slots: TimeSlot[]): Response {
   });
 }
 
+function filterSlotsByBusy(
+  slots: TimeSlot[],
+  busyPeriods: Array<{ start: string; end: string }>,
+): TimeSlot[] {
+  if (busyPeriods.length === 0) return slots;
+  return slots.filter((slot) => {
+    const slotStart = new Date(slot.start).getTime();
+    const slotEnd = new Date(slot.end).getTime();
+    return !busyPeriods.some((busy) => {
+      const busyStart = new Date(busy.start).getTime();
+      const busyEnd = new Date(busy.end).getTime();
+      return slotStart < busyEnd && slotEnd > busyStart;
+    });
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Handler principal
 // ---------------------------------------------------------------------------
@@ -184,13 +200,14 @@ export const GET: APIRoute = async ({ request }) => {
   // --- Appel Google Calendar (+ DB busy periods en parallèle) ---
   try {
     const cacheKey = buildAvailabilityCacheKey(mode, duration, weeks, now);
+    const dbBusy = await fetchDbBusyPeriods(now, endDate);
     const cached = await getCachedAvailability(cacheKey);
     if (cached) {
-      return jsonSuccess(cached);
+      // Always re-apply live DB busy periods to avoid stale overlaps
+      // if cache invalidation failed in a previous mutation.
+      return jsonSuccess(filterSlotsByBusy(cached, dbBusy));
     }
 
-    const dbBusyPromise = fetchDbBusyPeriods(now, endDate);
-    const dbBusy = await dbBusyPromise;
     const slots = await getAvailableSlots(now, endDate, duration, mode, dbBusy);
 
     await setCachedAvailability(cacheKey, slots).catch(() => {});
