@@ -17,9 +17,7 @@ export const CTASection = () => {
         mieux-être.
       </p>
       <a
-        href="https://www.psychologue.net/cabinets/oriane-montabonnet"
-        target="_blank"
-        rel="noopener noreferrer"
+        href="/rendez-vous/"
         className="btn-primary"
         aria-label="Réserver une consultation"
       >
