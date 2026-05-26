@@ -276,4 +276,17 @@ const pageDescription = variant === 'payment-success'
 
     </div>
   </main>
+
+  {import.meta.env.PROD && (
+    <script is:inline define:vars={{ variant, paramType, paramMode }}>
+      if (typeof gtag !== 'undefined' &&
+          (variant === 'request-submitted' || variant === 'payment-success')) {
+        gtag('event', 'appointment_requested', {
+          appointment_type: paramType,
+          appointment_mode: paramMode,
+          variant: variant,
+        });
+      }
+    </script>
+  )}
 </Layout>
