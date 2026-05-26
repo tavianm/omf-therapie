@@ -62,7 +62,7 @@ imageUrl: "https://images.pexels.com/photos/5217833/pexels-photo-5217833.jpeg"
 
 <h2>Combien coûte une thérapie de couple ?</h2>
 
-<p>Une séance de thérapie de couple est facturée <strong>80 € par séance</strong>. La thérapie de couple n'est pas remboursée par l'Assurance maladie.</p>
+<p>Une séance de thérapie de couple est facturée <strong>75 € (60 min) ou 90 € (90 min)</strong>, avec un tarif réduit de 15 € sur la première séance. La thérapie de couple n'est pas remboursée par l'Assurance maladie.</p>
 
 <p>Certaines mutuelles prennent néanmoins en charge une partie des consultations de psychothérapie. Je vous conseille de vérifier ce point avant de commencer si le budget est une préoccupation, car il est important que le cadre soit clair et soutenable pour vous.</p>
 

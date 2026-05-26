@@ -52,7 +52,7 @@ imageUrl: "https://images.pexels.com/photos/5699456/pexels-photo-5699456.jpeg"
 <p>Je le dis souvent : au-delà de la méthode, la relation compte énormément. Si vous sentez que vous pouvez parler sans être jugé, que vous êtes accueilli avec respect et que quelque chose de la confiance peut se construire, c'est un bon signe. Et si, après 2 ou 3 séances, vous ne vous sentez pas à votre place, il est tout à fait légitime de chercher un autre professionnel.</p>
 
 <h3>3. Renseignez-vous sur les tarifs et le remboursement</h3>
-<p>Les séances de psychopraticien se situent généralement entre 50 € et 80 €. Certaines mutuelles proposent un remboursement partiel : cela peut soulager un peu le coût du suivi, donc cela vaut la peine de vous renseigner en amont.</p>
+<p>Selon le type d'accompagnement, les séances se situent généralement entre 50 € et 100 € (thérapie individuelle, couple ou familiale, en 60 ou 90 minutes). Certaines mutuelles proposent un remboursement partiel : cela peut soulager un peu le coût du suivi, donc cela vaut la peine de vous renseigner en amont.</p>
 
 <h3>4. Vérifiez la localisation et les horaires</h3>
 <p>Quand on hésite déjà à consulter, chaque détail pratique compte. Mon cabinet se situe au <strong>1086 Avenue Albert Einstein, 34000 Montpellier</strong>, accessible depuis le centre-ville, Castelnau-le-Lez, Lattes et Pérols. J'y reçois du lundi au vendredi, de 8h à 12h et de 14h à 19h.</p>
