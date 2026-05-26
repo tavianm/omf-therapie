@@ -2,8 +2,8 @@
 id: "6"
 title: "Les troubles du comportement alimentaire : comprendre et accompagner"
 excerpt: "Un éclairage sur les différents troubles du comportement alimentaire, leurs manifestations et les approches thérapeutiques adaptées."
-date: "3 avril 2026"
-dateIso: "2026-04-03"
+date: "4 octobre 2025"
+dateIso: "2025-10-04"
 categories:
   - "Troubles alimentaires"
   - "Nutrition"

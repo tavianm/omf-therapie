@@ -2,8 +2,8 @@
 id: "7"
 title: "Accompagner les transitions de vie avec sérénité"
 excerpt: "Comment traverser les périodes de changement avec plus de confiance et transformer les défis en opportunités de croissance."
-date: "3 février 2026"
-dateIso: "2026-02-03"
+date: "1 février 2025"
+dateIso: "2025-02-01"
 categories:
   - "Développement personnel"
   - "Gestion du changement"

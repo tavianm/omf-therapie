@@ -2,8 +2,8 @@
 id: trouver-psychopraticien-montpellier
 title: "Comment trouver un psychopraticien à Montpellier : guide pratique 2026"
 excerpt: "Vous cherchez un psychopraticien à Montpellier ? Ce guide vous explique la différence entre psychologue, psychiatre et psychopraticien, comment choisir votre thérapeute, et où consulter dans l'Hérault."
-date: "10 avril 2026"
-dateIso: "2026-04-10"
+date: "7 mars 2026"
+dateIso: "2026-03-07"
 categories:
   - "Thérapie"
   - "Montpellier"

@@ -2,8 +2,8 @@
 id: "3"
 title: "La relation entre alimentation et santé mentale"
 excerpt: "Comment ce que nous mangeons influence notre humeur, notre énergie et notre bien-être psychologique."
-date: "6 mars 2026"
-dateIso: "2026-03-06"
+date: "18 juin 2025"
+dateIso: "2025-06-18"
 categories:
   - "Nutrition"
   - "Bien-être"
