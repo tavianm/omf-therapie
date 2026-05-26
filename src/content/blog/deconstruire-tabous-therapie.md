@@ -2,8 +2,8 @@
 id: "9"
 title: "Déconstruire les tabous sur la thérapie : ce n'est pas seulement pour 'les autres'"
 excerpt: "Explorons ensemble pourquoi la thérapie n'est pas réservée aux personnes en difficulté et comment elle peut bénéficier à tous."
-date: "5 mai 2025"
-dateIso: "2025-05-05"
+date: "15 mai 2026"
+dateIso: "2026-05-15"
 categories:
   - "Développement personnel"
   - "Bien-être"
