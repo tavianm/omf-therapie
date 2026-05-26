@@ -2,7 +2,7 @@
 issue: 38
 title: "feat: amélioration du flow d'invitation RDV par le thérapeute — durée/tarif flexibles + création immédiate du calendrier"
 tier: F-full
-status: draft
+status: approved
 ---
 
 ## Goal
