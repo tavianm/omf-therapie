@@ -1,5 +1,6 @@
 ---
 import '../index.css';
+import CookieConsent from '../components/CookieConsent.astro';
 
 interface Props {
   title: string;
@@ -92,111 +93,9 @@ const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
       </>
     )}
 
-    {import.meta.env.PROD && (
-      <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orestbida/cookieconsent@3.0.1/dist/cookieconsent.css" />
-    )}
   </head>
   <body>
     <slot />
-
-    {import.meta.env.PROD && (
-      <script is:inline>
-        // CookieConsent V3 — OMF Therapie RGPD
-        (function() {
-          var s = document.createElement('script');
-          s.src = 'https://cdn.jsdelivr.net/gh/orestbida/cookieconsent@3.0.1/dist/cookieconsent.umd.js';
-          s.onload = function() {
-            CookieConsent.run({
-              guiOptions: {
-                consentModal: {
-                  layout: 'bar',
-                  position: 'bottom',
-                  equalWeightButtons: false,
-                  flipButtons: false,
-                },
-                preferencesModal: {
-                  layout: 'box',
-                },
-              },
-              categories: {
-                necessary: {
-                  enabled: true,
-                  readOnly: true,
-                },
-                analytics: {
-                  enabled: false,
-                  autoClear: {
-                    cookies: [
-                      { name: /^(_ga|_gid|_gat)/ },
-                    ],
-                  },
-                },
-              },
-              language: {
-                default: 'fr',
-                translations: {
-                  fr: {
-                    consentModal: {
-                      title: 'Votre vie privée nous importe',
-                      description: 'Nous utilisons des cookies analytiques pour améliorer notre site et mieux comprendre nos visiteurs. Votre consentement est nécessaire.',
-                      acceptAllBtn: 'Accepter',
-                      acceptNecessaryBtn: 'Refuser',
-                      showPreferencesBtn: 'Personnaliser',
-                    },
-                    preferencesModal: {
-                      title: 'Préférences des cookies',
-                      acceptAllBtn: 'Tout accepter',
-                      acceptNecessaryBtn: 'Tout refuser',
-                      savePreferencesBtn: 'Sauvegarder',
-                      closeIconLabel: 'Fermer',
-                      sections: [
-                        {
-                          title: 'Cookies nécessaires',
-                          description: 'Ces cookies sont indispensables au fonctionnement du site et ne peuvent pas être désactivés.',
-                          linkedCategory: 'necessary',
-                        },
-                        {
-                          title: 'Cookies analytiques',
-                          description: 'Ces cookies nous permettent de mesurer l\'audience du site (Google Analytics 4) pour améliorer nos contenus.',
-                          linkedCategory: 'analytics',
-                        },
-                      ],
-                    },
-                  },
-                },
-              },
-              onConsent: function() {
-                if (CookieConsent.acceptedCategory('analytics')) {
-                  gtag('consent', 'update', {
-                    analytics_storage: 'granted',
-                    ad_storage: 'granted',
-                    ad_user_data: 'granted',
-                    ad_personalization: 'granted',
-                  });
-                }
-              },
-              onChange: function() {
-                if (CookieConsent.acceptedCategory('analytics')) {
-                  gtag('consent', 'update', {
-                    analytics_storage: 'granted',
-                    ad_storage: 'granted',
-                    ad_user_data: 'granted',
-                    ad_personalization: 'granted',
-                  });
-                } else {
-                  gtag('consent', 'update', {
-                    analytics_storage: 'denied',
-                    ad_storage: 'denied',
-                    ad_user_data: 'denied',
-                    ad_personalization: 'denied',
-                  });
-                }
-              },
-            });
-          };
-          document.head.appendChild(s);
-        })();
-      </script>
-    )}
+    {import.meta.env.PROD && <CookieConsent />}
   </body>
 </html>
