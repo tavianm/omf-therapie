@@ -71,6 +71,11 @@ const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 
     {import.meta.env.PROD && (
       <>
+        {/* Main-thread gtag shim — forwards calls to dataLayer (picked up by Partytown worker) */}
+        <script is:inline>
+          window.dataLayer = window.dataLayer || [];
+          window.gtag = function(){ window.dataLayer.push(arguments); };
+        </script>
         <script is:inline type="text/partytown" src={`https://www.googletagmanager.com/gtag/js?id=${import.meta.env.PUBLIC_GA4_ID}`} />
         <script is:inline type="text/partytown" define:vars={{ ga4Id: import.meta.env.PUBLIC_GA4_ID }}>
           window.dataLayer = window.dataLayer || [];

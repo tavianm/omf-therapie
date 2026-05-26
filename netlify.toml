@@ -35,6 +35,9 @@
   # GOOGLE_BUSINESS_URL           — Lien Google Business Profile (optionnel)
   # PAGES_JAUNES_URL              — Lien Pages Jaunes (optionnel)
   # PSYCHOLOGUE_NET_URL           — Lien profil Psychologue.net (optionnel)
+  #
+  # PUBLIC_GA4_ID                 — Tracking ID Google Analytics 4 (ex. G-JFZBWJN781)
+  #                                 Préfixe PUBLIC_ requis pour exposition côté client (Astro)
 
 # ---------------------------------------------------------------------------
 # Contextes de déploiement — variables non-sensibles par contexte
@@ -62,7 +65,7 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://js.stripe.com https://m.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.stripe.com https://*.supabase.co https://resend.com https://api.resend.com https://www.googleapis.com https://accounts.google.com; frame-src https://www.google.com https://maps.google.com https://js.stripe.com; frame-ancestors 'none'"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' blob: https://js.stripe.com https://m.stripe.com https://www.googletagmanager.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.stripe.com https://*.supabase.co https://resend.com https://api.resend.com https://www.googleapis.com https://accounts.google.com https://www.google-analytics.com https://analytics.google.com https://region1.google-analytics.com; worker-src 'self' blob:; frame-src 'self' https://www.google.com https://maps.google.com https://js.stripe.com; frame-ancestors 'none'"
 
 # Legacy section-route redirects (301 permanent)
 [[redirects]]
