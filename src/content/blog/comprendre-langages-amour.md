@@ -2,8 +2,8 @@
 id: "10"
 title: "Comprendre les langages de l'amour : une clé pour mieux aimer et être aimé"
 excerpt: "Découvrez comment les cinq langages de l'amour peuvent transformer votre façon de communiquer et d'exprimer vos sentiments dans vos relations."
-date: "14 octobre 2025"
-dateIso: "2025-10-14"
+date: "7 mai 2026"
+dateIso: "2026-05-07"
 categories:
   - "Couple"
   - "Communication"

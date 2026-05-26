@@ -2,8 +2,8 @@
 id: "5"
 title: "Cultiver l'estime de soi au quotidien"
 excerpt: "Des pratiques simples mais puissantes pour développer une relation positive avec soi-même et renforcer sa confiance."
-date: "8 février 2025"
-dateIso: "2025-02-08"
+date: "15 mars 2025"
+dateIso: "2025-03-15"
 categories:
   - "Développement personnel"
   - "Confiance en soi"

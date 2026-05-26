@@ -2,8 +2,8 @@
 id: "4"
 title: "Renforcer la communication dans le couple"
 excerpt: "Des stratégies efficaces pour améliorer la communication et résoudre les conflits dans votre relation de couple."
-date: "1 mars 2025"
-dateIso: "2025-03-01"
+date: "12 août 2025"
+dateIso: "2025-08-12"
 categories:
   - "Couple"
   - "Communication"

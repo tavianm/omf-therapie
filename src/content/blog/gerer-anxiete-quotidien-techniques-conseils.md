@@ -2,8 +2,8 @@
 id: "2"
 title: "Gérer l'anxiété au quotidien : techniques et conseils pratiques"
 excerpt: "Des stratégies simples mais efficaces pour mieux gérer l'anxiété et retrouver un équilibre émotionnel au quotidien."
-date: "15 février 2025"
-dateIso: "2025-02-15"
+date: "30 avril 2025"
+dateIso: "2025-04-30"
 categories:
   - "Anxiété"
   - "Bien-être"
