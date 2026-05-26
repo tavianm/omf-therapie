@@ -13,11 +13,11 @@ author:
   title: "Psychopraticienne"
 ---
 
-<p>Trouver un psychopraticien à Montpellier n'est pas toujours simple, surtout quand on se sent déjà fatigué, inquiet ou perdu. Dans mon cabinet, j'entends souvent cette phrase : « Je ne sais pas vers qui me tourner. » Si c'est votre cas, sachez que vous n'êtes pas seul. J'ai écrit ce guide pour vous aider à y voir plus clair, avec des repères concrets et une parole plus humaine que les définitions que l'on trouve souvent en ligne.</p>
+<p>Trouver un psychopraticien n'est pas toujours simple, surtout quand on se sent déjà fatigué, inquiet ou perdu. Dans mon cabinet, j'entends souvent cette phrase : « Je ne sais pas vers qui me tourner. » Si c'est votre cas, sachez que vous n'êtes pas seul. J'ai écrit ce guide pour vous aider à y voir plus clair, avec des repères concrets et une parole plus humaine que les définitions que l'on trouve souvent en ligne.</p>
 
-<h2>Psychologue, psychiatre, psychopraticien : quelles différences à Montpellier ?</h2>
+<h2>Psychologue, psychiatre, psychopraticien : quelles différences ?</h2>
 
-<p>À Montpellier comme ailleurs, plusieurs professionnels peuvent accompagner la souffrance psychique. La différence n'est pas toujours évidente au premier abord, alors voici ce que j'explique souvent aux personnes qui me contactent :</p>
+<p>Plusieurs professionnels peuvent accompagner la souffrance psychique. La différence n'est pas toujours évidente au premier abord, alors voici ce que j'explique souvent aux personnes qui me contactent :</p>
 
 <ul>
   <li><strong>Le psychiatre</strong> est médecin. Il peut poser un diagnostic médical, prescrire des médicaments et ses consultations sont remboursées par la Sécurité sociale. Il intervient notamment lorsque les troubles sont sévères ou nécessitent un suivi médical.</li>
@@ -27,7 +27,7 @@ author:
 
 <h2>Quand consulter un psychopraticien plutôt qu'un autre professionnel ?</h2>
 
-<p>Dans ma pratique de psychopraticienne à Montpellier, je reçois souvent des personnes qui sentent que quelque chose ne va plus, sans savoir si leur souffrance est « assez importante » pour consulter. Vous n'avez pas besoin d'attendre d'aller très mal. Un accompagnement peut être précieux si vous traversez par exemple :</p>
+<p>Dans ma pratique, je reçois souvent des personnes qui sentent que quelque chose ne va plus, sans savoir si leur souffrance est « assez importante » pour consulter. Vous n'avez pas besoin d'attendre d'aller très mal. Un accompagnement peut être précieux si vous traversez par exemple :</p>
 
 <ul>
   <li>Une anxiété légère à modérée, du stress chronique ou des phobies</li>
@@ -40,9 +40,9 @@ author:
 
 <p>En revanche, si vous faites face à des idées suicidaires, à des épisodes psychotiques, à une addiction sévère ou à des symptômes très envahissants, il est essentiel de vous orienter d'abord vers un médecin ou un psychiatre. Demander le bon soutien au bon moment, c'est déjà prendre soin de vous.</p>
 
-<h2>Comment choisir son psychopraticien à Montpellier ?</h2>
+<h2>Comment choisir son psychopraticien ?</h2>
 
-<p>Choisir un psychopraticien dans l'Hérault, ce n'est pas seulement comparer des tarifs ou des adresses. C'est aussi chercher une personne avec qui vous pourrez vous sentir suffisamment en sécurité pour parler vrai. Voici les repères que je trouve les plus importants :</p>
+<p>Choisir un psychopraticien, ce n'est pas seulement comparer des tarifs ou des adresses. C'est aussi chercher une personne avec qui vous pourrez vous sentir suffisamment en sécurité pour parler vrai. Voici les repères que je trouve les plus importants :</p>
 
 <h3>1. Vérifiez sa formation</h3>
 <p>N'hésitez pas à demander quelle formation le thérapeute a suivie et avec quelle approche il travaille. Les Thérapies Comportementales et Cognitives, ainsi que les TCCE, sont souvent très aidantes pour l'anxiété, la dépression ou les troubles du comportement alimentaire. L'important est que le professionnel puisse vous expliquer clairement sa façon de travailler, sans flou ni grands discours.</p>
@@ -51,14 +51,14 @@ author:
 <p>Je le dis souvent : au-delà de la méthode, la relation compte énormément. Si vous sentez que vous pouvez parler sans être jugé, que vous êtes accueilli avec respect et que quelque chose de la confiance peut se construire, c'est un bon signe. Et si, après 2 ou 3 séances, vous ne vous sentez pas à votre place, il est tout à fait légitime de chercher un autre professionnel.</p>
 
 <h3>3. Renseignez-vous sur les tarifs et le remboursement</h3>
-<p>À Montpellier, les séances de psychopraticien se situent généralement entre 50 € et 80 €. Certaines mutuelles proposent un remboursement partiel : cela peut soulager un peu le coût du suivi, donc cela vaut la peine de vous renseigner en amont.</p>
+<p>Les séances de psychopraticien se situent généralement entre 50 € et 80 €. Certaines mutuelles proposent un remboursement partiel : cela peut soulager un peu le coût du suivi, donc cela vaut la peine de vous renseigner en amont.</p>
 
 <h3>4. Vérifiez la localisation et les horaires</h3>
 <p>Quand on hésite déjà à consulter, chaque détail pratique compte. Mon cabinet se situe au <strong>1086 Avenue Albert Einstein, 34000 Montpellier</strong>, accessible depuis le centre-ville, Castelnau-le-Lez, Lattes et Pérols. J'y reçois du lundi au vendredi, de 8h à 12h et de 14h à 19h.</p>
 
-<h2>Quelles approches thérapeutiques existe-t-il à Montpellier ?</h2>
+<h2>Quelles approches thérapeutiques existent ?</h2>
 
-<p>On choisit parfois un thérapeute pour sa proximité géographique, puis on découvre que l'approche ne nous correspond pas. C'est pour cela que je vous encourage à vous intéresser aussi à la méthode utilisée. À Montpellier, vous pouvez rencontrer plusieurs approches :</p>
+<p>On choisit parfois un thérapeute pour sa proximité géographique, puis on découvre que l'approche ne nous correspond pas. C'est pour cela que je vous encourage à vous intéresser aussi à la méthode utilisée. Voici les principales approches que vous pouvez rencontrer :</p>
 
 <ul>
   <li><strong>Les TCCE (Thérapies Comportementales, Cognitives et Émotionnelles)</strong> : c'est l'approche que je pratique. J'y suis attachée parce qu'elle permet de travailler à la fois sur les pensées, les émotions et les comportements, avec des outils concrets et un vrai respect du rythme de chacun.</li>

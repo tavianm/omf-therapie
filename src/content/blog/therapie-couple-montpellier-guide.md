@@ -15,7 +15,7 @@ author:
 
 <p>Quand un couple arrive jusqu'à moi, ce n'est presque jamais « pour parler un peu ». C'est souvent parce que la fatigue est là, que les disputes se répètent, que la tendresse s'est éloignée ou qu'un silence pesant a pris toute la place. Si vous lisez ces lignes, peut-être que vous vous reconnaissez dans cela. J'aimerais déjà vous dire une chose : demander de l'aide n'est pas un aveu d'échec, c'est souvent le signe qu'il reste quelque chose à protéger, à comprendre ou à apaiser.</p>
 
-<p>La thérapie de couple à Montpellier offre un espace où chacun peut enfin être entendu sans être interrompu, attaqué ou sommé d'avoir raison. C'est un lieu pour ralentir, remettre du sens et regarder autrement ce qui se joue entre vous.</p>
+<p>La thérapie de couple offre un espace où chacun peut enfin être entendu sans être interrompu, attaqué ou sommé d'avoir raison. C'est un lieu pour ralentir, remettre du sens et regarder autrement ce qui se joue entre vous.</p>
 
 <h2>Les signes qu'une thérapie de couple peut aider</h2>
 
@@ -30,7 +30,7 @@ author:
   <li><strong>Vous envisagez une séparation.</strong> La thérapie de couple peut aider à comprendre ce qui est encore vivant entre vous, ou à préparer une séparation plus apaisée si c'est ce qui se dessine.</li>
 </ul>
 
-<h2>Comment se déroule une séance de thérapie de couple à Montpellier ?</h2>
+<h2>Comment se déroule une séance de thérapie de couple ?</h2>
 
 <p>Une séance de thérapie de couple dure généralement <strong>55 minutes</strong>. Lors de la première rencontre, je prends le temps de recueillir l'histoire du couple, les motifs de consultation et les attentes de chacun. J'accorde beaucoup d'importance à cette première étape, parce qu'elle permet déjà de sentir là où la souffrance s'est installée et ce qui, malgré tout, tient encore.</p>
 
@@ -59,9 +59,9 @@ author:
 
 <p>Ce qui est certain, c'est que la thérapie de couple est <strong>toujours plus efficace lorsque les deux partenaires sont volontaires</strong>. Quand un seul vient avec l'envie d'avancer, un mouvement peut déjà commencer. Mais lorsque les deux s'engagent, l'espace de transformation est souvent plus rapide et plus profond.</p>
 
-<h2>Combien coûte une thérapie de couple à Montpellier ?</h2>
+<h2>Combien coûte une thérapie de couple ?</h2>
 
-<p>À Montpellier, une séance de thérapie de couple est facturée <strong>80 € par séance</strong>. La thérapie de couple n'est pas remboursée par l'Assurance maladie.</p>
+<p>Une séance de thérapie de couple est facturée <strong>80 € par séance</strong>. La thérapie de couple n'est pas remboursée par l'Assurance maladie.</p>
 
 <p>Certaines mutuelles prennent néanmoins en charge une partie des consultations de psychothérapie. Je vous conseille de vérifier ce point avant de commencer si le budget est une préoccupation, car il est important que le cadre soit clair et soutenable pour vous.</p>
 

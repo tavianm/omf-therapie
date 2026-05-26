@@ -14,7 +14,7 @@ author:
   title: "Psychopraticienne"
 ---
 
-<p>Quand on vit avec l'anxiété ou un stress qui ne retombe jamais vraiment, on finit souvent par croire que c'est « juste comme ça », qu'il faut tenir, s'adapter, faire avec. Pourtant, derrière ce que l'on appelle stress ou anxiété, il y a souvent un corps épuisé, un mental en alerte, des nuits agitées, une difficulté à profiter de ce qui devrait être simple. À Montpellier comme ailleurs dans l'Hérault, je rencontre des personnes qui ont appris à minimiser ce qu'elles vivent alors que, intérieurement, tout est tendu.</p>
+<p>Quand on vit avec l'anxiété ou un stress qui ne retombe jamais vraiment, on finit souvent par croire que c'est « juste comme ça », qu'il faut tenir, s'adapter, faire avec. Pourtant, derrière ce que l'on appelle stress ou anxiété, il y a souvent un corps épuisé, un mental en alerte, des nuits agitées, une difficulté à profiter de ce qui devrait être simple. Je rencontre souvent des personnes qui ont appris à minimiser ce qu'elles vivent alors que, intérieurement, tout est tendu.</p>
 
 <p>Si vous vous reconnaissez un peu dans cela, j'aimerais vous dire que vous n'êtes ni faible ni « trop sensible ». L'anxiété est une réaction humaine, mais lorsqu'elle prend trop de place, elle peut devenir très envahissante. La thérapie, et notamment les TCCE (Thérapies Comportementales, Cognitives et Émotionnelles), peut aider à comprendre ce qui se passe et à retrouver peu à peu de l'apaisement.</p>
 
@@ -32,7 +32,7 @@ author:
 
 <h2>Les techniques TCCE pour l'anxiété</h2>
 
-<p>Dans ma pratique de psychopraticienne à Montpellier, j'utilise les TCCE parce qu'elles permettent de travailler à la fois sur ce que vous pensez, ce que vous ressentez et ce que vous faites pour vous protéger. Elles ne cherchent pas à vous forcer à aller bien. Elles vous aident plutôt à comprendre vos mécanismes, à retrouver de la sécurité intérieure et à avancer pas à pas.</p>
+<p>Dans ma pratique, j'utilise les TCCE parce qu'elles permettent de travailler à la fois sur ce que vous pensez, ce que vous ressentez et ce que vous faites pour vous protéger. Elles ne cherchent pas à vous forcer à aller bien. Elles vous aident plutôt à comprendre vos mécanismes, à retrouver de la sécurité intérieure et à avancer pas à pas.</p>
 
 <h3>La restructuration cognitive</h3>
 <p>Quand on est anxieux, l'esprit part vite vers les scénarios les plus alarmants. La restructuration cognitive consiste à repérer ces pensées automatiques, à les regarder avec un peu plus de recul et à leur redonner une juste place. Il ne s'agit pas de se convaincre que « tout va bien », mais d'apprendre à ne plus prendre chaque peur pour une certitude.</p>
@@ -63,7 +63,7 @@ author:
 <h3>3. Le journal des pensées</h3>
 <p>Quand une pensée anxieuse tourne en boucle, l'écrire peut déjà l'alléger. Prenez un carnet et notez ce qui vous inquiète, puis demandez-vous : <em>Quelle est la probabilité réelle que ce que je crains se produise ? Quelles sont les preuves pour et contre cette pensée ? Quelle serait ma réponse si un ami me faisait part de cette inquiétude ?</em> Ce petit déplacement change souvent beaucoup de choses.</p>
 
-<h2>Quand consulter un professionnel pour l'anxiété à Montpellier ?</h2>
+<h2>Quand consulter un professionnel pour l'anxiété ?</h2>
 
 <p>Les outils d'auto-aide peuvent faire du bien, mais ils ne suffisent pas toujours. Je vous conseille de consulter si vous sentez que l'anxiété prend trop de place, par exemple lorsque :</p>
 
