@@ -71,25 +71,31 @@ const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 
     {import.meta.env.PROD && (
       <>
-        {/* Main-thread gtag shim — forwards calls to dataLayer (picked up by Partytown worker) */}
-        <script is:inline>
+        {/* Google Consent Mode v2 defaults — main thread, before Cookiebot and GA4 */}
+        <script is:inline data-cookieconsent="ignore">
           window.dataLayer = window.dataLayer || [];
           window.gtag = function(){ window.dataLayer.push(arguments); };
+          gtag("consent", "default", {
+            ad_personalization: "denied",
+            ad_storage: "denied",
+            ad_user_data: "denied",
+            analytics_storage: "denied",
+            functionality_storage: "denied",
+            personalization_storage: "denied",
+            security_storage: "granted",
+            wait_for_update: 500,
+          });
+          gtag("set", "ads_data_redaction", true);
+          gtag("set", "url_passthrough", false);
         </script>
         {/* Cookiebot — Google-certified CMP (IAB TCF v2.2), must load before GA4 */}
         <Fragment set:html={`<script id="Cookiebot" src="https://consent.cookiebot.com/uc.js" data-cbid="${import.meta.env.PUBLIC_COOKIEBOT_CBID}" data-blockingmode="auto" type="text/javascript" async></script>`} />
-        {/* GA4 via Partytown — data-cookieconsent="ignore" prevents Cookiebot re-blocking; Consent Mode v2 signals handle GA4 activation */}
+        {/* GA4 via Partytown — data-cookieconsent="ignore" prevents Cookiebot re-blocking */}
         <script is:inline type="text/partytown" data-cookieconsent="ignore" src={`https://www.googletagmanager.com/gtag/js?id=${import.meta.env.PUBLIC_GA4_ID}`} />
         <script is:inline type="text/partytown" data-cookieconsent="ignore" define:vars={{ ga4Id: import.meta.env.PUBLIC_GA4_ID }}>
           window.dataLayer = window.dataLayer || [];
           function gtag(){ dataLayer.push(arguments); }
           gtag('js', new Date());
-          gtag('consent', 'default', {
-            analytics_storage: 'denied',
-            ad_storage: 'denied',
-            ad_user_data: 'denied',
-            ad_personalization: 'denied',
-          });
           gtag('config', ga4Id);
         </script>
       </>
