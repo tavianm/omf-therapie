@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useBooking } from '../../hooks/useBooking';
 import type { BookingState, BookingStep } from '../../hooks/useBooking';
 import { getTypeLabel, getModeLabel } from '../../lib/pricing';
+import { trackEvent } from '../../lib/analytics';
 
 // ---------------------------------------------------------------------------
 // Types locaux
@@ -930,6 +931,9 @@ export default function BookingWizard() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     wizardRef.current?.focus();
+    if (state.step !== 'submitted') {
+      trackEvent('booking_step_view', { step: state.step });
+    }
   }, [state.step]);
 
   return (

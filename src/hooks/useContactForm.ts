@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import type { FormData } from "../types/contact";
+import { trackEvent } from '../lib/analytics';
 
 interface FormStatus {
   message: string;
@@ -55,6 +56,7 @@ export const useContactForm = () => {
             type: "success",
           });
           setFormData(INITIAL_FORM_STATE);
+          trackEvent('generate_lead', { value: 0, currency: 'EUR', method: 'contact_form' });
         } else {
           setStatus({
             message:
