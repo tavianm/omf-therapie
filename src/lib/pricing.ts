@@ -4,7 +4,10 @@
  */
 
 export type AppointmentType = 'individual' | 'couple' | 'family';
+/** Standard durations used by the patient booking flow — do not extend. */
 export type AppointmentDuration = 60 | 90;
+/** Any positive integer duration in minutes — used by the admin flow only. */
+export type AdminDuration = number;
 export type AppointmentMode = 'in-person' | 'video';
 
 export interface PricingResult {
@@ -43,18 +46,31 @@ export const SOLIDARITY_DISCOUNT = 10;
  * Calcule le tarif d'une séance.
  *
  * Les remises sont mutuellement exclusives : `isSolidarity` est prioritaire.
+ * Si `overridePrice` est fourni (flux admin), il court-circuite la grille tarifaire :
+ * aucune remise n'est appliquée et le prix final est exactement `overridePrice`.
  *
  * @param type           - Type de thérapie
- * @param duration       - Durée en minutes (60 ou 90)
+ * @param duration       - Durée en minutes (60 ou 90 pour le flux patient)
  * @param isFirstSession - Appliquer la réduction première séance (−15€)
  * @param isSolidarity   - Appliquer le tarif solidaire (−10€, RSA/ASS/Étudiant)
+ * @param overridePrice  - Tarif manuel en euros (admin uniquement) — ignore la grille
  */
 export function calculatePrice(
   type: AppointmentType,
   duration: AppointmentDuration,
   isFirstSession: boolean,
   isSolidarity = false,
+  overridePrice?: number,
 ): PricingResult {
+  if (overridePrice !== undefined) {
+    return {
+      basePrice: overridePrice,
+      discount: 0,
+      finalPrice: overridePrice,
+      label: `${overridePrice}€ (tarif manuel)`,
+    };
+  }
+
   const basePrice = PRICE_GRID[type][duration];
   const discount = isSolidarity
     ? SOLIDARITY_DISCOUNT

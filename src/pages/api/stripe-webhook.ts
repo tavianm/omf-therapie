@@ -222,7 +222,11 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
   // Génération événement calendrier + lien visio (non-bloquant)
   let videoLink = updatedAppt.video_link ?? undefined;
   let calendarEventCreated = false;
-  if (updatedAppt.appointment_mode === 'video' && !videoLink) {
+
+  // If admin already created the calendar event at booking time, skip creation to avoid duplicates.
+  if (updatedAppt.google_calendar_event_id) {
+    calendarEventCreated = true;
+  } else if (updatedAppt.appointment_mode === 'video' && !videoLink) {
     const start = new Date(updatedAppt.scheduled_at);
     const end = new Date(start.getTime() + updatedAppt.duration * 60 * 1000);
     const title = `🎥 ${updatedAppt.patient_name} — ${getTypeLabel(updatedAppt.appointment_type)} (${updatedAppt.duration} min)`;

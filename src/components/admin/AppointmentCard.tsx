@@ -9,7 +9,7 @@
  *   declined / cancelled  → lecture seule
  */
 
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import type { Appointment, AppointmentStatus } from "../../types/appointment";
 import { getTypeLabel, getModeLabel, calculatePrice, SOLIDARITY_DISCOUNT } from "../../lib/pricing";
 
