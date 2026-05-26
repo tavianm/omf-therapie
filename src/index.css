@@ -95,6 +95,17 @@
 
 #cc-main .cm--bar .cm__btns {
   padding: 0.75rem 1rem 0.85rem;
+  /* Force horizontal layout so 3 buttons stay in one row */
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  gap: 0.5rem !important;
+}
+
+#cc-main .cm--bar .cm__btn {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 0.82rem;
+  white-space: nowrap;
 }
 
 /* Focus rings */
