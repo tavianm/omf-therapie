@@ -47,7 +47,7 @@ export interface Appointment {
   // Séance
   appointment_type: 'individual' | 'couple' | 'family';
   appointment_mode: 'in-person' | 'video';
-  duration: 60 | 90;
+  duration: number;
   is_first_session: boolean;
 
   // Tarification (centimes)

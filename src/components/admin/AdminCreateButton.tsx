@@ -21,7 +21,10 @@ interface FormState {
   patient_phone: string;
   appointment_type: AppointmentType;
   appointment_mode: AppointmentMode;
-  duration: AppointmentDuration;
+  duration: number | 'custom';
+  customDurationMinutes: number;
+  useOverridePrice: boolean;
+  overridePrice: number;
   scheduled_at: string;
   patient_reason: string;
   override_first_session: boolean;
@@ -45,9 +48,10 @@ const APPOINTMENT_MODES: { value: AppointmentMode; label: string }[] = [
   { value: "video", label: "Téléconsultation" },
 ];
 
-const DURATIONS: { value: AppointmentDuration; label: string }[] = [
+const DURATIONS: { value: AppointmentDuration | 'custom'; label: string }[] = [
   { value: 60, label: "60 min" },
   { value: 90, label: "90 min" },
+  { value: 'custom' as const, label: 'Personnalisée…' },
 ];
 
 const INITIAL_STATE: FormState = {
@@ -57,6 +61,9 @@ const INITIAL_STATE: FormState = {
   appointment_type: "individual",
   appointment_mode: "in-person",
   duration: 60,
+  customDurationMinutes: 45,
+  useOverridePrice: false,
+  overridePrice: 0,
   scheduled_at: "",
   patient_reason: "",
   override_first_session: false,
@@ -211,8 +218,14 @@ function AdminCreateModal({ onClose }: { onClose: () => void }) {
   }
 
   const livePrice = useMemo(
-    () => calculatePrice(form.appointment_type, form.duration, form.override_first_session, form.is_solidarity),
-    [form.appointment_type, form.duration, form.override_first_session, form.is_solidarity],
+    () => {
+      if (form.useOverridePrice) {
+        return { finalPrice: form.overridePrice, discount: 0, basePrice: form.overridePrice, label: `${form.overridePrice} € (tarif manuel)` };
+      }
+      const durationForPrice = form.duration === 'custom' ? 60 : form.duration;
+      return calculatePrice(form.appointment_type, durationForPrice, form.override_first_session, form.is_solidarity);
+    },
+    [form.appointment_type, form.duration, form.override_first_session, form.is_solidarity, form.useOverridePrice, form.overridePrice],
   );
 
   async function handleSubmit(e: React.FormEvent) {
@@ -221,18 +234,20 @@ function AdminCreateModal({ onClose }: { onClose: () => void }) {
     setError(null);
 
     try {
+      const durationValue = form.duration === 'custom' ? form.customDurationMinutes : form.duration;
       const payload: Record<string, unknown> = {
         patient_name: form.patient_name.trim(),
         patient_email: form.patient_email.trim(),
         patient_phone: form.patient_phone.trim() || undefined,
         appointment_type: form.appointment_type,
         appointment_mode: form.appointment_mode,
-        duration: form.duration,
+        duration: durationValue,
         scheduled_at: form.scheduled_at,
         patient_reason: form.patient_reason.trim(),
         override_first_session: form.override_first_session,
         is_solidarity: form.is_solidarity,
         send_email: form.send_email,
+        ...(form.useOverridePrice ? { override_price: form.overridePrice } : {}),
       };
 
       if (form.appointment_mode === "video" && form.video_link.trim()) {
@@ -359,13 +374,34 @@ function AdminCreateModal({ onClose }: { onClose: () => void }) {
               <select
                 id="cm-duration"
                 value={form.duration}
-                onChange={e => update("duration", Number(e.target.value) as AppointmentDuration)}
+                onChange={e => {
+                  const val = e.target.value;
+                  const isCustom = val === 'custom';
+                  setForm(f => ({
+                    ...f,
+                    duration: isCustom ? 'custom' : Number(val),
+                    ...(isCustom ? { useOverridePrice: true } : {}),
+                  }));
+                }}
                 className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans focus:border-mint-400 focus:outline-none focus:ring-2 focus:ring-mint-200"
               >
                 {DURATIONS.map(d => (
                   <option key={d.value} value={d.value}>{d.label}</option>
                 ))}
               </select>
+              {form.duration === 'custom' && (
+                <input
+                  type="number"
+                  min={15}
+                  max={240}
+                  step={1}
+                  value={form.customDurationMinutes}
+                  onChange={(e) => setForm(f => ({ ...f, customDurationMinutes: Number(e.target.value) }))}
+                  className="mt-1 w-full rounded border border-sage-200 px-2 py-1 text-sm"
+                  placeholder="Durée en minutes (ex: 45)"
+                  required
+                />
+              )}
             </div>
           </div>
 
@@ -418,11 +454,12 @@ function AdminCreateModal({ onClose }: { onClose: () => void }) {
                 <input
                   type="checkbox"
                   checked={form.override_first_session && !form.is_solidarity}
+                  disabled={form.useOverridePrice}
                   onChange={e => {
                     if (e.target.checked) { update("override_first_session", true); update("is_solidarity", false); }
                     else update("override_first_session", false);
                   }}
-                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400 disabled:opacity-40"
                 />
                 <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
                   Remise nouveau client{" "}
@@ -433,17 +470,39 @@ function AdminCreateModal({ onClose }: { onClose: () => void }) {
                 <input
                   type="checkbox"
                   checked={form.is_solidarity}
+                  disabled={form.useOverridePrice}
                   onChange={e => {
                     if (e.target.checked) { update("is_solidarity", true); update("override_first_session", false); }
                     else update("is_solidarity", false);
                   }}
-                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400 disabled:opacity-40"
                 />
                 <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
                   Tarif solidaire{" "}
                   <span className="text-sage-400">(−{SOLIDARITY_DISCOUNT}€ · RSA / ASS / Étudiant)</span>
                 </span>
               </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.useOverridePrice}
+                  onChange={(e) => setForm(f => ({ ...f, useOverridePrice: e.target.checked }))}
+                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+                />
+                Tarif manuel
+              </label>
+              {form.useOverridePrice && (
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={form.overridePrice}
+                  onChange={(e) => setForm(f => ({ ...f, overridePrice: Number(e.target.value) }))}
+                  className="mt-1 w-full rounded border border-sage-200 px-2 py-1 text-sm"
+                  placeholder="Tarif en € (ex: 45)"
+                  required
+                />
+              )}
             </div>
             <div className="mt-3 flex items-center justify-between border-t border-sage-200 pt-3">
               <span className="text-xs text-sage-500 font-sans">

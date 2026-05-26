@@ -14,7 +14,7 @@ import { createCalendarEvent } from '../../../../lib/google-calendar';
 import { hasAppointmentConflict } from '../../../../lib/appointment-conflicts';
 import AppointmentConfirmed from '../../../../emails/AppointmentConfirmed';
 import PaymentRequest from '../../../../emails/PaymentRequest';
-import type { AppointmentType, AppointmentDuration } from '../../../../types/appointment';
+import type { AppointmentType } from '../../../../types/appointment';
 import { invalidateAvailabilityCache } from '../../../../lib/calendar-cache.js';
 import { isWednesdayParis, isWithinBusinessHours } from '../../../../utils/date';
 
@@ -27,7 +27,6 @@ const PHONE_RE = /^(?:\+33|0033|0)[1-9](?:[0-9]{8})$/;
 
 const VALID_TYPES = new Set<string>(['individual', 'couple', 'family']);
 const VALID_MODES = new Set<string>(['in-person', 'video']);
-const VALID_DURATIONS = new Set<number>([60, 90]);
 
 function errorResponse(status: number, message: string, field?: string): Response {
   return new Response(JSON.stringify({ error: message, field }), {
@@ -71,6 +70,7 @@ export const POST: APIRoute = async ({ request }) => {
     is_solidarity,
     send_email: shouldSendEmail = true,
     video_link,
+    override_price,
   } = body;
 
   // 3. Validation
@@ -89,14 +89,33 @@ export const POST: APIRoute = async ({ request }) => {
   if (!appointment_mode || !VALID_MODES.has(appointment_mode as string))
     return errorResponse(400, 'Mode de séance invalide', 'appointment_mode');
 
-  if (!duration || !VALID_DURATIONS.has(Number(duration)))
-    return errorResponse(400, 'Durée invalide (60 ou 90 minutes)', 'duration');
+  if (!duration || !Number.isInteger(Number(duration)) || Number(duration) < 15 || Number(duration) > 240)
+    return errorResponse(400, 'Durée invalide (entre 15 et 240 minutes)', 'duration');
+
+  const GRID_DURATIONS = new Set([60, 90]);
+  if (!GRID_DURATIONS.has(Number(duration)) && override_price === undefined)
+    return errorResponse(400, 'Durée personnalisée : le tarif manuel est obligatoire', 'override_price');
 
   if (!scheduled_at || typeof scheduled_at !== 'string' || isNaN(Date.parse(scheduled_at)))
     return errorResponse(400, 'Date de séance invalide', 'scheduled_at');
 
-  if (appointment_mode === 'video' && video_link && typeof video_link !== 'string')
-    return errorResponse(400, 'Lien vidéo invalide', 'video_link');
+  if (appointment_mode === 'video' && video_link) {
+    if (typeof video_link !== 'string') return errorResponse(400, 'Lien vidéo invalide', 'video_link');
+    try {
+      const parsed = new URL(video_link as string);
+      if (parsed.protocol !== 'https:')
+        return errorResponse(400, 'Lien vidéo invalide (HTTPS requis)', 'video_link');
+    } catch {
+      return errorResponse(400, 'Lien vidéo invalide', 'video_link');
+    }
+  }
+
+  if (override_price !== undefined && (
+    !Number.isInteger(Number(override_price)) ||
+    Number(override_price) < 0 ||
+    Number(override_price) > 500
+  ))
+    return errorResponse(400, 'Tarif manuel invalide (entre 0 et 500€)', 'override_price');
 
   const scheduledDate = new Date(scheduled_at);
   if (scheduledDate.getTime() < Date.now())
@@ -139,9 +158,10 @@ export const POST: APIRoute = async ({ request }) => {
     : autoDetectedFirstSession;
   const pricing = calculatePrice(
     appointment_type as AppointmentType,
-    Number(duration) as AppointmentDuration,
+    Number(duration),
     isFirstSession,
     typeof is_solidarity === 'boolean' ? is_solidarity : false,
+    override_price !== undefined ? Number(override_price) : undefined,
   );
 
   // 5. Statut initial
@@ -181,32 +201,36 @@ export const POST: APIRoute = async ({ request }) => {
 
   await invalidateAvailabilityCache().catch(console.error);
 
-  if (!isVideo && !appointment.google_calendar_event_id) {
+  let resolvedVideoLink: string | undefined = appointment.video_link ?? undefined;
+
+  if (!appointment.google_calendar_event_id) {
     try {
       const start = new Date(appointment.scheduled_at);
       const end = new Date(start.getTime() + appointment.duration * 60 * 1000);
+      const modeLabel = isVideo ? 'Téléconsultation' : 'Présentiel';
       const calResult = await createCalendarEvent({
-        title: `${appointment.patient_name} — séance présentielle (${appointment.duration} min)`,
+        title: `${isVideo ? '🎥 ' : ''}${appointment.patient_name} — séance ${modeLabel.toLowerCase()} (${appointment.duration} min)`,
         start: start.toISOString(),
         end: end.toISOString(),
         description: [
           `Patient: ${appointment.patient_name}`,
           `Email: ${appointment.patient_email}`,
-          `Mode: Présentiel`,
+          `Mode: ${modeLabel}`,
           `Durée: ${appointment.duration} min`,
+          ...(resolvedVideoLink ? [`Lien visio: ${resolvedVideoLink}`] : []),
         ].join('\n'),
-        location: CABINET_ADDRESS,
+        location: isVideo ? 'Téléconsultation' : CABINET_ADDRESS,
         attendeeEmail: appointment.patient_email,
-        withMeet: false,
-        appointmentId: `${appointment.id}-admin-inperson`,
-        colorId: '2',
+        withMeet: isVideo && !resolvedVideoLink,
+        appointmentId: `${appointment.id}-admin-${isVideo ? 'video' : 'inperson'}`,
+        colorId: isVideo ? '11' : '2',
       });
-      await supabaseAdmin
-        .from('appointments')
-        .update({ google_calendar_event_id: calResult.eventId })
-        .eq('id', appointment.id);
+      const calendarUpdate: Record<string, string> = { google_calendar_event_id: calResult.eventId };
+      if (isVideo && calResult.meetLink) calendarUpdate.video_link = calResult.meetLink;
+      await supabaseAdmin.from('appointments').update(calendarUpdate).eq('id', appointment.id);
+      if (isVideo && calResult.meetLink) resolvedVideoLink = calResult.meetLink;
     } catch (calendarErr) {
-      console.error('[admin/appointments] Erreur création événement agenda (présentiel):', calendarErr);
+      console.error('[admin/appointments] Erreur création événement agenda:', calendarErr);
     }
   }
 
@@ -262,8 +286,8 @@ export const POST: APIRoute = async ({ request }) => {
         uid: appointment.id,
         summary: 'Séance de thérapie — OMF Therapie',
         description: `Patient: ${appointment.patient_name}\nMode: ${appointment.appointment_mode === 'video' ? 'Téléconsultation' : 'Présentiel'}`,
-        location: appointment.appointment_mode === 'in-person' ? CABINET_ADDRESS : (appointment.video_link ?? undefined),
-        url: appointment.video_link ?? undefined,
+        location: appointment.appointment_mode === 'in-person' ? CABINET_ADDRESS : (resolvedVideoLink ?? undefined),
+        url: resolvedVideoLink ?? undefined,
         start,
         end,
         organizerName: 'Oriane Montabonnet — OMF Thérapie',
