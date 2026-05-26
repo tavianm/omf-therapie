@@ -1,6 +1,5 @@
 ---
 import '../index.css';
-import CookieConsent from '../components/CookieConsent.astro';
 
 interface Props {
   title: string;
@@ -77,8 +76,11 @@ const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
           window.dataLayer = window.dataLayer || [];
           window.gtag = function(){ window.dataLayer.push(arguments); };
         </script>
-        <script is:inline type="text/partytown" src={`https://www.googletagmanager.com/gtag/js?id=${import.meta.env.PUBLIC_GA4_ID}`} />
-        <script is:inline type="text/partytown" define:vars={{ ga4Id: import.meta.env.PUBLIC_GA4_ID }}>
+        {/* Cookiebot — Google-certified CMP (IAB TCF v2.2), must load before GA4 */}
+        <Fragment set:html={`<script id="Cookiebot" src="https://consent.cookiebot.com/uc.js" data-cbid="${import.meta.env.PUBLIC_COOKIEBOT_CBID}" data-blockingmode="auto" type="text/javascript" async></script>`} />
+        {/* GA4 via Partytown — data-cookieconsent="ignore" prevents Cookiebot re-blocking; Consent Mode v2 signals handle GA4 activation */}
+        <script is:inline type="text/partytown" data-cookieconsent="ignore" src={`https://www.googletagmanager.com/gtag/js?id=${import.meta.env.PUBLIC_GA4_ID}`} />
+        <script is:inline type="text/partytown" data-cookieconsent="ignore" define:vars={{ ga4Id: import.meta.env.PUBLIC_GA4_ID }}>
           window.dataLayer = window.dataLayer || [];
           function gtag(){ dataLayer.push(arguments); }
           gtag('js', new Date());
@@ -96,6 +98,5 @@ const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
   </head>
   <body>
     <slot />
-    {import.meta.env.PROD && <CookieConsent />}
   </body>
 </html>
