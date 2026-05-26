@@ -111,7 +111,7 @@ const Navbar = memo(({ className = "", isHomePage: isHomePageProp, isAuthenticat
       if (typeof window === "undefined") return false;
       const pathname = normalizePathname(window.location.pathname);
       const normalizedPath = normalizePathname(path);
-      if (normalizedPath === "/contact") return pathname === "/contact";
+      if (normalizedPath === "/rendez-vous") return pathname === "/rendez-vous";
       if (normalizedPath === "/blog") return pathname.startsWith("/blog");
       return pathname === "/" && activeSection === href.substring(1);
     },
