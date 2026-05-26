@@ -95,10 +95,19 @@
 
 #cc-main .cm--bar .cm__btns {
   padding: 0.75rem 1rem 0.85rem;
-  /* Force horizontal layout so 3 buttons stay in one row */
+  /* Flatten the two nested btn-groups into a single row */
   flex-direction: row !important;
   flex-wrap: nowrap !important;
+  align-items: center !important;
   gap: 0.5rem !important;
+}
+
+/* Make each btn-group also a horizontal row so Accepter+Refuser sit side-by-side */
+#cc-main .cm--bar .cm__btn-group {
+  flex-direction: row !important;
+  flex: 1 1 0;
+  gap: 0.5rem !important;
+  min-width: 0;
 }
 
 #cc-main .cm--bar .cm__btn {
@@ -106,6 +115,7 @@
   min-width: 0;
   font-size: 0.82rem;
   white-space: nowrap;
+  padding: 0.5rem 0.6rem;
 }
 
 /* Focus rings */
