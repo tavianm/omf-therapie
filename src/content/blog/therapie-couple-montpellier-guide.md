@@ -33,7 +33,7 @@ imageUrl: "https://images.pexels.com/photos/5217833/pexels-photo-5217833.jpeg"
 
 <h2>Comment se déroule une séance de thérapie de couple ?</h2>
 
-<p>Une séance de thérapie de couple dure généralement <strong>55 minutes</strong>. Lors de la première rencontre, je prends le temps de recueillir l'histoire du couple, les motifs de consultation et les attentes de chacun. J'accorde beaucoup d'importance à cette première étape, parce qu'elle permet déjà de sentir là où la souffrance s'est installée et ce qui, malgré tout, tient encore.</p>
+<p>Une séance de thérapie de couple dure généralement <strong>60 ou 90 minutes</strong>. Lors de la première rencontre, je prends le temps de recueillir l'histoire du couple, les motifs de consultation et les attentes de chacun. J'accorde beaucoup d'importance à cette première étape, parce qu'elle permet déjà de sentir là où la souffrance s'est installée et ce qui, malgré tout, tient encore.</p>
 
 <p>Mon rôle est d'être <strong>strictement neutre</strong> : je ne prends pas parti, je ne distribue pas les torts et je ne cherche pas un coupable. Je veille à ce que chacun puisse dire ce qu'il vit, mais aussi entendre un peu mieux ce que l'autre traverse. Très souvent, c'est dans cet espace sécurisé que quelque chose commence à se desserrer.</p>
 
@@ -46,7 +46,7 @@ imageUrl: "https://images.pexels.com/photos/5217833/pexels-photo-5217833.jpeg"
   <li><strong>Des séances individuelles alternées</strong>, parfois proposées en parallèle, lorsque chacun a besoin de déposer aussi son vécu personnel pour mieux revenir dans le lien.</li>
 </ul>
 
-<p>La fréquence des séances est adaptée à la situation : une fois par semaine au début, puis espacées progressivement à mesure que le couple gagne en autonomie. Ce rythme se construit ensemble, en fonction de ce que vous traversez et de ce que vous êtes prêts à engager.</p>
+<p>La fréquence des séances est adaptée à la situation, avec un rythme habituel d'une séance toutes les 2 à 3 semaines et un bilan intermédiaire après 2 à 3 séances. Ce cadre se construit ensemble, en fonction de ce que vous traversez et de ce que vous êtes prêts à engager.</p>
 
 <h2>La thérapie de couple peut-elle sauver une relation ?</h2>
 
