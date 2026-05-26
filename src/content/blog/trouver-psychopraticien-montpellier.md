@@ -86,4 +86,4 @@ imageUrl: "https://images.pexels.com/photos/5699456/pexels-photo-5699456.jpeg"
 
 <p>Je propose des séances de <strong>thérapie individuelle</strong>, de <strong>thérapie de couple</strong> et de <strong>thérapie familiale</strong>, ainsi qu'un accompagnement spécialisé pour les <strong>troubles alimentaires</strong>.</p>
 
-<p>Mon approche est fondée sur les TCCE (Thérapies Comportementales, Cognitives et Émotionnelles). Dans ma pratique, cela veut dire un accompagnement à la fois structuré, attentif à votre histoire et ajusté à ce que vous vivez réellement. Pour prendre rendez-vous, vous pouvez utiliser le <a href="/contact">formulaire de contact</a> ou réserver directement en ligne sur psychologue.net.</p>
+<p>Mon approche est fondée sur les TCCE (Thérapies Comportementales, Cognitives et Émotionnelles). Dans ma pratique, cela veut dire un accompagnement à la fois structuré, attentif à votre histoire et ajusté à ce que vous vivez réellement. Pour prendre rendez-vous, vous pouvez utiliser le <a href="/contact">formulaire de contact</a>.</p>
