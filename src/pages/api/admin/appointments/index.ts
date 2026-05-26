@@ -92,14 +92,30 @@ export const POST: APIRoute = async ({ request }) => {
   if (!duration || !Number.isInteger(Number(duration)) || Number(duration) < 15 || Number(duration) > 240)
     return errorResponse(400, 'Durée invalide (entre 15 et 240 minutes)', 'duration');
 
+  const GRID_DURATIONS = new Set([60, 90]);
+  if (!GRID_DURATIONS.has(Number(duration)) && override_price === undefined)
+    return errorResponse(400, 'Durée personnalisée : le tarif manuel est obligatoire', 'override_price');
+
   if (!scheduled_at || typeof scheduled_at !== 'string' || isNaN(Date.parse(scheduled_at)))
     return errorResponse(400, 'Date de séance invalide', 'scheduled_at');
 
-  if (appointment_mode === 'video' && video_link && typeof video_link !== 'string')
-    return errorResponse(400, 'Lien vidéo invalide', 'video_link');
+  if (appointment_mode === 'video' && video_link) {
+    if (typeof video_link !== 'string') return errorResponse(400, 'Lien vidéo invalide', 'video_link');
+    try {
+      const parsed = new URL(video_link as string);
+      if (parsed.protocol !== 'https:')
+        return errorResponse(400, 'Lien vidéo invalide (HTTPS requis)', 'video_link');
+    } catch {
+      return errorResponse(400, 'Lien vidéo invalide', 'video_link');
+    }
+  }
 
-  if (override_price !== undefined && (!Number.isInteger(Number(override_price)) || Number(override_price) < 0))
-    return errorResponse(400, 'Tarif manuel invalide (entier ≥ 0)', 'override_price');
+  if (override_price !== undefined && (
+    !Number.isInteger(Number(override_price)) ||
+    Number(override_price) < 0 ||
+    Number(override_price) > 500
+  ))
+    return errorResponse(400, 'Tarif manuel invalide (entre 0 et 500€)', 'override_price');
 
   const scheduledDate = new Date(scheduled_at);
   if (scheduledDate.getTime() < Date.now())
@@ -185,6 +201,8 @@ export const POST: APIRoute = async ({ request }) => {
 
   await invalidateAvailabilityCache().catch(console.error);
 
+  let resolvedVideoLink: string | undefined = appointment.video_link ?? undefined;
+
   if (!appointment.google_calendar_event_id) {
     try {
       const start = new Date(appointment.scheduled_at);
@@ -199,18 +217,18 @@ export const POST: APIRoute = async ({ request }) => {
           `Email: ${appointment.patient_email}`,
           `Mode: ${modeLabel}`,
           `Durée: ${appointment.duration} min`,
-          ...(appointment.video_link ? [`Lien visio: ${appointment.video_link}`] : []),
+          ...(resolvedVideoLink ? [`Lien visio: ${resolvedVideoLink}`] : []),
         ].join('\n'),
         location: isVideo ? 'Téléconsultation' : CABINET_ADDRESS,
         attendeeEmail: appointment.patient_email,
-        withMeet: isVideo && !appointment.video_link,
+        withMeet: isVideo && !resolvedVideoLink,
         appointmentId: `${appointment.id}-admin-${isVideo ? 'video' : 'inperson'}`,
         colorId: isVideo ? '11' : '2',
       });
       const calendarUpdate: Record<string, string> = { google_calendar_event_id: calResult.eventId };
       if (isVideo && calResult.meetLink) calendarUpdate.video_link = calResult.meetLink;
       await supabaseAdmin.from('appointments').update(calendarUpdate).eq('id', appointment.id);
-      if (isVideo && calResult.meetLink) appointment.video_link = calResult.meetLink;
+      if (isVideo && calResult.meetLink) resolvedVideoLink = calResult.meetLink;
     } catch (calendarErr) {
       console.error('[admin/appointments] Erreur création événement agenda:', calendarErr);
     }
@@ -268,8 +286,8 @@ export const POST: APIRoute = async ({ request }) => {
         uid: appointment.id,
         summary: 'Séance de thérapie — OMF Therapie',
         description: `Patient: ${appointment.patient_name}\nMode: ${appointment.appointment_mode === 'video' ? 'Téléconsultation' : 'Présentiel'}`,
-        location: appointment.appointment_mode === 'in-person' ? CABINET_ADDRESS : (appointment.video_link ?? undefined),
-        url: appointment.video_link ?? undefined,
+        location: appointment.appointment_mode === 'in-person' ? CABINET_ADDRESS : (resolvedVideoLink ?? undefined),
+        url: resolvedVideoLink ?? undefined,
         start,
         end,
         organizerName: 'Oriane Montabonnet — OMF Thérapie',

@@ -222,7 +222,7 @@ function AdminCreateModal({ onClose }: { onClose: () => void }) {
       if (form.useOverridePrice) {
         return { finalPrice: form.overridePrice, discount: 0, basePrice: form.overridePrice, label: `${form.overridePrice} € (tarif manuel)` };
       }
-      const durationForPrice = (form.duration === 'custom' ? 60 : form.duration) as AppointmentDuration;
+      const durationForPrice = form.duration === 'custom' ? 60 : form.duration;
       return calculatePrice(form.appointment_type, durationForPrice, form.override_first_session, form.is_solidarity);
     },
     [form.appointment_type, form.duration, form.override_first_session, form.is_solidarity, form.useOverridePrice, form.overridePrice],
@@ -376,7 +376,12 @@ function AdminCreateModal({ onClose }: { onClose: () => void }) {
                 value={form.duration}
                 onChange={e => {
                   const val = e.target.value;
-                  setForm(f => ({ ...f, duration: val === 'custom' ? 'custom' : Number(val) }));
+                  const isCustom = val === 'custom';
+                  setForm(f => ({
+                    ...f,
+                    duration: isCustom ? 'custom' : Number(val),
+                    ...(isCustom ? { useOverridePrice: true } : {}),
+                  }));
                 }}
                 className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans focus:border-mint-400 focus:outline-none focus:ring-2 focus:ring-mint-200"
               >
@@ -389,6 +394,7 @@ function AdminCreateModal({ onClose }: { onClose: () => void }) {
                   type="number"
                   min={15}
                   max={240}
+                  step={1}
                   value={form.customDurationMinutes}
                   onChange={(e) => setForm(f => ({ ...f, customDurationMinutes: Number(e.target.value) }))}
                   className="mt-1 w-full rounded border border-sage-200 px-2 py-1 text-sm"
@@ -489,6 +495,7 @@ function AdminCreateModal({ onClose }: { onClose: () => void }) {
                 <input
                   type="number"
                   min={0}
+                  step={1}
                   value={form.overridePrice}
                   onChange={(e) => setForm(f => ({ ...f, overridePrice: Number(e.target.value) }))}
                   className="mt-1 w-full rounded border border-sage-200 px-2 py-1 text-sm"

@@ -57,7 +57,7 @@ export const SOLIDARITY_DISCOUNT = 10;
  */
 export function calculatePrice(
   type: AppointmentType,
-  duration: AppointmentDuration,
+  duration: number,
   isFirstSession: boolean,
   isSolidarity = false,
   overridePrice?: number,
@@ -71,7 +71,10 @@ export function calculatePrice(
     };
   }
 
-  const basePrice = PRICE_GRID[type][duration];
+  const basePrice = PRICE_GRID[type]?.[duration as AppointmentDuration];
+  if (basePrice === undefined) {
+    throw new Error(`Durée ${duration} min non couverte par la grille tarifaire — utiliser overridePrice`);
+  }
   const discount = isSolidarity
     ? SOLIDARITY_DISCOUNT
     : isFirstSession ? FIRST_SESSION_DISCOUNT : 0;
