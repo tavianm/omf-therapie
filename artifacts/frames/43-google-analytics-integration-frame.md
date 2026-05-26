@@ -52,7 +52,7 @@ Reasoning: Scope clairement délimité (4 fichiers, 2 patterns nouveaux : Partyt
 
 ## Tracking Configuration
 
-- **Tracking ID GA4 :** `G-JFZBWJN781`
+- **Tracking ID GA4 :** *(configuré dans Netlify env vars — `PUBLIC_GA4_ID`)*
 - **Événement de conversion :** CTA de fin de parcours de demande de rendez-vous (page `/rdv/merci` ou confirmation d'insertion en base de données Supabase)
 
 ## Open Questions

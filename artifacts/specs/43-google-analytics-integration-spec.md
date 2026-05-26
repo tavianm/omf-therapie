@@ -7,7 +7,7 @@ status: approved
 
 ## Goal
 
-Intégrer GA4 (ID: `G-JFZBWJN781`) avec conformité RGPD/CNIL complète afin de remonter les conversions (demandes de RDV) dans Google Ads et permettre l'optimisation des campagnes.
+Intégrer GA4 avec conformité RGPD/CNIL complète afin de remonter les conversions (demandes de RDV) dans Google Ads et permettre l'optimisation des campagnes.
 
 ## Context
 
@@ -50,7 +50,7 @@ L'implémentation suit le guide https://daniel.es/blog/the-ultimate-astro-google
 
 **Slice 4 — Événement de conversion sur `/rdv/merci`:** Ajouter un `<script is:inline>` conditionnel sur la page `/rdv/merci` qui fire `gtag('event', 'appointment_requested', { appointment_type, appointment_mode })` uniquement pour les variants `request-submitted` et `payment-success`. L'événement ne se déclenche que si le consent a été accordé (GA4 gère cela via le consent mode). (fichiers: `src/pages/rdv/merci.astro`)
 
-**Slice 5 — Variables d'environnement:** Documenter `PUBLIC_GA4_ID=G-JFZBWJN781` dans `.env.local.example`. La valeur réelle est ajoutée dans Netlify env vars. (fichiers: `.env.local.example`)
+**Slice 5 — Variables d'environnement:** Documenter `PUBLIC_GA4_ID=G-XXXXXXXXXX` dans `.env.local.example`. La valeur réelle est ajoutée dans Netlify env vars. (fichiers: `.env.local.example`)
 
 ## Technical Decisions
 
