@@ -39,7 +39,7 @@
   --cc-btn-secondary-text: #3d4f47;
   --cc-btn-secondary-border-color: #d1cdc8;
   --cc-text: #1a2e25;
-  --cc-secondary-text: #6b7f74;
+  --cc-secondary-text: #5a7168;
   --cc-border-radius: 0.75rem;
   --cc-font-family: 'Inter', sans-serif;
   --cc-link-color: #4a7c6f;
@@ -49,7 +49,7 @@
 #cc-main .cm {
   border-top: 1px solid #e8e4e0;
   box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.06);
-  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -67,7 +67,34 @@
 #cc-main .cm__btn {
   min-height: 44px;
   min-width: 44px;
-  padding: 0.625rem 1.25rem;
+  padding: 0.5rem 0.9rem;
+}
+
+/* Compact bar layout */
+#cc-main .cm--bar .cm__body {
+  padding: 0.35em 0 0.55em;
+}
+
+#cc-main .cm--bar .cm__texts {
+  padding-top: 0.5rem;
+}
+
+#cc-main .cm--bar .cm__title {
+  font-size: 1rem;
+}
+
+#cc-main .cm--bar .cm__title + .cm__desc {
+  margin-top: 0.55rem;
+}
+
+#cc-main .cm--bar .cm__desc {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  padding-bottom: 0.5rem;
+}
+
+#cc-main .cm--bar .cm__btns {
+  padding: 0.75rem 1rem 0.85rem;
 }
 
 /* Focus rings */
