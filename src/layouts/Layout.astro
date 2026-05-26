@@ -71,8 +71,8 @@ const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 
     {import.meta.env.PROD && (
       <>
-        {/* Google Consent Mode v2 defaults — main thread, before Cookiebot and GA4 */}
-        <script is:inline data-cookieconsent="ignore">
+        {/* Google Consent Mode v2 defaults — all denied, no cookies set, no banner needed */}
+        <script is:inline>
           window.dataLayer = window.dataLayer || [];
           window.gtag = function(){ window.dataLayer.push(arguments); };
           gtag("consent", "default", {
@@ -88,11 +88,9 @@ const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
           gtag("set", "ads_data_redaction", true);
           gtag("set", "url_passthrough", false);
         </script>
-        {/* Cookiebot — Google-certified CMP (IAB TCF v2.2), must load before GA4 */}
-        <Fragment set:html={`<script id="Cookiebot" src="https://consent.cookiebot.com/uc.js" data-cbid="${import.meta.env.PUBLIC_COOKIEBOT_CBID}" data-blockingmode="auto" type="text/javascript" async></script>`} />
-        {/* GA4 via Partytown — data-cookieconsent="ignore" prevents Cookiebot re-blocking */}
-        <script is:inline type="text/partytown" data-cookieconsent="ignore" src={`https://www.googletagmanager.com/gtag/js?id=${import.meta.env.PUBLIC_GA4_ID}`} />
-        <script is:inline type="text/partytown" data-cookieconsent="ignore" define:vars={{ ga4Id: import.meta.env.PUBLIC_GA4_ID }}>
+        {/* GA4 via Partytown — no cookies set (Consent Mode v2 denied), data is modelled by Google */}
+        <script is:inline type="text/partytown" src={`https://www.googletagmanager.com/gtag/js?id=${import.meta.env.PUBLIC_GA4_ID}`} />
+        <script is:inline type="text/partytown" define:vars={{ ga4Id: import.meta.env.PUBLIC_GA4_ID }}>
           window.dataLayer = window.dataLayer || [];
           function gtag(){ dataLayer.push(arguments); }
           gtag('js', new Date());
