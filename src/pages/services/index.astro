@@ -9,8 +9,8 @@ const jsonLd = buildLocalBusinessSchema();
 ---
 
 <Layout
-  title="Mes services — Thérapie individuelle, conjugale & familiale | Oriane Montabonnet"
-  description="Découvrez mes domaines d'expertise : thérapie individuelle, troubles alimentaires, thérapie conjugale et thérapie familiale à Montpellier."
+  title="Mes Services — Thérapie à Montpellier | Oriane Montabonnet"
+  description="Explorez mes services thérapeutiques : thérapie individuelle, troubles alimentaires, thérapie de couple, familiale et accompagnement de l'anxiété à Montpellier."
   canonical="https://omf-therapie.fr/services"
   jsonLd={jsonLd}
 >
@@ -31,47 +31,15 @@ const jsonLd = buildLocalBusinessSchema();
           </ol>
         </nav>
         <h1 class="font-serif text-3xl md:text-4xl lg:text-5xl font-semibold text-sage-800 mb-4">
-          Mes domaines d'expertise
+          Mes Services
         </h1>
         <p class="text-xl text-sage-600 max-w-3xl">
-          Un accompagnement thérapeutique adapté à vos besoins, qu'il s'agisse de difficultés personnelles, alimentaires, conjugales ou familiales.
+          Thérapie individuelle, conjugale, familiale et accompagnement de l'anxiété — en cabinet à Montpellier ou en téléconsultation.
         </p>
       </div>
     </section>
 
     <ServicesSection client:idle />
-
-    <!-- Carte statique : Accompagnement de l'anxiété (T4) -->
-    <section class="pt-6 pb-16">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="text-center mb-8">
-          <h2 class="font-serif text-3xl font-semibold text-sage-800 mb-3">Accompagnement spécialisé</h2>
-          <p class="text-sage-600 max-w-2xl mx-auto">Un accompagnement ciblé pour les problématiques d'anxiété avec des outils TCCE validés.</p>
-        </div>
-        <div class="max-w-2xl mx-auto">
-          <div class="bg-white p-8 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-mint-600 mb-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <h3 class="text-3xl font-serif font-semibold text-sage-800 mb-4">Anxiété &amp; Bien-être</h3>
-            <ul class="list-disc pl-3 mb-6">
-              <li class="text-sage-600">Anxiété généralisée, inquiétudes envahissantes</li>
-              <li class="text-sage-600">Phobies sociales et peur du regard des autres</li>
-              <li class="text-sage-600">Attaques de panique et stress chronique</li>
-              <li class="text-sage-600">Anxiété de performance et perfectionnisme</li>
-              <li class="text-sage-600">Hypocondrie et anxiété de santé</li>
-              <li class="text-sage-600">Techniques TCCE adaptées à votre situation</li>
-            </ul>
-            <a
-              href="/services/anxiete-montpellier"
-              class="inline-flex items-center text-mint-600 hover:text-mint-700 font-medium transition-colors duration-200"
-            >
-              En savoir plus →
-            </a>
-          </div>
-        </div>
-      </div>
-    </section>
   </main>
 
   <Footer />

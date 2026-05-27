@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Apple, Brain, Home, Users } from "lucide-react";
+import { Apple, Brain, Home, Users, Wind } from "lucide-react";
 import { useMotionVariants } from "../../hooks/useMotionVariants";
 
 const ServicesSection = () => {
@@ -13,7 +13,6 @@ const ServicesSection = () => {
       descriptions: [
         "Mal-être psychologique, perte de repères",
         "États dépressifs, tristesse persistante",
-        "Anxiété, stress, angoisses envahissantes",
         "Hypersensibilité et gestion des émotions",
         "Difficultés à s'affirmer, peur du jugement",
         "Conflits internes, indécision, sentiment d'être bloqué(e)",
@@ -62,23 +61,36 @@ const ServicesSection = () => {
         "Annonce d'un diagnostic impactant toute la famille",
       ],
     },
+    {
+      icon: Wind,
+      title: "Anxiété & Bien-être",
+      href: "/services/anxiete-montpellier",
+      descriptions: [
+        "Anxiété généralisée, inquiétudes envahissantes",
+        "Phobies sociales et peur du regard des autres",
+        "Attaques de panique et stress chronique",
+        "Anxiété de performance et perfectionnisme",
+        "Hypocondrie et anxiété de santé",
+        "Techniques TCCE adaptées à votre situation",
+      ],
+    },
   ];
 
   return (
     <div className="py-8 md:py-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div {...fadeInUp()} className="text-center mb-8">
-          <h2 className="section-title">Domaines d'Expertise</h2>
+          <h2 className="section-title">Choisissez votre accompagnement</h2>
           <p className="section-subtitle">
-            Une approche thérapeutique adaptée à vos besoins spécifiques
+            Chaque parcours est unique. Découvrez le domaine qui correspond à votre situation.
           </p>
         </motion.div>
 
-        <div className="grid md:grid-cols-2 gap-6 md:gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
           {services.map((service, index) => (
             <div
               key={index}
-              className="bg-white p-8 rounded-lg shadow-sm hover:shadow-md transition-shadow"
+              className={`bg-white p-8 rounded-lg shadow-sm hover:shadow-md transition-shadow${index === 4 ? ' lg:col-start-2' : ''}`}
             >
               <service.icon className="h-12 w-12 text-mint-600 mb-6" />
               <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-4">

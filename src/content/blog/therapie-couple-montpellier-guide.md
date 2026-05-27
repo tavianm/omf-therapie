@@ -76,5 +76,5 @@ imageUrl: "https://images.pexels.com/photos/5217833/pexels-photo-5217833.jpeg"
 
 <div class="mt-8 p-6 bg-sage-50 rounded-xl border border-sage-200">
   <p class="text-sage-800 font-semibold mb-2">Envie d'aller plus loin ?</p>
-  <p class="text-sage-700 mb-4">Je vous accompagne à Montpellier ou en visioconférence. <a href="/rendez-vous/" class="text-mint-600 hover:text-mint-800 underline font-medium">Prendre rendez-vous en ligne</a> ou <a href="/contact" class="text-mint-600 hover:text-mint-800 underline">me contacter</a>.</p>
+  <p class="text-sage-700 mb-4">Je vous accompagne à Montpellier ou en téléconsultation. <a href="/rendez-vous/" class="text-mint-600 hover:text-mint-800 underline font-medium">Prendre rendez-vous en ligne</a> ou <a href="/contact" class="text-mint-600 hover:text-mint-800 underline">me contacter</a>.</p>
 </div>
