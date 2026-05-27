@@ -34,6 +34,19 @@ const ServicesSection = () => {
       ],
     },
     {
+      icon: Wind,
+      title: "Anxiété & Bien-être",
+      href: "/services/anxiete-montpellier",
+      descriptions: [
+        "Anxiété généralisée, inquiétudes envahissantes",
+        "Phobies sociales et peur du regard des autres",
+        "Attaques de panique et stress chronique",
+        "Anxiété de performance et perfectionnisme",
+        "Hypocondrie et anxiété de santé",
+        "Techniques TCCE adaptées à votre situation",
+      ],
+    },
+    {
       icon: Users,
       title: "Problématiques conjugales",
       href: "/services/therapie-de-couple",
@@ -59,19 +72,6 @@ const ServicesSection = () => {
         "Conflits entre parents et enfants adultes",
         "Fratrie en conflit ou dynamique familiale dysfonctionnelle",
         "Annonce d'un diagnostic impactant toute la famille",
-      ],
-    },
-    {
-      icon: Wind,
-      title: "Anxiété & Bien-être",
-      href: "/services/anxiete-montpellier",
-      descriptions: [
-        "Anxiété généralisée, inquiétudes envahissantes",
-        "Phobies sociales et peur du regard des autres",
-        "Attaques de panique et stress chronique",
-        "Anxiété de performance et perfectionnisme",
-        "Hypocondrie et anxiété de santé",
-        "Techniques TCCE adaptées à votre situation",
       ],
     },
   ];
