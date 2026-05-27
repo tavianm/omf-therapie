@@ -2,9 +2,15 @@
 import Layout from '../layouts/Layout.astro';
 import Navbar from '../components/islands/Navbar';
 import Footer from '../components/layout/Footer.astro';
-import { buildPersonSchema } from '../utils/schema';
+import { buildBreadcrumbSchema, buildPersonSchema } from '../utils/schema';
 
-const jsonLd = buildPersonSchema();
+const jsonLd = [
+  buildPersonSchema(),
+  buildBreadcrumbSchema([
+    { name: "Accueil", url: "https://omf-therapie.fr" },
+    { name: "À propos", url: "https://omf-therapie.fr/a-propos" },
+  ]),
+];
 ---
 
 <Layout

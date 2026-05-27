@@ -5,9 +5,15 @@ import Footer from '../components/layout/Footer.astro';
 import { ContactForm } from '../components/contact/ContactForm';
 import { ContactInfo } from '../components/contact/ContactInfo';
 import { LocationMap } from '../components/contact/LocationMap';
-import { buildLocalBusinessSchema } from '../utils/schema';
+import { buildBreadcrumbSchema, buildLocalBusinessSchema } from '../utils/schema';
 
-const jsonLd = buildLocalBusinessSchema();
+const jsonLd = [
+  buildLocalBusinessSchema(),
+  buildBreadcrumbSchema([
+    { name: "Accueil", url: "https://omf-therapie.fr" },
+    { name: "Contact", url: "https://omf-therapie.fr/contact" },
+  ]),
+];
 ---
 
 <Layout

@@ -68,3 +68,10 @@ En pratiquant régulièrement ces techniques, vous développerez progressivement
 ## Accompagnement de l'anxiété à Montpellier
 
 Si l'anxiété affecte significativement votre quotidien, un accompagnement thérapeutique peut faire une vraie différence. Thérapeute à **Montpellier**, je propose des séances individuelles adaptées à votre situation au **1086 Avenue Albert Einstein, 34000 Montpellier**. Je reçois également les patients de Castelnau-le-Lez, Lattes, Pérols et des communes environnantes. Contactez-moi au **06 50 33 18 53**.
+
+<p>Pour en savoir plus sur l'accompagnement que je propose à Montpellier, découvrez <a href="/services/anxiete-montpellier" class="text-mint-600 hover:text-mint-800 underline">ma page dédiée à l'anxiété et au stress</a>.</p>
+
+<div class="mt-8 p-6 bg-sage-50 rounded-xl border border-sage-200">
+  <p class="text-sage-800 font-semibold mb-2">Envie d'aller plus loin ?</p>
+  <p class="text-sage-700 mb-4">Je vous accompagne à Montpellier ou en visioconférence. <a href="/rendez-vous/" class="text-mint-600 hover:text-mint-800 underline font-medium">Prendre rendez-vous en ligne</a> ou <a href="/contact" class="text-mint-600 hover:text-mint-800 underline">me contacter</a>.</p>
+</div>

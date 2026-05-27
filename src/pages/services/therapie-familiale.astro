@@ -2,7 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import Navbar from '../../components/islands/Navbar';
 import Footer from '../../components/layout/Footer.astro';
-import { buildFAQSchema, buildServiceSchema } from '../../utils/schema';
+import { buildBreadcrumbSchema, buildFAQSchema, buildServiceSchema } from '../../utils/schema';
 
 const faqs = [
   {
@@ -30,6 +30,11 @@ const jsonLd = [
     "Accompagnement des conflits intergénérationnels, adolescents en difficulté et recompositions familiales par Oriane Montabonnet, psychopraticienne à Montpellier.",
     "https://omf-therapie.fr/services/therapie-familiale"
   ),
+  buildBreadcrumbSchema([
+    { name: "Accueil", url: "https://omf-therapie.fr" },
+    { name: "Services", url: "https://omf-therapie.fr/services" },
+    { name: "Thérapie familiale", url: "https://omf-therapie.fr/services/therapie-familiale" },
+  ]),
 ];
 ---
 

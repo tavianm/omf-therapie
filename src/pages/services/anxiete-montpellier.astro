@@ -1,0 +1,152 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Navbar from '../../components/islands/Navbar';
+import Footer from '../../components/layout/Footer.astro';
+import { buildFAQSchema, buildServiceSchema, buildBreadcrumbSchema } from '../../utils/schema';
+
+const faqs = [
+  {
+    question: "L'anxiété se traite-t-elle vraiment en thérapie ?",
+    answer: "Oui. Les thérapies cognitives et comportementales (TCCE) sont parmi les approches les plus efficaces pour traiter l'anxiété. Elles permettent de comprendre les mécanismes de l'anxiété et d'apprendre des outils concrets pour la réduire durablement.",
+  },
+  {
+    question: "Combien de séances faut-il pour traiter l'anxiété ?",
+    answer: "En moyenne, un suivi pour l'anxiété nécessite entre 8 et 20 séances selon l'intensité des symptômes et votre implication entre les séances. Les premiers résultats sont souvent visibles dès les 4-6 premières semaines.",
+  },
+  {
+    question: "Mon anxiété est sévère, puis-je quand même consulter une psychopraticienne ?",
+    answer: "Oui, dans la majorité des cas. Si votre anxiété est très sévère ou accompagnée de symptômes physiques importants, je pourrai vous orienter vers un psychiatre pour un suivi complémentaire ou un traitement médicamenteux si nécessaire.",
+  },
+  {
+    question: "La thérapie TCCE pour l'anxiété est-elle remboursée ?",
+    answer: "Les séances chez une psychopraticienne ne sont pas remboursées par la Sécurité sociale. Certaines mutuelles proposent un remboursement partiel — renseignez-vous auprès de la vôtre. Des tarifs adaptés peuvent être discutés lors de notre premier entretien.",
+  },
+];
+
+const jsonLd = [
+  buildBreadcrumbSchema([
+    { name: "Accueil", url: "https://omf-therapie.fr" },
+    { name: "Services", url: "https://omf-therapie.fr/services" },
+    { name: "Anxiété à Montpellier", url: "https://omf-therapie.fr/services/anxiete-montpellier" },
+  ]),
+  buildServiceSchema(
+    "Accompagnement de l'anxiété à Montpellier",
+    "Thérapie TCCE pour l'anxiété généralisée, les phobies sociales, les attaques de panique et l'anxiété de performance à Montpellier.",
+    "https://omf-therapie.fr/services/anxiete-montpellier"
+  ),
+  buildFAQSchema(faqs),
+];
+---
+
+<Layout
+  title="Anxiété à Montpellier — Aide & Accompagnement | Oriane Montabonnet"
+  description="Anxiété à Montpellier ? Oriane Montabonnet, psychopraticienne TCCE, vous accompagne pour réduire vos angoisses. Cabinet au 1086 Av. Albert Einstein."
+  canonical="https://omf-therapie.fr/services/anxiete-montpellier"
+  jsonLd={jsonLd}
+>
+  <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded">
+    Aller au contenu principal
+  </a>
+
+  <Navbar client:load isHomePage={false} />
+
+  <main id="main-content" class="pt-20" tabindex="-1">
+    <section class="bg-sage-50 py-12 px-4">
+      <div class="max-w-4xl mx-auto">
+        <nav class="mb-6 text-sm text-sage-500" aria-label="Fil d'Ariane">
+          <ol class="flex items-center gap-2 flex-wrap" role="list">
+            <li role="listitem"><a href="/" class="hover:text-mint-600 transition-colors">Accueil</a></li>
+            <li role="listitem" aria-hidden="true">›</li>
+            <li role="listitem"><a href="/services/" class="hover:text-mint-600 transition-colors">Services</a></li>
+            <li role="listitem" aria-hidden="true">›</li>
+            <li role="listitem" aria-current="page" class="text-sage-700 font-medium">Anxiété à Montpellier</li>
+          </ol>
+        </nav>
+        <h1 class="font-serif text-3xl md:text-4xl lg:text-5xl font-semibold text-sage-800 mb-6">Aide pour l'anxiété à Montpellier</h1>
+        <p class="text-xl text-sage-600 max-w-3xl leading-relaxed">L'anxiété touche de nombreuses personnes à Montpellier et peut considérablement altérer la qualité de vie au quotidien. Dans un cadre bienveillant et confidentiel, je vous accompagne avec des outils TCCE concrets pour comprendre votre anxiété, réduire vos angoisses et retrouver confiance en vous. Mon cabinet est situé au 1086 Avenue Albert Einstein à Montpellier.</p>
+        <div class="mt-6">
+          <a href="/rendez-vous/" class="btn-primary">
+            Prendre rendez-vous
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <article class="max-w-4xl mx-auto px-4 py-12 space-y-12">
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">Qu'est-ce que l'anxiété ?</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">L'anxiété est une émotion naturelle et universelle : ressentir une certaine tension avant un examen, un entretien ou une prise de parole est tout à fait normal. Cette anxiété dite <strong class="font-semibold text-sage-700">adaptative</strong> nous prépare à faire face à une situation perçue comme difficile et disparaît une fois l'événement passé.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">L'anxiété devient <strong class="font-semibold text-sage-700">pathologique</strong> lorsqu'elle est disproportionnée par rapport à la situation réelle, qu'elle persiste dans le temps ou qu'elle envahit de nombreux domaines de la vie quotidienne. Elle se manifeste alors à travers plusieurs types de symptômes :</p>
+        <ul class="space-y-2 text-sage-600 mb-4" aria-label="Symptômes de l'anxiété pathologique">
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span><span><strong class="font-semibold text-sage-700">Physiques :</strong> palpitations, oppression thoracique, transpiration excessive, tremblements, maux de ventre, tensions musculaires, fatigue chronique.</span></li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span><span><strong class="font-semibold text-sage-700">Cognitifs :</strong> pensées intrusives, ruminations incessantes, scénarios catastrophistes, difficultés de concentration, sentiment de perte de contrôle.</span></li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span><span><strong class="font-semibold text-sage-700">Comportementaux :</strong> évitement des situations anxiogènes, repli sur soi, isolement progressif, procrastination ou suractivité compensatoire.</span></li>
+        </ul>
+        <p class="text-sage-600 leading-relaxed">Lorsqu'elle n'est pas prise en charge, l'anxiété a tendance à s'auto-entretenir et à s'aggraver : les stratégies d'évitement renforcent la peur, qui finit par s'étendre à de nouveaux domaines de vie. Consulter une psychopraticienne à Montpellier permet d'interrompre ce cercle vicieux avant qu'il ne s'installe durablement.</p>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">Les formes d'anxiété que j'accompagne</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">L'anxiété recouvre des réalités très différentes d'une personne à l'autre. À mon cabinet de Montpellier, j'accompagne notamment :</p>
+        <ul class="space-y-3 text-sage-600 mb-4" aria-label="Formes d'anxiété accompagnées">
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span><span><strong class="font-semibold text-sage-700">L'anxiété généralisée :</strong> inquiétude excessive et persistante touchant plusieurs sphères de la vie (santé, travail, famille, avenir), difficile à contrôler malgré la conscience de son caractère disproportionné.</span></li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span><span><strong class="font-semibold text-sage-700">Les phobies sociales :</strong> peur intense du regard d'autrui, appréhension des situations sociales (prendre la parole, manger en public, entretiens professionnels), conduisant souvent à un isolement progressif.</span></li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span><span><strong class="font-semibold text-sage-700">Les attaques de panique et l'agoraphobie :</strong> crises d'angoisse intenses avec symptômes physiques intenses (essoufflement, vertiges, sensation de mort imminente) pouvant mener à l'évitement des espaces publics.</span></li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span><span><strong class="font-semibold text-sage-700">L'anxiété de performance :</strong> peur de l'échec paralysante dans le cadre professionnel, scolaire ou sportif, souvent associée au perfectionnisme et au syndrome de l'imposteur.</span></li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span><span><strong class="font-semibold text-sage-700">L'anxiété liée au travail et au burn-out précoce :</strong> surmenage, incapacité à déconnecter, sentiment d'inadéquation professionnelle, épuisement émotionnel avant que le burn-out ne s'installe.</span></li>
+        </ul>
+        <p class="text-sage-600 leading-relaxed">Cette liste n'est pas exhaustive. Si vous vous reconnaissez dans d'autres formes d'anxiété, n'hésitez pas à me contacter pour évoquer votre situation lors d'un premier entretien à Montpellier ou en visioconférence.</p>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">La thérapie TCCE pour l'anxiété</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">Les Thérapies Comportementales, Cognitives et Émotionnelles (TCCE) sont reconnues comme l'une des approches les plus efficaces dans le traitement de l'anxiété. Contrairement à une idée reçue, la thérapie TCCE ne se contente pas de « parler de ses problèmes » : elle propose des outils concrets, mesurables et applicables dès les premières semaines.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">Le travail en TCCE s'articule autour de plusieurs axes :</p>
+        <ul class="space-y-2 text-sage-600 mb-4" aria-label="Axes de travail en TCCE">
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span><span><strong class="font-semibold text-sage-700">Identification des pensées automatiques négatives</strong> qui alimentent et entretiennent l'anxiété (catastrophisme, surgénéralisation, pensée tout-ou-rien).</span></li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span><span><strong class="font-semibold text-sage-700">Compréhension des schémas cognitifs</strong> profonds qui sous-tendent ces pensées, souvent construits depuis l'enfance.</span></li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span><span><strong class="font-semibold text-sage-700">Exposition progressive</strong> aux situations ou objets anxiogènes, réalisée de façon graduelle et sécurisée pour désensibiliser progressivement la réponse anxieuse.</span></li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span><span><strong class="font-semibold text-sage-700">Techniques de régulation émotionnelle</strong> : respiration diaphragmatique, relaxation musculaire progressive, pleine conscience (mindfulness) adaptée à l'anxiété.</span></li>
+        </ul>
+        <p class="text-sage-600 leading-relaxed">L'approche TCCE est collaborative : vous êtes acteur de votre thérapie. Des exercices pratiques entre les séances permettent d'ancrer les progrès dans votre quotidien à Montpellier et au-delà.</p>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">Comment se déroule un suivi pour l'anxiété à Montpellier ?</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">La <strong class="font-semibold text-sage-700">première séance</strong> est consacrée à un bilan complet : comprendre votre histoire, identifier les situations qui déclenchent votre anxiété, définir ensemble des objectifs thérapeutiques réalistes. Cette séance n'engage à rien : elle permet simplement de vérifier que le suivi proposé correspond à vos besoins.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">Les <strong class="font-semibold text-sage-700">séances suivantes</strong> alternent entre exploration des pensées et émotions anxieuses, transmission d'outils TCCE adaptés à votre profil, et mise en place d'exercices pratiques à réaliser entre les rendez-vous. Ces exercices sont essentiels : l'anxiété se travaille aussi en dehors du cabinet.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">Le <strong class="font-semibold text-sage-700">rythme habituel</strong> est d'une séance par semaine en début de suivi, puis bihebdomadaire une fois les outils bien intégrés. La durée moyenne d'un suivi pour l'anxiété est de 8 à 20 séances, selon l'intensité des symptômes et la nature des objectifs poursuivis.</p>
+        <p class="text-sage-600 leading-relaxed">Les séances se déroulent en présentiel au <strong class="font-semibold text-sage-700">1086 Avenue Albert Einstein, 34000 Montpellier</strong> (quartier Millénaire, accessible tramway ligne 2), ou en <strong class="font-semibold text-sage-700">visioconférence sécurisée</strong> pour les personnes ne pouvant pas se déplacer.</p>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-3">Tarifs et prise en charge</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">Les tarifs des séances individuelles sont consultables sur la <a href="/tarifs/" class="text-mint-600 hover:text-mint-700 underline underline-offset-2">page Tarifs</a> du site. Les honoraires d'une psychopraticienne ne sont pas remboursés par l'Assurance maladie. Toutefois, certaines mutuelles proposent une prise en charge partielle des séances de psychothérapie — renseignez-vous auprès de votre complémentaire santé.</p>
+        <p class="text-sage-600 leading-relaxed">Des tarifs adaptés peuvent être évoqués lors de notre premier entretien, afin que le suivi reste accessible. <a href="/rendez-vous/" class="text-mint-600 hover:text-mint-700 underline underline-offset-2">Prenez rendez-vous</a> pour un premier échange sans engagement.</p>
+      </div>
+
+      <div>
+        <h2 class="font-serif text-2xl text-sage-800 mb-4">Questions fréquentes sur l'anxiété à Montpellier</h2>
+        <div class="space-y-6">
+          {faqs.map((faq) => (
+            <div class="border-l-4 border-mint-200 pl-4">
+              <h3 class="font-semibold text-sage-800 mb-2">{faq.question}</h3>
+              <div>
+                <p class="text-sage-600">{faq.answer}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div class="bg-sage-50 rounded-xl p-8 text-center">
+        <p class="text-sage-700 text-lg mb-4">Prêt(e) à reprendre le contrôle sur votre anxiété ? Je vous accompagne à Montpellier ou en visioconférence.</p>
+        <a href="/rendez-vous/" class="btn-primary">
+          Prenez rendez-vous en ligne
+        </a>
+      </div>
+    </article>
+  </main>
+
+  <Footer />
+</Layout>

@@ -6,7 +6,7 @@ export const GBP_PROFILE_URL = "https://share.google/mt9nTqAMN3F713joZ";
 
 export const COMPANY_NAME = "Oriane Montabonnet";
 export const COMPANY_DESCRIPTION =
-  "Thérapeute professionnelle dédiée à votre bien-être et à votre développement personnel.";
+  "Psychopraticienne TCCE à Montpellier, Oriane Montabonnet vous accompagne en thérapie individuelle, de couple, familiale et dans la gestion de l'anxiété et des troubles alimentaires.";
 
 export const SOCIAL_LINKS = [
   {

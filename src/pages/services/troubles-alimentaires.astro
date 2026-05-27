@@ -2,7 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import Navbar from '../../components/islands/Navbar';
 import Footer from '../../components/layout/Footer.astro';
-import { buildFAQSchema, buildServiceSchema } from '../../utils/schema';
+import { buildBreadcrumbSchema, buildFAQSchema, buildServiceSchema } from '../../utils/schema';
 
 const faqs = [
   {
@@ -30,6 +30,11 @@ const jsonLd = [
     "Accompagnement des troubles du comportement alimentaire (TCA) par Oriane Montabonnet, psychopraticienne à Montpellier. Approche TCCE pour anorexie, boulimie, hyperphagie, alimentation émotionnelle.",
     "https://omf-therapie.fr/services/troubles-alimentaires"
   ),
+  buildBreadcrumbSchema([
+    { name: "Accueil", url: "https://omf-therapie.fr" },
+    { name: "Services", url: "https://omf-therapie.fr/services" },
+    { name: "Troubles alimentaires", url: "https://omf-therapie.fr/services/troubles-alimentaires" },
+  ]),
 ];
 ---
 
