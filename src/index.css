@@ -15,7 +15,7 @@
 
 @layer components {
   .btn-primary {
-    @apply bg-mint-600 text-white px-6 py-3 rounded-lg hover:bg-mint-700 transition-colors duration-300 inline-flex items-center gap-2 min-h-[44px];
+    @apply bg-mint-600 text-white px-6 py-3 rounded-lg hover:bg-mint-700 transition-colors duration-300 inline-flex items-center gap-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-mint-500;
   }
 
   .section-title {
