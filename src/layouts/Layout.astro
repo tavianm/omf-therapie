@@ -71,7 +71,7 @@ const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 
     {import.meta.env.PROD && (
       <>
-        {/* Google Consent Mode v2 defaults — all denied, no cookies set, no banner needed */}
+        {/* Google Consent Mode v2 defaults — analytics granted (_ga cookie set), advertising denied */}
         <script is:inline>
           window.dataLayer = window.dataLayer || [];
           window.gtag = function(){ window.dataLayer.push(arguments); };
@@ -79,16 +79,15 @@ const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
             ad_personalization: "denied",
             ad_storage: "denied",
             ad_user_data: "denied",
-            analytics_storage: "denied",
+            analytics_storage: "granted",
             functionality_storage: "denied",
             personalization_storage: "denied",
             security_storage: "granted",
-            wait_for_update: 500,
           });
           gtag("set", "ads_data_redaction", true);
           gtag("set", "url_passthrough", false);
         </script>
-        {/* GA4 via Partytown — no cookies set (Consent Mode v2 denied), data is modelled by Google */}
+        {/* GA4 via Partytown — analytics cookie (_ga) enabled for conversion tracking, no advertising cookies */}
         <script is:inline type="text/partytown" src={`https://www.googletagmanager.com/gtag/js?id=${import.meta.env.PUBLIC_GA4_ID}`} />
         <script is:inline type="text/partytown" define:vars={{ ga4Id: import.meta.env.PUBLIC_GA4_ID }}>
           window.dataLayer = window.dataLayer || [];
