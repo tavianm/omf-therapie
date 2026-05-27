@@ -87,11 +87,11 @@ const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
           gtag("set", "ads_data_redaction", true);
           gtag("set", "url_passthrough", false);
         </script>
-        {/* GA4 via Partytown — analytics cookie (_ga) enabled for conversion tracking, no advertising cookies */}
-        <script is:inline type="text/partytown" src={`https://www.googletagmanager.com/gtag/js?id=${import.meta.env.PUBLIC_GA4_ID}`} />
-        <script is:inline type="text/partytown" define:vars={{ ga4Id: import.meta.env.PUBLIC_GA4_ID }}>
+        {/* GA4 — loaded directly for reliable cookie+hit delivery */}
+        <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${import.meta.env.PUBLIC_GA4_ID}`} />
+        <script is:inline define:vars={{ ga4Id: import.meta.env.PUBLIC_GA4_ID }}>
           window.dataLayer = window.dataLayer || [];
-          function gtag(){ dataLayer.push(arguments); }
+          function gtag(){ window.dataLayer.push(arguments); }
           gtag('js', new Date());
           gtag('config', ga4Id);
         </script>

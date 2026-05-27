@@ -3,7 +3,6 @@ import react from '@astrojs/react';
 import tailwind from '@astrojs/tailwind';
 import sitemap from '@astrojs/sitemap';
 import netlify from '@astrojs/netlify';
-import partytown from '@astrojs/partytown';
 
 export default defineConfig({
   site: 'https://omf-therapie.fr',
@@ -22,7 +21,6 @@ export default defineConfig({
         'https://omf-therapie.fr/Formations/',
       ].includes(page),
     }),
-    partytown({ config: { forward: ['dataLayer.push'] } }),
   ],
   vite: {
     // Keep Vite optimizations from the old config where applicable
