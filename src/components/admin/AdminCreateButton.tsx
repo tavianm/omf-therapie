@@ -242,7 +242,7 @@ function AdminCreateModal({ onClose }: { onClose: () => void }) {
         appointment_type: form.appointment_type,
         appointment_mode: form.appointment_mode,
         duration: durationValue,
-        scheduled_at: form.scheduled_at,
+        scheduled_at: new Date(form.scheduled_at).toISOString(),
         patient_reason: form.patient_reason.trim(),
         override_first_session: form.override_first_session,
         is_solidarity: form.is_solidarity,
