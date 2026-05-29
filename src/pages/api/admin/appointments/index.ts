@@ -124,9 +124,6 @@ export const POST: APIRoute = async ({ request }) => {
   if (appointment_mode === 'in-person' && !isWednesdayParis(scheduled_at))
     return errorResponse(400, 'Les rendez-vous en présentiel ont lieu le mercredi uniquement.', 'scheduled_at');
 
-  if (!isWithinBusinessHours(scheduled_at, Number(duration)))
-    return errorResponse(400, 'Le créneau doit être dans les plages horaires (8h-12h ou 14h-19h).', 'scheduled_at');
-
   try {
     const slotEnd = new Date(scheduledDate.getTime() + Number(duration) * 60 * 1000);
     const hasConflict = await hasAppointmentConflict({
