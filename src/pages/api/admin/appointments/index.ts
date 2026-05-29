@@ -16,7 +16,7 @@ import AppointmentConfirmed from '../../../../emails/AppointmentConfirmed';
 import PaymentRequest from '../../../../emails/PaymentRequest';
 import type { AppointmentType } from '../../../../types/appointment';
 import { invalidateAvailabilityCache } from '../../../../lib/calendar-cache.js';
-import { isWednesdayParis, isWithinBusinessHours } from '../../../../utils/date';
+import { isWednesdayParis } from '../../../../utils/date';
 
 // ---------------------------------------------------------------------------
 // Validation helpers
