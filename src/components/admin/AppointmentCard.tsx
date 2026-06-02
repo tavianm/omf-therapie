@@ -10,6 +10,7 @@
  */
 
 import { useState, useMemo, useRef, useEffect } from "react";
+import toast from "react-hot-toast";
 import type { Appointment, AppointmentStatus } from "../../types/appointment";
 import { getTypeLabel, getModeLabel, calculatePrice, SOLIDARITY_DISCOUNT } from "../../lib/pricing";
 
@@ -185,6 +186,11 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
   const [overrideFirstSession, setOverrideFirstSession] = useState(appointment.is_first_session);
   const [isSolidarity, setIsSolidarity] = useState(false);
 
+  // États régénération Calendar / Meet
+  const [calendarEventId, setCalendarEventId] = useState(appointment.google_calendar_event_id ?? null);
+  const [meetLink, setMeetLink] = useState(appointment.video_link ?? null);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+
   const livePrice = useMemo(
     () => calculatePrice(appointment.appointment_type, appointment.duration, overrideFirstSession, isSolidarity),
     [appointment.appointment_type, appointment.duration, overrideFirstSession, isSolidarity],
@@ -295,6 +301,36 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
     }
   }
 
+  async function handleRegenerateCalendar() {
+    setIsRegenerating(true);
+    try {
+      const res = await fetch(`/api/admin/appointments/${appointment.id}/regenerate-calendar`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = (await res.json()) as { google_calendar_event_id?: string; video_link?: string; error?: string };
+      if (!res.ok) {
+        if (res.status === 503 || data.error === 'oauth_required') {
+          toast.error('Google Calendar non connecté — reconnectez via le tableau de bord');
+        } else if (res.status === 403 || data.error === 'permission_denied') {
+          toast.error('Permissions insuffisantes sur Google Calendar');
+        } else if (res.status === 429 || data.error === 'quota_exceeded') {
+          toast.error('Quota Google Calendar dépassé, réessayez plus tard');
+        } else {
+          toast.error(data.error ?? 'Erreur lors de la régénération');
+        }
+        return;
+      }
+      if (data.google_calendar_event_id) setCalendarEventId(data.google_calendar_event_id);
+      if (data.video_link) setMeetLink(data.video_link);
+      toast.success('Événement Google Calendar régénéré');
+    } catch {
+      toast.error('Erreur réseau');
+    } finally {
+      setIsRegenerating(false);
+    }
+  }
+
   // ── Rendu ─────────────────────────────────────────────────────────────────
 
   return (
@@ -385,18 +421,18 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
             </span>
           </div>
         )}
-        {appointment.video_link && (
+        {meetLink && (
           <div className="col-span-2 sm:col-span-3">
             <span className="block text-xs text-sage-400 mb-0.5">
               Lien visio
             </span>
             <a
-              href={appointment.video_link}
+              href={meetLink}
               target="_blank"
               rel="noopener noreferrer"
               className="text-mint-600 hover:text-mint-700 text-sm font-medium break-all"
             >
-              {appointment.video_link}
+              {meetLink}
             </a>
           </div>
         )}
@@ -519,6 +555,28 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
               )}
             </>
           )}
+        </div>
+      )}
+
+      {/* Bouton régénération Calendar / Meet (vidéo uniquement, si event ou lien manquant) */}
+      {appointment.appointment_mode === 'video' && (!meetLink || !calendarEventId) && !isReadOnly && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            onClick={handleRegenerateCalendar}
+            disabled={isRegenerating}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 transition-colors disabled:opacity-60 min-h-[36px]"
+            title="Régénérer l'événement Google Calendar et le lien Meet"
+            aria-label={isRegenerating ? 'Régénération en cours…' : "Régénérer l'événement Google Calendar et le lien Meet"}
+          >
+            {isRegenerating ? (
+              <span className="inline-block w-3.5 h-3.5 border-2 border-sage-400 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+            ) : (
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            )}
+            {isRegenerating ? 'Régénération…' : 'Régénérer Meet'}
+          </button>
         </div>
       )}
 
