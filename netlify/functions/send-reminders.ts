@@ -14,7 +14,7 @@
  *   "react"                  — déjà installé ✓
  *
  * ⚠️  Variables d'environnement (process.env, pas import.meta.env) :
- *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, RESEND_API_KEY, RESEND_FROM_EMAIL
+ *   SUPABASE_DATABASE_URL, SUPABASE_SERVICE_ROLE_KEY, RESEND_API_KEY, RESEND_FROM_EMAIL
  *
  * Note : ce fichier s'exécute dans le runtime Node.js de Netlify, pas dans Vite.
  * Les helpers src/lib/supabase.ts et src/lib/resend.ts utilisent import.meta.env
@@ -76,13 +76,13 @@ function getParisTomorrowWindow(): { windowStart: Date; windowEnd: Date } {
 
 export default async function handler(): Promise<void> {
   // 1. Initialiser les clients (process.env — runtime Node.js Netlify)
-  const supabaseUrl             = process.env.SUPABASE_URL;
+  const supabaseUrl             = process.env.SUPABASE_DATABASE_URL;
   const supabaseServiceRoleKey  = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const resendApiKey            = process.env.RESEND_API_KEY;
   const fromEmail               = process.env.RESEND_FROM_EMAIL ?? 'OMF Thérapie <contact@omf-therapie.fr>';
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
-    console.error('[send-reminders] SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY manquant — abandon.');
+    console.error('[send-reminders] SUPABASE_DATABASE_URL ou SUPABASE_SERVICE_ROLE_KEY manquant — abandon.');
     return;
   }
 

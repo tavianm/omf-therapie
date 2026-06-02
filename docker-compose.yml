@@ -43,7 +43,7 @@ services:
 
   # ---------------------------------------------------------------------------
   # Nginx — reverse proxy pour simuler l'URL Supabase (/rest/v1/ → PostgREST)
-  # SUPABASE_URL=http://localhost:3001 dans .env
+  # SUPABASE_DATABASE_URL=http://localhost:3001 dans .env
   # ---------------------------------------------------------------------------
   supabase-rest:
     image: nginx:alpine

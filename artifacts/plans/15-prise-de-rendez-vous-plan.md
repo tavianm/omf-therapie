@@ -55,7 +55,7 @@ Vague 7 : T18 (audit sécurité avant PR)
 
 ```env
 # Supabase
-SUPABASE_URL=
+SUPABASE_DATABASE_URL=
 SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 
