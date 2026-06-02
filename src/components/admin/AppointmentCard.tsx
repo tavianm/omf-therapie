@@ -312,6 +312,10 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
       if (!res.ok) {
         if (res.status === 503 || data.error === 'oauth_required') {
           toast.error('Google Calendar non connecté — reconnectez via le tableau de bord');
+        } else if (res.status === 403 || data.error === 'permission_denied') {
+          toast.error('Permissions insuffisantes sur Google Calendar');
+        } else if (res.status === 429 || data.error === 'quota_exceeded') {
+          toast.error('Quota Google Calendar dépassé, réessayez plus tard');
         } else {
           toast.error(data.error ?? 'Erreur lors de la régénération');
         }
@@ -555,13 +559,14 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
       )}
 
       {/* Bouton régénération Calendar / Meet (vidéo uniquement, si event ou lien manquant) */}
-      {appointment.appointment_mode === 'video' && (!meetLink || !calendarEventId) && (
+      {appointment.appointment_mode === 'video' && (!meetLink || !calendarEventId) && !isReadOnly && (
         <div className="flex flex-wrap gap-2 mb-4">
           <button
             onClick={handleRegenerateCalendar}
             disabled={isRegenerating}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 transition-colors disabled:opacity-60 min-h-[36px]"
             title="Régénérer l'événement Google Calendar et le lien Meet"
+            aria-label={isRegenerating ? 'Régénération en cours…' : "Régénérer l'événement Google Calendar et le lien Meet"}
           >
             {isRegenerating ? (
               <span className="inline-block w-3.5 h-3.5 border-2 border-sage-400 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
