@@ -160,6 +160,18 @@ async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | null> {
     await supabaseAdmin.from('google_oauth_tokens').upsert(tokens);
   }
 
+  // 2b. Override stale refresh token if env var has been updated since last persist
+  const envRefreshToken = import.meta.env.GOOGLE_OAUTH_REFRESH_TOKEN;
+  if (envRefreshToken && envRefreshToken !== tokens.refresh_token) {
+    console.warn('[calendar] Refresh token overridden by GOOGLE_OAUTH_REFRESH_TOKEN env var');
+    tokens.refresh_token = envRefreshToken;
+    tokens.expiry_date = 0; // Force immediate refresh below
+    await supabaseAdmin
+      .from('google_oauth_tokens')
+      .update({ refresh_token: envRefreshToken, expiry_date: 0, updated_at: new Date().toISOString() })
+      .eq('id', 'therapist');
+  }
+
   // 3. Proactive refresh: refresh if token expires within 5 minutes
   if (!tokens.expiry_date || tokens.expiry_date < Date.now() + 5 * 60 * 1000) {
     oauth2Client.setCredentials({ refresh_token: tokens.refresh_token });
