@@ -7,6 +7,7 @@
 
 import { google, type Auth, type calendar_v3 } from 'googleapis';
 import { supabaseAdmin } from './supabase.js';
+import { sendEmail } from './resend.js';
 
 // ---------------------------------------------------------------------------
 // Erreur typée
@@ -181,6 +182,18 @@ async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | null> {
     } catch (err: unknown) {
       const errData = (err as { response?: { data?: { error?: string } } })?.response?.data;
       if (errData?.error === 'invalid_grant') {
+        // AC-3: alert admin — fire and forget (don't block the throw)
+        const adminEmail = import.meta.env.ADMIN_EMAIL as string | undefined;
+        const siteUrl = import.meta.env.SITE_URL ?? 'https://omf-therapie.fr';
+        if (adminEmail) {
+          const { createElement } = await import('react');
+          const { default: CalendarAuthAlert } = await import('../emails/CalendarAuthAlert');
+          sendEmail({
+            to: adminEmail,
+            subject: '⚠️ Google Calendar — re-autorisation requise',
+            react: createElement(CalendarAuthAlert, { reauthorizeUrl: `${siteUrl}/api/admin/google-oauth` }),
+          }).catch((e: unknown) => console.error('[calendar] Alert email failed:', e instanceof Error ? e.message : e));
+        }
         // Store only the safe error code — do NOT pass raw err (GaxiosError may
         // carry client_secret / refresh_token in response.config.data)
         throw new CalendarAuthError(
