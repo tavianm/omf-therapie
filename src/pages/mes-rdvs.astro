@@ -13,6 +13,7 @@ import Layout from '../layouts/Layout.astro';
 import Navbar from '../components/islands/Navbar';
 import { AppointmentCard } from '../components/admin/AppointmentCard';
 import { AdminCreateButton } from '../components/admin/AdminCreateButton';
+import GoogleCalendarStatus from '../components/admin/GoogleCalendarStatus';
 import { auth } from '../lib/auth';
 import { isAdminSession } from '../lib/authz';
 import { supabaseAdmin } from '../lib/supabase';
@@ -116,6 +117,11 @@ for (const appt of appointments) {
             Déconnexion
           </button>
         </div>
+      </div>
+
+      <!-- Statut connexion Google Calendar -->
+      <div class="mb-5">
+        <GoogleCalendarStatus client:load />
       </div>
 
       <!-- Filtres par statut -->
