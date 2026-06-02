@@ -48,7 +48,6 @@ export const GET: APIRoute = async ({ request, cookies }) => {
     prompt:      'consent', // Critical: forces Google to return a fresh refresh_token
     scope: [
       'https://www.googleapis.com/auth/calendar',
-      'https://www.googleapis.com/auth/calendar.events',
     ],
     state,
   });

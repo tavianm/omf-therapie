@@ -203,7 +203,7 @@ async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | null> {
       }
       throw new CalendarNetworkError(
         'Token refresh failed',
-        { message: err instanceof Error ? err.message : String(err) },
+        { status: (err as { response?: { status?: number } })?.response?.status },
       );
     }
   }

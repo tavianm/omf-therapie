@@ -112,43 +112,53 @@ export default function GoogleCalendarStatus() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  return (
+    <>
+      <Toaster position="top-right" />
+      <StatusContent state={state} onRetry={fetchStatus} />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Content — separated to keep GoogleCalendarStatus readable
+// ---------------------------------------------------------------------------
+
+interface ContentProps {
+  state: FetchState;
+  onRetry: () => void;
+}
+
+function StatusContent({ state, onRetry }: ContentProps) {
   // ── Loading ─────────────────────────────────────────────────────────────────
   if (state.status === "loading") {
-    return (
-      <>
-        <Toaster position="top-right" />
-        <LoadingSkeleton />
-      </>
-    );
+    return <LoadingSkeleton />;
   }
 
   // ── Error ───────────────────────────────────────────────────────────────────
   if (state.status === "error") {
     return (
-      <>
-        <Toaster position="top-right" />
-        <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-white rounded-xl border border-red-200 shadow-sm">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-            ✗ Google Calendar
-          </span>
-          <p className="text-sm text-sage-500 font-sans">
-            Impossible de vérifier le statut.
-          </p>
-          <button
-            type="button"
-            onClick={fetchStatus}
-            className="
-              ml-auto text-xs font-medium font-sans px-3 py-1.5
-              rounded-lg border border-sage-200 text-sage-600
-              hover:bg-sage-50 hover:text-sage-800
-              focus:outline-none focus:ring-2 focus:ring-sage-300
-              transition-colors
-            "
-          >
-            Réessayer
-          </button>
-        </div>
-      </>
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-white rounded-xl border border-red-200 shadow-sm">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+          ✗ Google Calendar
+        </span>
+        <p className="text-sm text-sage-500 font-sans">
+          Impossible de vérifier le statut.
+        </p>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="
+            ml-auto text-xs font-medium font-sans px-3 py-1.5
+            rounded-lg border border-sage-200 text-sage-600
+            hover:bg-sage-50 hover:text-sage-800
+            focus:outline-none focus:ring-2 focus:ring-sage-300
+            transition-colors
+          "
+        >
+          Réessayer
+        </button>
+      </div>
     );
   }
 
@@ -158,82 +168,74 @@ export default function GoogleCalendarStatus() {
   // Connected and token valid
   if (data.connected && data.tokenValid) {
     return (
-      <>
-        <Toaster position="top-right" />
-        <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-white rounded-xl border border-sage-200 shadow-sm">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-            ● Google Calendar connecté
-          </span>
-          {data.updatedAt && (
-            <p className="text-xs text-sage-400 font-sans">
-              Mis à jour le {formatDateTime(data.updatedAt)}
-            </p>
-          )}
-          <a
-            href="/api/admin/google-oauth"
-            className="
-              ml-auto text-xs font-medium font-sans px-3 py-1.5
-              rounded-lg border border-sage-200 text-sage-600
-              hover:bg-sage-50 hover:text-sage-800
-              focus:outline-none focus:ring-2 focus:ring-sage-300
-              transition-colors
-            "
-          >
-            Reconnecter
-          </a>
-        </div>
-      </>
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-white rounded-xl border border-sage-200 shadow-sm">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+          ● Google Calendar connecté
+        </span>
+        {data.updatedAt && (
+          <p className="text-xs text-sage-400 font-sans">
+            Mis à jour le {formatDateTime(data.updatedAt)}
+          </p>
+        )}
+        <a
+          href="/api/admin/google-oauth"
+          className="
+            ml-auto text-xs font-medium font-sans px-3 py-1.5
+            rounded-lg border border-sage-200 text-sage-600
+            hover:bg-sage-50 hover:text-sage-800
+            focus:outline-none focus:ring-2 focus:ring-sage-300
+            transition-colors
+          "
+        >
+          Reconnecter
+        </a>
+      </div>
     );
   }
 
   // Connected but token expired
   if (data.connected && !data.tokenValid) {
     return (
-      <>
-        <Toaster position="top-right" />
-        <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-white rounded-xl border border-yellow-200 shadow-sm">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-            ⚠ Token expiré
-          </span>
-          {data.expiresAt && (
-            <p className="text-xs text-sage-400 font-sans">
-              Expiré le {formatDateTime(data.expiresAt)}
-            </p>
-          )}
-          <a
-            href="/api/admin/google-oauth"
-            className="
-              ml-auto inline-flex items-center gap-1.5 text-xs font-medium font-sans px-3 py-1.5
-              rounded-lg bg-orange-500 text-white border border-orange-500
-              hover:bg-orange-600 hover:border-orange-600
-              focus:outline-none focus:ring-2 focus:ring-orange-400
-              transition-colors
-            "
-          >
-            Reconnecter
-          </a>
-        </div>
-      </>
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-white rounded-xl border border-yellow-200 shadow-sm">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+          ⚠ Token expiré
+        </span>
+        {data.expiresAt && (
+          <p className="text-xs text-sage-400 font-sans">
+            Expiré le {formatDateTime(data.expiresAt)}
+          </p>
+        )}
+        <a
+          href="/api/admin/google-oauth"
+          className="
+            ml-auto inline-flex items-center gap-1.5 text-xs font-medium font-sans px-3 py-1.5
+            rounded-lg bg-orange-500 text-white border border-orange-500
+            hover:bg-orange-600 hover:border-orange-600
+            focus:outline-none focus:ring-2 focus:ring-orange-400
+            transition-colors
+          "
+        >
+          Reconnecter
+        </a>
+      </div>
     );
   }
 
   // Not connected
   return (
-    <>
-      <Toaster position="top-right" />
-      <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-white rounded-xl border border-red-200 shadow-sm">
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-          ✗ Google Calendar déconnecté
-        </span>
-        <p className="text-xs text-sage-500 font-sans">
-          Action requise pour créer des rendez-vous avec lien Meet
-        </p>
-        <a
-          href="/api/admin/google-oauth"
-          className="
-            ml-auto inline-flex items-center gap-1.5 text-xs font-medium font-sans px-3 py-1.5
-            rounded-lg bg-red-500 text-white border border-red-500
-            hover:bg-red-600 hover:border-red-600
+    <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-white rounded-xl border border-red-200 shadow-sm">
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+        ✗ Google Calendar déconnecté
+      </span>
+      <p className="text-xs text-sage-500 font-sans">
+        Action requise pour créer des rendez-vous avec lien Meet
+      </p>
+      <a
+        href="/api/admin/google-oauth"
+        className="
+          ml-auto inline-flex items-center gap-1.5 text-xs font-medium font-sans px-3 py-1.5
+          rounded-lg bg-red-500 text-white border border-red-500
+          hover:bg-red-600 hover:border-red-600
             focus:outline-none focus:ring-2 focus:ring-red-400
             transition-colors
           "
@@ -241,6 +243,5 @@ export default function GoogleCalendarStatus() {
           Autoriser l'accès
         </a>
       </div>
-    </>
   );
 }

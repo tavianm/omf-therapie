@@ -44,7 +44,7 @@ export const GET: APIRoute = async ({ request }) => {
   // 2. Query the persisted token row
   const { data } = await supabaseAdmin
     .from('google_oauth_tokens')
-    .select('refresh_token, access_token, expiry_date, updated_at')
+    .select('expiry_date, updated_at')
     .eq('id', 'therapist')
     .single();
 

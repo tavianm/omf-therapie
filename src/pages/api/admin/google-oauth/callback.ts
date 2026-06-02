@@ -28,20 +28,21 @@ export const GET: APIRoute = async ({ url, cookies }) => {
   const state = url.searchParams.get('state');
   const error = url.searchParams.get('error');
 
-  // 1. Handle Google-side error (e.g. user denied consent)
+  // 1. CSRF state verification — applies to ALL callback paths including error responses
+  // (RFC 6749 §4.1.2.1: state is returned by Google even on error responses)
+  const storedState = cookies.get('google_oauth_state')?.value;
+  if (!storedState || storedState !== state) {
+    console.error('[google-oauth/callback] CSRF state mismatch or missing cookie');
+    return new Response('Invalid state parameter', { status: 400 });
+  }
+
+  // 2. Handle Google-side error (e.g. user denied consent)
   if (error) {
     console.warn(`[google-oauth/callback] Google returned error: ${error}`);
     return new Response(null, {
       status:  302,
       headers: { Location: `/mes-rdvs?google_error=${encodeURIComponent(error)}` },
     });
-  }
-
-  // 2. CSRF state verification
-  const storedState = cookies.get('google_oauth_state')?.value;
-  if (!storedState || storedState !== state) {
-    console.error('[google-oauth/callback] CSRF state mismatch or missing cookie');
-    return new Response('Invalid state parameter', { status: 400 });
   }
 
   // 3. Validate required env vars

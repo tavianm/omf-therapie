@@ -128,7 +128,10 @@ export default async function handler(): Promise<void> {
   }
 
   if (!tokens.refresh_token) {
-    console.warn('[calendar-heartbeat] Token row exists but refresh_token is null — re-authorization required.');
+    console.error('[calendar-heartbeat] Token row exists but refresh_token is null — re-authorization required.');
+    if (adminEmail && resendApiKey) {
+      await sendInvalidGrantAlert(adminEmail, siteUrl, resendApiKey, fromEmail);
+    }
     return;
   }
 
@@ -173,7 +176,7 @@ export default async function handler(): Promise<void> {
     // 5b. Other errors — log and exit cleanly (don't throw; scheduled functions shouldn't fail noisily)
     console.error(
       '[calendar-heartbeat] Token refresh failed:',
-      err instanceof Error ? err.message : String(err),
+      (err as { response?: { status?: number } })?.response?.status ?? (err instanceof Error ? err.message : String(err)),
     );
   }
 }
