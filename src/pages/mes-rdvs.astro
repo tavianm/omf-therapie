@@ -14,6 +14,7 @@ import Navbar from '../components/islands/Navbar';
 import { AppointmentCard } from '../components/admin/AppointmentCard';
 import { AdminCreateButton } from '../components/admin/AdminCreateButton';
 import GoogleCalendarStatus from '../components/admin/GoogleCalendarStatus';
+import { PatientList } from '../components/admin/PatientList';
 import { auth } from '../lib/auth';
 import { isAdminSession } from '../lib/authz';
 import { supabaseAdmin } from '../lib/supabase';
@@ -124,76 +125,123 @@ for (const appt of appointments) {
         <GoogleCalendarStatus client:load />
       </div>
 
-      <!-- Filtres par statut -->
-      <div
-        class="flex flex-wrap gap-2 mb-6"
-        role="group"
-        aria-label="Filtrer par statut"
-      >
-        {FILTERS.map(({ key, label }) => {
-          const count = counts[key] ?? 0;
-          if (key !== 'all' && count === 0) return null;
-          return (
-            <button
-              type="button"
-              data-filter={key}
-              class={`
-                filter-btn inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium font-sans
-                rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-mint-400
-                ${key === 'all'
-                  ? 'bg-mint-600 text-white border-mint-600'
-                  : 'bg-white text-sage-600 border-sage-200 hover:border-mint-400 hover:text-mint-700'}
-              `}
-              aria-pressed={key === 'all' ? 'true' : 'false'}
-            >
-              {label}
-              <span class={`
-                inline-flex items-center justify-center w-5 h-5 text-xs rounded-full
-                ${key === 'all' ? 'bg-mint-500 text-white' : 'bg-sage-100 text-sage-600'}
-              `}>
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      <!-- Message vide -->
-      {appointments.length === 0 && (
-        <div class="text-center py-16">
-          <div class="w-16 h-16 mx-auto mb-4 bg-sage-100 rounded-full flex items-center justify-center">
-            <svg class="w-8 h-8 text-sage-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <p class="font-serif text-xl text-sage-600">Aucun rendez-vous</p>
-          <p class="text-sage-400 text-sm mt-1 font-sans">
-            Les nouvelles demandes apparaîtront ici.
-          </p>
-        </div>
-      )}
-
-      <!-- Liste des rendez-vous -->
-      <div id="appointments-list" class="space-y-4">
-        {appointments.map((appt) => (
-          <div
-            class="appointment-wrapper"
-            data-status={appt.status}
+      <!-- Onglets -->
+      <div class="mb-6" role="tablist" aria-label="Sections de gestion">
+        <div class="inline-flex rounded-xl border border-sage-200 bg-white p-1">
+          <button
+            type="button"
+            role="tab"
+            id="appointments-tab"
+            data-tab="appointments"
+            aria-selected="true"
+            aria-controls="appointments-tab-panel"
+            class="
+              tab-btn rounded-lg px-4 py-2 text-sm font-medium font-sans transition-colors
+              bg-mint-600 text-white
+              focus:outline-none focus:ring-2 focus:ring-mint-400
+            "
           >
-            <AppointmentCard client:load appointment={appt} />
-          </div>
-        ))}
+            Rendez-vous
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="patients-tab"
+            data-tab="patients"
+            aria-selected="false"
+            aria-controls="patients-tab-panel"
+            class="
+              tab-btn rounded-lg px-4 py-2 text-sm font-medium font-sans transition-colors
+              text-sage-600 hover:text-mint-700
+              focus:outline-none focus:ring-2 focus:ring-mint-400
+            "
+          >
+            Patients
+          </button>
+        </div>
       </div>
 
-      <!-- Message "aucun résultat pour ce filtre" (caché par défaut) -->
-      <p
-        id="no-filter-result"
-        class="hidden text-center py-12 text-sage-400 font-sans text-sm"
-        role="status"
-        aria-live="polite"
+      <section id="appointments-tab-panel" role="tabpanel" aria-labelledby="appointments-tab">
+        <!-- Filtres par statut -->
+        <div
+          class="flex flex-wrap gap-2 mb-6"
+          role="group"
+          aria-label="Filtrer par statut"
+        >
+          {FILTERS.map(({ key, label }) => {
+            const count = counts[key] ?? 0;
+            if (key !== 'all' && count === 0) return null;
+            return (
+              <button
+                type="button"
+                data-filter={key}
+                class={`
+                  filter-btn inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium font-sans
+                  rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-mint-400
+                  ${key === 'all'
+                    ? 'bg-mint-600 text-white border-mint-600'
+                    : 'bg-white text-sage-600 border-sage-200 hover:border-mint-400 hover:text-mint-700'}
+                `}
+                aria-pressed={key === 'all' ? 'true' : 'false'}
+              >
+                {label}
+                <span class={`
+                  inline-flex items-center justify-center w-5 h-5 text-xs rounded-full
+                  ${key === 'all' ? 'bg-mint-500 text-white' : 'bg-sage-100 text-sage-600'}
+                `}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <!-- Message vide -->
+        {appointments.length === 0 && (
+          <div class="text-center py-16">
+            <div class="w-16 h-16 mx-auto mb-4 bg-sage-100 rounded-full flex items-center justify-center">
+              <svg class="w-8 h-8 text-sage-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <p class="font-serif text-xl text-sage-600">Aucun rendez-vous</p>
+            <p class="text-sage-400 text-sm mt-1 font-sans">
+              Les nouvelles demandes apparaîtront ici.
+            </p>
+          </div>
+        )}
+
+        <!-- Liste des rendez-vous -->
+        <div id="appointments-list" class="space-y-4">
+          {appointments.map((appt) => (
+            <div
+              class="appointment-wrapper"
+              data-status={appt.status}
+            >
+              <AppointmentCard client:load appointment={appt} />
+            </div>
+          ))}
+        </div>
+
+        <!-- Message "aucun résultat pour ce filtre" (caché par défaut) -->
+        <p
+          id="no-filter-result"
+          class="hidden text-center py-12 text-sage-400 font-sans text-sm"
+          role="status"
+          aria-live="polite"
+        >
+          Aucun rendez-vous pour ce filtre.
+        </p>
+      </section>
+
+      <section
+        id="patients-tab-panel"
+        role="tabpanel"
+        aria-labelledby="patients-tab"
+        class="hidden"
       >
-        Aucun rendez-vous pour ce filtre.
-      </p>
+        <PatientList client:load />
+      </section>
 
     </div>
   </main>
@@ -256,6 +304,43 @@ for (const appt of appointments) {
       const filter = btn.dataset['filter'] ?? 'all';
       sessionStorage.setItem('mes-rdvs-filter', filter);
       applyFilter(filter);
+    });
+  });
+
+  // ── Onglets Rendez-vous / Patients ──────────────────────────────────────────
+  const tabButtons = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
+  const appointmentsTabPanel = document.getElementById('appointments-tab-panel');
+  const patientsTabPanel = document.getElementById('patients-tab-panel');
+
+  function setActiveTab(tab: 'appointments' | 'patients') {
+    tabButtons.forEach((button) => {
+      const isActive = button.dataset['tab'] === tab;
+      button.setAttribute('aria-selected', String(isActive));
+      if (isActive) {
+        button.classList.add('bg-mint-600', 'text-white');
+        button.classList.remove('text-sage-600', 'hover:text-mint-700');
+      } else {
+        button.classList.remove('bg-mint-600', 'text-white');
+        button.classList.add('text-sage-600', 'hover:text-mint-700');
+      }
+    });
+
+    appointmentsTabPanel?.classList.toggle('hidden', tab !== 'appointments');
+    patientsTabPanel?.classList.toggle('hidden', tab !== 'patients');
+    sessionStorage.setItem('mes-rdvs-tab', tab);
+  }
+
+  const savedTab = sessionStorage.getItem('mes-rdvs-tab');
+  if (savedTab === 'appointments' || savedTab === 'patients') {
+    setActiveTab(savedTab);
+  } else {
+    setActiveTab('appointments');
+  }
+
+  tabButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const tab = button.dataset['tab'] === 'patients' ? 'patients' : 'appointments';
+      setActiveTab(tab);
     });
   });
 </script>
