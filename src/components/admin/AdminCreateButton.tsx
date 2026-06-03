@@ -10,10 +10,15 @@ import {
   FIRST_SESSION_DISCOUNT,
 } from "../../lib/pricing";
 import type { AppointmentType, AppointmentDuration, AppointmentMode } from "../../lib/pricing";
+import type { PrefillData } from "../../types/patient";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+interface AdminCreateButtonProps {
+  prefillData?: PrefillData;
+}
 
 interface FormState {
   patient_name: string;
@@ -120,7 +125,7 @@ function Input({
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function AdminCreateButton() {
+export function AdminCreateButton({ prefillData }: AdminCreateButtonProps = {}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -142,7 +147,12 @@ export function AdminCreateButton() {
         </svg>
         Nouveau rendez-vous
       </button>
-      {open && <AdminCreateModal onClose={() => setOpen(false)} />}
+      {open && (
+        <AdminCreateModal
+          onClose={() => setOpen(false)}
+          prefillData={prefillData}
+        />
+      )}
     </>
   );
 }
@@ -151,8 +161,12 @@ export function AdminCreateButton() {
 // Modal Component (internal)
 // ---------------------------------------------------------------------------
 
-function AdminCreateModal({ onClose }: { onClose: () => void }) {
-  const [form, setForm] = useState<FormState>(INITIAL_STATE);
+function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefillData?: PrefillData }) {
+  const initialFormState = prefillData
+    ? { ...INITIAL_STATE, ...prefillData }
+    : INITIAL_STATE;
+
+  const [form, setForm] = useState<FormState>(initialFormState);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -195,6 +209,11 @@ function AdminCreateModal({ onClose }: { onClose: () => void }) {
       previousFocusRef.current?.focus();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Réinitialise le formulaire si prefillData change pendant que la modale est ouverte.
+  useEffect(() => {
+    setForm(prefillData ? { ...INITIAL_STATE, ...prefillData } : INITIAL_STATE);
+  }, [prefillData]);  
 
   function isDirty() {
     return (
