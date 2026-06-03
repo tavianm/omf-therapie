@@ -90,3 +90,10 @@ Si vous suspectez qu'un proche souffre d'un TCA, voici quelques conseils :
 - Prenez soin de vous et cherchez du soutien si nécessaire
 
 La guérison d'un TCA est un processus qui prend du temps, mais avec un accompagnement adapté, il est possible de rétablir une relation saine avec la nourriture et son corps. Si vous ou un proche êtes concerné, n'hésitez pas à chercher de l'aide auprès de professionnels spécialisés.
+
+<p>Pour en savoir plus sur l'accompagnement que je propose à Montpellier, découvrez <a href="/services/troubles-alimentaires" class="text-mint-600 hover:text-mint-800 underline">ma page dédiée aux troubles alimentaires</a>.</p>
+
+<div class="mt-8 p-6 bg-sage-50 rounded-xl border border-sage-200">
+  <p class="text-sage-800 font-semibold mb-2">Envie d'aller plus loin ?</p>
+  <p class="text-sage-700 mb-4">Je vous accompagne à Montpellier ou en téléconsultation. <a href="/rendez-vous/" class="text-mint-600 hover:text-mint-800 underline font-medium">Prendre rendez-vous en ligne</a> ou <a href="/contact" class="text-mint-600 hover:text-mint-800 underline">me contacter</a>.</p>
+</div>

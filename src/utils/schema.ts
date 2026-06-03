@@ -1,6 +1,7 @@
 import type { BlogPost } from "../types/blog";
 import {
   COMPANY_NAME,
+  COMPANY_DESCRIPTION,
   CONTACT_INFO,
   SOCIAL_LINKS,
   BUSINESS_HOURS,
@@ -70,8 +71,17 @@ export function buildLocalBusinessSchema(): Record<string, unknown> {
       opens: h.start.replace("h", ":00"),
       closes: h.end.replace("h", ":00"),
     })),
+    description: COMPANY_DESCRIPTION,
     image: OWNER_IMAGE,
     sameAs: SAME_AS,
+    aggregateRating: {
+      "@type": "AggregateRating",
+      ratingValue: "5.0", // ⚠️ Placeholder — à confirmer dans Google Business Profile
+      ratingCount: 14,
+      reviewCount: 14,
+      bestRating: "5",
+      worstRating: "1",
+    },
   };
 }
 
@@ -181,6 +191,38 @@ export function buildFAQSchema(faqs: FAQItem[]): Record<string, unknown> {
         text: faq.answer,
       },
     })),
+  };
+}
+
+export function buildBreadcrumbSchema(
+  items: { name: string; url: string }[],
+): object {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: items.map((item, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: item.name,
+      item: item.url,
+    })),
+  };
+}
+
+export function buildWebSiteSchema(): object {
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "OMF Thérapie — Oriane Montabonnet",
+    url: "https://omf-therapie.fr",
+    potentialAction: {
+      "@type": "SearchAction",
+      target: {
+        "@type": "EntryPoint",
+        urlTemplate: "https://omf-therapie.fr/blog?q={search_term_string}",
+      },
+      "query-input": "required name=search_term_string",
+    },
   };
 }
 

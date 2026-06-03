@@ -98,3 +98,12 @@ Rappelez-vous : prendre soin de sa santé mentale n'est pas un luxe, c'est une n
 ## Thérapeute à Montpellier : commencer votre démarche
 
 Si cet article vous a donné envie de franchir le pas, je vous reçois en cabinet au **1086 Avenue Albert Einstein, 34000 Montpellier**. J'accompagne les habitants de Montpellier et des communes voisines (Castelnau-le-Lez, Lattes, Pérols, Juvignac, Grabels, Clapiers) dans leur parcours thérapeutique, qu'il soit individuel, de couple ou familial. N'hésitez pas à me contacter au **06 50 33 18 53** pour un premier rendez-vous.
+
+<p>Si vous souffrez de stress chronique ou d'anxiété, découvrez aussi <a href="/services/anxiete-montpellier" class="text-mint-600 hover:text-mint-800 underline">ma page dédiée à l'accompagnement de l'anxiété à Montpellier</a>.</p>
+
+<p>Pour en savoir plus sur l'accompagnement que je propose à Montpellier, découvrez <a href="/services/therapie-individuelle" class="text-mint-600 hover:text-mint-800 underline">ma page dédiée à la thérapie individuelle</a>.</p>
+
+<div class="mt-8 p-6 bg-sage-50 rounded-xl border border-sage-200">
+  <p class="text-sage-800 font-semibold mb-2">Envie d'aller plus loin ?</p>
+  <p class="text-sage-700 mb-4">Je vous accompagne à Montpellier ou en téléconsultation. <a href="/rendez-vous/" class="text-mint-600 hover:text-mint-800 underline font-medium">Prendre rendez-vous en ligne</a> ou <a href="/contact" class="text-mint-600 hover:text-mint-800 underline">me contacter</a>.</p>
+</div>

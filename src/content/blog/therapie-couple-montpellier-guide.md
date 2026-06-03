@@ -73,3 +73,8 @@ imageUrl: "https://images.pexels.com/photos/5217833/pexels-photo-5217833.jpeg"
 <p>Je reçois les couples dans mon cabinet du <strong>1086 Avenue Albert Einstein, 34000 Montpellier</strong>, en semaine de 8h à 19h. Mon approche TCCE (Thérapies Comportementales, Cognitives et Émotionnelles) m'aide à proposer un cadre à la fois contenant, concret et profondément bienveillant, pour que chacun puisse reprendre sa place dans la relation.</p>
 
 <p>Pour en savoir plus sur mon accompagnement, consultez la page <a href="/services/therapie-de-couple">thérapie de couple</a> ou <a href="/contact">prenez rendez-vous directement</a>. Le premier entretien est l'occasion de poser toutes vos questions, simplement, sans pression.</p>
+
+<div class="mt-8 p-6 bg-sage-50 rounded-xl border border-sage-200">
+  <p class="text-sage-800 font-semibold mb-2">Envie d'aller plus loin ?</p>
+  <p class="text-sage-700 mb-4">Je vous accompagne à Montpellier ou en téléconsultation. <a href="/rendez-vous/" class="text-mint-600 hover:text-mint-800 underline font-medium">Prendre rendez-vous en ligne</a> ou <a href="/contact" class="text-mint-600 hover:text-mint-800 underline">me contacter</a>.</p>
+</div>

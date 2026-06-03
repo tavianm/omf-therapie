@@ -2,7 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import Navbar from '../../components/islands/Navbar';
 import Footer from '../../components/layout/Footer.astro';
-import { buildFAQSchema, buildServiceSchema } from '../../utils/schema';
+import { buildBreadcrumbSchema, buildFAQSchema, buildServiceSchema } from '../../utils/schema';
 
 const faqs = [
   {
@@ -30,6 +30,11 @@ const jsonLd = [
     "Accompagnement des conflits conjugaux et amélioration de la communication de couple par Oriane Montabonnet, psychopraticienne à Montpellier. Cabinet au 1086 Av. Albert Einstein.",
     "https://omf-therapie.fr/services/therapie-de-couple"
   ),
+  buildBreadcrumbSchema([
+    { name: "Accueil", url: "https://omf-therapie.fr" },
+    { name: "Services", url: "https://omf-therapie.fr/services" },
+    { name: "Thérapie de couple", url: "https://omf-therapie.fr/services/therapie-de-couple" },
+  ]),
 ];
 ---
 
@@ -105,9 +110,32 @@ const jsonLd = [
       <div>
         <h2 class="font-serif text-2xl text-sage-800 mb-3">À Montpellier et dans l'Hérault</h2>
         <p class="text-sage-600 leading-relaxed mb-4">Le cabinet est situé au <strong class="font-semibold text-sage-700">1086 Avenue Albert Einstein, 34000 Montpellier</strong>, dans le quartier Millénaire, facilement accessible en tramway (ligne 2) et en voiture. Les séances ont lieu du lundi au vendredi, de 8h à 12h et de 14h à 19h.</p>
-        <p class="text-sage-600 leading-relaxed mb-4">De nombreux couples viennent depuis Castelnau-le-Lez, Lattes, Pérols, Villeneuve-lès-Maguelone ou d'autres communes de l'Hérault (34). Des séances en visioconférence sécurisée sont disponibles pour les couples dont l'un des partenaires ne peut pas se déplacer.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">De nombreux couples viennent depuis Castelnau-le-Lez, Lattes, Pérols, Villeneuve-lès-Maguelone ou d'autres communes de l'Hérault (34). Des séances en téléconsultation sécurisée sont disponibles pour les couples dont l'un des partenaires ne peut pas se déplacer.</p>
         <p class="text-sage-600 leading-relaxed">Vous souhaitez commencer ? <a href="/rendez-vous/" class="text-mint-600 hover:text-mint-700 underline underline-offset-2">Prenez rendez-vous avec moi</a> pour un premier échange et convenir d'une date — la démarche est confidentielle et sans engagement.</p>
       </div>
+
+      <section aria-labelledby="signes-therapie-couple-mtp">
+        <h2 id="signes-therapie-couple-mtp" class="font-serif text-2xl text-sage-800 mb-3">Signes qu'il est temps de consulter un thérapeute de couple à Montpellier</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">Il n'existe pas de « bon moment idéal » pour consulter, mais certains signaux montrent qu'un accompagnement peut faire une vraie différence. Beaucoup de couples attendent longtemps avant de franchir le pas — parfois trop longtemps. Reconnaître ces signaux d'alerte est déjà un premier pas vers le changement.</p>
+        <ul class="space-y-2 text-sage-600 mb-4" aria-label="Signaux indiquant de consulter un thérapeute de couple">
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Conflits récurrents qui tournent en rond sans jamais trouver de résolution</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Communication devenue difficile, tendue ou inexistante au quotidien</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Perte d'intimité physique et émotionnelle, sentiment de vivre côte à côte sans se rejoindre</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Infidélité ou trahison qui a abîmé la confiance et fragilisé le lien</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Doutes persistants sur l'avenir de la relation sans pouvoir en parler sereinement</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Arrivée d'un enfant ou recomposition familiale qui bouleverse l'équilibre du couple</li>
+          <li class="flex items-start gap-2"><span class="text-mint-600 mt-1" aria-hidden="true">•</span>Désaccords profonds sur des sujets clés : éducation, finances, projet de vie commun</li>
+        </ul>
+        <p class="text-sage-600 leading-relaxed">Il n'est pas nécessaire d'attendre une crise majeure pour consulter à Montpellier. La thérapie de couple peut aussi se faire en prévention, pour renforcer la relation avant que les tensions ne s'installent, ou pour « rebooster » un lien qui s'est progressivement étiolé. Parfois, quelques séances suffisent à remettre le dialogue en mouvement.</p>
+      </section>
+
+      <section aria-labelledby="tcce-couple-fonctionnement">
+        <h2 id="tcce-couple-fonctionnement" class="font-serif text-2xl text-sage-800 mb-3">La thérapie de couple TCCE : comment ça fonctionne ?</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">Formée aux Thérapies Comportementales, Cognitives et Émotionnelles (TCCE), j'applique cette approche à la dynamique du couple pour travailler sur trois leviers essentiels : identifier les patterns de communication négatifs, aider chacun à exprimer ses besoins et reconstruire progressivement la confiance.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">Concrètement, les séances alternent entre exploration des schémas relationnels (ces réactions automatiques qui alimentent les conflits malgré la bonne volonté des deux partenaires) et apprentissage d'outils concrets : communication non-violente, écoute active, gestion des déclencheurs émotionnels. Des exercices pratiques sont proposés entre les séances pour ancrer les changements dans le quotidien.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">Le rythme habituel est d'une séance par semaine en début de suivi, puis d'un espacement progressif à mesure que les choses s'apaisent. La durée moyenne d'une thérapie de couple TCCE est de 10 à 20 séances, selon la nature et l'ancienneté des difficultés. Les deux partenaires participent ensemble à chaque séance ; des entretiens individuels complémentaires peuvent être proposés ponctuellement si la situation le justifie.</p>
+        <p class="text-sage-600 leading-relaxed">Je vous reçois dans mon cabinet du <strong class="font-semibold text-sage-700">1086 Avenue Albert Einstein, Montpellier</strong>, ou en téléconsultation sécurisée pour les couples dont l'un des partenaires ne peut pas se déplacer.</p>
+      </section>
 
       <div>
         <h2 class="font-serif text-2xl text-sage-800 mb-4">Questions fréquentes sur la thérapie de couple à Montpellier</h2>

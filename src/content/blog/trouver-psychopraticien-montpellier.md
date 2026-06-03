@@ -87,3 +87,10 @@ imageUrl: "https://images.pexels.com/photos/5699456/pexels-photo-5699456.jpeg"
 <p>Je propose des séances de <strong>thérapie individuelle</strong>, de <strong>thérapie de couple</strong> et de <strong>thérapie familiale</strong>, ainsi qu'un accompagnement spécialisé pour les <strong>troubles alimentaires</strong>.</p>
 
 <p>Mon approche est fondée sur les TCCE (Thérapies Comportementales, Cognitives et Émotionnelles). Dans ma pratique, cela veut dire un accompagnement à la fois structuré, attentif à votre histoire et ajusté à ce que vous vivez réellement. Pour prendre rendez-vous, vous pouvez utiliser le <a href="/contact">formulaire de contact</a>.</p>
+
+<p>Pour en savoir plus sur l'accompagnement que je propose à Montpellier, découvrez <a href="/services/therapie-individuelle" class="text-mint-600 hover:text-mint-800 underline">ma page dédiée à la thérapie individuelle</a>.</p>
+
+<div class="mt-8 p-6 bg-sage-50 rounded-xl border border-sage-200">
+  <p class="text-sage-800 font-semibold mb-2">Envie d'aller plus loin ?</p>
+  <p class="text-sage-700 mb-4">Je vous accompagne à Montpellier ou en téléconsultation. <a href="/rendez-vous/" class="text-mint-600 hover:text-mint-800 underline font-medium">Prendre rendez-vous en ligne</a> ou <a href="/contact" class="text-mint-600 hover:text-mint-800 underline">me contacter</a>.</p>
+</div>

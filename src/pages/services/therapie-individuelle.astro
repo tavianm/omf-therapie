@@ -2,7 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import Navbar from '../../components/islands/Navbar';
 import Footer from '../../components/layout/Footer.astro';
-import { buildFAQSchema, buildServiceSchema } from '../../utils/schema';
+import { buildBreadcrumbSchema, buildFAQSchema, buildServiceSchema } from '../../utils/schema';
 
 const faqs = [
   {
@@ -30,6 +30,11 @@ const jsonLd = [
     "Accompagnement thérapeutique individuel par Oriane Montabonnet, psychopraticienne à Montpellier. Séances de 60 ou 90 minutes pour anxiété, dépression, estime de soi, développement personnel.",
     "https://omf-therapie.fr/services/therapie-individuelle"
   ),
+  buildBreadcrumbSchema([
+    { name: "Accueil", url: "https://omf-therapie.fr" },
+    { name: "Services", url: "https://omf-therapie.fr/services" },
+    { name: "Thérapie individuelle", url: "https://omf-therapie.fr/services/therapie-individuelle" },
+  ]),
 ];
 ---
 
@@ -106,9 +111,28 @@ const jsonLd = [
       <div>
         <h2 class="font-serif text-2xl text-sage-800 mb-3">Un cabinet accessible à Montpellier</h2>
         <p class="text-sage-600 leading-relaxed mb-4">Le cabinet est situé au <strong class="font-semibold text-sage-700">1086 Avenue Albert Einstein, 34000 Montpellier</strong>, dans le quartier Millénaire. Facilement accessible en transports en commun (ligne 2 du tramway, arrêt Universités des Sciences et Lettres) et en voiture depuis Castelnau-le-Lez, Lattes, Pérols et Saint-Jean-de-Védas.</p>
-        <p class="text-sage-600 leading-relaxed mb-4">Les séances se tiennent du lundi au vendredi, de 8h à 12h et de 14h à 19h. Si vous résidez dans l'Hérault (34) et ne pouvez pas vous déplacer, des séances en visioconférence sécurisée sont également disponibles sur demande.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">Les séances se tiennent du lundi au vendredi, de 8h à 12h et de 14h à 19h. Si vous résidez dans l'Hérault (34) et ne pouvez pas vous déplacer, des séances en téléconsultation sécurisée sont également disponibles sur demande.</p>
         <p class="text-sage-600 leading-relaxed">Prêt(e) à franchir le pas ? <a href="/rendez-vous/" class="text-mint-600 hover:text-mint-700 underline underline-offset-2">Prenez rendez-vous</a> directement en ligne ou par téléphone — la première prise de contact est sans engagement.</p>
       </div>
+
+      <section aria-labelledby="outils-tcce-seances">
+        <h2 id="outils-tcce-seances" class="font-serif text-2xl text-sage-800 mb-3">Le travail entre les séances : les outils TCCE en pratique</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">L'un des aspects distinctifs des TCCE est le travail actif entre les séances. Contrairement à d'autres approches thérapeutiques, la TCC ne se limite pas à ce qui se passe dans le cabinet : elle vous donne des outils concrets à expérimenter au quotidien, entre deux rendez-vous.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">Le <strong class="font-semibold text-sage-700">journal de pensées</strong> est l'un des premiers outils introduits. Il permet d'identifier les pensées automatiques — ces réflexes mentaux qui s'activent face à une situation stressante — et d'en examiner la validité. Avec la pratique, vous apprenez à reconnaître vos schémas de pensée et à les challenger avec des preuves concrètes.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">Les <strong class="font-semibold text-sage-700">exercices d'exposition graduée</strong> sont utilisés pour les phobies, l'anxiété sociale ou les TOC : vous avancez pas à pas vers des situations redoutées, dans un cadre défini avec le thérapeute, de la moins anxiogène à la plus difficile. Chaque étape franchie renforce votre confiance et réduit l'évitement.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">L'<strong class="font-semibold text-sage-700">activation comportementale</strong> cible la dépression et le manque de motivation : en réintroduisant progressivement des activités sources de plaisir ou d'accomplissement, vous redonnez du sens au quotidien et rompez le cercle vicieux de l'inaction.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">Entre les séances, je peux également vous proposer des <strong class="font-semibold text-sage-700">questions de réflexion</strong> — des pistes d'observation sur vous-même à explorer à votre rythme. Ces questions n'ont pas de bonne ou mauvaise réponse : elles servent de fil conducteur pour la séance suivante, permettant d'approfondir un sujet ou d'identifier ce qui a évolué depuis notre dernier échange.</p>
+        <p class="text-sage-600 leading-relaxed">Ces outils sont co-construits avec vous, adaptés à vos contraintes de temps et à votre rythme. L'objectif est de vous rendre progressivement autonome — la thérapie doit finir par ne plus être nécessaire. À Montpellier, je veille à ce que chaque exercice proposé soit réaliste et directement utile dans votre quotidien. Si quelque chose ne fonctionne pas, nous l'ajustons ensemble à la séance suivante.</p>
+      </section>
+
+      <section aria-labelledby="choisir-therapeute-mtp">
+        <h2 id="choisir-therapeute-mtp" class="font-serif text-2xl text-sage-800 mb-3">Comment choisir son thérapeute à Montpellier ?</h2>
+        <p class="text-sage-600 leading-relaxed mb-4">Le choix d'un thérapeute est une étape importante, et il est normal de se poser des questions avant de se lancer. À Montpellier comme ailleurs, plusieurs critères méritent attention pour trouver l'accompagnement qui vous correspond vraiment.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">La <strong class="font-semibold text-sage-700">formation et l'approche</strong> du thérapeute sont essentielles : les TCCE (Thérapies Comportementales, Cognitives et Émotionnelles), l'approche humaniste ou la thérapie systémique ne travaillent pas de la même façon. Pour l'anxiété, la dépression ou les comportements répétitifs, les TCCE sont particulièrement reconnues pour leur efficacité. Il est tout à fait légitime de demander quelle méthode est utilisée et comment elle s'adapte à votre situation.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">Au-delà de la méthode, la <strong class="font-semibold text-sage-700">qualité de la relation thérapeutique</strong> joue un rôle déterminant. Le premier entretien est là pour évaluer cela : vous sentez-vous écouté, respecté, à l'aise pour parler ? Si le feeling n'est pas au rendez-vous après 2 ou 3 séances, il est tout à fait légitime de consulter quelqu'un d'autre — la relation est au cœur du processus thérapeutique.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">Enfin, des aspects pratiques comme les <strong class="font-semibold text-sage-700">horaires, les tarifs et la localisation</strong> à Montpellier ont leur importance : un suivi régulier est plus facile à maintenir lorsque les conditions logistiques s'y prêtent. N'hésitez pas à poser toutes vos questions lors du premier contact.</p>
+        <p class="text-sage-600 leading-relaxed">Je propose un premier entretien sans engagement pour vous permettre de poser toutes vos questions et de sentir si mon accompagnement vous convient. <a href="/contact" class="text-mint-600 hover:text-mint-700 underline underline-offset-2">Contactez-moi pour un premier échange</a> — la démarche reste confidentielle et bienveillante.</p>
+      </section>
 
       <div>
         <h2 class="font-serif text-2xl text-sage-800 mb-4">Questions fréquentes sur la thérapie individuelle à Montpellier</h2>

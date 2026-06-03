@@ -43,3 +43,8 @@ audit-results.json
 
 # Test scripts
 test-booking.cjs
+
+# Test artifacts
+test-results/
+e2e/.pr*.json
+/pr*.png

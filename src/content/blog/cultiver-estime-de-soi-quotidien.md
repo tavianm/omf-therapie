@@ -82,3 +82,10 @@ Notre rapport à l'échec influence considérablement notre estime de soi. Voici
 - Célébrez votre courage d'avoir essayé
 
 Rappelez-vous que l'estime de soi se construit jour après jour, à travers de petites actions cohérentes. Soyez patient(e) et bienveillant(e) envers vous-même dans ce processus de croissance personnelle.
+
+<p>Pour en savoir plus sur l'accompagnement que je propose à Montpellier, découvrez <a href="/services/therapie-individuelle" class="text-mint-600 hover:text-mint-800 underline">ma page dédiée à la thérapie individuelle</a>.</p>
+
+<div class="mt-8 p-6 bg-sage-50 rounded-xl border border-sage-200">
+  <p class="text-sage-800 font-semibold mb-2">Envie d'aller plus loin ?</p>
+  <p class="text-sage-700 mb-4">Je vous accompagne à Montpellier ou en téléconsultation. <a href="/rendez-vous/" class="text-mint-600 hover:text-mint-800 underline font-medium">Prendre rendez-vous en ligne</a> ou <a href="/contact" class="text-mint-600 hover:text-mint-800 underline">me contacter</a>.</p>
+</div>

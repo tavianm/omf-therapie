@@ -2,7 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import Navbar from '../../components/islands/Navbar';
 import Footer from '../../components/layout/Footer.astro';
-import { buildFAQSchema, buildServiceSchema } from '../../utils/schema';
+import { buildBreadcrumbSchema, buildFAQSchema, buildServiceSchema } from '../../utils/schema';
 
 const faqs = [
   {
@@ -30,6 +30,11 @@ const jsonLd = [
     "Accompagnement des conflits intergénérationnels, adolescents en difficulté et recompositions familiales par Oriane Montabonnet, psychopraticienne à Montpellier.",
     "https://omf-therapie.fr/services/therapie-familiale"
   ),
+  buildBreadcrumbSchema([
+    { name: "Accueil", url: "https://omf-therapie.fr" },
+    { name: "Services", url: "https://omf-therapie.fr/services" },
+    { name: "Thérapie familiale", url: "https://omf-therapie.fr/services/therapie-familiale" },
+  ]),
 ];
 ---
 
@@ -105,7 +110,7 @@ const jsonLd = [
       <div>
         <h2 class="font-serif text-2xl text-sage-800 mb-3">À Montpellier et dans l'Hérault</h2>
         <p class="text-sage-600 leading-relaxed mb-4">Le cabinet est situé au <strong class="font-semibold text-sage-700">1086 Avenue Albert Einstein, 34000 Montpellier</strong>, dans le quartier Millénaire. Il est accessible en tramway (ligne 2) et facilement accessible en voiture depuis les communes voisines de l'Hérault : Castelnau-le-Lez, Lattes, Pérols, Saint-Jean-de-Védas, Jacou.</p>
-        <p class="text-sage-600 leading-relaxed mb-4">Les séances se tiennent du lundi au vendredi, de 8h à 12h et de 14h à 19h. Si un membre de la famille ne peut pas se déplacer, une séance en visioconférence sécurisée peut être envisagée ponctuellement.</p>
+        <p class="text-sage-600 leading-relaxed mb-4">Les séances se tiennent du lundi au vendredi, de 8h à 12h et de 14h à 19h. Si un membre de la famille ne peut pas se déplacer, une séance en téléconsultation sécurisée peut être envisagée ponctuellement.</p>
         <p class="text-sage-600 leading-relaxed">Vous souhaitez entamer une démarche familiale ? <a href="/rendez-vous/" class="text-mint-600 hover:text-mint-700 underline underline-offset-2">Prenez rendez-vous avec moi</a> pour un premier échange confidentiel, sans engagement.</p>
       </div>
 

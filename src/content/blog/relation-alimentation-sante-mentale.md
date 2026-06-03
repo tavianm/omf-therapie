@@ -54,3 +54,10 @@ Au-delà du contenu de notre assiette, notre relation à l'alimentation joue ég
 Cette approche permet non seulement d'améliorer notre digestion, mais aussi de développer une relation plus saine avec la nourriture, contribuant ainsi à notre équilibre émotionnel.
 
 En conclusion, notre alimentation est un levier puissant pour soutenir notre santé mentale. Sans être restrictif ou culpabilisant, adopter progressivement une alimentation équilibrée, riche en aliments non transformés et variés, peut constituer un complément précieux à d'autres approches thérapeutiques.
+
+<p>Pour en savoir plus sur l'accompagnement que je propose à Montpellier, découvrez <a href="/services/troubles-alimentaires" class="text-mint-600 hover:text-mint-800 underline">ma page dédiée aux troubles alimentaires</a>.</p>
+
+<div class="mt-8 p-6 bg-sage-50 rounded-xl border border-sage-200">
+  <p class="text-sage-800 font-semibold mb-2">Envie d'aller plus loin ?</p>
+  <p class="text-sage-700 mb-4">Je vous accompagne à Montpellier ou en téléconsultation. <a href="/rendez-vous/" class="text-mint-600 hover:text-mint-800 underline font-medium">Prendre rendez-vous en ligne</a> ou <a href="/contact" class="text-mint-600 hover:text-mint-800 underline">me contacter</a>.</p>
+</div>

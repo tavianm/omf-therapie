@@ -7,7 +7,7 @@ import Navbar from '../../components/islands/Navbar';
 import Footer from '../../components/layout/Footer.astro';
 import { ShareButtons } from '../../components/blog/ShareButtons';
 import { collectionEntryToBlogPost } from '../../utils/blogAdapter';
-import { buildArticleSchema } from '../../utils/schema';
+import { buildArticleSchema, buildBreadcrumbSchema } from '../../utils/schema';
 import { calculateReadingTime } from '../../utils/readingTime';
 
 export const getStaticPaths: GetStaticPaths = async () => {
@@ -34,7 +34,14 @@ const relatedPosts = allPosts
   )
   .slice(0, 2);
 
-const jsonLd = buildArticleSchema(post);
+const jsonLd = [
+  buildArticleSchema(post),
+  buildBreadcrumbSchema([
+    { name: "Accueil", url: "https://omf-therapie.fr" },
+    { name: "Blog", url: "https://omf-therapie.fr/blog" },
+    { name: entry.data.title, url: `https://omf-therapie.fr/blog/${post.slug}` },
+  ]),
+];
 const canonicalUrl = `https://omf-therapie.fr/blog/${post.slug}`;
 const readingTime = calculateReadingTime(entry.body ?? '');
 ---
