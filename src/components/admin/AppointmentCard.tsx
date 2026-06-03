@@ -9,10 +9,11 @@
  *   declined / cancelled  → lecture seule
  */
 
-import { useState, useMemo, useRef, useEffect } from "react";
-
-import type { Appointment, AppointmentStatus } from "../../types/appointment";
-import { getTypeLabel, getModeLabel, calculatePrice, SOLIDARITY_DISCOUNT } from "../../lib/pricing";
+import { useState } from 'react';
+import { getModeLabel, getTypeLabel } from '../../lib/pricing';
+import type { Appointment, AppointmentStatus } from '../../types/appointment';
+import { ConfirmModal } from './ConfirmModal';
+import { Modal } from './Modal';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,30 +23,30 @@ interface AppointmentCardProps {
   appointment: Appointment;
 }
 
-type ModalType = "confirm" | "decline" | "reschedule" | null;
+type ModalType = 'confirm' | 'decline' | 'reschedule' | null;
 
 // ---------------------------------------------------------------------------
 // Constantes statut
 // ---------------------------------------------------------------------------
 
 const STATUS_LABELS: Record<AppointmentStatus, string> = {
-  pending: "En attente",
-  confirmed: "Confirmé",
-  declined: "Refusé",
-  rescheduled: "Reporté",
-  payment_pending: "Paiement en attente",
-  payment_received: "Paiement reçu",
-  cancelled: "Annulé",
+  pending: 'En attente',
+  confirmed: 'Confirmé',
+  declined: 'Refusé',
+  rescheduled: 'Reporté',
+  payment_pending: 'Paiement en attente',
+  payment_received: 'Paiement reçu',
+  cancelled: 'Annulé',
 };
 
 const STATUS_BADGE: Record<AppointmentStatus, string> = {
-  pending: "bg-amber-100 text-amber-800",
-  confirmed: "bg-green-100 text-green-800",
-  declined: "bg-red-100 text-red-800",
-  rescheduled: "bg-blue-100 text-blue-800",
-  payment_pending: "bg-yellow-100 text-yellow-800",
-  payment_received: "bg-teal-100 text-teal-800",
-  cancelled: "bg-gray-100 text-gray-600",
+  pending: 'bg-amber-100 text-amber-800',
+  confirmed: 'bg-green-100 text-green-800',
+  declined: 'bg-red-100 text-red-800',
+  rescheduled: 'bg-blue-100 text-blue-800',
+  payment_pending: 'bg-yellow-100 text-yellow-800',
+  payment_received: 'bg-teal-100 text-teal-800',
+  cancelled: 'bg-gray-100 text-gray-600',
 };
 
 // ---------------------------------------------------------------------------
@@ -53,112 +54,18 @@ const STATUS_BADGE: Record<AppointmentStatus, string> = {
 // ---------------------------------------------------------------------------
 
 function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat("fr-FR", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Europe/Paris",
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Paris',
   }).format(new Date(iso));
 }
 
 function formatPrice(centimes: number): string {
   return `${Math.round(centimes / 100)}€`;
-}
-
-// ---------------------------------------------------------------------------
-// Sous-composant Modal
-// ---------------------------------------------------------------------------
-
-function Modal({
-  title,
-  children,
-  onClose,
-}: {
-  title: string;
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  useEffect(() => {
-    previousFocusRef.current = document.activeElement as HTMLElement;
-    const FOCUSABLE =
-      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
-    const focusables = () =>
-      Array.from(containerRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []);
-    // Defer focus so modal is fully painted
-    const timer = setTimeout(() => focusables()[0]?.focus(), 0);
-
-    function trap(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onCloseRef.current();
-        return;
-      }
-      if (e.key !== 'Tab') return;
-      const els = focusables();
-      const first = els[0];
-      const last = els[els.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last?.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first?.focus();
-      }
-    }
-
-    document.addEventListener('keydown', trap);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('keydown', trap);
-      previousFocusRef.current?.focus();
-    };
-  }, []);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="modal-title"
-    >
-      <div ref={containerRef} className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-        <div className="flex items-center justify-between mb-5">
-          <h3
-            id="modal-title"
-            className="font-serif text-lg font-semibold text-sage-800"
-          >
-            {title}
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-sage-400 hover:text-sage-600 transition-colors"
-            aria-label="Fermer"
-          >
-            <svg
-              className="w-5 h-5"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                fillRule="evenodd"
-                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -172,33 +79,26 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
   const [reviewSent, setReviewSent] = useState(false);
 
   // État notes
-  const [notes, setNotes] = useState(appointment.therapist_notes ?? "");
+  const [notes, setNotes] = useState(appointment.therapist_notes ?? '');
   const [notesSaving, setNotesSaving] = useState(false);
   const [notesSaved, setNotesSaved] = useState(false);
 
   // États formulaires modaux
-  const [videoLink, setVideoLink] = useState(appointment.video_link ?? "");
-  const [declineMessage, setDeclineMessage] = useState("");
-  const [rescheduleDate, setRescheduleDate] = useState("");
-  const [rescheduleMessage, setRescheduleMessage] = useState("");
-
-  // États tarification (modale Confirmer)
-  const [overrideFirstSession, setOverrideFirstSession] = useState(appointment.is_first_session);
-  const [isSolidarity, setIsSolidarity] = useState(false);
+  const [videoLink, setVideoLink] = useState(appointment.video_link ?? '');
+  const [declineMessage, setDeclineMessage] = useState('');
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleMessage, setRescheduleMessage] = useState('');
 
   // États régénération Calendar / Meet
-  const [calendarEventId, setCalendarEventId] = useState(appointment.google_calendar_event_id ?? null);
+  const [calendarEventId, setCalendarEventId] = useState(
+    appointment.google_calendar_event_id ?? null,
+  );
   const [meetLink, setMeetLink] = useState(appointment.video_link ?? null);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [regenSuccess, setRegenSuccess] = useState(false);
 
-  const livePrice = useMemo(
-    () => calculatePrice(appointment.appointment_type, appointment.duration, overrideFirstSession, isSolidarity),
-    [appointment.appointment_type, appointment.duration, overrideFirstSession, isSolidarity],
-  );
-
   const { status } = appointment;
-  const isReadOnly = status === "declined" || status === "cancelled";
+  const isReadOnly = status === 'declined' || status === 'cancelled';
 
   // ── PATCH helper ─────────────────────────────────────────────────────────
 
@@ -207,9 +107,9 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
     setActionError(null);
     try {
       const res = await fetch(`/api/appointments/${appointment.id}/`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify(body),
       });
       if (!res.ok) {
@@ -219,7 +119,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
       window.location.reload();
       return true;
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Erreur inconnue");
+      setActionError(e instanceof Error ? e.message : 'Erreur inconnue');
       setActionLoading(false);
       return false;
     }
@@ -227,9 +127,12 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
-  async function handleConfirm() {
+  async function handleConfirm(
+    overrideFirstSession: boolean,
+    isSolidarity: boolean,
+  ) {
     await callPatch({
-      action: "confirm",
+      action: 'confirm',
       override_first_session: overrideFirstSession,
       is_solidarity: isSolidarity,
       ...(videoLink ? { video_link: videoLink } : {}),
@@ -238,18 +141,18 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
 
   async function handleDecline() {
     await callPatch({
-      action: "decline",
+      action: 'decline',
       ...(declineMessage ? { therapist_notes: declineMessage } : {}),
     });
   }
 
   async function handleReschedule() {
     if (!rescheduleDate) {
-      setActionError("Veuillez sélectionner un nouveau créneau.");
+      setActionError('Veuillez sélectionner un nouveau créneau.');
       return;
     }
     await callPatch({
-      action: "reschedule",
+      action: 'reschedule',
       rescheduled_to: new Date(rescheduleDate).toISOString(),
       ...(rescheduleMessage ? { therapist_notes: rescheduleMessage } : {}),
     });
@@ -259,10 +162,10 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
     setActionLoading(true);
     setActionError(null);
     try {
-      const res = await fetch("/api/send-review-email/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
+      const res = await fetch('/api/send-review-email/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ appointmentId: appointment.id }),
       });
       if (!res.ok) {
@@ -272,7 +175,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
       setReviewSent(true);
       setTimeout(() => setReviewSent(false), 4000);
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Erreur inconnue");
+      setActionError(e instanceof Error ? e.message : 'Erreur inconnue');
     } finally {
       setActionLoading(false);
     }
@@ -284,10 +187,10 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
     setActionError(null);
     try {
       const res = await fetch(`/api/appointments/${appointment.id}/`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({ action: "save_notes", therapist_notes: notes }),
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ action: 'save_notes', therapist_notes: notes }),
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
@@ -296,7 +199,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
       setNotesSaved(true);
       setTimeout(() => setNotesSaved(false), 2000);
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Erreur inconnue");
+      setActionError(e instanceof Error ? e.message : 'Erreur inconnue');
     } finally {
       setNotesSaving(false);
     }
@@ -306,14 +209,23 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
     setIsRegenerating(true);
     setActionError(null);
     try {
-      const res = await fetch(`/api/admin/appointments/${appointment.id}/regenerate-calendar`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      const data = (await res.json()) as { google_calendar_event_id?: string; video_link?: string; error?: string };
+      const res = await fetch(
+        `/api/admin/appointments/${appointment.id}/regenerate-calendar`,
+        {
+          method: 'POST',
+          credentials: 'include',
+        },
+      );
+      const data = (await res.json()) as {
+        google_calendar_event_id?: string;
+        video_link?: string;
+        error?: string;
+      };
       if (!res.ok) {
         if (res.status === 503 || data.error === 'oauth_required') {
-          setActionError('Google Calendar non connecté — reconnectez via le tableau de bord');
+          setActionError(
+            'Google Calendar non connecté — reconnectez via le tableau de bord',
+          );
         } else if (res.status === 403 || data.error === 'permission_denied') {
           setActionError('Permissions insuffisantes sur Google Calendar');
         } else if (res.status === 429 || data.error === 'quota_exceeded') {
@@ -323,7 +235,8 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
         }
         return;
       }
-      if (data.google_calendar_event_id) setCalendarEventId(data.google_calendar_event_id);
+      if (data.google_calendar_event_id)
+        setCalendarEventId(data.google_calendar_event_id);
       if (data.video_link) setMeetLink(data.video_link);
       setRegenSuccess(true);
       setTimeout(() => setRegenSuccess(false), 3000);
@@ -351,7 +264,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
             >
               {appointment.patient_email}
             </a>
-            {" · "}
+            {' · '}
             <a
               href={`tel:${appointment.patient_phone}`}
               className="hover:text-mint-600 transition-colors"
@@ -393,25 +306,36 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
           </span>
         </div>
         <div>
-          <span className="block text-xs text-sage-400 mb-0.5">Date prévue</span>
+          <span className="block text-xs text-sage-400 mb-0.5">
+            Date prévue
+          </span>
           <span className="font-medium text-sage-800">
             {formatDate(appointment.scheduled_at)}
           </span>
         </div>
         <div>
           <span className="block text-xs text-sage-400 mb-0.5">Tarif</span>
-          <span className="font-medium text-sage-800">{formatPrice(appointment.final_price)}</span>
+          <span className="font-medium text-sage-800">
+            {formatPrice(appointment.final_price)}
+          </span>
           <p className="text-xs text-sage-500 mt-0.5">
             Base {formatPrice(appointment.base_price)}
             {appointment.discount > 0 && (
-              <span className="text-mint-700"> · remise −{formatPrice(appointment.discount)}</span>
+              <span className="text-mint-700">
+                {' '}
+                · remise −{formatPrice(appointment.discount)}
+              </span>
             )}
           </p>
         </div>
         <div>
-          <span className="block text-xs text-sage-400 mb-0.5">Remise nouveau client</span>
-          <span className={`font-medium text-xs ${appointment.is_first_session ? "text-mint-600" : "text-sage-700"}`}>
-            {appointment.is_first_session ? "Oui (1ère séance)" : "Non"}
+          <span className="block text-xs text-sage-400 mb-0.5">
+            Remise nouveau client
+          </span>
+          <span
+            className={`font-medium text-xs ${appointment.is_first_session ? 'text-mint-600' : 'text-sage-700'}`}
+          >
+            {appointment.is_first_session ? 'Oui (1ère séance)' : 'Non'}
           </span>
         </div>
         {appointment.rescheduled_to && (
@@ -471,24 +395,33 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
       {/* Boutons d'action */}
       {!isReadOnly && (
         <div className="flex flex-wrap gap-2 mb-4">
-          {status === "pending" && (
+          {status === 'pending' && (
             <>
               <button
-                onClick={() => { setModal("confirm"); setActionError(null); }}
+                onClick={() => {
+                  setModal('confirm');
+                  setActionError(null);
+                }}
                 disabled={actionLoading}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl bg-mint-600 text-white hover:bg-mint-700 active:bg-mint-800 focus:outline-none focus:ring-2 focus:ring-mint-400 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
               >
                 Confirmer
               </button>
               <button
-                onClick={() => { setModal("decline"); setActionError(null); }}
+                onClick={() => {
+                  setModal('decline');
+                  setActionError(null);
+                }}
                 disabled={actionLoading}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-red-300 text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
               >
                 Refuser
               </button>
               <button
-                onClick={() => { setModal("reschedule"); setActionError(null); }}
+                onClick={() => {
+                  setModal('reschedule');
+                  setActionError(null);
+                }}
                 disabled={actionLoading}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
               >
@@ -497,19 +430,19 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
             </>
           )}
 
-          {status === "rescheduled" &&
+          {status === 'rescheduled' &&
             appointment.rescheduled_to &&
             appointment.rescheduled_to > new Date().toISOString() && (
               <button
-                onClick={() => callPatch({ action: "cancel_reschedule" })}
+                onClick={() => callPatch({ action: 'cancel_reschedule' })}
                 disabled={actionLoading}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-red-300 text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
               >
-                {actionLoading ? "En cours…" : "Annuler la proposition"}
+                {actionLoading ? 'En cours…' : 'Annuler la proposition'}
               </button>
             )}
 
-          {status === "payment_pending" && (
+          {status === 'payment_pending' && (
             <>
               {appointment.stripe_payment_link_url ? (
                 <a
@@ -526,7 +459,10 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
                 </span>
               )}
               <button
-                onClick={() => { setModal("decline"); setActionError(null); }}
+                onClick={() => {
+                  setModal('decline');
+                  setActionError(null);
+                }}
                 disabled={actionLoading}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-red-300 text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
               >
@@ -535,14 +471,14 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
             </>
           )}
 
-          {(status === "confirmed" || status === "payment_received") && (
+          {(status === 'confirmed' || status === 'payment_received') && (
             <>
               <button
                 onClick={handleSendReview}
                 disabled={actionLoading}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
               >
-                {actionLoading ? "Envoi…" : "Envoyer rappel avis"}
+                {actionLoading ? 'Envoi…' : 'Envoyer rappel avis'}
               </button>
               {reviewSent && (
                 <span
@@ -550,8 +486,17 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
                   aria-live="polite"
                   className="inline-flex items-center gap-1 text-sm text-green-700 font-sans"
                 >
-                  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  <svg
+                    className="w-4 h-4 flex-shrink-0"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                      clipRule="evenodd"
+                    />
                   </svg>
                   Email envoyé
                 </span>
@@ -562,49 +507,77 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
       )}
 
       {/* Bouton régénération Calendar / Meet (vidéo uniquement, si event ou lien manquant) */}
-      {appointment.appointment_mode === 'video' && (!meetLink || !calendarEventId) && !isReadOnly && (
-        <div className="flex flex-wrap gap-2 mb-4">
-          {(() => {
-            const regenLabel = !calendarEventId && !meetLink
-              ? 'Régénérer Calendar et Meet'
-              : !calendarEventId
-              ? 'Régénérer Calendar'
-              : 'Régénérer lien Meet';
-            return (
-              <>
-                <button
-                  onClick={handleRegenerateCalendar}
-                  disabled={isRegenerating}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 transition-colors disabled:opacity-60 min-h-[36px]"
-                  title={regenLabel}
-                  aria-label={isRegenerating ? 'Régénération en cours…' : regenLabel}
-                >
-                  {isRegenerating ? (
-                    <span className="inline-block w-3.5 h-3.5 border-2 border-sage-400 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
-                  ) : (
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                  )}
-                  {isRegenerating ? 'Régénération…' : regenLabel}
-                </button>
-                {regenSuccess && (
-                  <span
-                    role="status"
-                    aria-live="polite"
-                    className="inline-flex items-center gap-1 text-sm text-green-700 font-sans"
+      {appointment.appointment_mode === 'video' &&
+        (!meetLink || !calendarEventId) &&
+        !isReadOnly && (
+          <div className="flex flex-wrap gap-2 mb-4">
+            {(() => {
+              const regenLabel =
+                !calendarEventId && !meetLink
+                  ? 'Régénérer Calendar et Meet'
+                  : !calendarEventId
+                    ? 'Régénérer Calendar'
+                    : 'Régénérer lien Meet';
+              return (
+                <>
+                  <button
+                    onClick={handleRegenerateCalendar}
+                    disabled={isRegenerating}
+                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 transition-colors disabled:opacity-60 min-h-[36px]"
+                    title={regenLabel}
+                    aria-label={
+                      isRegenerating ? 'Régénération en cours…' : regenLabel
+                    }
                   >
-                    <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    Régénéré
-                  </span>
-                )}
-              </>
-            );
-          })()}
-        </div>
-      )}
+                    {isRegenerating ? (
+                      <span
+                        className="inline-block w-3.5 h-3.5 border-2 border-sage-400 border-t-transparent rounded-full animate-spin"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <svg
+                        className="w-3.5 h-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                        />
+                      </svg>
+                    )}
+                    {isRegenerating ? 'Régénération…' : regenLabel}
+                  </button>
+                  {regenSuccess && (
+                    <span
+                      role="status"
+                      aria-live="polite"
+                      className="inline-flex items-center gap-1 text-sm text-green-700 font-sans"
+                    >
+                      <svg
+                        className="w-4 h-4 flex-shrink-0"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      Régénéré
+                    </span>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        )}
 
       {/* Message d'erreur */}
       {actionError && (
@@ -638,109 +611,43 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
             disabled={notesSaving}
             className="text-xs font-medium font-sans text-mint-600 hover:text-mint-700 transition-colors disabled:opacity-60"
           >
-            {notesSaving ? "Sauvegarde…" : "Sauvegarder"}
+            {notesSaving ? 'Sauvegarde…' : 'Sauvegarder'}
           </button>
           {notesSaved && (
-            <span role="status" aria-live="polite" className="text-xs text-green-600 font-sans">✓ Sauvegardé</span>
+            <span
+              role="status"
+              aria-live="polite"
+              className="text-xs text-green-600 font-sans"
+            >
+              ✓ Sauvegardé
+            </span>
           )}
         </div>
       </div>
 
       {/* ── Modal : Confirmer ─────────────────────────────────────────────── */}
-      {modal === "confirm" && (
-        <Modal title="Confirmer le rendez-vous" onClose={() => setModal(null)}>
-          {/* ── Tarification ───────────────────────────────────────── */}
-          <div className="mb-5 rounded-xl border border-sage-200 bg-sage-50 p-4">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-sage-500 font-sans">
-              Tarification
-            </p>
-            <div className="space-y-2">
-              <label className="flex items-center gap-3 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={overrideFirstSession && !isSolidarity}
-                  onChange={e => {
-                    if (e.target.checked) { setOverrideFirstSession(true); setIsSolidarity(false); }
-                    else setOverrideFirstSession(false);
-                  }}
-                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
-                />
-                <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
-                  Remise nouveau client <span className="text-sage-400">(−15€ première séance)</span>
-                </span>
-              </label>
-              <label className="flex items-center gap-3 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={isSolidarity}
-                  onChange={e => {
-                    if (e.target.checked) { setIsSolidarity(true); setOverrideFirstSession(false); }
-                    else setIsSolidarity(false);
-                  }}
-                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
-                />
-                <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
-                  Tarif solidaire <span className="text-sage-400">(−{SOLIDARITY_DISCOUNT}€ · RSA / ASS / Étudiant)</span>
-                </span>
-              </label>
-            </div>
-            <div className="mt-3 flex items-center justify-between border-t border-sage-200 pt-3">
-              <span className="text-xs text-sage-500 font-sans">
-                Base {livePrice.basePrice}€
-                {livePrice.discount > 0 && <span className="text-mint-700"> · remise −{livePrice.discount}€</span>}
-              </span>
-              <span className="text-base font-semibold text-sage-900 font-sans">
-                À régler : {livePrice.finalPrice}€
-              </span>
-            </div>
-          </div>
-          {appointment.appointment_mode === "video" && (
-            <div className="mb-5">
-              <label
-                htmlFor="video-link-input"
-                className="block text-sm font-medium text-sage-700 font-sans mb-1.5"
-              >
-                Lien visio Google Meet{" "}
-                <span className="text-sage-400 font-normal">(optionnel — auto-généré si vide)</span>
-              </label>
-              <input
-                id="video-link-input"
-                type="url"
-                value={videoLink}
-                onChange={(e) => setVideoLink(e.target.value)}
-                placeholder="Laissez vide pour auto-génération Google Meet"
-                className="w-full px-4 py-2.5 rounded-xl border border-sage-200 bg-sage-50 text-sage-900 placeholder-sage-400 font-sans text-sm focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent transition-colors"
-              />
-            </div>
-          )}
-          {actionError && (
-            <p className="mb-4 text-sm text-red-700 font-sans">{actionError}</p>
-          )}
-          <div className="flex gap-2 justify-end">
-            <button
-              onClick={() => setModal(null)}
-              disabled={actionLoading}
-              className="px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 transition-colors disabled:opacity-60 min-h-[40px]"
-            >
-              Annuler
-            </button>
-            <button
-              onClick={handleConfirm}
-              disabled={actionLoading}
-              className="px-4 py-2 text-sm font-medium font-sans rounded-xl bg-mint-600 text-white hover:bg-mint-700 transition-colors disabled:opacity-60 min-h-[40px]"
-            >
-              {actionLoading ? "En cours…" : "Confirmer"}
-            </button>
-          </div>
-        </Modal>
+      {modal === 'confirm' && (
+        <ConfirmModal
+          appointment={appointment}
+          videoLink={videoLink}
+          setVideoLink={setVideoLink}
+          actionLoading={actionLoading}
+          actionError={actionError}
+          onClose={() => setModal(null)}
+          onConfirm={handleConfirm}
+        />
       )}
 
       {/* ── Modal : Refuser ───────────────────────────────────────────────── */}
-      {modal === "decline" && (
+      {modal === 'decline' && (
         <Modal
           title="Refuser le rendez-vous"
           onClose={() => {
-            if (declineMessage.trim() && !window.confirm('Abandonner ? Votre message sera perdu.')) return;
+            if (
+              declineMessage.trim() &&
+              !window.confirm('Abandonner ? Votre message sera perdu.')
+            )
+              return;
             setModal(null);
           }}
         >
@@ -752,7 +659,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
               htmlFor="decline-msg-input"
               className="block text-sm font-medium text-sage-700 font-sans mb-1.5"
             >
-              Message pour le patient{" "}
+              Message pour le patient{' '}
               <span className="text-sage-400 font-normal">(optionnel)</span>
             </label>
             <textarea
@@ -770,7 +677,11 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
           <div className="flex gap-2 justify-end">
             <button
               onClick={() => {
-                if (declineMessage.trim() && !window.confirm('Abandonner ? Votre message sera perdu.')) return;
+                if (
+                  declineMessage.trim() &&
+                  !window.confirm('Abandonner ? Votre message sera perdu.')
+                )
+                  return;
                 setModal(null);
               }}
               disabled={actionLoading}
@@ -783,18 +694,24 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
               disabled={actionLoading}
               className="px-4 py-2 text-sm font-medium font-sans rounded-xl bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-60 min-h-[40px]"
             >
-              {actionLoading ? "En cours…" : "Refuser"}
+              {actionLoading ? 'En cours…' : 'Refuser'}
             </button>
           </div>
         </Modal>
       )}
 
       {/* ── Modal : Reporter ──────────────────────────────────────────────── */}
-      {modal === "reschedule" && (
+      {modal === 'reschedule' && (
         <Modal
           title="Reporter le rendez-vous"
           onClose={() => {
-            if ((rescheduleDate || rescheduleMessage.trim()) && !window.confirm('Abandonner ? Les données saisies seront perdues.')) return;
+            if (
+              (rescheduleDate || rescheduleMessage.trim()) &&
+              !window.confirm(
+                'Abandonner ? Les données saisies seront perdues.',
+              )
+            )
+              return;
             setModal(null);
           }}
         >
@@ -821,7 +738,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
               htmlFor="reschedule-msg-input"
               className="block text-sm font-medium text-sage-700 font-sans mb-1.5"
             >
-              Message pour le patient{" "}
+              Message pour le patient{' '}
               <span className="text-sage-400 font-normal">(optionnel)</span>
             </label>
             <textarea
@@ -839,7 +756,13 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
           <div className="flex gap-2 justify-end">
             <button
               onClick={() => {
-                if ((rescheduleDate || rescheduleMessage.trim()) && !window.confirm('Abandonner ? Les données saisies seront perdues.')) return;
+                if (
+                  (rescheduleDate || rescheduleMessage.trim()) &&
+                  !window.confirm(
+                    'Abandonner ? Les données saisies seront perdues.',
+                  )
+                )
+                  return;
                 setModal(null);
               }}
               disabled={actionLoading}
@@ -852,7 +775,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
               disabled={actionLoading}
               className="px-4 py-2 text-sm font-medium font-sans rounded-xl bg-mint-600 text-white hover:bg-mint-700 transition-colors disabled:opacity-60 min-h-[40px]"
             >
-              {actionLoading ? "En cours…" : "Reporter"}
+              {actionLoading ? 'En cours…' : 'Reporter'}
             </button>
           </div>
         </Modal>
