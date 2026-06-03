@@ -25,6 +25,7 @@ import type { Config } from '@netlify/functions';
 import { createElement } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import ws from 'ws';
 import AppointmentReminder from '../../src/emails/AppointmentReminder';
 import type { Appointment } from '../../src/types/appointment';
 
@@ -94,6 +95,7 @@ export default async function handler(): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabaseAdmin = createClient<any>(supabaseUrl, supabaseServiceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    realtime: { transport: ws },
   });
 
   const resendClient = new Resend(resendApiKey);

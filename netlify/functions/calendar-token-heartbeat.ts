@@ -33,6 +33,7 @@ import type { Config } from '@netlify/functions';
 import { createElement } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { google } from 'googleapis';
+import ws from 'ws';
 import { Resend } from 'resend';
 import { render } from '@react-email/render';
 import CalendarAuthAlert from '../../src/emails/CalendarAuthAlert.js';
@@ -111,6 +112,7 @@ export default async function handler(): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createClient<any>(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    realtime: { transport: ws },
   });
 
   const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
