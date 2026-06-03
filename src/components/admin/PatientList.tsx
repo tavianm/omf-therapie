@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { toast, Toaster } from "react-hot-toast";
 import { getModeLabel, getTypeLabel } from "../../lib/pricing";
 import { AdminCreateButton } from "./AdminCreateButton";
 import type { Patient, PrefillData, AppointmentStatus } from "../../types/patient";
@@ -32,12 +33,21 @@ function getPanelId(email: string): string {
   return `patient-panel-${email.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 }
 
+function getReviewableAppointmentId(patient: Patient): string | null {
+  const reviewableAppointment = patient.appointments.find(
+    (appointment) =>
+      appointment.status === "confirmed" || appointment.status === "payment_received",
+  );
+  return reviewableAppointment?.id ?? null;
+}
+
 export function PatientList() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [expandedPatientEmail, setExpandedPatientEmail] = useState<string | null>(null);
+  const [reviewLoadingEmail, setReviewLoadingEmail] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -77,8 +87,38 @@ export function PatientList() {
     return () => controller.abort();
   }, [includeArchived]);
 
+  async function handleSendReviewReminder(patient: Patient) {
+    const appointmentId = getReviewableAppointmentId(patient);
+    if (!appointmentId) {
+      toast.error("Aucun rendez-vous confirmé à relancer pour ce patient.", { duration: 4000 });
+      return;
+    }
+
+    setReviewLoadingEmail(patient.email);
+    try {
+      const response = await fetch("/api/send-review-email/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ appointmentId }),
+      });
+
+      if (!response.ok) {
+        const body = (await response.json()) as { error?: string };
+        throw new Error(body.error ?? "Erreur lors de l'envoi du rappel d'avis");
+      }
+
+      toast.success(`Relance d'avis envoyée à ${patient.name}.`, { duration: 4000 });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur inconnue", { duration: 4000 });
+    } finally {
+      setReviewLoadingEmail((current) => (current === patient.email ? null : current));
+    }
+  }
+
   return (
     <section className="space-y-4">
+      <Toaster position="top-right" />
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-sage-500 font-sans">
           {loading ? "Chargement..." : `${patients.length} patient${patients.length > 1 ? "s" : ""}`}
@@ -123,6 +163,8 @@ export function PatientList() {
               patient_phone: patient.phone,
               appointment_type: patient.lastAppointmentType,
             };
+            const reviewableAppointmentId = getReviewableAppointmentId(patient);
+            const isReviewActionDisabled = !reviewableAppointmentId || reviewLoadingEmail === patient.email;
 
             return (
               <li key={patient.email} className="rounded-2xl border border-sage-200 bg-white">
@@ -163,7 +205,14 @@ export function PatientList() {
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <h3 className="font-serif text-lg text-sage-800">Historique des rendez-vous</h3>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-sage-600 font-sans">Proposer un RDV</span>
+                        <button
+                          type="button"
+                          onClick={() => handleSendReviewReminder(patient)}
+                          disabled={isReviewActionDisabled}
+                          className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                        >
+                          {reviewLoadingEmail === patient.email ? "Envoi..." : "Relancer avis"}
+                        </button>
                         <AdminCreateButton prefillData={prefillData} />
                       </div>
                     </div>
