@@ -27,6 +27,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import ws from 'ws';
 import AppointmentReminder from '../../src/emails/AppointmentReminder';
+import PaymentReminder from '../../src/emails/PaymentReminder';
 import type { Appointment } from '../../src/types/appointment';
 
 // ---------------------------------------------------------------------------
@@ -122,15 +123,39 @@ export default async function handler(): Promise<void> {
     return;
   }
 
-  const list = (appointments ?? []) as Appointment[];
+  // 3b. Requêter les rendez-vous de demain en attente de paiement
+  const { data: pendingPayments, error: pendingError } = await supabaseAdmin
+    .from('appointments')
+    .select('*')
+    .gte('scheduled_at', windowStart.toISOString())
+    .lte('scheduled_at', windowEnd.toISOString())
+    .eq('status', 'payment_pending')
+    .is('reminder_sent_at', null)
+    .is('deleted_at', null);
 
-  console.info(`[send-reminders] ${list.length} rappel(s) à envoyer.`);
-
-  if (list.length === 0) {
+  if (pendingError) {
+    console.error('[send-reminders] Erreur Supabase (payment_pending) :', pendingError.message);
     return;
   }
 
-  // 4. Envoyer un email de rappel à chaque patient
+  const list = (appointments ?? []) as Appointment[];
+  const paymentList = (pendingPayments ?? []) as Appointment[];
+
+  console.info(`[send-reminders] ${list.length} rappel(s) J-1 à envoyer.`);
+  console.info(`[send-reminders] ${paymentList.length} rappel(s) paiement en attente à envoyer.`);
+
+  if (list.length === 0 && paymentList.length === 0) {
+    return;
+  }
+
+  const formatTime = (iso: string) =>
+    new Intl.DateTimeFormat('fr-FR', {
+      timeZone: 'Europe/Paris',
+      hour:     '2-digit',
+      minute:   '2-digit',
+    }).format(new Date(iso));
+
+  // 4. Envoyer un email de rappel J-1 à chaque patient confirmé / ayant payé
   let sent = 0;
   let failed = 0;
 
@@ -139,11 +164,7 @@ export default async function handler(): Promise<void> {
       const { error } = await resendClient.emails.send({
         from: fromEmail,
         to:   [appt.patient_email],
-        subject: `Rappel : votre rendez-vous demain à ${new Intl.DateTimeFormat('fr-FR', {
-          timeZone: 'Europe/Paris',
-          hour:   '2-digit',
-          minute: '2-digit',
-        }).format(new Date(appt.scheduled_at))}`,
+        subject: `Rappel : votre rendez-vous demain à ${formatTime(appt.scheduled_at)}`,
         react: createElement(AppointmentReminder, {
           patientName:     appt.patient_name,
           appointmentMode: appt.appointment_mode,
@@ -178,8 +199,58 @@ export default async function handler(): Promise<void> {
     }
   }
 
+  // 5. Envoyer un rappel de paiement aux rendez-vous en attente de règlement
+  let sentPayment = 0;
+  let failedPayment = 0;
+
+  for (const appt of paymentList) {
+    if (!appt.stripe_payment_link_url) {
+      console.warn(
+        `[send-reminders] stripe_payment_link_url manquant pour ${appt.patient_email} (id: ${appt.id}) — rappel paiement ignoré.`,
+      );
+      continue;
+    }
+
+    try {
+      const { error } = await resendClient.emails.send({
+        from: fromEmail,
+        to:   [appt.patient_email],
+        subject: `⚠️ Action requise : réglez votre séance de demain à ${formatTime(appt.scheduled_at)}`,
+        react: createElement(PaymentReminder, {
+          patientName:      appt.patient_name,
+          appointmentType:  appt.appointment_type,
+          scheduledAt:      appt.scheduled_at,
+          duration:         appt.duration,
+          finalPrice:       appt.final_price,
+          stripePaymentUrl: appt.stripe_payment_link_url,
+        }),
+      });
+
+      if (error) {
+        console.error(
+          `[send-reminders] Échec rappel paiement pour ${appt.patient_email} (id: ${appt.id}) :`,
+          error.message,
+        );
+        failedPayment++;
+      } else {
+        sentPayment++;
+        await supabaseAdmin
+          .from('appointments')
+          .update({ reminder_sent_at: new Date().toISOString() })
+          .eq('id', appt.id);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(
+        `[send-reminders] Exception paiement pour ${appt.patient_email} (id: ${appt.id}) :`,
+        msg,
+      );
+      failedPayment++;
+    }
+  }
+
   console.info(
-    `[send-reminders] Terminé — ${sent} envoyé(s), ${failed} échoué(s).`,
+    `[send-reminders] Terminé — rappels J-1 : ${sent} envoyé(s), ${failed} échoué(s) | rappels paiement : ${sentPayment} envoyé(s), ${failedPayment} échoué(s).`,
   );
 }
 
