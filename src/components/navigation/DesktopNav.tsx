@@ -1,16 +1,17 @@
-import type { NavigationItem } from "../../types/navigation";
+import type { NavigationItem } from '../../types/navigation';
 
 interface DesktopNavProps {
   navigation: NavigationItem[];
   isActive: (href: string, path: string) => boolean;
   navigateToSection: (href: string) => void;
   isAuthenticated?: boolean;
+  pathname: string;
 }
 
 function normalizePathname(pathname: string): string {
-  if (!pathname) return "/";
-  if (pathname === "/") return "/";
-  return pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+  if (!pathname) return '/';
+  if (pathname === '/') return '/';
+  return pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
 }
 
 export const DesktopNav = ({
@@ -18,6 +19,7 @@ export const DesktopNav = ({
   isActive,
   navigateToSection,
   isAuthenticated = false,
+  pathname,
 }: DesktopNavProps) => (
   <ul
     className="hidden lg:flex md:items-center xl:space-x-8 lg:space-x-4"
@@ -43,17 +45,11 @@ export const DesktopNav = ({
         <a
           href="/mes-rdvs/"
           className={`${
-            typeof window !== "undefined" &&
-            normalizePathname(window.location.pathname) === "/mes-rdvs"
-              ? "text-mint-600"
-              : "text-sage-600 hover:text-mint-500"
+            pathname === '/mes-rdvs'
+              ? 'text-mint-600'
+              : 'text-sage-600 hover:text-mint-500'
           } transition-colors duration-200 font-medium min-h-[44px] min-w-[44px] flex items-center justify-center`}
-          aria-current={
-            typeof window !== "undefined" &&
-            normalizePathname(window.location.pathname) === "/mes-rdvs"
-              ? "page"
-              : undefined
-          }
+          aria-current={pathname === '/mes-rdvs' ? 'page' : undefined}
         >
           Mes RDV
         </a>
@@ -84,10 +80,10 @@ const ContactLink = ({
     href={item.href}
     className={`${
       isActive(item.href, item.path)
-        ? "text-mint-600"
-        : "text-sage-600 hover:text-mint-500"
+        ? 'text-mint-600'
+        : 'text-sage-600 hover:text-mint-500'
     } transition-colors duration-200 font-medium min-h-[44px] min-w-[44px] flex items-center justify-center`}
-    aria-current={isActive(item.href, item.path) ? "page" : undefined}
+    aria-current={isActive(item.href, item.path) ? 'page' : undefined}
   >
     {item.name}
   </a>
@@ -106,10 +102,10 @@ const SectionLink = ({
     onClick={() => navigateToSection(item.href)}
     className={`${
       isActive(item.href, item.path)
-        ? "text-mint-600"
-        : "text-sage-600 hover:text-mint-500"
+        ? 'text-mint-600'
+        : 'text-sage-600 hover:text-mint-500'
     } transition-colors duration-200 font-medium min-h-[44px] min-w-[44px] flex items-center justify-center`}
-    aria-current={isActive(item.href, item.path) ? "page" : undefined}
+    aria-current={isActive(item.href, item.path) ? 'page' : undefined}
   >
     {item.name}
   </button>

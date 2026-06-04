@@ -1,18 +1,12 @@
-import { Leaf } from "lucide-react";
-import type { BlogPost } from "../../types/blog";
-import { BlogPostCard } from "./BlogPostCard";
+import type { BlogPost } from '../../types/blog';
+import { BlogPostCard } from './BlogPostCard';
 
 interface BlogListProps {
   posts: BlogPost[];
-  isLoading: boolean;
   error: string | null;
 }
 
-export const BlogList = ({ posts, isLoading, error }: BlogListProps) => {
-  if (isLoading) {
-    return <BlogLoadingState />;
-  }
-
+export const BlogList = ({ posts, error }: BlogListProps) => {
   if (error) {
     return <BlogErrorState error={error} />;
   }
@@ -29,18 +23,6 @@ export const BlogList = ({ posts, isLoading, error }: BlogListProps) => {
     </div>
   );
 };
-
-const BlogLoadingState = () => (
-  <div className="flex flex-col items-center justify-center py-12">
-    <div className="inline-block mb-6">
-      <Leaf className="h-12 w-12 text-mint-600 animate-spin" style={{ animationDuration: "2s" }} />
-    </div>
-    <h2 className="text-xl font-serif font-semibold text-sage-800 mb-3">
-      Chargement des articles...
-    </h2>
-    <p className="text-sage-600">Merci de patienter un instant</p>
-  </div>
-);
 
 const BlogErrorState = ({ error }: { error: string }) => (
   <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
@@ -63,7 +45,8 @@ const BlogEmptyState = () => (
       Aucun article ne correspond à votre recherche.
     </p>
     <p className="text-sage-500">
-      Essayez de modifier vos critères de recherche ou consultez les autres catégories.
+      Essayez de modifier vos critères de recherche ou consultez les autres
+      catégories.
     </p>
   </div>
 );

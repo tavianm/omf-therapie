@@ -13,10 +13,12 @@ interface Props {
 
 export function BlogClientWrapper({ initialPosts }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    return new URLSearchParams(window.location.search).get('category');
-  });
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(
+    () => {
+      if (typeof window === 'undefined') return null;
+      return new URLSearchParams(window.location.search).get('category');
+    },
+  );
   const [currentPage, setCurrentPage] = useState(1);
 
   // Compute categories from all non-disabled posts
@@ -25,7 +27,7 @@ export function BlogClientWrapper({ initialPosts }: Props) {
     initialPosts.forEach((post) => {
       if (!post.disabled) {
         post.categories.forEach((cat) =>
-          counts.set(cat, (counts.get(cat) ?? 0) + 1)
+          counts.set(cat, (counts.get(cat) ?? 0) + 1),
         );
       }
     });
@@ -53,7 +55,7 @@ export function BlogClientWrapper({ initialPosts }: Props) {
   const totalPages = Math.ceil(filteredPosts.length / POSTS_PER_PAGE);
   const paginatedPosts = filteredPosts.slice(
     (currentPage - 1) * POSTS_PER_PAGE,
-    currentPage * POSTS_PER_PAGE
+    currentPage * POSTS_PER_PAGE,
   );
 
   const handleSearch = (query: string) => {
@@ -79,7 +81,7 @@ export function BlogClientWrapper({ initialPosts }: Props) {
         <main className="lg:col-span-3">
           <BlogSearch onSearch={handleSearch} initialValue={searchQuery} />
           <div className="mt-6">
-            <BlogList posts={paginatedPosts} isLoading={false} error={null} />
+            <BlogList posts={paginatedPosts} error={null} />
           </div>
           {totalPages > 1 && (
             <div className="mt-8">
