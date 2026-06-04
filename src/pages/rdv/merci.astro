@@ -279,11 +279,12 @@ const pageDescription = variant === 'payment-success'
   </main>
 
   {import.meta.env.PROD && (
-    <script is:inline define:vars={{ variant, paramType, paramMode, stripeSessionId }}>
-      if (typeof gtag === 'undefined') return;
+  <script is:inline define:vars={{ variant, paramType, paramMode, stripeSessionId }}>
+    const VALUE_BY_TYPE = { individual: 65, couple: 90, family: 100 };
+    const estimatedValue = VALUE_BY_TYPE[paramType] ?? 65;
 
-      const VALUE_BY_TYPE = { individual: 65, couple: 90, family: 100 };
-      const estimatedValue = VALUE_BY_TYPE[paramType] ?? 65;
+    function sendGAEvents() {
+      if (typeof gtag === 'undefined') return;
 
       if (variant === 'request-submitted') {
         // Primary Google Ads conversion: booking request submitted
@@ -314,6 +315,15 @@ const pageDescription = variant === 'payment-success'
           appointment_mode: paramMode,
         });
       }
-    </script>
-  )}
+    }
+
+    // gtag déjà prêt (ex: navigation retour via bfcache)
+    if (typeof gtag !== 'undefined') {
+      sendGAEvents();
+    } else {
+      // Attendre que le script GA soit chargé
+      window.addEventListener('load', sendGAEvents, { once: true });
+    }
+  </script>
+)}
 </Layout>

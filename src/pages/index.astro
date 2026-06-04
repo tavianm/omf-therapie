@@ -1,20 +1,20 @@
 ---
-import Layout from '../layouts/Layout.astro';
-import Navbar from '../components/islands/Navbar';
-import Footer from '../components/layout/Footer.astro';
+import AboutSection from '../components/home/AboutSection';
+import FAQSection from '../components/home/FAQSection';
 import { HeroSection } from '../components/home/HeroSection';
 import { IntroSection } from '../components/home/IntroSection';
-import AboutSection from '../components/home/AboutSection';
-import ServicesSection from '../components/home/ServicesSection';
+import LocalAreaSection from '../components/home/LocalAreaSection';
+import PricingSection from '../components/home/PricingSection';
 import ProcessSection from '../components/home/ProcessSection';
 import QualificationsSection from '../components/home/QualificationsSection';
-import PricingSection from '../components/home/PricingSection';
-import FAQSection from '../components/home/FAQSection';
-import LocalAreaSection from '../components/home/LocalAreaSection';
+import ServicesSection from '../components/home/ServicesSection';
+import Navbar from '../components/islands/Navbar';
+import Footer from '../components/layout/Footer.astro';
+import Layout from '../layouts/Layout.astro';
 import {
+  buildFAQSchema,
   buildLocalBusinessSchema,
   buildPersonSchema,
-  buildFAQSchema,
   buildWebSiteSchema,
   FAQ_ITEMS,
 } from '../utils/schema';
@@ -33,14 +33,42 @@ const jsonLd = [
   canonical="https://omf-therapie.fr/"
   jsonLd={jsonLd}
 >
-  <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded">
+  <a
+    href="#main-content"
+    class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded"
+  >
     Aller au contenu principal
   </a>
 
   <Navbar client:load isHomePage={true} />
 
   <main id="main-content" class="pt-20" tabindex="-1">
-    <HeroSection client:load />
+    <section
+      id="home"
+      class="relative h-[60vh] min-h-[430px] flex items-center"
+    >
+      <!-- Image directement dans le HTML statique -->
+      <div class="absolute inset-0 z-0" aria-hidden="true">
+        <img
+          src="/assets/home/bien-etre-1920w.avif"
+          srcset="/assets/home/bien-etre-500w.avif 500w,
+              /assets/home/bien-etre-800w.avif 800w,
+              /assets/home/bien-etre-1200w.avif 1200w,
+              /assets/home/bien-etre-1920w.avif 1920w"
+          sizes="100vw"
+          alt="Femme en position de yoga"
+          class="w-full h-full object-cover"
+          loading="eager"
+          decoding="async"
+          fetchpriority="high"
+          width="1920"
+          height="1080"
+        />
+        <div class="absolute inset-0 bg-sage-900/40"></div>
+      </div>
+      <!-- Contenu animé dans HeroSection -->
+      <HeroSection client:load />
+    </section>
     <IntroSection client:load />
 
     <section id="about" aria-label="À propos">

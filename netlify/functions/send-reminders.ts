@@ -22,8 +22,8 @@
  */
 
 import type { Config } from '@netlify/functions';
-import { createElement } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { createElement } from 'react';
 import { Resend } from 'resend';
 import ws from 'ws';
 import AppointmentReminder from '../../src/emails/AppointmentReminder';
@@ -60,14 +60,18 @@ function getParisTomorrowWindow(): { windowStart: Date; windowEnd: Date } {
     hour12: false,
   }).formatToParts(utcMidnight);
 
-  const parisHour   = parseInt(parts.find((p) => p.type === 'hour')!.value,   10) % 24;
-  const parisMinute = parseInt(parts.find((p) => p.type === 'minute')!.value, 10);
+  const parisHour =
+    parseInt(parts.find((p) => p.type === 'hour')!.value, 10) % 24;
+  const parisMinute = parseInt(
+    parts.find((p) => p.type === 'minute')!.value,
+    10,
+  );
   const parisOffsetMs = (parisHour * 60 + parisMinute) * 60_000;
 
   // Minuit Paris (UTC) = minuit UTC de cette date − offset Paris
   const windowStart = new Date(utcMidnight.getTime() - parisOffsetMs);
   // 23h59:59.999 Paris = windowStart + 24 h − 1 ms
-  const windowEnd   = new Date(windowStart.getTime() + 86_400_000 - 1);
+  const windowEnd = new Date(windowStart.getTime() + 86_400_000 - 1);
 
   return { windowStart, windowEnd };
 }
@@ -78,13 +82,16 @@ function getParisTomorrowWindow(): { windowStart: Date; windowEnd: Date } {
 
 export default async function handler(): Promise<void> {
   // 1. Initialiser les clients (process.env — runtime Node.js Netlify)
-  const supabaseUrl             = process.env.SUPABASE_DATABASE_URL;
-  const supabaseServiceRoleKey  = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const resendApiKey            = process.env.RESEND_API_KEY;
-  const fromEmail               = process.env.RESEND_FROM_EMAIL ?? 'OMF Thérapie <contact@omf-therapie.fr>';
+  const supabaseUrl = process.env.SUPABASE_DATABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const resendApiKey = process.env.RESEND_API_KEY;
+  const fromEmail =
+    process.env.RESEND_FROM_EMAIL ?? 'OMF Thérapie <contact@omf-therapie.fr>';
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
-    console.error('[send-reminders] SUPABASE_DATABASE_URL ou SUPABASE_SERVICE_ROLE_KEY manquant — abandon.');
+    console.error(
+      '[send-reminders] SUPABASE_DATABASE_URL ou SUPABASE_SERVICE_ROLE_KEY manquant — abandon.',
+    );
     return;
   }
 
@@ -134,7 +141,10 @@ export default async function handler(): Promise<void> {
     .is('deleted_at', null);
 
   if (pendingError) {
-    console.error('[send-reminders] Erreur Supabase (payment_pending) :', pendingError.message);
+    console.error(
+      '[send-reminders] Erreur Supabase (payment_pending) :',
+      pendingError.message,
+    );
     return;
   }
 
@@ -142,7 +152,9 @@ export default async function handler(): Promise<void> {
   const paymentList = (pendingPayments ?? []) as Appointment[];
 
   console.info(`[send-reminders] ${list.length} rappel(s) J-1 à envoyer.`);
-  console.info(`[send-reminders] ${paymentList.length} rappel(s) paiement en attente à envoyer.`);
+  console.info(
+    `[send-reminders] ${paymentList.length} rappel(s) paiement en attente à envoyer.`,
+  );
 
   if (list.length === 0 && paymentList.length === 0) {
     return;
@@ -151,8 +163,8 @@ export default async function handler(): Promise<void> {
   const formatTime = (iso: string) =>
     new Intl.DateTimeFormat('fr-FR', {
       timeZone: 'Europe/Paris',
-      hour:     '2-digit',
-      minute:   '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
     }).format(new Date(iso));
 
   // 4. Envoyer un email de rappel J-1 à chaque patient confirmé / ayant payé
@@ -163,15 +175,15 @@ export default async function handler(): Promise<void> {
     try {
       const { error } = await resendClient.emails.send({
         from: fromEmail,
-        to:   [appt.patient_email],
+        to: [appt.patient_email],
         subject: `Rappel : votre rendez-vous demain à ${formatTime(appt.scheduled_at)}`,
         react: createElement(AppointmentReminder, {
-          patientName:     appt.patient_name,
+          patientName: appt.patient_name,
           appointmentMode: appt.appointment_mode,
-          scheduledAt:     appt.scheduled_at,
-          duration:        appt.duration,
-          videoLink:       appt.video_link   ?? undefined,
-          cabinetAddress:  undefined, // valeur par défaut dans le template
+          scheduledAt: appt.scheduled_at,
+          duration: appt.duration,
+          videoLink: appt.video_link ?? undefined,
+          cabinetAddress: undefined, // valeur par défaut dans le template
         }),
       });
 
@@ -214,14 +226,14 @@ export default async function handler(): Promise<void> {
     try {
       const { error } = await resendClient.emails.send({
         from: fromEmail,
-        to:   [appt.patient_email],
+        to: [appt.patient_email],
         subject: `⚠️ Action requise : réglez votre séance de demain à ${formatTime(appt.scheduled_at)}`,
         react: createElement(PaymentReminder, {
-          patientName:      appt.patient_name,
-          appointmentType:  appt.appointment_type,
-          scheduledAt:      appt.scheduled_at,
-          duration:         appt.duration,
-          finalPrice:       appt.final_price,
+          patientName: appt.patient_name,
+          appointmentType: appt.appointment_type,
+          scheduledAt: appt.scheduled_at,
+          duration: appt.duration,
+          finalPrice: appt.final_price,
           stripePaymentUrl: appt.stripe_payment_link_url,
         }),
       });
@@ -259,6 +271,6 @@ export default async function handler(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export const config: Config = {
-  /** Chaque jour à 08h00 UTC (= 09h00 hiver / 10h00 été Paris) */
-  schedule: '0 8 * * *',
+  /** Chaque jour à 18h00 UTC (= 19h00 hiver / 20h00 été Paris) */
+  schedule: '0 18 * * *',
 };

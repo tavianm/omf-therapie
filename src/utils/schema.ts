@@ -1,15 +1,15 @@
-import type { BlogPost } from "../types/blog";
 import {
-  COMPANY_NAME,
-  COMPANY_DESCRIPTION,
-  CONTACT_INFO,
-  SOCIAL_LINKS,
   BUSINESS_HOURS,
-  SITE_URL,
-  OWNER_IMAGE,
+  COMPANY_DESCRIPTION,
+  COMPANY_NAME,
+  CONTACT_INFO,
   GBP_PROFILE_URL,
   GEO_COORDINATES,
-} from "../config/global.config";
+  OWNER_IMAGE,
+  SITE_URL,
+  SOCIAL_LINKS,
+} from '../config/global.config';
+import type { BlogPost } from '../types/blog';
 
 export interface FAQItem {
   question: string;
@@ -19,106 +19,106 @@ export interface FAQItem {
 const SAME_AS = [...SOCIAL_LINKS.map((l) => l.url), GBP_PROFILE_URL];
 
 const FRENCH_MONTHS: Record<string, string> = {
-  janvier: "01",
-  février: "02",
-  mars: "03",
-  avril: "04",
-  mai: "05",
-  juin: "06",
-  juillet: "07",
-  août: "08",
-  septembre: "09",
-  octobre: "10",
-  novembre: "11",
-  décembre: "12",
+  janvier: '01',
+  février: '02',
+  mars: '03',
+  avril: '04',
+  mai: '05',
+  juin: '06',
+  juillet: '07',
+  août: '08',
+  septembre: '09',
+  octobre: '10',
+  novembre: '11',
+  décembre: '12',
 };
 
 function parseFrenchDate(frenchDate: string): string {
-  const fallback = new Date().toISOString().split("T")[0];
-  const parts = frenchDate.trim().split(" ");
+  const fallback = new Date().toISOString().split('T')[0];
+  const parts = frenchDate.trim().split(' ');
   if (parts.length !== 3) return fallback;
   const [day, monthName, year] = parts;
   const month = FRENCH_MONTHS[monthName.toLowerCase()];
   if (!month) return fallback;
-  return `${year}-${month}-${day.padStart(2, "0")}`;
+  return `${year}-${month}-${day.padStart(2, '0')}`;
 }
 
 export function buildLocalBusinessSchema(): Record<string, unknown> {
   return {
-    "@context": "https://schema.org",
-    "@type": "HealthAndBeautyBusiness",
-    "@id": `${SITE_URL}/#business`,
+    '@context': 'https://schema.org',
+    '@type': 'HealthAndBeautyBusiness',
+    '@id': `${SITE_URL}/#business`,
     name: COMPANY_NAME,
     url: SITE_URL,
-    priceRange: "€€",
+    priceRange: '€€',
     telephone: CONTACT_INFO.phoneE164,
     email: CONTACT_INFO.email,
     address: {
-      "@type": "PostalAddress",
-      streetAddress: "1086 Av. Albert Einstein",
-      addressLocality: "Montpellier",
-      postalCode: "34000",
-      addressCountry: "FR",
+      '@type': 'PostalAddress',
+      streetAddress: '1086 Av. Albert Einstein',
+      addressLocality: 'Montpellier',
+      postalCode: '34000',
+      addressCountry: 'FR',
     },
     geo: {
-      "@type": "GeoCoordinates",
+      '@type': 'GeoCoordinates',
       latitude: GEO_COORDINATES.latitude,
       longitude: GEO_COORDINATES.longitude,
     },
     openingHoursSpecification: BUSINESS_HOURS.hours.map((h) => ({
-      "@type": "OpeningHoursSpecification",
-      dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
-      opens: h.start.replace("h", ":00"),
-      closes: h.end.replace("h", ":00"),
+      '@type': 'OpeningHoursSpecification',
+      dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+      opens: h.start.replace('h', ':00'),
+      closes: h.end.replace('h', ':00'),
     })),
     description: COMPANY_DESCRIPTION,
     image: OWNER_IMAGE,
     sameAs: SAME_AS,
     aggregateRating: {
-      "@type": "AggregateRating",
-      ratingValue: "5.0", // ⚠️ Placeholder — à confirmer dans Google Business Profile
+      '@type': 'AggregateRating',
+      ratingValue: '5.0', // ⚠️ Placeholder — à confirmer dans Google Business Profile
       ratingCount: 14,
       reviewCount: 14,
-      bestRating: "5",
-      worstRating: "1",
+      bestRating: '5',
+      worstRating: '1',
     },
   };
 }
 
 export function buildPersonSchema(): Record<string, unknown> {
   return {
-    "@context": "https://schema.org",
-    "@type": "Person",
+    '@context': 'https://schema.org',
+    '@type': 'Person',
     name: COMPANY_NAME,
-    jobTitle: "Psychopraticienne",
+    jobTitle: 'Psychopraticienne',
     url: SITE_URL,
     image: OWNER_IMAGE,
     worksFor: {
-      "@id": `${SITE_URL}/#business`,
+      '@id': `${SITE_URL}/#business`,
     },
     hasCredential: [
       {
-        "@type": "EducationalOccupationalCredential",
-        credentialCategory: "Formation TCCE",
+        '@type': 'EducationalOccupationalCredential',
+        credentialCategory: 'Formation TCCE',
         recognizedBy: {
-          "@type": "Organization",
-          name: "Institut de formation en psychothérapie",
+          '@type': 'Organization',
+          name: 'Institut de formation en psychothérapie',
         },
       },
     ],
     alumniOf: [
       {
-        "@type": "EducationalOrganization",
-        name: "Formation en Thérapies Comportementales, Cognitives et Émotionnelles (TCCE)",
+        '@type': 'EducationalOrganization',
+        name: 'Formation en Thérapies Comportementales, Cognitives et Émotionnelles (TCCE)',
       },
     ],
     knowsAbout: [
-      "Thérapie individuelle",
-      "Thérapie de couple",
-      "Thérapie familiale",
-      "Troubles alimentaires",
+      'Thérapie individuelle',
+      'Thérapie de couple',
+      'Thérapie familiale',
+      'Troubles alimentaires',
       "Gestion de l'anxiété",
-      "Développement personnel",
+      'Développement personnel',
     ],
     sameAs: SAME_AS,
   };
@@ -127,8 +127,8 @@ export function buildPersonSchema(): Record<string, unknown> {
 export function buildArticleSchema(post: BlogPost): Record<string, unknown> {
   const datePublished = parseFrenchDate(post.date);
   return {
-    "@context": "https://schema.org",
-    "@type": "Article",
+    '@context': 'https://schema.org',
+    '@type': 'Article',
     headline: post.title,
     description: post.excerpt,
     datePublished,
@@ -137,16 +137,16 @@ export function buildArticleSchema(post: BlogPost): Record<string, unknown> {
     url: `${SITE_URL}/blog/${post.slug}`,
     image: post.imageUrl ?? OWNER_IMAGE,
     author: {
-      "@type": "Person",
+      '@type': 'Person',
       name: post.author.name,
     },
     publisher: {
-      "@type": "Organization",
+      '@type': 'Organization',
       name: COMPANY_NAME,
       url: SITE_URL,
       logo: {
-        "@type": "ImageObject",
-        url: "https://omf-therapie.fr/assets/logo.png",
+        '@type': 'ImageObject',
+        url: 'https://omf-therapie.fr/assets/logo.png',
       },
     },
   };
@@ -158,22 +158,22 @@ export function buildServiceSchema(
   url: string,
 ): Record<string, unknown> {
   return {
-    "@context": "https://schema.org",
-    "@type": "Service",
+    '@context': 'https://schema.org',
+    '@type': 'Service',
     name: serviceName,
     description,
     url,
     provider: {
-      "@type": "HealthAndBeautyBusiness",
+      '@type': 'HealthAndBeautyBusiness',
       name: COMPANY_NAME,
       url: SITE_URL,
       telephone: CONTACT_INFO.phoneE164,
       address: {
-        "@type": "PostalAddress",
-        streetAddress: "1086 Av. Albert Einstein",
-        addressLocality: "Montpellier",
-        postalCode: "34000",
-        addressCountry: "FR",
+        '@type': 'PostalAddress',
+        streetAddress: '1086 Av. Albert Einstein',
+        addressLocality: 'Montpellier',
+        postalCode: '34000',
+        addressCountry: 'FR',
       },
     },
   };
@@ -181,13 +181,13 @@ export function buildServiceSchema(
 
 export function buildFAQSchema(faqs: FAQItem[]): Record<string, unknown> {
   return {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
     mainEntity: faqs.map((faq) => ({
-      "@type": "Question",
+      '@type': 'Question',
       name: faq.question,
       acceptedAnswer: {
-        "@type": "Answer",
+        '@type': 'Answer',
         text: faq.answer,
       },
     })),
@@ -198,10 +198,10 @@ export function buildBreadcrumbSchema(
   items: { name: string; url: string }[],
 ): object {
   return {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
     itemListElement: items.map((item, index) => ({
-      "@type": "ListItem",
+      '@type': 'ListItem',
       position: index + 1,
       name: item.name,
       item: item.url,
@@ -209,19 +209,19 @@ export function buildBreadcrumbSchema(
   };
 }
 
-export function buildWebSiteSchema(): object {
+export function buildWebSiteSchema(): Record<string, unknown> {
   return {
-    "@context": "https://schema.org",
-    "@type": "WebSite",
-    name: "OMF Thérapie — Oriane Montabonnet",
-    url: "https://omf-therapie.fr",
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'OMF Thérapie — Oriane Montabonnet',
+    url: 'https://omf-therapie.fr',
     potentialAction: {
-      "@type": "SearchAction",
+      '@type': 'SearchAction',
       target: {
-        "@type": "EntryPoint",
-        urlTemplate: "https://omf-therapie.fr/blog?q={search_term_string}",
+        '@type': 'EntryPoint',
+        urlTemplate: 'https://omf-therapie.fr/blog?q={search_term_string}',
       },
-      "query-input": "required name=search_term_string",
+      'query-input': 'required name=search_term_string',
     },
   };
 }
@@ -231,35 +231,35 @@ export const FAQ_ITEMS: FAQItem[] = [
     question:
       "Où se situe le cabinet d'Oriane Montabonnet, thérapeute à Montpellier ?",
     answer:
-      "Mon cabinet est situé au 1086 Avenue Albert Einstein, 34000 Montpellier, facilement accessible depuis Castelnau-le-Lez, Lattes, Pérols et les communes voisines.",
+      'Mon cabinet est situé au 1086 Avenue Albert Einstein, 34000 Montpellier, facilement accessible depuis Castelnau-le-Lez, Lattes, Pérols et les communes voisines.',
   },
   {
     question:
-      "Comment prendre rendez-vous chez Oriane Montabonnet, thérapeute à Montpellier ?",
+      'Comment prendre rendez-vous chez Oriane Montabonnet, thérapeute à Montpellier ?',
     answer:
-      "Vous pouvez me contacter par téléphone au 06 50 33 18 53 ou via le formulaire de contact sur omf-therapie.fr.",
+      'Vous pouvez me contacter par téléphone au 06 50 33 18 53 ou via le formulaire de contact sur omf-therapie.fr.',
   },
   {
     question:
-      "Quelles thérapies sont proposées à Montpellier par Oriane Montabonnet ?",
+      'Quelles thérapies sont proposées à Montpellier par Oriane Montabonnet ?',
     answer:
       "Je propose des accompagnements individuels, de couple et familiaux à Montpellier, incluant la gestion du stress, de l'anxiété, le développement personnel et le bien-être émotionnel.",
   },
   {
     question: "Quels sont les tarifs d'une séance de thérapie à Montpellier ?",
     answer:
-      "Les tarifs varient selon le type de séance. Consultez la page Tarifs sur omf-therapie.fr pour connaître les honoraires en vigueur.",
+      'Les tarifs varient selon le type de séance. Consultez la page Tarifs sur omf-therapie.fr pour connaître les honoraires en vigueur.',
   },
   {
     question:
-      "Oriane Montabonnet accompagne-t-elle les patients de Castelnau-le-Lez, Lattes, Pérols et des communes voisines ?",
+      'Oriane Montabonnet accompagne-t-elle les patients de Castelnau-le-Lez, Lattes, Pérols et des communes voisines ?',
     answer:
-      "Oui, mon cabinet de Montpellier est facilement accessible depuis Castelnau-le-Lez, Lattes, Pérols, Juvignac, Grabels et Clapiers.",
+      'Oui, mon cabinet de Montpellier est facilement accessible depuis Castelnau-le-Lez, Lattes, Pérols, Juvignac, Grabels et Clapiers.',
   },
   {
     question:
-      "La thérapie individuelle à Montpellier est-elle remboursée par la sécurité sociale ?",
+      'La thérapie individuelle à Montpellier est-elle remboursée par la sécurité sociale ?',
     answer:
-      "Mes séances ne sont pas remboursées par la Sécurité sociale. Certaines mutuelles proposent cependant une prise en charge partielle — renseignez-vous auprès de la vôtre.",
+      'Mes séances ne sont pas remboursées par la Sécurité sociale. Certaines mutuelles proposent cependant une prise en charge partielle — renseignez-vous auprès de la vôtre.',
   },
 ];
