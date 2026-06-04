@@ -185,7 +185,7 @@ export function BaseLayout({ preview, children }: BaseLayoutProps) {
           <Section style={styles.header}>
             <Text style={styles.headerTitle}>OMF Thérapie</Text>
             <Text style={styles.headerSubtitle}>
-              Oriane Montabonnet · Psychopraticienne
+              Oriane Montabonnet · Thérapeute
             </Text>
           </Section>
 
