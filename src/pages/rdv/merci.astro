@@ -316,20 +316,20 @@ const pageDescription = variant === 'payment-success'
     }
   }
 
-  // Attendre que CookieYes ait mis à jour le consentement
-  document.addEventListener('cookieyes_consent_update', function(e) {
-    const consent = e.detail;
-    // N'envoyer les events analytics que si analytics accordé
-    if (consent?.analytics === 'yes') {
-      sendGAEvents();
-    }
+  // cookie_consent_update arrive AVANT DOMContentLoaded (confirmé Tag Assistant)
+  // On l'écoute sur dataLayer directement via l'event custom
+  document.addEventListener('cookie_consent_update', function() {
+    sendGAEvents();
   });
 
-  // Fallback : si CookieYes a déjà répondu (cookie existant / rechargement)
-  // CookieYes déclenche aussi 'cookieyes_load' avec le consentement courant
-  document.addEventListener('cookieyes_load', function(e) {
-    const consent = e.detail?.categories;
-    if (consent?.analytics === true) {
+  // Fallback : si l'event a déjà été déclenché avant que ce script soit parsé
+  // (ne devrait pas arriver car ce script est inline après le body, mais sécurité)
+  document.addEventListener('DOMContentLoaded', function() {
+    // Vérifier si consent update a déjà eu lieu dans la dataLayer
+    const alreadyGranted = (window.dataLayer || []).some(function(entry) {
+      return entry.event === 'cookie_consent_update';
+    });
+    if (alreadyGranted) {
       sendGAEvents();
     }
   });
