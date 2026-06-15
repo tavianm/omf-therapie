@@ -28,8 +28,6 @@ const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 <!DOCTYPE html>
 <html lang="fr">
   <head>
-    <script id="cookieyes" type="text/javascript" src="https://cdn-cookieyes.com/client_data/eca55ddc4625974185ff383e357080fb/script.js"></script>
-
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#ffffff" />
@@ -73,12 +71,24 @@ const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 
     {import.meta.env.PROD && (
       <>
-      {/* Google Consent Mode v2 defaults — analytics granted (_ga cookie set), advertising denied */}
+       {/* 1. Consent Mode v2 — defaults AVANT tout le reste */}
         <script is:inline>
-          window.dataLayer = window.dataLayer || [];
-          window.gtag = function(){ window.dataLayer.push(arguments); };
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){ window.dataLayer.push(arguments); }
+            gtag('consent', 'default', {
+              analytics_storage: 'denied',
+              ad_storage: 'denied',
+              ad_user_data: 'denied',
+              ad_personalization: 'denied',
+              wait_for_update: 500,  // attend 500ms que CookieYes se charge
+            });
           gtag("set", "ads_data_redaction", true);
           gtag("set", "url_passthrough", false);
+        </script>
+
+      {/* 2. CookieYes — doit venir ICI, AVANT GA4 */}
+        <script id="cookieyes" type="text/javascript"
+          src="https://cdn-cookieyes.com/client_data/eca55ddc4625974185ff383e357080fb/script.js">
         </script>
         {/* GA4 — loaded directly for reliable cookie+hit delivery */}
         <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${import.meta.env.PUBLIC_GA4_ID}`} />

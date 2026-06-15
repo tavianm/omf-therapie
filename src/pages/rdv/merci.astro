@@ -279,51 +279,60 @@ const pageDescription = variant === 'payment-success'
   </main>
 
   {import.meta.env.PROD && (
-  <script is:inline define:vars={{ variant, paramType, paramMode, stripeSessionId }}>
-    const VALUE_BY_TYPE = { individual: 65, couple: 90, family: 100 };
-    const estimatedValue = VALUE_BY_TYPE[paramType] ?? 65;
+<script is:inline define:vars={{ variant, paramType, paramMode, stripeSessionId }}>
+  const VALUE_BY_TYPE = { individual: 65, couple: 90, family: 100 };
+  const estimatedValue = VALUE_BY_TYPE[paramType] ?? 65;
+  let eventsSent = false;
 
-    function sendGAEvents() {
-      if (typeof gtag === 'undefined') return;
+  function sendGAEvents() {
+    if (typeof gtag === 'undefined' || eventsSent) return;
+    eventsSent = true;
 
-      if (variant === 'request-submitted') {
-        // Primary Google Ads conversion: booking request submitted
-        gtag('event', 'generate_lead', {
-          value: estimatedValue,
-          currency: 'EUR',
-          appointment_type: paramType,
-          appointment_mode: paramMode,
-        });
-      } else if (variant === 'payment-success') {
-        // Primary Google Ads conversion: Stripe payment confirmed
-        gtag('event', 'purchase', {
-          transaction_id: stripeSessionId ?? `rdv-${Date.now()}`,
-          value: estimatedValue,
-          currency: 'EUR',
-          items: [{
-            item_id: paramType,
-            item_name: `Thérapie ${paramType}`,
-            item_category: 'therapie',
-            price: estimatedValue,
-            quantity: 1,
-          }],
-        });
-      } else if (variant === 'request-confirmed') {
-        // Info event: appointment confirmed by therapist (no conversion value)
-        gtag('event', 'appointment_confirmed', {
-          appointment_type: paramType,
-          appointment_mode: paramMode,
-        });
-      }
+    if (variant === 'request-submitted') {
+      gtag('event', 'generate_lead', {
+        value: estimatedValue,
+        currency: 'EUR',
+        appointment_type: paramType,
+        appointment_mode: paramMode,
+      });
+    } else if (variant === 'payment-success') {
+      gtag('event', 'purchase', {
+        transaction_id: stripeSessionId ?? `rdv-${Date.now()}`,
+        value: estimatedValue,
+        currency: 'EUR',
+        items: [{
+          item_id: paramType,
+          item_name: `Thérapie ${paramType}`,
+          item_category: 'therapie',
+          price: estimatedValue,
+          quantity: 1,
+        }],
+      });
+    } else if (variant === 'request-confirmed') {
+      gtag('event', 'appointment_confirmed', {
+        appointment_type: paramType,
+        appointment_mode: paramMode,
+      });
     }
+  }
 
-    // gtag déjà prêt (ex: navigation retour via bfcache)
-    if (typeof gtag !== 'undefined') {
+  // Attendre que CookieYes ait mis à jour le consentement
+  document.addEventListener('cookieyes_consent_update', function(e) {
+    const consent = e.detail;
+    // N'envoyer les events analytics que si analytics accordé
+    if (consent?.analytics === 'yes') {
       sendGAEvents();
-    } else {
-      // Attendre que le script GA soit chargé
-      window.addEventListener('load', sendGAEvents, { once: true });
     }
-  </script>
+  });
+
+  // Fallback : si CookieYes a déjà répondu (cookie existant / rechargement)
+  // CookieYes déclenche aussi 'cookieyes_load' avec le consentement courant
+  document.addEventListener('cookieyes_load', function(e) {
+    const consent = e.detail?.categories;
+    if (consent?.analytics === true) {
+      sendGAEvents();
+    }
+  });
+</script>
 )}
 </Layout>
