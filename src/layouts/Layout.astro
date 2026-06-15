@@ -73,6 +73,13 @@ const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 
     {import.meta.env.PROD && (
       <>
+      {/* Google Consent Mode v2 defaults — analytics granted (_ga cookie set), advertising denied */}
+        <script is:inline>
+          window.dataLayer = window.dataLayer || [];
+          window.gtag = function(){ window.dataLayer.push(arguments); };
+          gtag("set", "ads_data_redaction", true);
+          gtag("set", "url_passthrough", false);
+        </script>
         {/* GA4 — loaded directly for reliable cookie+hit delivery */}
         <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${import.meta.env.PUBLIC_GA4_ID}`} />
         <script is:inline define:vars={{ ga4Id: import.meta.env.PUBLIC_GA4_ID }}>
