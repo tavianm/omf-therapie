@@ -1,0 +1,51 @@
+---
+title: Gestion manuelle des plages horaires pour rendez-vous au cabinet
+issue: 58
+status: approved
+tier: F-full
+date: 2026-06-17
+---
+
+## Problem
+
+Actuellement, le système de prise de rendez-vous en ligne ne permet des rendez-vous au cabinet que les mercredis. Cette restriction est insuffisante pour la pratique — le thérapeute a besoin de flexibilité pour ajouter ponctuellement des créneaux disponibles sur d'autres jours en fonction de son emploi du temps.
+
+L'absence de cette fonctionnalité force les patients à attendre le prochain mercredi pour un rendez-vous en cabinet, ce qui peut retarder la prise en charge. De plus, le thérapeute ne peut pas optimiser son temps en ajoutant des créneaux de dernière minute.
+
+## Who
+
+- **Primary:** La psychopraticienne (Oriane Montabonnet) — gère les disponibilités depuis l'interface admin
+- **Secondary:** Les patients — bénéficient de créneaux de RDV supplémentaires pour le cabinet
+
+## Constraints
+
+- **Technique :** Site Astro 5 statique — pas de backend serveur. La persistance doit passer par une solution compatible (fichier de config, CMS headless, ou service externe)
+- **Accessibilité :** WCAG 2.1 AA obligatoire — interface de gestion accessible
+- **Performance :** Architecture Islands — minimiser le JS chargé
+- **Maintenance :** Solution simple à maintenir — éviter l'over-engineering
+
+## Out of Scope
+
+- Système de prise de RDV complet (existant, hors scope)
+- Gestion automatique/récurrente des plages horaires
+- Synchronisation avec un agenda externe (Google Calendar, etc.)
+- Gestion des rendez-vous en ligne/visio (seulement cabinet)
+
+## Premise Validity
+
+**Success in 6 months:** Le thérapeute peut gérer les plages horaires sans friction technique — ajouter/modifier/supprimer des créneaux en quelques clics
+
+**Failure in 6 months:** Plus de 50% des créneaux ajoutés doivent être corrigés ou supprimés — indique une mauvaise UX ou des bugs
+
+**Simplest alternative:** Permettre uniquement d'ajouter des jours complets (pas matin/après-midi)
+**Why not simplest:** Le thérapeute a besoin de granularité pour la demi-journée — peut être disponible seulement le matin ou seulement l'après-midi
+
+## Complexity
+
+**Tier: F-full** — Multi-domaines (UI + backend + persistence) avec CRUD complet et interface de sélection complexe
+
+**Signals observed:**
+- UI de sélection complexe (jour + période matin/après-midi)
+- CRUD complet (create, read, update, delete)
+- Couche de persistance nécessaire (compatible avec site statique)
+- Interface de gestion (liste + actions d'édition/suppression)
