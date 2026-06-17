@@ -1,0 +1,163 @@
+---
+title: Gestion manuelle des plages horaires — Analyse technique
+description: Analyse pour ajout manuel de plages éligibles RDV cabinet
+issue: 58
+date: 2026-06-17
+---
+
+## Source
+
+Issue #58: "Actuellement, uniquement les mercredis sont éligibles à la prise de rendez-vous au cabinet. Le thérapeute aurait besoin de rajouter manuellement des plages de temps éligibles au rdv au cabinet."
+
+## Problem
+
+Code actuel restreint les RDV cabinet au mercredi uniquement (ligne 342-346 dans `src/lib/google-calendar.ts`):
+
+```typescript
+// Présentiel : uniquement le mercredi (ISO 3)
+if (mode === 'in-person' && !isWednesday) {
+  continue;
+}
+```
+
+Cela limite la flexibilité : pas de RDV cabinet sur d'autres jours même si disponible.
+
+## Outcome
+
+Thérapeute peut ajouter/modifier/supprimer des plages horaires éligibles pour RDV cabinet. Le système de prise de RDV utilise ces plages + Google Calendar Freebusy pour afficher les créneaux.
+
+## Appetite
+
+**1 semaine** — implémentation rapide, scope minimal.
+
+## Shapes
+
+### Shape 1: Fichier de config (JSON/TS)
+
+**Description:** Ajouter `src/config/manual-slots.ts` avec tableau de jours+periodes.
+
+**Trade-offs:**
+- Pro: Simple, pas de DB additionnelle
+- Con: Rebuild + deploy nécessaire à chaque changement (commit → CI → Netlify)
+
+**Rough scope:** XS
+
+### Shape 2: Supabase table + UI admin ✓
+
+**Description:** Nouvelle table `manual_time_slots` + composant React dans `/mes-rdvs`.
+
+**Trade-offs:**
+- Pro: Dynamique, pas de rebuild, utilise infra existante
+- Con: +1 table, UI admin à construire
+
+**Rough scope:** S
+
+### Shape 3: CMS headless
+
+**Description:** Strapi/Contentful pour gestion des slots.
+
+**Trade-offs:**
+- Pro: UI admin prête
+- Con: Overkill, dépendance externe, coût
+
+**Rough scope:** M
+
+## Fit Check
+
+**Selected: Shape 2 (Supabase table)**
+
+- Site déjà utilise Supabase pour `appointments`
+- UI admin existe déjà (`/mes-rdvs`)
+- 1 semaine → Shape 1 trop limité (rebuild), Shape 3 trop complexe
+
+**Eliminated:**
+- Shape 1: Rebuild requis non-viable pour usage fréquent
+- Shape 3: Overkill, ajout de dépendance lourde
+
+## Contrainte Alignment
+
+| Contrainte | Impact sur Shape 2 |
+|------------|-------------------|
+| Site statique | ✓ Supabase API via serverless functions |
+| WCAG 2.1 AA | UI admin accessible (tabs, ARIA, contrast) |
+| Islands Architecture | ✓ Composant React island avec `client:load` |
+
+## Architecture Sketch
+
+**Components:**
+- `src/lib/manual-slots.ts` — CRUD functions (Supabase)
+- `src/types/manual-slots.ts` — TypeScript types
+- `src/components/admin/TimeSlotManager.tsx` — React island
+- `src/pages/api/admin/time-slots/*.ts` — API endpoints (CRUD)
+
+**Data flow:**
+1. Admin UI → API endpoint (`/api/admin/time-slots`)
+2. API → Supabase (`manual_time_slots` table)
+3. `generateCandidateSlots` modifié → lit slots manuels depuis Supabase
+4. Booking flow utilise slots filtrés
+
+**State ownership:**
+- Server: `manual_time_slots` table (source of truth)
+- Client: React island state transient (optimistic UI)
+
+**Integration:**
+- `src/lib/google-calendar.ts` — `generateCandidateSlots()` modifié
+- Supabase migration — nouvelle table
+- Admin auth — déjà existante (`isAdminSession`)
+
+## Files Impacted
+
+| File | Action |
+|------|--------|
+| `src/lib/google-calendar.ts` | Modify `generateCandidateSlots()` |
+| `supabase/migrations/` | Add `manual_time_slots` table + RLS |
+| `src/types/manual-slots.ts` | New file |
+| `src/lib/manual-slots.ts` | New file (Supabase CRUD + cache invalidation) |
+| `src/components/admin/TimeSlotManager.tsx` | New file (UI, `client:load`) |
+| `src/pages/api/admin/time-slots/index.ts` | New file (GET/POST) |
+| `src/pages/mes-rdvs.astro` | Add TimeSlotManager island |
+
+## Table Schema (manual_time_slots)
+
+```sql
+CREATE TABLE manual_time_slots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slot_date DATE NOT NULL,           -- YYYY-MM-DD
+  period TEXT NOT NULL,              -- 'morning' | 'afternoon' | 'all_day'
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ NULL        -- soft delete
+);
+
+-- Index for date range queries
+CREATE INDEX idx_manual_slots_date ON manual_time_slots(slot_date) WHERE deleted_at IS NULL;
+
+-- RLS: seul admin peut CRUD
+ALTER TABLE manual_time_slots ENABLE ROW LEVEL SECURITY;
+CREATE POLICY admin_full_access ON manual_time_slots
+  FOR ALL USING (auth.uid() IN (SELECT id FROM users WHERE role = 'admin'));
+```
+
+## Cache Invalidation
+
+CRUD sur `manual_time_slots` → invalidation cache disponibilité:
+
+```typescript
+// src/lib/manual-slots.ts
+async function invalidateSlotCache() {
+  // Supabase: clear cache entries avec prefix 'availability:'
+  await supabaseAdmin.from('cache_keys').delete().like('key', 'availability:%');
+}
+```
+
+Appelé après POST/PATCH/DELETE sur time-slots API.
+
+## Data Flow Complété
+
+1. **Admin UI** → POST `/api/admin/time-slots` → Supabase
+2. **Cache invalidation** → clear availability cache
+3. **Booking flow** → GET `/api/availability?mode=in-person`
+4. **`generateCandidateSlots()`** modifié:
+   - Fetch `manual_time_slots` depuis Supabase
+   - Merge avec logique mercredi existante (union)
+   - Return slots candidats augmentés
