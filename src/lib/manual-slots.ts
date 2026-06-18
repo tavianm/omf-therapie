@@ -91,17 +91,31 @@ export async function deleteManualSlot(id: string): Promise<void> {
 /**
  * Invalidate availability cache
  * Deletes all cache keys matching 'availability:%' to force refresh
+ * NOTE: Gracefully handles missing cache_keys table for compatibility
  */
 export async function invalidateSlotCache(): Promise<void> {
-  const { error } = await supabaseAdmin
-    .from('cache_keys')
-    .delete()
-    .like('key', 'availability:%');
+  try {
+    const { error } = await supabaseAdmin
+      .from('cache_keys')
+      .delete()
+      .like('key', 'availability:%');
 
-  if (error) {
-    console.error('[invalidateSlotCache] Failed to clear cache:', error);
-    throw new Error(`Failed to invalidate slot cache: ${error.message}`);
+    if (error) {
+      // PGRST205 = table not found in schema cache (table doesn't exist)
+      // This is acceptable - cache invalidation is optional for functionality
+      if (error.code === 'PGRST205') {
+        console.warn('[invalidateSlotCache] cache_keys table not found - cache invalidation skipped (non-blocking)');
+        return;
+      }
+      console.error('[invalidateSlotCache] Failed to clear cache:', error);
+      throw new Error(`Failed to invalidate slot cache: ${error.message}`);
+    }
+
+    console.log('[invalidateSlotCache] Cache invalidated successfully');
+  } catch (err) {
+    // Handle any unexpected errors gracefully
+    console.error('[invalidateSlotCache] Unexpected error during cache invalidation:', err);
+    // Don't throw - cache invalidation failure should not block slot creation
+    console.warn('[invalidateSlotCache] Continuing despite cache invalidation failure (non-blocking)');
   }
-
-  console.log('[invalidateSlotCache] Cache invalidated successfully');
 }

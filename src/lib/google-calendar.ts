@@ -386,7 +386,19 @@ export async function generateCandidateSlots(
           return isManualAllDay || isManualAfternoon || (isWednesday && !isManualAllDay && !isManualMorning && !isManualAfternoon);
         }
 
-        return true;
+        // Si ce n'est pas mercredi ET qu'il y a des restrictions manuelles, vérifier chaque période
+        if (!isWednesday && (isManualAllDay || isManualMorning || isManualAfternoon)) {
+          // all_day: toutes les périodes sont autorisées
+          if (isManualAllDay) return true;
+          // morning: seule la période matin est autorisée
+          if (period.startHour === 8 && isManualMorning) return true;
+          // afternoon: seule la période après-midi est autorisée
+          if (period.startHour === 14 && isManualAfternoon) return true;
+          // autres périodes non autorisées
+          return false;
+        }
+
+        return false;
       });
 
       // Génère les créneaux par plage horaire
