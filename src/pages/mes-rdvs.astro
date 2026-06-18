@@ -15,6 +15,7 @@ import { AppointmentCard } from '../components/admin/AppointmentCard';
 import { AdminCreateButton } from '../components/admin/AdminCreateButton';
 import GoogleCalendarStatus from '../components/admin/GoogleCalendarStatus';
 import { PatientList } from '../components/admin/PatientList';
+import { TimeSlotManager } from '../components/admin/TimeSlotManager';
 import { auth } from '../lib/auth';
 import { isAdminSession } from '../lib/authz';
 import { supabaseAdmin } from '../lib/supabase';
@@ -158,6 +159,21 @@ for (const appt of appointments) {
           >
             Patients
           </button>
+          <button
+            type="button"
+            role="tab"
+            id="timeslots-tab"
+            data-tab="timeslots"
+            aria-selected="false"
+            aria-controls="timeslots-tab-panel"
+            class="
+              tab-btn rounded-lg px-4 py-2 text-sm font-medium font-sans transition-colors
+              text-sage-600 hover:text-mint-700
+              focus:outline-none focus:ring-2 focus:ring-mint-400
+            "
+          >
+            Plages horaires
+          </button>
         </div>
       </div>
 
@@ -243,6 +259,15 @@ for (const appt of appointments) {
         <PatientList client:load />
       </section>
 
+      <section
+        id="timeslots-tab-panel"
+        role="tabpanel"
+        aria-labelledby="timeslots-tab"
+        class="hidden"
+      >
+        <TimeSlotManager client:load />
+      </section>
+
     </div>
   </main>
 </Layout>
@@ -307,12 +332,13 @@ for (const appt of appointments) {
     });
   });
 
-  // ── Onglets Rendez-vous / Patients ──────────────────────────────────────────
+  // ── Onglets Rendez-vous / Patients / Plages horaires ─────────────────────────────
   const tabButtons = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
   const appointmentsTabPanel = document.getElementById('appointments-tab-panel');
   const patientsTabPanel = document.getElementById('patients-tab-panel');
+  const timeslotsTabPanel = document.getElementById('timeslots-tab-panel');
 
-  function setActiveTab(tab: 'appointments' | 'patients') {
+  function setActiveTab(tab: 'appointments' | 'patients' | 'timeslots') {
     tabButtons.forEach((button) => {
       const isActive = button.dataset['tab'] === tab;
       button.setAttribute('aria-selected', String(isActive));
@@ -327,11 +353,12 @@ for (const appt of appointments) {
 
     appointmentsTabPanel?.classList.toggle('hidden', tab !== 'appointments');
     patientsTabPanel?.classList.toggle('hidden', tab !== 'patients');
+    timeslotsTabPanel?.classList.toggle('hidden', tab !== 'timeslots');
     sessionStorage.setItem('mes-rdvs-tab', tab);
   }
 
   const savedTab = sessionStorage.getItem('mes-rdvs-tab');
-  if (savedTab === 'appointments' || savedTab === 'patients') {
+  if (savedTab === 'appointments' || savedTab === 'patients' || savedTab === 'timeslots') {
     setActiveTab(savedTab);
   } else {
     setActiveTab('appointments');
@@ -339,8 +366,10 @@ for (const appt of appointments) {
 
   tabButtons.forEach((button) => {
     button.addEventListener('click', () => {
-      const tab = button.dataset['tab'] === 'patients' ? 'patients' : 'appointments';
-      setActiveTab(tab);
+      const tabName = button.dataset['tab'];
+      if (tabName === 'appointments' || tabName === 'patients' || tabName === 'timeslots') {
+        setActiveTab(tabName);
+      }
     });
   });
 </script>

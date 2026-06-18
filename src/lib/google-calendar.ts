@@ -8,6 +8,7 @@
 import { google, type Auth, type calendar_v3 } from 'googleapis';
 import { supabaseAdmin } from './supabase.js';
 import { sendEmail } from './resend.js';
+import { fetchManualSlots } from './manual-slots.js';
 
 // ---------------------------------------------------------------------------
 // Erreur typée
@@ -311,6 +312,14 @@ function startOfParisDay(date: Date): Date {
   return parisLocalToUTC(year, month, day, 0, 0);
 }
 
+/**
+ * Formate une date au format YYYY-MM-DD (heure locale Paris)
+ */
+function formatDate(date: Date): string {
+  const { year, month, day } = toParisLocalParts(date);
+  return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+}
+
 // ---------------------------------------------------------------------------
 // Génération des créneaux candidats
 // ---------------------------------------------------------------------------
@@ -320,15 +329,21 @@ function startOfParisDay(date: Date): Date {
  * respectant les horaires de travail, le filtre mercredi pour le présentiel
  * et le délai minimum de 24h.
  */
-export function generateCandidateSlots(
+export async function generateCandidateSlots(
   startDate: Date,
   endDate: Date,
   duration: AppointmentDuration,
   mode: AppointmentMode,
-): TimeSlot[] {
+): Promise<TimeSlot[]> {
   const slots: TimeSlot[] = [];
   const nowMs = Date.now();
   const minStart = new Date(nowMs + MIN_NOTICE_MS);
+
+  // Fetch manual slots for the date range
+  const manualSlots = await fetchManualSlots(startDate, endDate);
+  const manualDates = new Map(
+    manualSlots.map(s => [`${s.slot_date}:${s.period}`, true])
+  );
 
   // Itère jour par jour depuis startDate jusqu'à endDate
   let currentDay = startOfParisDay(startDate);
@@ -338,17 +353,44 @@ export function generateCandidateSlots(
 
     // Jours ouvrés uniquement (lundi-vendredi)
     if (weekday >= 1 && weekday <= 5) {
-      // Présentiel : uniquement le mercredi (ISO 3)
+      // Présentiel : uniquement le mercredi (ISO 3) OU les dates manuelles
       const isWednesday = weekday === 3;
-      if (mode === 'in-person' && !isWednesday) {
+      const dateKey = formatDate(currentDay);
+      const isManualAllDay = manualDates.has(`${dateKey}:all_day`);
+      const isManualMorning = manualDates.has(`${dateKey}:morning`);
+      const isManualAfternoon = manualDates.has(`${dateKey}:afternoon`);
+
+      if (mode === 'in-person' && !isWednesday && !isManualAllDay && !isManualMorning && !isManualAfternoon) {
         currentDay = new Date(currentDay.getTime() + 24 * 60 * 60 * 1000);
         continue;
       }
 
       const { year, month, day } = toParisLocalParts(currentDay);
 
+      // Filtre les plages horaire selon les paramètres manuels
+      const workPeriods = WORK_PERIODS.filter(period => {
+        // Si c'est un mercredi sans restriction manuelle, on garde tout
+        if (isWednesday && !isManualAllDay && !isManualMorning && !isManualAfternoon) {
+          return true;
+        }
+
+        // Morning period (8-12)
+        if (period.startHour === 8) {
+          // Autorisé si all_day OU morning OU (no manual + Wednesday)
+          return isManualAllDay || isManualMorning || (isWednesday && !isManualAllDay && !isManualMorning && !isManualAfternoon);
+        }
+
+        // Afternoon period (14-19)
+        if (period.startHour === 14) {
+          // Autorisé si all_day OU afternoon OU (no manual + Wednesday)
+          return isManualAllDay || isManualAfternoon || (isWednesday && !isManualAllDay && !isManualMorning && !isManualAfternoon);
+        }
+
+        return true;
+      });
+
       // Génère les créneaux par plage horaire
-      for (const period of WORK_PERIODS) {
+      for (const period of workPeriods) {
         let slotHour = period.startHour;
         let slotMinute = 0;
 
@@ -474,7 +516,7 @@ export async function getAvailableSlots(
     throw new Error('Configuration manquante : GOOGLE_CALENDAR_ID non défini.');
   }
 
-  const candidates = generateCandidateSlots(startDate, endDate, duration, mode);
+  const candidates = await generateCandidateSlots(startDate, endDate, duration, mode);
 
   if (candidates.length === 0) {
     return [];
