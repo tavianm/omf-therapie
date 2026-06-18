@@ -1,9 +1,9 @@
 export const prerender = false;
 
 import type { APIRoute } from 'astro';
-import { auth } from '../../../../../lib/auth';
-import { isAdminSession } from '../../../../../lib/authz';
-import { updateManualSlot, deleteManualSlot, invalidateSlotCache } from '../../../../../lib/manual-slots';
+import { auth } from '../../../../lib/auth';
+import { isAdminSession } from '../../../../lib/authz';
+import { updateManualSlot, deleteManualSlot, invalidateSlotCache } from '../../../../lib/manual-slots';
 import type { UpdateManualSlotData } from '@/types/manual-slots';
 
 function errorResponse(status: number, message: string): Response {

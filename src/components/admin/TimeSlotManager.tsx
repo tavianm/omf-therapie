@@ -22,7 +22,7 @@ function getPanelId(slotId: string): string {
 	return `slot-panel-${slotId}`;
 }
 
-export default function TimeSlotManager() {
+export function TimeSlotManager() {
 	const [slots, setSlots] = useState<ManualTimeSlot[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
