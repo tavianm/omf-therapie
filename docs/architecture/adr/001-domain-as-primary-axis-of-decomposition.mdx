@@ -1,0 +1,139 @@
+---
+title: "ADR-001: Axis of Decomposition"
+description: Primary axis chosen for system variation — domain, not layer — prevents N×M drift as the therapy practice adds capabilities
+axial: true
+---
+
+## Status
+
+Accepted
+
+## Context
+
+OMF Therapie is a single-app Astro 5 + TypeScript therapy-practice website (not a monorepo). The system varies along several dimensions, and without an explicit primary axis the codebase risks drifting along the wrong one — duplicating cross-cutting concerns (auth, persistence, email, rate-limiting) once per layer instead of composing them once per domain.
+
+This system varies along **3** axes:
+
+| Axis | Instances (now) | Growth (12m) |
+|------|-----------------|--------------|
+| Domain (business capability) | appointment/booking, payment (stripe), calendar (google), email (resend), auth, admin/patient, blog, contact, services, navigation, pricing, manual-slots, rate-limit, analytics, secure-links, ics | Moderate — new capabilities land as new slices (e.g. telehealth, intake forms, patient portal, newsletter). Expect +3 to +5. |
+| Layer (Astro architectural stratum) | pages/, pages/api/ (SSR endpoints), components/ (home, blog, contact, booking, admin, islands, layout, navigation, pricing, common), lib/ (server libs), hooks/, emails/, utils/, types/, config/ | Stable — fixed by the Astro/SIA convention; layers are scaffolding, they do not multiply. |
+| Transport/adapter (external integration) | Supabase (pg + better-auth), Stripe, Google Calendar, Nodemailer/Resend, EmailJS, Google Analytics 4, Netlify, CookieYes | Slow — each existing adapter already lives as one `src/lib/*` module. New integrations are rare and land as one lib file. |
+
+### Evidence from the code
+
+- `src/lib/` modules are **named by domain**, not by layer: `google-calendar.ts`, `stripe.ts`, `resend.ts`, `auth.server.ts`, `manual-slots.ts`, `pricing.ts`, `secure-links.ts`, `appointment-conflicts.ts`, `calendar-cache.ts`, `ics.ts`. None are named `controller`, `service`, or `repository`.
+- `src/pages/api/` endpoints cluster by domain: `api/appointments/`, `api/admin/appointments/`, `api/admin/time-slots/`, `api/admin/google-oauth/`, `api/admin/patients.ts`, `api/calendar/invite/`, `api/contact.ts`, `api/stripe-webhook.ts`, `api/availability.ts`, `api/auth/[...all].ts`.
+- `src/types/` is domain-partitioned: `appointment.ts`, `blog.ts`, `contact.ts`, `footer-links.ts`, `manual-slots.ts`, `navigation.ts`, `patient.ts`.
+- Migrations are sequenced by domain event: `004_google_calendar.sql`, `005_flexible_duration.sql`, `007_manual_time_slots.sql`, `008_cache_keys.sql`.
+- Git history confirms: every feature branch (#42 patients, #47 local SEO, #52 calendar re-auth, #54 regenerate calendar, #58 manual time slots) **lands as one domain-shaped slice** — a lib + types + api endpoints + components — and never adds a new architectural layer.
+- Layers do **not** multiply: Astro provides `pages/`, `components/`, `layouts/`, and we extend with `lib/`, `hooks/`, `emails/`, `utils/`, `types/`, `config/`. Adding a capability does not require a new top-level directory.
+
+Reference: `shared/references/axial-decomposition.md`.
+
+## Options Considered
+
+### Option: `layer` as primary
+- **Pros:** Maps 1:1 to Astro's file-based conventions; familiar to anyone who has read the framework docs; stable set of strata (pages, components, lib, hooks).
+- **Cons:** Layers are scaffolding, not capabilities. Choosing layer as primary would push new features to be added "across all layers" — encouraging the exact N×M drift the axial decision exists to prevent (every new domain would copy auth, persistence, and email concerns into each layer). Layers are owned by the framework, not by the practice's business needs.
+- **Drift signature:** A new capability (e.g. "intake forms") would manifest as one new file in each of `pages/`, `lib/`, `components/`, `hooks/`, `types/` — with concern logic (validation, persistence, auth) re-implemented per layer instead of composed from existing domain primitives.
+
+### Option: `transport/adapter` as primary
+- **Pros:** Each external integration (Supabase, Stripe, Google Calendar, Resend) is already isolated as a single `src/lib/*` module, so the seam is clean.
+- **Cons:** Adapters change rarely — the practice has not added a new integration in the last several feature cycles, and adapters are already leaf modules. Promoting them to primary would over-rotate on infrastructure and ignore the actual growth axis (business capabilities). New adapters are a side-effect of a new domain, not the primary driver.
+- **Drift signature:** Adapter-primarism would encourage adapter-per-domain duplication (e.g. a second Stripe helper for a different business flow) rather than composing the single `src/lib/stripe.ts`.
+
+### Option: `domain` as primary (CHOSEN)
+- **Pros:** Matches how the code is already organised (`lib/`, `types/`, `pages/api/`, `components/` all cluster by domain). Matches how the team plans work (one feature branch per domain). Domains compose: `stripe-webhook.ts` imports `stripe` + `resend` + `ics` + `secure-links` + `google-calendar` + `supabase` — six domain primitives, one endpoint. Adding a capability grows the system by one row, not by N×M cells.
+- **Cons:** Cross-domain shared concerns (auth, rate-limiting, secure-links, analytics) live as their own "infrastructure" domains and must be kept infrastructure-shaped — otherwise they leak business logic. A domain that grows too large (e.g. `google-calendar.ts` at 830 lines) can become an intra-domain god-module and needs internal decomposition.
+- **Drift signature:** Concern duplication across domains — e.g. auth/rate-limit logic re-implemented inside two different domain endpoints rather than imported from `src/lib/auth.ts` / `src/lib/rate-limit.ts`.
+
+## Decision
+
+**Primary axis:** `domain`
+**Reason category:** Stability (reinforced by composition)
+**Rationale:** The Astro layer set is fixed framework scaffolding — it does not multiply. Adapters change rarely and are already leaf modules. Domains are the axis that actually grows: every feature the practice ships (#42 patients, #47 SEO, #52/#54 calendar, #58 manual slots) lands as one new domain slice composed from existing layer primitives. Picking `domain` as primary means extending the system grows it by +1 row, not by ×M cells.
+
+When extending the system:
+- New `domain` instance → grows by 1 row (one lib + types + api endpoint + component), composing existing layer primitives. Does **not** require new layers or duplicated cross-cutting concerns.
+- New non-primary instance (layer or adapter) → composes via existing domain primitives. A new adapter lands as one `src/lib/*` module; a new Astro layer is rare and framework-driven, not feature-driven.
+
+### Classification of current modules by role
+
+- **Business domains** (multiply over time): `appointment` (booking, conflicts, manual-slots), `payment` (stripe, pricing), `calendar` (google-calendar, calendar-cache, ics), `email` (resend, emails/), `patient`/`admin`, `blog`, `contact`, `services`.
+- **Infrastructure domains** (shared cross-cutting, must stay concern-shaped): `auth` (auth, auth.server, auth.client, authz), `supabase` (persistence), `rate-limit`, `secure-links`, `analytics`.
+
+## Consequences
+
+### Positive
+- New capabilities compose from existing primitives instead of duplicating them — observed today in `stripe-webhook.ts`, `appointments/[id].ts`, and `admin/appointments/index.ts` all reusing the same `stripe`, `resend`, `ics`, `secure-links`, `google-calendar` libs.
+- Directory structure (`lib/`, `types/`, `pages/api/`, `components/`) already matches the chosen axis — no refactor required to align code with this decision.
+- Feature-branch planning is natural: one branch = one domain slice.
+- The fixed Astro layer set is not disturbed; layer-level changes remain framework-driven and rare.
+
+### Negative (Expected Debt)
+- **Cross-domain shared concerns can leak business logic** — `auth`, `rate-limit`, `secure-links`, `analytics` must be kept as pure infrastructure. If they accumulate appointment-specific logic they stop being composable across domains. Mitigation: keep these modules free of domain types; if a domain needs custom behaviour, pass it in rather than importing it into the infra lib.
+- **Large domains risk intra-domain god-modules** — `src/lib/google-calendar.ts` is already 830 lines (approaching the reference's `god-adapter` threshold of 300). Mitigation: when a domain lib exceeds ~300 lines, split it by sub-capability (e.g. `google-calendar/oauth.ts`, `google-calendar/events.ts`, `google-calendar/errors.ts`) — internal decomposition, not a new primary axis.
+- **No formal domain boundary type** — there is no `src/domains/{name}/` aggregate root; domains are spread across `lib/`, `types/`, `pages/api/`, `components/`. Adding a domain touches several directories. Mitigation: accepted debt for an Astro SSG/SSR app of this size; if the project grows beyond ~20 domains, consider a `src/domains/` aggregate structure as a separate ADR.
+- **Layer-pollution is easy to miss** — e.g. `src/components/Footer.tsx` co-located with `src/components/footer/`. Mitigation: prefer the subdirectory form (`footer/Footer.tsx`) and treat top-level files in `components/` as legacy.
+
+### Anti-pattern signal
+Grep pattern: `src/components/[A-Z]*\.(astro|tsx)` in `src/components/`.
+If top-level PascalCase component files proliferate (rather than living in their domain subdirectory), layer pollution is starting. Current state: `Footer.tsx` and `SEO.tsx` are the only offenders — acceptable legacy, but no new ones should be added.
+
+Secondary signal (concern duplication): `isAdminSession|checkRateLimit|createSecureLinkToken` re-implemented (not imported) inside a business domain. These symbols must always be imported from `src/lib/authz.ts`, `src/lib/rate-limit.ts`, `src/lib/secure-links.ts` respectively.
+
+### Revisit triggers
+- Sibling-fix rate > 3/week on any domain (e.g. repeated fixes to `google-calendar.ts` or `stripe.ts`) → auto-trigger review; may indicate the domain needs internal decomposition.
+- A new capability requires touching >4 of the fixed Astro layers with concern duplication (auth/persistence/email re-implemented per layer) → the wrong-axis drift has started; re-open this decision.
+- 6-monthly axial review (calendar) — confirm domains are still the multiplying axis and layers are still fixed.
+- If `src/lib/google-calendar.ts` (or any single domain lib) exceeds 1000 lines, split by sub-capability before adding more features to it.
+
+## Interview Log
+
+This ADR was produced by an autonomous axial-decomposition pass (no live interviewer). The four mandatory questions and the reasoned answers recorded below are derived from inspection of the codebase at `feat/58-gestion-manuelle-plages-horaires` (HEAD: `418f733`).
+
+### Q1 — Axes of variation
+
+> *What are the axes along which this system varies? For each, name the dimension and list concrete instances (current count + expected growth over 12 months).*
+
+Three axes identified by inspecting `src/`, `supabase/migrations/`, and `git log`:
+
+1. **Domain** (business capability). Instances now (~16): appointment/booking, payment (stripe), calendar (google), email (resend), auth, admin/patient, blog, contact, services, navigation, pricing, manual-slots, rate-limit, analytics, secure-links, ics. Growth 12m: +3 to +5 (telehealth, intake forms, patient portal, newsletter are listed as future considerations in `CLAUDE.md`).
+2. **Layer** (Astro stratum). Instances now (fixed): `pages/`, `pages/api/`, `components/`, `lib/`, `hooks/`, `emails/`, `utils/`, `types/`, `config/`, `layouts/`. Growth: ~0 — these are framework conventions, not capabilities.
+3. **Transport/adapter** (external integration). Instances now (~8): Supabase, Stripe, Google Calendar, Resend, EmailJS, GA4, Netlify, CookieYes. Growth: slow — each is already a leaf `src/lib/*` module.
+
+### Q2 — Primary axis
+
+> *Which axis is primary — i.e., when adding a new instance, which axis grows by 1 row (not by N×M cells)?*
+
+**Domain.** Reason category: **stability**, reinforced by **composition**.
+
+- *Stability:* The layer set is fixed Astro scaffolding — it has not changed across the last ~10 feature branches. Adapters change rarely and are leaf modules. Domains are the axis that actually multiplies: every shipped feature (#42, #47, #52, #54, #58) is one new domain slice.
+- *Composition:* Domain primitives compose to express endpoints. `stripe-webhook.ts` composes six libs (`stripe`, `resend`, `ics`, `secure-links`, `google-calendar`, `supabase`). `appointments/[id].ts` and `admin/appointments/index.ts` reuse the same set. Adding a new domain reuses these primitives; it does not duplicate them per layer.
+
+### Q3 — Anti-pattern signal
+
+> *What does drift along the wrong axis look like in code? Give 1 grep-able pattern.*
+
+Primary pattern: `src/components/[A-Z]*\.(astro|tsx)` — top-level PascalCase files in `src/components/` indicate layer pollution (a component not housed in its domain subdirectory). Current offenders: `Footer.tsx`, `SEO.tsx` (acceptable legacy; no new ones).
+
+Secondary pattern (concern duplication across domains): the symbols `isAdminSession`, `checkRateLimit`, `createSecureLinkToken` must always be imported from their canonical `src/lib/*` modules. If any of these is re-implemented inside a business-domain file, cross-domain concern duplication has started.
+
+Both patterns are single-token, grep-safe, and ≤200 chars.
+
+### Q4 — Expected debt
+
+> *What debt do you accept by choosing this axis? Where will it bite later?*
+
+1. **Infrastructure domains can leak business logic** (`auth`, `rate-limit`, `secure-links`, `analytics`). Mitigation: keep them free of domain types; inject domain behaviour, don't import it.
+2. **Large domains become intra-domain god-modules** (`google-calendar.ts` is 830 lines, past the 300-line `god-adapter` threshold). Mitigation: split by sub-capability when a lib exceeds ~300 lines; the split is internal to the domain, not a new primary axis.
+3. **No formal aggregate-root boundary** — domains are spread across `lib/`, `types/`, `pages/api/`, `components/`. Mitigation: accepted for an Astro app of this size; revisit via a separate ADR if the project exceeds ~20 domains.
+4. **Layer pollution is easy to miss** (top-level `components/` files vs. subdirectories). Mitigation: prefer the subdirectory form; treat existing top-level files as legacy.
+
+### Q5 — Revisit trigger (optional, captured)
+
+- Sibling-fix rate > 3/week on any single domain → review (likely needs internal decomposition).
+- A new capability requiring >4 layer touches with concern duplication → wrong-axis drift; re-open.
+- 6-monthly calendar review.
+- Any single domain lib > 1000 lines → split before extending.

@@ -31,7 +31,6 @@ dist/
 # Audit artifacts
 audit-screenshots/
 audit-results.json
-.claude/
 
 # Variables d'environnement — ne jamais committer
 .env

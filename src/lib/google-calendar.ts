@@ -8,6 +8,8 @@
 import { google, type Auth, type calendar_v3 } from 'googleapis';
 import { supabaseAdmin } from './supabase.js';
 import { sendEmail } from './resend.js';
+import { fetchManualSlots } from './manual-slots.js';
+import type { Period } from '@/types/manual-slots';
 
 // ---------------------------------------------------------------------------
 // Erreur typée
@@ -110,12 +112,6 @@ const MOCK_MODE = import.meta.env.GOOGLE_CALENDAR_MOCK === 'true';
 // ---------------------------------------------------------------------------
 
 const TIMEZONE = 'Europe/Paris';
-
-/** Plages horaires de travail (heure locale Paris) */
-const WORK_PERIODS: Array<{ startHour: number; endHour: number }> = [
-  { startHour: 8, endHour: 12 },
-  { startHour: 14, endHour: 19 },
-];
 
 /** Délai minimum avant un créneau proposable (24h en ms) */
 const MIN_NOTICE_MS = 24 * 60 * 60 * 1000;
@@ -231,30 +227,46 @@ async function resolveCalendarAuth(): Promise<Auth.OAuth2Client> {
 // ---------------------------------------------------------------------------
 
 /**
+ * Hoisted Intl formatters — allocated once, reused across every slot.
+ *
+ * Performance: Intl.DateTimeFormat construction is the dominant cost in the
+ * slot-generation loop (previously ~1 allocation per candidate slot). Module
+ * singletons make formatting ~constant-time and keep a 4-week generation
+ * under a few milliseconds.
+ */
+const PARIS_PARTS_FORMATTER = new Intl.DateTimeFormat('fr-FR', {
+  timeZone: TIMEZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+const PARIS_WEEKDAY_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  timeZone: TIMEZONE,
+  weekday: 'short',
+});
+
+/**
  * Retourne l'heure locale Paris pour une Date UTC en tant qu'objet
- * { year, month (1-12), day (1-31), hour, minute, weekday (0=dim, 1=lun…) }
+ * { year, month (1-12), day (1-31), hour, minute }
  */
 function toParisLocalParts(date: Date) {
-  const formatter = new Intl.DateTimeFormat('fr-FR', {
-    timeZone: TIMEZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    weekday: 'short',
-    hour12: false,
-  });
-
   const parts = Object.fromEntries(
-    formatter.formatToParts(date).map((p) => [p.type, p.value]),
+    PARIS_PARTS_FORMATTER.formatToParts(date).map((p) => [p.type, p.value]),
   );
+
+  // fr-FR with hour12:false can emit "24" at midnight — normalise to 0.
+  const rawHour = parseInt(parts['hour']!, 10);
+  const hour = rawHour === 24 ? 0 : rawHour;
 
   return {
     year: parseInt(parts['year']!, 10),
     month: parseInt(parts['month']!, 10),
     day: parseInt(parts['day']!, 10),
-    hour: parseInt(parts['hour']!, 10),
+    hour,
     minute: parseInt(parts['minute']!, 10),
   };
 }
@@ -291,12 +303,7 @@ function parisLocalToUTC(
  * Retourne le numéro de jour ISO (1=lundi, …, 7=dimanche) en heure Paris.
  */
 function getParisISOWeekday(date: Date): number {
-  // On récupère le jour de semaine en locale Paris
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: TIMEZONE,
-    weekday: 'short',
-  });
-  const wd = formatter.format(date);
+  const wd = PARIS_WEEKDAY_FORMATTER.format(date);
   const map: Record<string, number> = {
     Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7,
   };
@@ -311,92 +318,199 @@ function startOfParisDay(date: Date): Date {
   return parisLocalToUTC(year, month, day, 0, 0);
 }
 
+/**
+ * Formate une date au format YYYY-MM-DD (heure locale Paris)
+ */
+function formatDate(date: Date): string {
+  const { year, month, day } = toParisLocalParts(date);
+  return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+}
+
 // ---------------------------------------------------------------------------
 // Génération des créneaux candidats
 // ---------------------------------------------------------------------------
 
 /**
- * Génère tous les créneaux candidats entre `startDate` et `endDate` en
- * respectant les horaires de travail, le filtre mercredi pour le présentiel
- * et le délai minimum de 24h.
+ * Periods of a working day (Paris local time).
+ * - morning   = 08:00–12:00
+ * - afternoon = 14:00–19:00
  */
-export function generateCandidateSlots(
+type DayHalf = 'morning' | 'afternoon';
+
+const DAY_HALF_PERIODS: Record<DayHalf, { startHour: number; endHour: number }> = {
+  morning: { startHour: 8, endHour: 12 },
+  afternoon: { startHour: 14, endHour: 19 },
+};
+
+const DAY_HALVES: readonly DayHalf[] = ['morning', 'afternoon'];
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Éligibilité cabinet par demi-journée, selon la règle métier :
+ *
+ *   cabinet-eligible(period) = mercredi OU manual_slot couvre la période
+ *
+ * Le modèle est **additif** : un manual_slot ajoute des demi-journées cabinet
+ * par-dessus le mercredi par défaut, sans jamais le retirer.
+ *
+ * La téléconsultation (visio) est l'**inverse strict** du cabinet :
+ *
+ *   video-eligible(period) = jour ouvré ET NON cabinet-eligible(period)
+ *
+ * @param isWednesday   true si le jour est mercredi (cabinet par défaut)
+ * @param manualPeriods  périodes couvertes par au moins un manual_slot ce jour
+ */
+function cabinetEligibility(
+  isWednesday: boolean,
+  manualPeriods: Set<Period>,
+): Record<DayHalf, boolean> {
+  const allDay = manualPeriods.has('all_day');
+  return {
+    morning: isWednesday || allDay || manualPeriods.has('morning'),
+    afternoon: isWednesday || allDay || manualPeriods.has('afternoon'),
+  };
+}
+
+export interface GenerateSlotsInput {
+  startDate: Date;
+  endDate: Date;
+  duration: AppointmentDuration;
+  mode: AppointmentMode;
+  /** Référence "maintenant" — injectée pour la testabilité (délai 24h). */
+  now: Date;
+  /** Slots manuels indexés par date (YYYY-MM-DD) → périodes couvertes. */
+  manualSlots: Map<string, Set<Period>>;
+}
+
+/**
+ * Génère les créneaux candidats sur une plage de dates.
+ *
+ * Fonction pure (sans I/O, sans Date.now()) — entièrement déterministe via
+ * `now` et `manualSlots`. C'est le cœur testable de la génération : la couche
+ * async `generateCandidateSlots` se contente d'hydrater `manualSlots` depuis
+ * Supabase puis de déléguer ici.
+ *
+ * Règle d'éligibilité (additive, visio = inverse du cabinet) :
+ *   in-person → périodes cabinet-eligibles
+ *   video     → périodes cabinet-inéligibles (l'inverse)
+ */
+export function generateSlotsForRange(input: GenerateSlotsInput): TimeSlot[] {
+  const slots: TimeSlot[] = [];
+  const minStart = new Date(input.now.getTime() + MIN_NOTICE_MS);
+
+  let currentDay = startOfParisDay(input.startDate);
+
+  while (currentDay < input.endDate) {
+    const weekday = getParisISOWeekday(currentDay);
+
+    // Jours ouvrés uniquement (lundi–vendredi)
+    if (weekday >= 1 && weekday <= 5) {
+      const isWednesday = weekday === 3;
+      const dateKey = formatDate(currentDay);
+      const manualPeriods = input.manualSlots.get(dateKey) ?? EMPTY_PERIOD_SET;
+      const cabinet = cabinetEligibility(isWednesday, manualPeriods);
+
+      const { year, month, day } = toParisLocalParts(currentDay);
+
+      for (const half of DAY_HALVES) {
+        const isCabinet = cabinet[half];
+        // in-person = cabinet ; video = inverse du cabinet
+        const eligible = input.mode === 'in-person' ? isCabinet : !isCabinet;
+        if (!eligible) continue;
+
+        slots.push(...generatePeriodSlots(year, month, day, half, input.duration, minStart));
+      }
+    }
+
+    currentDay = new Date(currentDay.getTime() + DAY_MS);
+  }
+
+  return slots;
+}
+
+const EMPTY_PERIOD_SET: Set<Period> = new Set();
+const EMPTY_PERIOD_MAP: Map<string, Set<Period>> = new Map();
+
+/**
+ * Génère les créneaux de 30 min d'une demi-journée, bornés à la plage et au
+ * délai minimum de 24h.
+ */
+function generatePeriodSlots(
+  year: number,
+  month: number,
+  day: number,
+  half: DayHalf,
+  duration: AppointmentDuration,
+  minStart: Date,
+): TimeSlot[] {
+  const { startHour, endHour } = DAY_HALF_PERIODS[half];
+  const periodEndMinutes = endHour * 60;
+  const out: TimeSlot[] = [];
+
+  let slotHour = startHour;
+  let slotMinute = 0;
+
+  for (;;) {
+    const slotStart = parisLocalToUTC(year, month, day, slotHour, slotMinute);
+    const slotEndDate = new Date(slotStart.getTime() + duration * 60 * 1000);
+
+    // La fin doit rester dans la même plage (pas de débordement sur la pause
+    // midi ni après 19h) — les créneaux suivants déborderaient aussi.
+    const endLocal = toParisLocalParts(slotEndDate);
+    const slotEndMinutes = endLocal.hour * 60 + endLocal.minute;
+    if (slotEndMinutes > periodEndMinutes) break;
+
+    if (slotStart >= minStart) {
+      out.push({
+        start: slotStart.toISOString(),
+        end: slotEndDate.toISOString(),
+        available: true, // mis à jour par getAvailableSlots (freebusy)
+      });
+    }
+
+    // Avance de 30 min
+    slotMinute += 30;
+    if (slotMinute >= 60) {
+      slotMinute -= 60;
+      slotHour += 1;
+    }
+    if (slotHour * 60 + slotMinute >= periodEndMinutes) break;
+  }
+
+  return out;
+}
+
+/**
+ * Wrapper async : hydrate les slots manuels depuis Supabase puis délègue à la
+ * fonction pure `generateSlotsForRange`.
+ */
+export async function generateCandidateSlots(
   startDate: Date,
   endDate: Date,
   duration: AppointmentDuration,
   mode: AppointmentMode,
-): TimeSlot[] {
-  const slots: TimeSlot[] = [];
-  const nowMs = Date.now();
-  const minStart = new Date(nowMs + MIN_NOTICE_MS);
+): Promise<TimeSlot[]> {
+  const manualRecords = await fetchManualSlots(startDate, endDate);
 
-  // Itère jour par jour depuis startDate jusqu'à endDate
-  let currentDay = startOfParisDay(startDate);
-
-  while (currentDay < endDate) {
-    const weekday = getParisISOWeekday(currentDay);
-
-    // Jours ouvrés uniquement (lundi-vendredi)
-    if (weekday >= 1 && weekday <= 5) {
-      // Présentiel : uniquement le mercredi (ISO 3)
-      const isWednesday = weekday === 3;
-      if (mode === 'in-person' && !isWednesday) {
-        currentDay = new Date(currentDay.getTime() + 24 * 60 * 60 * 1000);
-        continue;
-      }
-
-      const { year, month, day } = toParisLocalParts(currentDay);
-
-      // Génère les créneaux par plage horaire
-      for (const period of WORK_PERIODS) {
-        let slotHour = period.startHour;
-        let slotMinute = 0;
-
-        // Tous les 30 min dans la plage
-        while (true) {
-          const slotStart = parisLocalToUTC(year, month, day, slotHour, slotMinute);
-          const slotEndDate = new Date(slotStart.getTime() + duration * 60 * 1000);
-
-          // Calcul de la fin en heure locale Paris pour vérifier les débordements
-          const endLocal = toParisLocalParts(slotEndDate);
-          const slotEndMinutes = endLocal.hour * 60 + endLocal.minute;
-
-          // La fin doit se situer dans la même plage (pas de débordement sur la pause ou après 19h)
-          const periodEndMinutes = period.endHour * 60;
-          if (slotEndMinutes > periodEndMinutes) {
-            break; // Ce créneau et les suivants débordent : on passe à la plage suivante
-          }
-
-          // Créneau dans le futur avec délai minimum
-          if (slotStart >= minStart) {
-            slots.push({
-              start: slotStart.toISOString(),
-              end: slotEndDate.toISOString(),
-              available: true, // sera mis à jour par getAvailableSlots
-            });
-          }
-
-          // Avance de 30 min
-          slotMinute += 30;
-          if (slotMinute >= 60) {
-            slotMinute -= 60;
-            slotHour += 1;
-          }
-
-          // Sortie de boucle si on dépasse la fin de plage
-          const currentMinutes = slotHour * 60 + slotMinute;
-          if (currentMinutes >= periodEndMinutes) {
-            break;
-          }
-        }
-      }
+  const manualSlots = new Map<string, Set<Period>>();
+  for (const record of manualRecords) {
+    let periods = manualSlots.get(record.slot_date);
+    if (!periods) {
+      periods = new Set();
+      manualSlots.set(record.slot_date, periods);
     }
-
-    // Jour suivant
-    currentDay = new Date(currentDay.getTime() + 24 * 60 * 60 * 1000);
+    periods.add(record.period);
   }
 
-  return slots;
+  return generateSlotsForRange({
+    startDate,
+    endDate,
+    duration,
+    mode,
+    now: new Date(),
+    manualSlots,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -416,54 +530,29 @@ export async function getAvailableSlots(
   dbBusyPeriods: Array<{ start: string; end: string }> = [],
 ): Promise<TimeSlot[]> {
   if (MOCK_MODE) {
-    console.log('[calendar-mock] getAvailableSlots called — returning mock Wednesday slots');
+    console.log('[calendar-mock] getAvailableSlots called — generating slots via shared algorithm');
 
-    /** Périodes mock : 09:00–12:00 et 14:00–18:00 (heure Paris) */
-    const MOCK_PERIODS: Array<{ startHour: number; endHour: number }> = [
-      { startHour: 9, endHour: 12 },
-      { startHour: 14, endHour: 18 },
-    ];
+    // Mock = pas de Google Calendar : on réutilise le même moteur de génération
+    // que la production (cabinet = mercredi, visio = inverse), sans slots manuels.
+    // Avantage : le mock respecte la même règle métier que la prod, plus de
+    // logique dupliquée ni de dérive entre les deux chemins.
+    const candidates = generateSlotsForRange({
+      startDate,
+      endDate,
+      duration,
+      mode,
+      now: new Date(),
+      manualSlots: EMPTY_PERIOD_MAP,
+    });
 
-    const mockSlots: TimeSlot[] = [];
-    const minStart = new Date(Date.now() + MIN_NOTICE_MS);
+    if (dbBusyPeriods.length === 0) return candidates;
 
-    // Itère jour par jour en ne retenant que les mercredis
-    let currentDay = startOfParisDay(startDate);
-
-    while (currentDay < endDate) {
-      // Mercredi = ISO weekday 3
-      if (getParisISOWeekday(currentDay) === 3) {
-        const { year, month, day } = toParisLocalParts(currentDay);
-
-        for (const period of MOCK_PERIODS) {
-          // Créneaux horaires (pas de 1h) dans la plage
-          for (let slotHour = period.startHour; slotHour < period.endHour; slotHour++) {
-            const slotStart = parisLocalToUTC(year, month, day, slotHour, 0);
-            const slotEnd = new Date(slotStart.getTime() + duration * 60 * 1000);
-
-            // Respecte le délai minimum de 24h
-            if (slotStart >= minStart) {
-              mockSlots.push({
-                start: slotStart.toISOString(),
-                end: slotEnd.toISOString(),
-                available: true,
-              });
-            }
-          }
-        }
-      }
-
-      currentDay = new Date(currentDay.getTime() + 24 * 60 * 60 * 1000);
-    }
-
-    if (dbBusyPeriods.length === 0) return mockSlots;
-
-    return mockSlots.filter((slot) => {
+    return candidates.filter((slot) => {
       const slotStart = new Date(slot.start).getTime();
-      const slotEnd   = new Date(slot.end).getTime();
+      const slotEnd = new Date(slot.end).getTime();
       return !dbBusyPeriods.some((busy) => {
         const busyStart = new Date(busy.start).getTime();
-        const busyEnd   = new Date(busy.end).getTime();
+        const busyEnd = new Date(busy.end).getTime();
         return slotStart < busyEnd && slotEnd > busyStart;
       });
     });
@@ -474,7 +563,7 @@ export async function getAvailableSlots(
     throw new Error('Configuration manquante : GOOGLE_CALENDAR_ID non défini.');
   }
 
-  const candidates = generateCandidateSlots(startDate, endDate, duration, mode);
+  const candidates = await generateCandidateSlots(startDate, endDate, duration, mode);
 
   if (candidates.length === 0) {
     return [];

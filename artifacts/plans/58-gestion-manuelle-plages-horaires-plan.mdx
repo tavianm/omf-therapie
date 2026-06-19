@@ -1,0 +1,429 @@
+---
+title: "Plan: Gestion manuelle des plages horaires pour rendez-vous au cabinet"
+issue: 58
+spec: artifacts/specs/58-gestion-manuelle-plages-horaires-spec.mdx
+complexity: 6/10
+tier: F-full
+generated: 2026-06-17T19:00:00Z
+---
+
+## Summary
+
+Créer système de gestion manuelle des plages horaires pour RDV cabinet. 4 slices: DB + Types → API CRUD → UI Admin → Integration avec generateCandidateSlots.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    subgraph Admin
+        UI[TimeSlotManager.tsx]
+    end
+
+    subgraph API
+        CRUD[time-slots API]
+    end
+
+    subgraph DB
+        SLOTS[(manual_time_slots)]
+        CACHE[(cache_keys)]
+    end
+
+    subgraph Booking
+        GEN[generateCandidateSlots]
+        GC[Google Calendar]
+    end
+
+    UI -->|POST/GET/PATCH/DELETE| CRUD
+    CRUD -->|CRUD| SLOTS
+    CRUD -->|invalidate| CACHE
+    GEN -->|fetch| SLOTS
+    GEN -->|freebusy| GC
+
+    SLOTS -.|read| GEN
+    CACHE -.|clear| CRUD
+```
+
+## Bootstrap Context
+
+From analysis (Shape 2 selected):
+- Supabase table `manual_time_slots` avec soft delete
+- RLS policy admin-only
+- Cache invalidation sur CRUD
+- Integration avec `generateCandidateSlots()` existant
+
+## Agents Table
+
+| Agent | Tasks | Files |
+|-------|-------|-------|
+| backend-dev-A | T1-T7, T10-T11 | Migration, types, lib, API, integration |
+| frontend-dev-A | T8-T9 | Components, pages |
+| tester-A | T12 | E2E tests |
+
+## Wave Structure
+
+3 waves, max 3 parallel agents. Elapsed ~3 days vs ~5 days sequential.
+
+| Wave | Trigger | Agents | Tasks |
+|------|---------|--------|-------|
+| 1 | start | 2 ∥ | backend-dev-A: T1-T7 |
+| 2 | Wave 1 done | 1 ∥ | frontend-dev-A: T8-T9 |
+| 3 | Wave 2 done | 2 ∥ | backend-dev-A: T10-T11, tester-A: T12 |
+
+## Micro-Tasks
+
+### Slice 1: DB + Types
+
+**T1 — Create Supabase migration**
+- File: `supabase/migrations/007_manual_time_slots.sql`
+- Agent: backend-dev-A
+- Subject: db
+- [P]
+```sql
+CREATE TABLE manual_time_slots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slot_date DATE NOT NULL,
+  period TEXT NOT NULL CHECK (period IN ('morning', 'afternoon', 'all_day')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ NULL
+);
+
+CREATE INDEX idx_manual_slots_date ON manual_time_slots(slot_date) WHERE deleted_at IS NULL;
+
+ALTER TABLE manual_time_slots ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY admin_full_access ON manual_time_slots
+  FOR ALL USING (auth.uid() IN (SELECT id FROM users WHERE role = 'admin'));
+```
+- Verify: `psql -d postgres -c "\d manual_time_slots"`
+- Expected: Table with 6 columns, 1 index, RLS enabled
+- Time: 5 min
+- Slice: V1
+- Phase: RED
+
+**T2 — Create TypeScript types**
+- File: `src/types/manual-slots.ts`
+- Agent: backend-dev-A
+- Subject: types
+- Depends: T1
+```typescript
+export type Period = 'morning' | 'afternoon' | 'all_day';
+
+export interface ManualTimeSlot {
+  id: string;
+  slot_date: string; // YYYY-MM-DD
+  period: Period;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+export interface CreateManualSlotData {
+  slot_date: string;
+  period: Period;
+}
+
+export interface UpdateManualSlotData {
+  period?: Period;
+  deleted_at?: string | null;
+}
+```
+- Verify: `grep -q "export interface ManualTimeSlot" src/types/manual-slots.ts`
+- Expected: Type definitions present
+- Time: 3 min
+- Slice: V1
+- Phase: RED
+
+### Slice 2: API CRUD
+
+**T3 — Create Supabase CRUD functions**
+- File: `src/lib/manual-slots.ts`
+- Agent: backend-dev-A
+- Subject: supabase-crud
+- Depends: T1, T2
+```typescript
+import { supabaseAdmin } from './supabase';
+import type { ManualTimeSlot, CreateManualSlotData, UpdateManualSlotData } from '@/types/manual-slots';
+
+export async function fetchManualSlots(from: Date, to: Date): Promise<ManualTimeSlot[]> { ... }
+export async function createManualSlot(data: CreateManualSlotData): Promise<ManualTimeSlot> { ... }
+export async function updateManualSlot(id: string, data: UpdateManualSlotData): Promise<ManualTimeSlot> { ... }
+export async function deleteManualSlot(id: string): Promise<void> { ... }
+export async function invalidateSlotCache(): Promise<void> { ... }
+```
+- Verify: `grep -q "export async function fetchManualSlots" src/lib/manual-slots.ts`
+- Expected: 5 functions exported
+- Time: 8 min
+- Slice: V2
+- Phase: RED
+
+**T4 — Create GET endpoint**
+- File: `src/pages/api/admin/time-slots/index.ts`
+- Agent: backend-dev-A
+- Subject: api-get
+- Depends: T3
+- [P]
+```typescript
+import type { APIRoute } from 'astro';
+import { fetchManualSlots } from '@/lib/manual-slots';
+
+export const prerender = false;
+
+export const GET: APIRoute = async ({ url }) => {
+  const from = new Date(url.searchParams.get('from') || '');
+  const to = new Date(url.searchParams.get('to') || '');
+  const slots = await fetchManualSlots(from, to);
+  return new Response(JSON.stringify({ slots }));
+};
+```
+- Verify: `curl -f http://localhost:4321/api/admin/time-slots`
+- Expected: 200 with slots array
+- Time: 4 min
+- Slice: V2
+- Phase: GREEN
+
+**T5 — Create POST endpoint**
+- File: `src/pages/api/admin/time-slots/index.ts` (append)
+- Agent: backend-dev-A
+- Subject: api-post
+- Depends: T3
+```typescript
+export const POST: APIRoute = async ({ request }) => {
+  const data = await request.json();
+  const slot = await createManualSlot(data);
+  await invalidateSlotCache();
+  return new Response(JSON.stringify(slot), { status: 201 });
+};
+```
+- Verify: `curl -f -X POST -H "Content-Type: application/json" -d '{"slot_date":"2026-06-20","period":"morning"}' http://localhost:4321/api/admin/time-slots`
+- Expected: 201 with created slot
+- Time: 5 min
+- Slice: V2
+- Phase: GREEN
+
+**T6 — Create PATCH endpoint**
+- File: `src/pages/api/admin/time-slots/[id].ts`
+- Agent: backend-dev-A
+- Subject: api-patch
+- Depends: T3
+```typescript
+export const PATCH: APIRoute = async ({ params, request }) => {
+  const data = await request.json();
+  const slot = await updateManualSlot(params.id, data);
+  await invalidateSlotCache();
+  return new Response(JSON.stringify(slot));
+};
+```
+- Verify: `curl -f -X PATCH -H "Content-Type: application/json" -d '{"period":"afternoon"}' http://localhost:4321/api/admin/time-slots/{id}`
+- Expected: 200 with updated slot
+- Time: 5 min
+- Slice: V2
+- Phase: GREEN
+
+**T7 — Create DELETE endpoint**
+- File: `src/pages/api/admin/time-slots/[id].ts` (append)
+- Agent: backend-dev-A
+- Subject: api-delete
+- Depends: T3
+```typescript
+export const DELETE: APIRoute = async ({ params }) => {
+  await deleteManualSlot(params.id);
+  await invalidateSlotCache();
+  return new Response(null, { status: 204 });
+};
+```
+- Verify: `curl -f -X DELETE http://localhost:4321/api/admin/time-slots/{id}`
+- Expected: 204
+- Time: 4 min
+- Slice: V2
+- Phase: GREEN
+
+### Slice 3: UI Admin
+
+**T8 — Create TimeSlotManager component**
+- File: `src/components/admin/TimeSlotManager.tsx`
+- Agent: frontend-dev-A
+- Subject: ui-component
+- Depends: T4-T7
+```typescript
+export default function TimeSlotManager() {
+  const [slots, setSlots] = useState<ManualTimeSlot[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  // CRUD handlers, WCAG 2.1 AA compliant
+  return (
+    <section aria-labelledby="slots-heading">
+      <h2 id="slots-heading">Gestion des plages horaires</h2>
+      {/* List + Add button + Modal */}
+    </section>
+  );
+}
+```
+- Verify: `grep -q "TimeSlotManager" src/components/admin/TimeSlotManager.tsx`
+- Expected: Component exported with client:load
+- Time: 15 min
+- Slice: V3
+- Phase: RED
+
+**T9 — Integrate in mes-rdvs page**
+- File: `src/pages/mes-rdvs.astro`
+- Agent: frontend-dev-A
+- Subject: ui-integration
+- Depends: T8
+```astro
+import { TimeSlotManager } from '../components/admin/TimeSlotManager';
+
+<!-- In body, after existing sections -->
+<TimeSlotManager client:load />
+```
+- Verify: `grep -q "TimeSlotManager" src/pages/mes-rdvs.astro`
+- Expected: Component imported and mounted
+- Time: 3 min
+- Slice: V3
+- Phase: GREEN
+
+### Slice 4: Integration
+
+**T10 — Modify generateCandidateSlots**
+- File: `src/lib/google-calendar.ts`
+- Agent: backend-dev-A
+- Subject: integration
+- Depends: T1, T2, T3
+- Lines: ~320-350 (modify isWednesday check)
+```typescript
+// Fetch manual slots
+const manualSlots = await fetchManualSlots(startDate, endDate);
+const manualDates = new Set(
+  manualSlots.map(s => ({ date: s.slot_date, period: s.period }))
+);
+
+// In loop: check manual slots OR Wednesday
+const isManual = manualDates.has({ date: currentDay, period: 'all_day' });
+const isManualMorning = manualDates.has({ date: currentDay, period: 'morning' });
+const isManualAfternoon = manualDates.has({ date: currentDay, period: 'afternoon' });
+if (mode === 'in-person' && !isWednesday && !isManual) {
+  continue;
+}
+```
+- Verify: `grep -q "fetchManualSlots" src/lib/google-calendar.ts`
+- Expected: Function called, manual slots merged with Wednesday
+- Time: 10 min
+- Slice: V4
+- Phase: RED
+
+**T11 — Add cache invalidation calls**
+- File: `src/lib/manual-slots.ts`
+- Agent: backend-dev-A
+- Subject: cache
+- Depends: T3
+```typescript
+async function invalidateSlotCache() {
+  await supabaseAdmin.from('cache_keys').delete().like('key', 'availability:%');
+}
+```
+- Verify: `grep -q "invalidateSlotCache" src/lib/manual-slots.ts && grep -q "invalidateSlotCache" src/pages/api/admin/time-slots/index.ts`
+- Expected: Function called in POST/PATCH/DELETE
+- Time: 3 min
+- Slice: V4
+- Phase: GREEN
+
+**T12 — E2E test**
+- File: `tests/e2e/manual-slots.spec.ts` (new)
+- Agent: tester-A
+- Subject: e2e
+- Depends: T1-T11
+- RED-GATE for V4
+```typescript
+test('admin can add manual slot', async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.goto('/mes-rdvs');
+  // Add slot, verify in DB, verify in booking flow
+});
+```
+- Verify: `npm run test:e2e tests/e2e/manual-slots.spec.ts`
+- Expected: Test passes
+- Time: 15 min
+- Slice: V4
+- Phase: REFACTOR
+
+## Consistency Report
+
+| Slice | Criteria | Tasks | Coverage |
+|-------|----------|-------|----------|
+| V1 | Table + types | T1, T2 | 2/2 ✓ |
+| V2 | API CRUD | T3-T7 | 5/5 ✓ |
+| V3 | UI Admin | T8, T9 | 2/2 ✓ |
+| V4 | Integration | T10-T12 | 3/3 ✓ |
+
+**Covered: 12/12 criteria → 100%**
+
+## Task Seeding Blueprint
+
+### Wave 1 — no deps, 1 agent
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T1 | backend-dev-A | — | db |
+| T2 | backend-dev-A | T1 | types |
+| T3 | backend-dev-A | T1,T2 | supabase-crud |
+| T4 | backend-dev-A | T3 | api-get |
+| T5 | backend-dev-A | T3 | api-post |
+| T6 | backend-dev-A | T3 | api-patch |
+| T7 | backend-dev-A | T3 | api-delete |
+
+### Wave 2 — after Wave 1, 1 agent
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T8 | frontend-dev-A | T4,T5,T6,T7 | ui-component |
+| T9 | frontend-dev-A | T8 | ui-integration |
+
+### Wave 3 — after Wave 2, 2 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T10 | backend-dev-A | T1,T2,T3 | integration |
+| T11 | backend-dev-A | T3 | cache |
+| T12 | tester-A | T1,T2,T3,T4,T5,T6,T7,T8,T9,T10,T11 | e2e |
+
+## Budget — per task
+
+| Task | Class | Est. ops |
+|------|-------|----------|
+| T1 | bounded | 2 |
+| T2 | bounded | 2 |
+| T3 | judgmental | 5 |
+| T4 | bounded | 3 |
+| T5 | bounded | 3 |
+| T6 | bounded | 3 |
+| T7 | bounded | 3 |
+| T8 | judgmental | 6 |
+| T9 | bounded | 2 |
+| T10 | judgmental | 6 |
+| T11 | bounded | 2 |
+| T12 | exploratory | 10 |
+
+**Total estimated ops: 47**
+
+## Budget — per agent instance
+
+| Instance | Tasks | Σ ops | Subjects | Split? |
+|----------|-------|-------|----------|--------|
+| backend-dev-A | T1,T2,T3,T4,T5,T6,T7,T10,T11 | 29 | db, types, supabase-crud, api-get, api-post, api-patch, api-delete, integration, cache | — |
+| frontend-dev-A | T8,T9 | 8 | ui-component, ui-integration | — |
+| tester-A | T12 | 10 | e2e | — |
+
+## Task IDs
+
+<!-- Generated by /plan. Used by /implement to resume tasks on session restart. -->
+- T1: 10 — Create Supabase migration manual_time_slots
+- T2: 11 — Create TypeScript types manual-slots
+- T3: 12 — Create Supabase CRUD functions
+- T4: 13 — Create GET endpoint /api/admin/time-slots
+- T5: 14 — Create POST endpoint /api/admin/time-slots
+- T6: 15 — Create PATCH endpoint /api/admin/time-slots/[id]
+- T7: 16 — Create DELETE endpoint /api/admin/time-slots/[id]
+- T8: 17 — Create TimeSlotManager component
+- T9: 18 — Integrate TimeSlotManager in mes-rdvs page
+- T10: 19 — Modify generateCandidateSlots to use manual slots
+- T11: 20 — Add cache invalidation to CRUD operations
+- T12: 21 — E2E test manual slots flow
