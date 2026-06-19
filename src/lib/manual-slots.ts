@@ -89,33 +89,24 @@ export async function deleteManualSlot(id: string): Promise<void> {
 }
 
 /**
- * Invalidate availability cache
- * Deletes all cache keys matching 'availability:%' to force refresh
- * NOTE: Gracefully handles missing cache_keys table for compatibility
+ * Invalidate the availability cache after a manual-slot mutation.
+ *
+ * The real availability cache lives in Netlify Blobs (see `calendar-cache.ts`),
+ * NOT in a Supabase `cache_keys` table. A CRUD on manual_time_slots changes
+ * which days/periods are cabinet-eligible, so the cached `/api/availability`
+ * responses (TTL 10 min) must be dropped to avoid serving stale slots.
+ *
+ * Failure is non-blocking: worst case the cache serves stale data until its
+ * TTL expires. The slot mutation itself already succeeded.
  */
 export async function invalidateSlotCache(): Promise<void> {
   try {
-    const { error } = await supabaseAdmin
-      .from('cache_keys')
-      .delete()
-      .like('key', 'availability:%');
-
-    if (error) {
-      // PGRST205 = table not found in schema cache (table doesn't exist)
-      // This is acceptable - cache invalidation is optional for functionality
-      if (error.code === 'PGRST205') {
-        console.warn('[invalidateSlotCache] cache_keys table not found - cache invalidation skipped (non-blocking)');
-        return;
-      }
-      console.error('[invalidateSlotCache] Failed to clear cache:', error);
-      throw new Error(`Failed to invalidate slot cache: ${error.message}`);
-    }
-
-    console.log('[invalidateSlotCache] Cache invalidated successfully');
+    const { invalidateAvailabilityCache } = await import('./calendar-cache.js');
+    await invalidateAvailabilityCache();
   } catch (err) {
-    // Handle any unexpected errors gracefully
-    console.error('[invalidateSlotCache] Unexpected error during cache invalidation:', err);
-    // Don't throw - cache invalidation failure should not block slot creation
-    console.warn('[invalidateSlotCache] Continuing despite cache invalidation failure (non-blocking)');
+    console.warn(
+      '[invalidateSlotCache] Availability cache invalidation failed (non-blocking):',
+      err instanceof Error ? err.message : err,
+    );
   }
 }
