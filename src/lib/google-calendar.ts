@@ -10,6 +10,12 @@ import { supabaseAdmin } from './supabase.js';
 import { sendEmail } from './resend.js';
 import { fetchManualSlots } from './manual-slots.js';
 import type { Period } from '@/types/manual-slots';
+import {
+  DAY_HALF_PERIODS,
+  DAY_HALVES,
+  cabinetEligibility,
+  type DayHalf,
+} from './appointment-eligibility.js';
 
 // ---------------------------------------------------------------------------
 // Erreur typée
@@ -330,47 +336,11 @@ function formatDate(date: Date): string {
 // Génération des créneaux candidats
 // ---------------------------------------------------------------------------
 
-/**
- * Periods of a working day (Paris local time).
- * - morning   = 08:00–12:00
- * - afternoon = 14:00–19:00
- */
-type DayHalf = 'morning' | 'afternoon';
-
-const DAY_HALF_PERIODS: Record<DayHalf, { startHour: number; endHour: number }> = {
-  morning: { startHour: 8, endHour: 12 },
-  afternoon: { startHour: 14, endHour: 19 },
-};
-
-const DAY_HALVES: readonly DayHalf[] = ['morning', 'afternoon'];
+// La règle d'éligibilité cabinet (DayHalf, DAY_HALF_PERIODS, DAY_HALVES,
+// cabinetEligibility) vit dans `appointment-eligibility.ts` et est réutilisée
+// par les portes de validation de prise de rendez-vous.
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-/**
- * Éligibilité cabinet par demi-journée, selon la règle métier :
- *
- *   cabinet-eligible(period) = mercredi OU manual_slot couvre la période
- *
- * Le modèle est **additif** : un manual_slot ajoute des demi-journées cabinet
- * par-dessus le mercredi par défaut, sans jamais le retirer.
- *
- * La téléconsultation (visio) est l'**inverse strict** du cabinet :
- *
- *   video-eligible(period) = jour ouvré ET NON cabinet-eligible(period)
- *
- * @param isWednesday   true si le jour est mercredi (cabinet par défaut)
- * @param manualPeriods  périodes couvertes par au moins un manual_slot ce jour
- */
-function cabinetEligibility(
-  isWednesday: boolean,
-  manualPeriods: Set<Period>,
-): Record<DayHalf, boolean> {
-  const allDay = manualPeriods.has('all_day');
-  return {
-    morning: isWednesday || allDay || manualPeriods.has('morning'),
-    afternoon: isWednesday || allDay || manualPeriods.has('afternoon'),
-  };
-}
 
 export interface GenerateSlotsInput {
   startDate: Date;

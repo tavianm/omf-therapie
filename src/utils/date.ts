@@ -1,14 +1,26 @@
-/**
- * Vérifie qu'une date ISO tombe un mercredi en heure de Paris.
- * Utilisé pour valider les créneaux en présentiel (mercredi uniquement).
- */
-export function isWednesdayParis(isoDate: string): boolean {
-  const date = new Date(isoDate);
-  const parisDay = new Intl.DateTimeFormat('fr-FR', {
+/** ISO weekday in Paris time (1 = lundi, …, 7 = dimanche). */
+export function getParisISOWeekday(date: Date): number {
+  // en-US short abbreviations are stable across runtimes, unlike fr-FR ones.
+  const abbr = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Europe/Paris',
-    weekday: 'long',
+    weekday: 'short',
   }).format(date);
-  return parisDay === 'mercredi';
+  const map: Record<string, number> = {
+    Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7,
+  };
+  return map[abbr] ?? 7;
+}
+
+/** Date au format YYYY-MM-DD en heure locale Paris. */
+export function toParisDateString(date: Date): string {
+  const parts = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Europe/Paris',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
 /**
