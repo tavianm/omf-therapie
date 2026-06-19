@@ -9,8 +9,9 @@ import AppointmentRequestReceived from '../../../emails/AppointmentRequestReceiv
 import AppointmentRequestNotification from '../../../emails/AppointmentRequestNotification';
 import type { AppointmentType, AppointmentDuration, AppointmentMode } from '../../../types/appointment';
 import { checkRateLimit, rateLimitResponse } from '../../../lib/rate-limit';
-import { isWednesdayParis, isWithinBusinessHours } from '../../../utils/date';
+import { isWithinBusinessHours } from '../../../utils/date';
 import { hasAppointmentConflict } from '../../../lib/appointment-conflicts';
+import { isCabinetEligibleSlot } from '../../../lib/appointment-eligibility';
 
 // ---------------------------------------------------------------------------
 // Validation helpers
@@ -114,8 +115,10 @@ export const POST: APIRoute = async ({ request }) => {
     return errorResponse(422, 'Le rendez-vous doit être pris au moins 1 heure à l\'avance', 'scheduled_at');
 
   // 3. Règles métier
-  if (appointment_mode === 'in-person' && !isWednesdayParis(scheduled_at as string))
-    return errorResponse(422, 'Les rendez-vous en présentiel ont lieu le mercredi uniquement.');
+  // Éligibilité cabinet réutilisée avec le moteur de génération des créneaux :
+  // mercredi par défaut OU plages manuelles (manual_time_slots).
+  if (appointment_mode === 'in-person' && !(await isCabinetEligibleSlot(scheduled_at as string)))
+    return errorResponse(422, 'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.');
 
   if (!isWithinBusinessHours(scheduled_at as string, duration as number))
     return errorResponse(422, 'Le créneau est en dehors des horaires d\'ouverture (8h-12h et 14h-19h).');

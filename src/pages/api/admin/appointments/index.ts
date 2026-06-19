@@ -16,7 +16,7 @@ import AppointmentConfirmed from '../../../../emails/AppointmentConfirmed';
 import PaymentRequest from '../../../../emails/PaymentRequest';
 import type { AppointmentType } from '../../../../types/appointment';
 import { invalidateAvailabilityCache } from '../../../../lib/calendar-cache.js';
-import { isWednesdayParis } from '../../../../utils/date';
+import { isCabinetEligibleSlot } from '../../../../lib/appointment-eligibility';
 
 // ---------------------------------------------------------------------------
 // Validation helpers
@@ -121,8 +121,8 @@ export const POST: APIRoute = async ({ request }) => {
   if (scheduledDate.getTime() < Date.now())
     return errorResponse(400, 'La date de séance doit être dans le futur', 'scheduled_at');
 
-  if (appointment_mode === 'in-person' && !isWednesdayParis(scheduled_at))
-    return errorResponse(400, 'Les rendez-vous en présentiel ont lieu le mercredi uniquement.', 'scheduled_at');
+  if (appointment_mode === 'in-person' && !(await isCabinetEligibleSlot(scheduled_at)))
+    return errorResponse(400, 'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.', 'scheduled_at');
 
   try {
     const slotEnd = new Date(scheduledDate.getTime() + Number(duration) * 60 * 1000);

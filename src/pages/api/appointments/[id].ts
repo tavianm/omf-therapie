@@ -12,7 +12,8 @@ import { getTypeLabel, getModeLabel, calculatePrice } from '../../../lib/pricing
 import { stripe, createAppointmentPaymentLink } from '../../../lib/stripe';
 import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from '../../../lib/google-calendar';
 import { hasAppointmentConflict } from '../../../lib/appointment-conflicts';
-import { isWednesdayParis, isWithinBusinessHours } from '../../../utils/date';
+import { isWithinBusinessHours } from '../../../utils/date';
+import { isCabinetEligibleSlot } from '../../../lib/appointment-eligibility';
 import { invalidateAvailabilityCache } from '../../../lib/calendar-cache.js';
 import AppointmentConfirmed from '../../../emails/AppointmentConfirmed';
 import AppointmentDeclined from '../../../emails/AppointmentDeclined';
@@ -418,8 +419,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (newDate.getTime() < Date.now())
       return errorResponse(422, 'Le nouveau créneau doit être dans le futur');
 
-    if (appointment.appointment_mode === 'in-person' && !isWednesdayParis(rescheduled_to as string))
-      return errorResponse(422, 'Les rendez-vous en présentiel ont lieu le mercredi uniquement.');
+    if (appointment.appointment_mode === 'in-person' && !(await isCabinetEligibleSlot(rescheduled_to as string)))
+      return errorResponse(422, 'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.');
 
     if (!isWithinBusinessHours(rescheduled_to as string, appointment.duration))
       return errorResponse(422, 'Le créneau doit être dans les plages horaires (8h-12h ou 14h-19h).');
