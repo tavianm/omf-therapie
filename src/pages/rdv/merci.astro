@@ -306,17 +306,13 @@ const pageDescription = variant === 'payment-success'
       }
     }
 
-    // Cas 1 : cookieyes_consent_update déjà reçu (visiteur connu, event parti dans le head)
-    // Le Layout a stocké le résultat dans window.__ckyConsentAccepted
-    if (window.__ckyConsentAccepted !== null) {
-      if (window.__ckyConsentAccepted.includes('analytics')) {
-        sendGAEvents();
-      }
-    } else {
-      // Cas 2 : attendre le signal du Layout (nouveau visiteur ou chargement lent)
-      window.addEventListener('cky_analytics_ready', function(e) {
-        if (e.detail?.analytics) sendGAEvents();
-      }, { once: true });
+    // Fire conversion events the moment analytics consent is granted.
+    // __ckyAnalyticsReady is a Promise exposed by the Layout (registered
+    // before CookieYes). Awaiting it is race-free: it resolves once CookieYes
+    // reports the 'analytics' category as accepted, whether that happens
+    // before or after this script runs (returning vs. first-time visitor).
+    if (window.__ckyAnalyticsReady) {
+      window.__ckyAnalyticsReady.then(sendGAEvents);
     }
   </script>
   )}

@@ -84,16 +84,20 @@ const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
           gtag('set', 'ads_data_redaction', true);
           gtag('set', 'url_passthrough', false);
 
-          // Enregistrer le listener AVANT CookieYes
-          // Stocker le résultat pour que les scripts body puissent le lire
-          window.__ckyConsentAccepted = null;
-          document.addEventListener('cookieyes_consent_update', function(e) {
-            const accepted = e.detail?.accepted ?? [];
-            window.__ckyConsentAccepted = accepted;
-            // Notifier les scripts qui attendent
-            window.dispatchEvent(new CustomEvent('cky_analytics_ready', {
-              detail: { analytics: accepted.includes('analytics') }
-            }));
+          // Register the listener BEFORE CookieYes loads so we never miss the
+          // first consent signal (returning visitors get it very early).
+          //
+          // Expose a Promise that resolves the first time the visitor grants
+          // analytics consent. Awaiting it is race-free: works whether consent
+          // is granted before this Promise is even created (head runs first),
+          // or after page scripts attach their .then() callback. This replaces
+          // the previous flag + custom-event relay which could deadlock when
+          // consent landed between the flag check and the listener registration.
+          window.__ckyAnalyticsReady = new Promise(function (resolve) {
+            document.addEventListener('cookieyes_consent_update', function (e) {
+              var accepted = (e.detail && e.detail.accepted) || [];
+              if (accepted.indexOf('analytics') !== -1) resolve();
+            });
           });
         </script>
 
