@@ -75,14 +75,17 @@ const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
           window.dataLayer = window.dataLayer || [];
           function gtag(){ window.dataLayer.push(arguments); }
           gtag('consent', 'default', {
-            analytics_storage: 'denied',
-            ad_storage: 'denied',
-            ad_user_data: 'denied',
-            ad_personalization: 'denied',
-            wait_for_update: 500,
+            ad_storage: "denied",
+            ad_user_data: "denied", 
+            ad_personalization: "denied",
+            analytics_storage: "denied",
+            functionality_storage: "denied",
+            personalization_storage: "denied",
+            security_storage: "granted",
+            wait_for_update: 2000,
           });
           gtag('set', 'ads_data_redaction', true);
-          gtag('set', 'url_passthrough', false);
+          gtag('set', 'url_passthrough', true);
 
           // Register the listener BEFORE CookieYes loads so we never miss the
           // first consent signal (returning visitors get it very early).
