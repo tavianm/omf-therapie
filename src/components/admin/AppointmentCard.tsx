@@ -2,16 +2,19 @@
  * AppointmentCard — React island pour la gestion d'un rendez-vous (back-office)
  *
  * Actions disponibles selon le statut :
- *   pending / rescheduled → Confirmer | Refuser | Reporter
- *   payment_pending       → Voir lien paiement | Refuser
- *   confirmed             → Envoyer rappel avis
- *   payment_received      → Envoyer rappel avis
+ *   pending / rescheduled → Confirmer | Refuser | Reporter | Annuler
+ *   payment_pending       → Voir lien paiement | Refuser | Annuler
+ *   payment_received (vidéo payé) → Reporter (move direct) | Envoyer rappel avis | Annuler
+ *   confirmed             → Envoyer rappel avis | Annuler
  *   declined / cancelled  → lecture seule
+ *
+ * Annuler / Reporter ne s'affichent que dans la fenêtre d'éligibilité (veille incluse).
  */
 
 import { useState } from 'react';
 import { getModeLabel, getTypeLabel } from '../../lib/pricing';
 import type { Appointment, AppointmentStatus } from '../../types/appointment';
+import { isCancellableByTherapist } from '../../lib/appointment-eligibility';
 import { ConfirmModal } from './ConfirmModal';
 import { Modal } from './Modal';
 
@@ -23,7 +26,7 @@ interface AppointmentCardProps {
   appointment: Appointment;
 }
 
-type ModalType = 'confirm' | 'decline' | 'reschedule' | null;
+type ModalType = 'confirm' | 'decline' | 'cancel' | 'reschedule' | 'reschedule_paid' | null;
 
 // ---------------------------------------------------------------------------
 // Constantes statut
@@ -86,6 +89,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
   // États formulaires modaux
   const [videoLink, setVideoLink] = useState(appointment.video_link ?? '');
   const [declineMessage, setDeclineMessage] = useState('');
+  const [cancelMessage, setCancelMessage] = useState('');
   const [rescheduleDate, setRescheduleDate] = useState('');
   const [rescheduleMessage, setRescheduleMessage] = useState('');
 
@@ -99,6 +103,11 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
 
   const { status } = appointment;
   const isReadOnly = status === 'declined' || status === 'cancelled';
+  // Éligibilité à l'annulation / report (fenêtre veille incluse, Europe/Paris).
+  const isCancellable = isCancellableByTherapist(appointment);
+  // Un RDV vidéo déjà payé se reporte par move direct admin (pas de re-facturation).
+  const isPaidVideoReschedule =
+    status === 'payment_received' && appointment.appointment_mode === 'video';
 
   // ── PATCH helper ─────────────────────────────────────────────────────────
 
@@ -151,10 +160,20 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
       setActionError('Veuillez sélectionner un nouveau créneau.');
       return;
     }
+    // Pour un RDV vidéo déjà payé : move direct admin (paiement conservé).
+    // Pour les autres : flow de proposition au patient.
+    const action = isPaidVideoReschedule ? 'reschedule_paid' : 'reschedule';
     await callPatch({
-      action: 'reschedule',
+      action,
       rescheduled_to: new Date(rescheduleDate).toISOString(),
       ...(rescheduleMessage ? { therapist_notes: rescheduleMessage } : {}),
+    });
+  }
+
+  async function handleCancel() {
+    await callPatch({
+      action: 'cancel',
+      ...(cancelMessage ? { therapist_notes: cancelMessage } : {}),
     });
   }
 
@@ -506,6 +525,40 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
         </div>
       )}
 
+      {/* Action Annuler — visible pour tout RDV non-read-only dans la fenêtre d'éligibilité */}
+      {!isReadOnly && isCancellable && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {/* Reporter : pour un RDV payé/confirmé éligible (move direct admin pour vidéo payé). */}
+          {(status === 'confirmed' || status === 'payment_received') && (
+            <button
+              onClick={() => {
+                setModal('reschedule');
+                setActionError(null);
+              }}
+              disabled={actionLoading}
+              className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+            >
+              Reporter
+            </button>
+          )}
+          <button
+            onClick={() => {
+              setModal('cancel');
+              setActionError(null);
+            }}
+            disabled={actionLoading}
+            className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-red-300 text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+          >
+            Annuler
+          </button>
+          {appointment.status === 'payment_received' && appointment.final_price - appointment.credit_applied > 0 && (
+            <span className="inline-flex items-center text-xs text-amber-700 font-sans self-center">
+              ⚠ Annulation : avoir de {Math.round((appointment.final_price - appointment.credit_applied) / 100)}€ émis pour le patient
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Bouton régénération Calendar / Meet (vidéo uniquement, si event ou lien manquant) */}
       {appointment.appointment_mode === 'video' &&
         (!meetLink || !calendarEventId) &&
@@ -700,6 +753,76 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
         </Modal>
       )}
 
+      {/* ── Modal : Annuler ───────────────────────────────────────────────── */}
+      {modal === 'cancel' && (
+        <Modal
+          title="Annuler le rendez-vous"
+          onClose={() => {
+            if (
+              cancelMessage.trim() &&
+              !window.confirm('Abandonner ? Votre message sera perdu.')
+            )
+              return;
+            setModal(null);
+          }}
+        >
+          <p className="text-sm text-sage-600 font-sans mb-4">
+            Le patient recevra un email d'annulation.
+            {appointment.status === 'payment_received' && appointment.final_price - appointment.credit_applied > 0 && (
+              <>
+                {' '}
+                <span className="text-amber-700 font-medium">
+                  Un avoir de {Math.round((appointment.final_price - appointment.credit_applied) / 100)}€ (montant payé) sera émis au profit du patient.
+                </span>
+              </>
+            )}
+          </p>
+          <div className="mb-5">
+            <label
+              htmlFor="cancel-msg-input"
+              className="block text-sm font-medium text-sage-700 font-sans mb-1.5"
+            >
+              Message pour le patient{' '}
+              <span className="text-sage-400 font-normal">(optionnel)</span>
+            </label>
+            <textarea
+              id="cancel-msg-input"
+              value={cancelMessage}
+              onChange={(e) => setCancelMessage(e.target.value)}
+              rows={3}
+              placeholder="Expliquez la raison de l'annulation…"
+              className="w-full px-4 py-2.5 rounded-xl border border-sage-200 bg-sage-50 text-sage-900 placeholder-sage-400 font-sans text-sm focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent resize-none transition-colors"
+            />
+          </div>
+          {actionError && (
+            <p className="mb-4 text-sm text-red-700 font-sans">{actionError}</p>
+          )}
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={() => {
+                if (
+                  cancelMessage.trim() &&
+                  !window.confirm('Abandonner ? Votre message sera perdu.')
+                )
+                  return;
+                setModal(null);
+              }}
+              disabled={actionLoading}
+              className="px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 transition-colors disabled:opacity-60 min-h-[40px]"
+            >
+              Fermer
+            </button>
+            <button
+              onClick={handleCancel}
+              disabled={actionLoading}
+              className="px-4 py-2 text-sm font-medium font-sans rounded-xl bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-60 min-h-[40px]"
+            >
+              {actionLoading ? 'En cours…' : 'Annuler le rendez-vous'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
       {/* ── Modal : Reporter ──────────────────────────────────────────────── */}
       {modal === 'reschedule' && (
         <Modal
@@ -716,7 +839,9 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
           }}
         >
           <p className="text-sm text-sage-600 font-sans mb-4">
-            Le patient recevra un email avec le nouveau créneau proposé.
+            {isPaidVideoReschedule
+              ? 'Le rendez-vous sera déplacé vers le nouveau créneau. Le paiement déjà effectué est conservé — aucun nouveau paiement ne sera demandé. Le patient sera notifié.'
+              : 'Le patient recevra un email avec le nouveau créneau proposé.'}
           </p>
           <div className="mb-4">
             <label
