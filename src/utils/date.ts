@@ -24,6 +24,52 @@ export function toParisDateString(date: Date): string {
 }
 
 /**
+ * Minuit (00:00) du jour précédent, en heure de Paris (Europe/Paris).
+ *
+ * Sert de borne inférieure à la fenêtre d'éligibilité d'annulation/report :
+ * un RDV est annulable par la thérapeute si `scheduled_at >= startOfYesterdayParis()`.
+ * Inclure la veille permet l'annulation de dernière minute quand la thérapeute
+ * n'a pas eu le temps de l'annuler le jour même.
+ *
+ * Insensible à la TZ du runtime et au DST : on obtient la date Paris de la veille
+ * (YYYY-MM-DD), puis on sonde l'instant UTC exact où l'heure de Paris vaut 00:00
+ * ce jour-là. Comme Paris est en UTC+1/+2, « minuit Paris du jour D » tombe entre
+ * 22:00 et 23:00 UTC la veille (jour D-1 en UTC) — on sonde donc une fenêtre
+ * autour de `D 00:00 UTC` par pas fins et on retient le premier candidat dont
+ * le formatage Paris vaut 00:00 sur la bonne date.
+ */
+export function startOfYesterdayParis(now: Date = new Date()): Date {
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const ymd = toParisDateString(yesterday); // YYYY-MM-DD Paris (jour D)
+
+  const parisMidnightOnYmd = (utcMs: number): boolean => {
+    const dtf = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Paris',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const parts = dtf.formatToParts(new Date(utcMs));
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+    // On veut exactement 00:00 sur la date ymd (évite de capter le minuit du jour suivant).
+    return `${get('year')}-${get('month')}-${get('day')}` === ymd && `${get('hour')}:${get('minute')}` === '00:00';
+  };
+
+  // Minuit Paris du jour D est dans [D-1 22:00 UTC, D 00:00 UTC].
+  // On sonde depuis D 00:00 UTC en reculant par pas de 5 min sur 3 h.
+  const baseUtc = Date.parse(`${ymd}T00:00:00Z`);
+  for (let delta = 0; delta <= 3 * 60 * 60 * 1000; delta += 5 * 60 * 1000) {
+    const candidate = baseUtc - delta;
+    if (parisMidnightOnYmd(candidate)) return new Date(candidate);
+  }
+  // Repli (ne devrait jamais se produire) : la veille à 22:00 UTC.
+  return new Date(Date.parse(`${ymd}T00:00:00Z`) - 2 * 60 * 60 * 1000);
+}
+
+/**
  * Vérifie qu'une séance tient dans les plages horaires d'ouverture (heure Paris).
  * Matin  : 8h00–12h00  (480–720 min)
  * Après-midi : 14h00–19h00 (840–1140 min)

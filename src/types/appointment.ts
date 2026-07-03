@@ -54,6 +54,7 @@ export interface Appointment {
   base_price: number;
   discount: number;
   final_price: number;
+  credit_applied: number; // avoir consommé à la création ; montant Stripe = final_price - credit_applied
 
   // Planification
   scheduled_at: string; // ISO 8601

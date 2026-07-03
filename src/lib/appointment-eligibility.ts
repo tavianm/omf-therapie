@@ -8,7 +8,8 @@
  */
 import type { Period } from '@/types/manual-slots';
 import { fetchManualSlots } from './manual-slots.js';
-import { getParisISOWeekday, toParisDateString } from '../utils/date.js';
+import { getParisISOWeekday, toParisDateString, startOfYesterdayParis } from '../utils/date.js';
+import type { AppointmentStatus } from '../types/appointment';
 
 // ---------------------------------------------------------------------------
 // Demi-journées ouvrées (heure locale Paris)
@@ -104,4 +105,32 @@ export async function isCabinetEligibleSlot(isoDate: string): Promise<boolean> {
   const isWednesday = getParisISOWeekday(new Date(isoDate)) === 3;
   const manualPeriods = await fetchManualPeriodsForDate(isoDate);
   return cabinetEligibility(isWednesday, manualPeriods)[dayHalfFor(isoDate)];
+}
+
+// ---------------------------------------------------------------------------
+// Éligibilité à l'annulation / report par la thérapeute
+// ---------------------------------------------------------------------------
+
+/**
+ * Statuts à partir desquels un RDV ne peut plus être annulé ni reporté
+ * (déjà refusé, déjà annulé).
+ */
+const TERMINAL_STATUSES: ReadonlySet<AppointmentStatus> = new Set(['declined', 'cancelled']);
+
+/**
+ * Un rendez-vous peut-il être annulé ou reporté par la thérapeute ?
+ *
+ * Règle : le RDV doit être dans un statut non-terminal (≠ declined/cancelled)
+ * ET sa date prévue doit être >= début de la veille (Europe/Paris). Cette fenêtre
+ * inclut volontairement la veille : la thérapeute doit pouvoir annuler un RDV
+ * de dernière minute qu'elle n'a pas eu le temps de traiter le jour même.
+ *
+ * Prédicat pur, partagé client/serveur (aucun effet de bord, aucun I/O).
+ */
+export function isCancellableByTherapist(appt: {
+  scheduled_at: string;
+  status: AppointmentStatus;
+}): boolean {
+  if (TERMINAL_STATUSES.has(appt.status)) return false;
+  return new Date(appt.scheduled_at).getTime() >= startOfYesterdayParis().getTime();
 }
