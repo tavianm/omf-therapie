@@ -6,6 +6,7 @@ import { auth } from '../../../../lib/auth';
 import { isAdminSession } from '../../../../lib/authz';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import { calculatePrice } from '../../../../lib/pricing';
+import { getAvailableCredit, consumeCredits } from '../../../../lib/credits';
 import { sendEmail, buildAppointmentConversationSubject } from '../../../../lib/resend';
 import { createAppointmentPaymentLink } from '../../../../lib/stripe';
 import { generateGoogleCalendarLink, generateOutlookCalendarLink, generateAppleCalendarInviteLink, CABINET_ADDRESS } from '../../../../lib/ics';
@@ -71,6 +72,7 @@ export const POST: APIRoute = async ({ request }) => {
     send_email: shouldSendEmail = true,
     video_link,
     override_price,
+    use_credit,
   } = body;
 
   // 3. Validation
@@ -161,13 +163,32 @@ export const POST: APIRoute = async ({ request }) => {
     override_price !== undefined ? Number(override_price) : undefined,
   );
 
-  // 5. Statut initial
-  // in-person → confirmed directement (pas de paiement requis)
-  // video → payment_pending (lien Stripe envoyé si shouldSendEmail)
+  // 5. Avoir (avoir interne) — déduction admin-only
+  // ----------------------------------------------------------------
+  // Si l'admin coche « utiliser l'avoir » et qu'un avoir est disponible pour
+  // cet email, on consomme en FIFO le montant plafonné à final_price.
+  // montant dû = final_price - credit_applied. Si 0 → pas de paiement Stripe,
+  // statut payment_received (video) / confirmed (in-person).
   const isVideo = appointment_mode === 'video';
-  const initialStatus = isVideo ? 'payment_pending' : 'confirmed';
+  const finalPriceCents = pricing.finalPrice * 100;
+  let creditApplied = 0;
 
-  // 6. Insertion en base
+  if (use_credit === true) {
+    const balance = await getAvailableCredit((patient_email as string).toLowerCase());
+    if (balance > 0) {
+      creditApplied = Math.min(balance, finalPriceCents);
+    }
+  }
+  const amountDueCents = Math.max(0, finalPriceCents - creditApplied);
+
+  // 6. Statut initial
+  // in-person → confirmed directement (jamais de paiement en ligne)
+  // video → payment_pending (lien Stripe) SAUF si montant dû = 0 → payment_received
+  const initialStatus: string = isVideo
+    ? (amountDueCents === 0 ? 'payment_received' : 'payment_pending')
+    : 'confirmed';
+
+  // 7. Insertion en base
   const { data: appointment, error: dbError } = await supabaseAdmin
     .from('appointments')
     .insert({
@@ -185,7 +206,8 @@ export const POST: APIRoute = async ({ request }) => {
       status: initialStatus,
       base_price: pricing.basePrice * 100,
       discount: pricing.discount * 100,
-      final_price: pricing.finalPrice * 100,
+      final_price: finalPriceCents,
+      credit_applied: creditApplied,
       video_link: isVideo ? (video_link ?? null) : null,
     })
     .select()
@@ -194,6 +216,22 @@ export const POST: APIRoute = async ({ request }) => {
   if (dbError || !appointment) {
     console.error('[admin/appointments] DB insert error:', dbError);
     return errorResponse(500, 'Erreur lors de la création du rendez-vous');
+  }
+
+  // 8. Consommer l'avoir (atomique, FIFO) — après l'insert (besoin de l'id).
+  if (creditApplied > 0) {
+    try {
+      await consumeCredits(
+        (patient_email as string).toLowerCase(),
+        creditApplied,
+        appointment.id,
+      );
+    } catch (creditErr) {
+      // Échec consommation : on annule le RDV (cohérence — pas de credit_applied sans usage).
+      console.error('[admin/appointments] Erreur consommation avoir:', creditErr);
+      await supabaseAdmin.from('appointments').delete().eq('id', appointment.id);
+      return errorResponse(409, 'Avoir insuffisant ou erreur lors de la consommation de l\'avoir.');
+    }
   }
 
   await invalidateAvailabilityCache().catch(console.error);
@@ -231,19 +269,23 @@ export const POST: APIRoute = async ({ request }) => {
     }
   }
 
-  // 7. Envoi email
+  // 9. Paiement Stripe + envoi email
+  // ----------------------------------------------------------------
+  // Video + montant dû > 0  → lien Stripe pour le SOLDE (final_price - credit_applied).
+  // Video + montant dû = 0  → aucun Stripe (avoir couvre tout), confirmation directe.
+  // In-person               → confirmation directe (jamais de paiement en ligne).
   if (shouldSendEmail) {
     const origin = new URL(request.url).origin;
     const successUrl = import.meta.env.STRIPE_SUCCESS_URL ?? `${origin}/rdv/merci/?source=payment-success`;
 
-    if (isVideo) {
-      // Créer le lien Stripe et envoyer une demande de paiement
+    if (isVideo && amountDueCents > 0) {
+      // Créer le lien Stripe (pour le solde dû) et envoyer une demande de paiement
       try {
         const paymentLink = await createAppointmentPaymentLink({
           appointmentId: appointment.id,
           patientEmail: appointment.patient_email,
           patientName: appointment.patient_name,
-          amount: appointment.final_price,
+          amount: amountDueCents,
           description: `Séance de thérapie — ${new Date(appointment.scheduled_at).toLocaleDateString('fr-FR')}`,
           successUrl,
         });
@@ -265,7 +307,7 @@ export const POST: APIRoute = async ({ request }) => {
             scheduledAt: appointment.scheduled_at,
             appointmentType: appointment.appointment_type,
             duration: appointment.duration,
-            finalPrice: appointment.final_price,
+            finalPrice: amountDueCents,
             stripePaymentUrl: paymentLink.url,
           }),
         });
@@ -275,8 +317,58 @@ export const POST: APIRoute = async ({ request }) => {
       } catch (e) {
         console.error('[admin/appointments] Stripe error (non-bloquant):', e);
       }
+    } else if (isVideo && amountDueCents === 0) {
+      // Avoir couvre l'intégralité : envoyer une confirmation (séance réglée par avoir).
+      try {
+        const start = new Date(appointment.scheduled_at);
+        const end = new Date(start.getTime() + appointment.duration * 60 * 1000);
+        const calendarEvent = {
+          uid: appointment.id,
+          summary: 'Séance de thérapie — OMF Therapie',
+          description: `Patient: ${appointment.patient_name}\nMode: Téléconsultation`,
+          location: resolvedVideoLink ?? undefined,
+          url: resolvedVideoLink ?? undefined,
+          start,
+          end,
+          organizerName: 'Oriane Montabonnet — OMF Thérapie',
+          organizerEmail: import.meta.env.RESEND_FROM_EMAIL ?? 'contact@omf-therapie.fr',
+        };
+        const gcalLink = generateGoogleCalendarLink(calendarEvent);
+        const outlookLink = generateOutlookCalendarLink(calendarEvent);
+        const baseUrl = import.meta.env.BETTER_AUTH_URL ?? new URL(request.url).origin;
+        const inviteToken = createSecureLinkToken({
+          appointmentId: appointment.id,
+          purpose: 'ics-invite',
+          expiresInSeconds: 60 * 60 * 24 * 180,
+          nonce: appointment.scheduled_at,
+        });
+        const appleLink = generateAppleCalendarInviteLink(baseUrl, appointment.id, inviteToken);
+
+        await sendEmail({
+          to: appointment.patient_email,
+          threadKey: `appointment:${appointment.id}:patient`,
+          subject: buildAppointmentConversationSubject(
+            `Votre rendez-vous est confirmé — ${new Date(appointment.scheduled_at).toLocaleDateString('fr-FR')}`,
+            appointment.id,
+          ),
+          react: createElement(AppointmentConfirmed, {
+            patientName: appointment.patient_name,
+            appointmentType: appointment.appointment_type,
+            appointmentMode: appointment.appointment_mode,
+            scheduledAt: appointment.scheduled_at,
+            duration: appointment.duration,
+            finalPrice: appointment.final_price,
+            videoLink: resolvedVideoLink,
+            googleCalendarLink: gcalLink,
+            appleCalendarLink: appleLink,
+            outlookCalendarLink: outlookLink,
+          }),
+        });
+      } catch (e) {
+        console.error('[admin/appointments] email confirmation (avoir) error (non-bloquant):', e);
+      }
     } else {
-      // Confirmer directement et envoyer l'email de confirmation
+      // In-person : confirmer directement et envoyer l'email de confirmation
       const start = new Date(appointment.scheduled_at);
       const end = new Date(start.getTime() + appointment.duration * 60 * 1000);
       const calendarEvent = {
