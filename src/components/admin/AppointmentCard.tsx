@@ -14,7 +14,7 @@
 import { useState } from 'react';
 import { getModeLabel, getTypeLabel } from '../../lib/pricing';
 import type { Appointment, AppointmentStatus } from '../../types/appointment';
-import { isCancellableByTherapist } from '../../lib/appointment-eligibility';
+import { isCancellableByTherapist } from '../../utils/date';
 import { ConfirmModal } from './ConfirmModal';
 import { Modal } from './Modal';
 

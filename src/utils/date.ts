@@ -1,3 +1,32 @@
+import type { AppointmentStatus } from '../types/appointment';
+
+/**
+ * Statuts à partir desquels un RDV ne peut plus être annulé ni reporté
+ * (déjà refusé, déjà annulé).
+ */
+const TERMINAL_STATUSES: ReadonlySet<AppointmentStatus> = new Set(['declined', 'cancelled']);
+
+/**
+ * Un rendez-vous peut-il être annulé ou reporté par la thérapeute ?
+ *
+ * Règle : le RDV doit être dans un statut non-terminal (≠ declined/cancelled)
+ * ET sa date prévue doit être >= début de la veille (Europe/Paris). Cette fenêtre
+ * inclut volontairement la veille : la thérapeute doit pouvoir annuler un RDV
+ * de dernière minute qu'elle n'a pas eu le temps de traiter le jour même.
+ *
+ * Prédicat pur, partagé client/serveur. Vit ici (et non dans
+ * `appointment-eligibility.ts`) pour éviter de tirer la chaîne d'imports
+ * `manual-slots.ts` → `supabaseAdmin` dans le bundle client des islands React
+ * (`AppointmentCard`). Ce module (`utils/date.ts`) n'a aucune dépendance I/O.
+ */
+export function isCancellableByTherapist(appt: {
+  scheduled_at: string;
+  status: AppointmentStatus;
+}): boolean {
+  if (TERMINAL_STATUSES.has(appt.status)) return false;
+  return new Date(appt.scheduled_at).getTime() >= startOfYesterdayParis().getTime();
+}
+
 /** ISO weekday in Paris time (1 = lundi, …, 7 = dimanche). */
 export function getParisISOWeekday(date: Date): number {
   // en-US short abbreviations are stable across runtimes, unlike fr-FR ones.
