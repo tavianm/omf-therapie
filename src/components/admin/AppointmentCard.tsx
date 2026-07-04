@@ -1,13 +1,15 @@
 /**
  * AppointmentCard — React island pour la gestion d'un rendez-vous (back-office)
  *
- * Actions disponibles selon le statut :
- *   pending / rescheduled → Confirmer | Refuser | Reporter | Annuler
- *   payment_pending       → Voir lien paiement | Refuser | Annuler
- *   payment_received (vidéo payé) → Reporter (move direct) | Envoyer rappel avis | Annuler
- *   confirmed             → Envoyer rappel avis | Annuler
- *   declined / cancelled  → lecture seule
+ * Actions disponibles selon le statut (un seul conteneur, hiérarchie principale→dangereux) :
+ *   pending          → Confirmer · Reporter · Refuser
+ *   payment_pending  → Voir lien paiement · Refuser
+ *   confirmed/payé   → Envoyer rappel avis · Reporter · Annuler (+ avertissement avoir si payé)
+ *   rescheduled      → Annuler la proposition
+ *   declined / cancelled → lecture seule
  *
+ * Refuser (demande non payée) et Annuler (RDV confirmé/payé) sont mutuellement
+ * exclusifs par statut : ils n'apparaissent jamais simultanément.
  * Annuler / Reporter ne s'affichent que dans la fenêtre d'éligibilité (veille incluse).
  */
 
@@ -411,7 +413,10 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
         </details>
       )}
 
-      {/* Boutons d'action */}
+      {/* Boutons d'action — un seul conteneur cohérent par statut.
+          Hiérarchie : action principale (plein) → secondaires (contour sage) →
+          destructive (contour rouge, à droite). Refuser et Annuler sont
+          mutuellement exclusifs par statut (jamais simultanés). */}
       {!isReadOnly && (
         <div className="flex flex-wrap gap-2 mb-4">
           {status === 'pending' && (
@@ -428,16 +433,6 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
               </button>
               <button
                 onClick={() => {
-                  setModal('decline');
-                  setActionError(null);
-                }}
-                disabled={actionLoading}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-red-300 text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
-              >
-                Refuser
-              </button>
-              <button
-                onClick={() => {
                   setModal('reschedule');
                   setActionError(null);
                 }}
@@ -445,6 +440,16 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
                 className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
               >
                 Reporter
+              </button>
+              <button
+                onClick={() => {
+                  setModal('decline');
+                  setActionError(null);
+                }}
+                disabled={actionLoading}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-red-300 text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+              >
+                Refuser
               </button>
             </>
           )}
@@ -520,44 +525,47 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
                   Email envoyé
                 </span>
               )}
+              {/* Reporter un RDV confirmé/payé : move direct admin (paiement conservé pour vidéo payé). */}
+              {isCancellable && (
+                <button
+                  onClick={() => {
+                    setModal('reschedule');
+                    setActionError(null);
+                  }}
+                  disabled={actionLoading}
+                  className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                >
+                  Reporter
+                </button>
+              )}
+              {/* Annuler un RDV confirmé/payé (exclusif avec Refuser qui n'apparaît qu'en pending/payment_pending). */}
+              {isCancellable && (
+                <button
+                  onClick={() => {
+                    setModal('cancel');
+                    setActionError(null);
+                  }}
+                  disabled={actionLoading}
+                  className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-red-300 text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                >
+                  Annuler
+                </button>
+              )}
             </>
           )}
         </div>
       )}
 
-      {/* Action Annuler — visible pour tout RDV non-read-only dans la fenêtre d'éligibilité */}
-      {!isReadOnly && isCancellable && (
-        <div className="flex flex-wrap gap-2 mb-4">
-          {/* Reporter : pour un RDV payé/confirmé éligible (move direct admin pour vidéo payé). */}
-          {(status === 'confirmed' || status === 'payment_received') && (
-            <button
-              onClick={() => {
-                setModal('reschedule');
-                setActionError(null);
-              }}
-              disabled={actionLoading}
-              className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
-            >
-              Reporter
-            </button>
-          )}
-          <button
-            onClick={() => {
-              setModal('cancel');
-              setActionError(null);
-            }}
-            disabled={actionLoading}
-            className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-red-300 text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
-          >
-            Annuler
-          </button>
-          {appointment.status === 'payment_received' && appointment.final_price - appointment.credit_applied > 0 && (
-            <span className="inline-flex items-center text-xs text-amber-700 font-sans self-center">
-              ⚠ Annulation : avoir de {Math.round((appointment.final_price - appointment.credit_applied) / 100)}€ émis pour le patient
-            </span>
-          )}
-        </div>
-      )}
+      {/* Avertissement avoir — attaché à l'action Annuler d'un RDV payé. */}
+      {isCancellable &&
+        status === 'payment_received' &&
+        appointment.final_price - appointment.credit_applied > 0 && (
+          <p className="mb-4 text-xs text-amber-700 font-sans">
+            L'annulation émettra un avoir de{' '}
+            {Math.round((appointment.final_price - appointment.credit_applied) / 100)}€
+            au profit du patient.
+          </p>
+        )}
 
       {/* Bouton régénération Calendar / Meet (vidéo uniquement, si event ou lien manquant) */}
       {appointment.appointment_mode === 'video' &&
