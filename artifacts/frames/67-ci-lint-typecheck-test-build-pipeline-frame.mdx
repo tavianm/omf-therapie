@@ -1,0 +1,82 @@
+---
+title: "fix(ci): add lint + typecheck + test + build pipeline with branch protection"
+issue: 67
+status: approved
+tier: F-lite
+date: 2026-07-04
+---
+
+## Problem
+
+`.github/` contains only `copilot-instructions.md` — **zero CI workflows**. Lint,
+typecheck, unit tests, e2e, build, and a11y audits never gate a merge to `main`.
+Netlify auto-deploys on push with no quality gate, so type errors and broken code
+ship straight to production.
+
+All the tooling exists but is unwired: `eslint.config.js`, `vitest.config.ts`,
+`playwright.config.ts`, `scripts/run-a11y-audit.mjs`. `@astrojs/check` is a
+devDependency that is never invoked — there isn't even a `typecheck` script in
+`package.json`.
+
+The symptom that proves the risk is real: a stale `@ts-expect-error` on
+`src/pages/api/stripe-webhook.ts:5` ("stripe pas encore installé") survives
+because nothing catches it, even though `stripe` IS in `package.json`
+(`^22.1.1`). Type errors in payment-critical code are slipping through unnoticed.
+
+## Who
+
+- **Primary:** developers on this repo — who currently have no automated signal
+  that a push broke the build, types, or tests before it lands on `main` and
+  auto-deploys.
+- **Secondary:** end users / patients — who currently receive a production deploy
+  the instant a broken commit merges, with no gate between "merged" and "live".
+
+## Constraints
+
+- Stack is fixed: Astro 5 + React 18 + Vitest + ESLint 9 (flat config) + Playwright.
+- `@astrojs/check` is already a devDependency — `astro check` is the canonical
+  typecheck command for this project.
+- Node package manager is **npm** (`package-lock.json` present, no `bun.lockb`/`pnpm-lock`).
+  CI must use `npm ci`.
+- Netlify is the deploy target; CI runs on GitHub Actions independently of Netlify.
+- Branch protection on `main` is a GitHub repo setting — partially outside the
+  repo itself, but the required-status-check name must match the workflow job.
+
+## Out of Scope
+
+- Playwright/e2e against the Netlify deploy-preview URL (explicit follow-up in the
+  issue — optional, separate job later).
+- Lighthouse/a11y audit in CI (script exists; wiring it is a separate concern).
+- Migrating off Netlify auto-deploy or adding staging environments.
+- Fixing the 56 npm audit vulnerabilities (orthogonal to gating merges).
+
+## Premise Validity
+
+**Success in 6 months:** No type/lint/test/build error reaches production on
+`main`. Measured concretely: the CI status check is required on `main`, and a PR
+that breaks `typecheck` / `lint` / `test` / `build` cannot merge.
+
+**Failure in 6 months:** 60 days after merge, there exists a commit on `main`
+where `npm run typecheck` or `npm run build` fails when run locally — i.e. CI is
+green but the repo has drifted. This is directly observable: clone, `npm ci`,
+run the scripts, check exit codes.
+
+**Simplest alternative:** Rely on Netlify's build step to catch breakage.
+**Why not simplest:** Netlify build (a) gives slow feedback only after the PR is
+opened and Netlify picks it up, (b) runs the Astro build but does not separately
+gate lint/typecheck/test, and (c) offers no branch protection — a commit can
+merge to `main` before Netlify finishes reporting, then auto-deploys broken.
+Server-side CI with a required status check is the only universal gate that
+blocks the merge itself.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (CI/tooling), ~3 files touched
+(`package.json`, `.github/workflows/ci.yml`, `src/pages/api/stripe-webhook.ts`),
+no architecture decisions, acceptance criteria already enumerated in the issue.
+
+Signals observed:
+- `Size: M` label → F-lite per tier matrix.
+- Single domain (developer infrastructure / CI).
+- Exact approach specified in the issue body (4 numbered steps).
+- Existing tooling just needs wiring — no new patterns introduced.
