@@ -3,10 +3,10 @@
  * Destinataire : Patient
  * Sujet : "Votre rendez-vous a été reporté"
  *
- * Notification simple d'un report effectué par la thérapeute sur une
- * téléconsultation DÉJÀ PAYÉE. À ne pas confondre avec `AppointmentRescheduled`
- * (proposition demandant acceptation + nouveau paiement). Ici : pas de bouton
- * d'acceptation, pas de demande de paiement — le paiement est conservé.
+ * Notification simple d'un report effectué par la thérapeute sur un RDV déjà
+ * arrimé (confirmed ∨ payment_received, tous modes). À ne pas confondre avec
+ * `AppointmentRescheduled` (proposition demandant acceptation, flow patient).
+ * Ici : move direct admin, pas de bouton d'acceptation, paiement/avoir conservé.
  */
 
 import { Section, Text } from '@react-email/components';

@@ -107,9 +107,11 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
   const isReadOnly = status === 'declined' || status === 'cancelled';
   // Éligibilité à l'annulation / report (fenêtre veille incluse, Europe/Paris).
   const isCancellable = isCancellableByTherapist(appointment);
-  // Un RDV vidéo déjà payé se reporte par move direct admin (pas de re-facturation).
-  const isPaidVideoReschedule =
-    status === 'payment_received' && appointment.appointment_mode === 'video';
+  // Un RDV déjà arrimé (confirmed ∨ payment_received, tous modes) se reporte par
+  // move direct admin : la thérapeute déplace le créneau, paiement/avoir conservé,
+  // patient notifié. Pas de re-validation, pas de proposition.
+  const isDirectReschedule =
+    status === 'confirmed' || status === 'payment_received';
 
   // ── PATCH helper ─────────────────────────────────────────────────────────
 
@@ -162,9 +164,9 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
       setActionError('Veuillez sélectionner un nouveau créneau.');
       return;
     }
-    // Pour un RDV vidéo déjà payé : move direct admin (paiement conservé).
-    // Pour les autres : flow de proposition au patient.
-    const action = isPaidVideoReschedule ? 'reschedule_paid' : 'reschedule';
+    // RDV déjà arrimé (confirmed/payment_received) : move direct admin.
+    // Sinon (pending/payment_pending) : flow de proposition au patient.
+    const action = isDirectReschedule ? 'reschedule_paid' : 'reschedule';
     await callPatch({
       action,
       rescheduled_to: new Date(rescheduleDate).toISOString(),
@@ -847,8 +849,8 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
           }}
         >
           <p className="text-sm text-sage-600 font-sans mb-4">
-            {isPaidVideoReschedule
-              ? 'Le rendez-vous sera déplacé vers le nouveau créneau. Le paiement déjà effectué est conservé — aucun nouveau paiement ne sera demandé. Le patient sera notifié.'
+            {isDirectReschedule
+              ? 'Le rendez-vous sera déplacé vers le nouveau créneau. Le paiement déjà effectué (ou l\'avoir) est conservé — aucun nouveau paiement ne sera demandé. Le patient sera notifié.'
               : 'Le patient recevra un email avec le nouveau créneau proposé.'}
           </p>
           <div className="mb-4">

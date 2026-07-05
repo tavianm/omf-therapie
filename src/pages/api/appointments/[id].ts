@@ -493,8 +493,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // Conditions : vidéo + payment_received + éligible (fenêtre veille).
   // ---------------------------------------------------------------------------
   if (action === 'reschedule_paid') {
-    if (appointment.appointment_mode !== 'video' || appointment.status !== 'payment_received')
-      return errorResponse(409, 'Le report direct ne s\'applique qu\'aux téléconsultations déjà payées.');
+    // Move direct admin : tout RDV déjà arrimé (confirmed ∨ payment_received),
+    // tous modes confondus. La thérapeute déplace le créneau, le paiement/avoir
+    // est conservé, le patient est notifié (pas de re-validation).
+    if (appointment.status !== 'confirmed' && appointment.status !== 'payment_received')
+      return errorResponse(409, 'Le report direct ne s\'applique qu\'aux rendez-vous déjà confirmés.');
     if (!isCancellableByTherapist(appointment))
       return errorResponse(409, 'Ce rendez-vous ne peut pas être reporté (hors fenêtre).');
 
@@ -507,8 +510,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (newDate.getTime() < Date.now())
       return errorResponse(422, 'Le nouveau créneau doit être dans le futur');
 
+    // Présentiel : contrainte cabinet (mercredi), cohérent avec la création admin.
     // Pas de garde isWithinBusinessHours : action thérapeute, même flexibilité
-    // que la création manuelle admin. (Vidéo = pas de contrainte cabinet non plus.)
+    // que la création manuelle admin.
+    if (appointment.appointment_mode === 'in-person' && !(await isCabinetEligibleSlot(rescheduled_to as string)))
+      return errorResponse(422, 'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.');
 
     try {
       const slotEnd = new Date(newDate.getTime() + appointment.duration * 60 * 1000);
