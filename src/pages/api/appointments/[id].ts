@@ -12,14 +12,17 @@ import { getTypeLabel, getModeLabel, calculatePrice } from '../../../lib/pricing
 import { stripe, createAppointmentPaymentLink } from '../../../lib/stripe';
 import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from '../../../lib/google-calendar';
 import { hasAppointmentConflict } from '../../../lib/appointment-conflicts';
-import { isWithinBusinessHours } from '../../../utils/date';
 import { isCabinetEligibleSlot } from '../../../lib/appointment-eligibility';
 import { invalidateAvailabilityCache } from '../../../lib/calendar-cache.js';
 import AppointmentConfirmed from '../../../emails/AppointmentConfirmed';
 import AppointmentDeclined from '../../../emails/AppointmentDeclined';
 import AppointmentRescheduled from '../../../emails/AppointmentRescheduled';
+import AppointmentRescheduledPaid from '../../../emails/AppointmentRescheduledPaid';
+import AppointmentCancelled from '../../../emails/AppointmentCancelled';
 import PaymentRequest from '../../../emails/PaymentRequest';
 import type { Appointment } from '../../../types/appointment';
+import { issueCreditForCancellation, restoreCredits } from '../../../lib/credits';
+import { isCancellableByTherapist } from '../../../lib/appointment-eligibility';
 
 function errorResponse(status: number, message: string): Response {
   return new Response(JSON.stringify({ error: message }), {
@@ -100,8 +103,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!UUID_RE.test(id)) return errorResponse(400, 'Identifiant de rendez-vous invalide');
 
-  if (!action || !['confirm', 'decline', 'reschedule', 'save_notes', 'accept_reschedule', 'cancel_reschedule'].includes(action as string))
-    return errorResponse(422, 'Action invalide (confirm | decline | reschedule | save_notes | accept_reschedule | cancel_reschedule)');
+  if (!action || !['confirm', 'decline', 'cancel', 'reschedule', 'reschedule_paid', 'save_notes', 'accept_reschedule', 'cancel_reschedule'].includes(action as string))
+    return errorResponse(422, 'Action invalide (confirm | decline | cancel | reschedule | reschedule_paid | save_notes | accept_reschedule | cancel_reschedule)');
 
   // 3. Récupérer le rendez-vous
   const { data: appt, error: fetchError } = await supabaseAdmin
@@ -381,6 +384,207 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   }
 
   // ---------------------------------------------------------------------------
+  // Action: cancel — annule un RDV (confirmé/payé/etc.), gère l'avoir
+  // ---------------------------------------------------------------------------
+  // Règle consolidée :
+  //   1. Toujours restituer l'avoir consommé par ce RDV (si credit_applied > 0).
+  //   2. Émettre un nouvel avoir du cash réellement encaissé (final_price −
+  //      credit_applied) UNIQUEMENT si status === 'payment_received' et si ce
+  //      montant > 0 (sinon : aucun cash, aucun nouvel avoir).
+  // Aucune exclusion pour les RDV déjà écoulés : la fenêtre d'éligibilité
+  // (veille incluse) est validée par isCancellableByTherapist — le jugement
+  // de la thérapeute est le garde-fou intentionnel (annulation de dernière minute).
+  // ---------------------------------------------------------------------------
+  if (action === 'cancel') {
+    if (!isCancellableByTherapist(appointment))
+      return errorResponse(409, 'Ce rendez-vous ne peut pas être annulé (hors fenêtre ou statut terminal).');
+
+    // 1. Restituer l'avoir consommé par ce RDV (avant toute autre écriture).
+    let restoredAmount = 0;
+    if (appointment.credit_applied > 0) {
+      try {
+        await restoreCredits(appointment.id);
+        restoredAmount = appointment.credit_applied;
+      } catch (restoreErr) {
+        // La cohérence du ledger prime : on bloque l'annulation si la restitution échoue.
+        console.error('[appointments/patch] Erreur restitution avoir (cancel):', restoreErr);
+        return errorResponse(500, 'Erreur lors de la restitution de l\'avoir');
+      }
+    }
+
+    // 2. Émettre un nouvel avoir pour le cash encaissé (RDV payé uniquement).
+    let issuedCredit = false;
+    let creditCashAmount = 0;
+    if (appointment.status === 'payment_received') {
+      creditCashAmount = appointment.final_price - appointment.credit_applied;
+      if (creditCashAmount > 0) {
+        try {
+          await issueCreditForCancellation(appointment, creditCashAmount);
+          issuedCredit = true;
+        } catch (creditErr) {
+          console.error('[appointments/patch] Erreur émission avoir (cancel):', creditErr);
+          return errorResponse(500, 'Erreur lors de l\'émission de l\'avoir');
+        }
+      }
+    }
+
+    // 3. Passer le RDV en cancelled.
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from('appointments')
+      .update({
+        status: 'cancelled',
+        therapist_notes: therapist_notes ?? appointment.therapist_notes,
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError || !updated) {
+      console.error('[appointments/patch] Erreur cancel:', updateError);
+      return errorResponse(500, 'Erreur lors de l\'annulation');
+    }
+
+    const updatedAppt = updated as Appointment;
+
+    await invalidateAvailabilityCache().catch(console.error);
+
+    // 4. Supprimer l'événement Google Calendar (non-bloquant).
+    if (appointment.google_calendar_event_id) {
+      await deleteCalendarEvent(appointment.google_calendar_event_id).catch((calendarErr: unknown) => {
+        console.error('[appointments/patch] Erreur suppression événement agenda (cancel):', calendarErr);
+      });
+    }
+
+    // 5. Notifier le patient par email (non-bloquant).
+    //    Wording contract : jamais le mot « remboursement ». L'avoir est interne.
+    await sendEmail({
+      to: updatedAppt.patient_email,
+      threadKey: `appointment:${updatedAppt.id}:patient`,
+      subject: buildAppointmentConversationSubject(
+        'Votre rendez-vous a été annulé',
+        updatedAppt.id,
+      ),
+      react: createElement(AppointmentCancelled, {
+        patientName: updatedAppt.patient_name,
+        scheduledAt: updatedAppt.scheduled_at,
+        appointmentMode: updatedAppt.appointment_mode,
+        hasCredit: issuedCredit,
+        creditAmount: issuedCredit ? creditCashAmount : undefined,
+        therapistNote: typeof therapist_notes === 'string' ? therapist_notes : undefined,
+      }),
+    }).catch((emailErr: unknown) => {
+      console.error('[appointments/patch] Erreur envoi email (cancel):', emailErr);
+    });
+
+    const messageParts = ['Rendez-vous annulé.'];
+    if (issuedCredit) messageParts.push(`Avoir de ${creditCashAmount / 100}€ émis.`);
+    if (restoredAmount > 0) messageParts.push(`Avoir de ${restoredAmount / 100}€ restitué.`);
+
+    return jsonResponse({ appointment: updatedAppt, message: messageParts.join(' ') });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Action: reschedule_paid — move direct admin d'un RDV vidéo déjà payé
+  // ---------------------------------------------------------------------------
+  // Corrige le bug de double-facturation : l'action `reschedule` classique
+  // expire le Payment Link et accept_reschedule en régénère un nouveau,
+  // re-facturant un RDV déjà payé. Ici : on déplace juste le créneau, le
+  // paiement est conservé, aucun lien Stripe, aucune re-accept patient.
+  // Conditions : vidéo + payment_received + éligible (fenêtre veille).
+  // ---------------------------------------------------------------------------
+  if (action === 'reschedule_paid') {
+    // Move direct admin : tout RDV déjà arrimé (confirmed ∨ payment_received),
+    // tous modes confondus. La thérapeute déplace le créneau, le paiement/avoir
+    // est conservé, le patient est notifié (pas de re-validation).
+    if (appointment.status !== 'confirmed' && appointment.status !== 'payment_received')
+      return errorResponse(409, 'Le report direct ne s\'applique qu\'aux rendez-vous déjà confirmés.');
+    if (!isCancellableByTherapist(appointment))
+      return errorResponse(409, 'Ce rendez-vous ne peut pas être reporté (hors fenêtre).');
+
+    if (!rescheduled_to || typeof rescheduled_to !== 'string')
+      return errorResponse(422, 'Nouveau créneau requis pour un report');
+
+    const newDate = new Date(rescheduled_to as string);
+    if (isNaN(newDate.getTime()))
+      return errorResponse(422, 'Format de date invalide pour le report');
+    if (newDate.getTime() < Date.now())
+      return errorResponse(422, 'Le nouveau créneau doit être dans le futur');
+
+    // Présentiel : contrainte cabinet (mercredi), cohérent avec la création admin.
+    // Pas de garde isWithinBusinessHours : action thérapeute, même flexibilité
+    // que la création manuelle admin.
+    if (appointment.appointment_mode === 'in-person' && !(await isCabinetEligibleSlot(rescheduled_to as string)))
+      return errorResponse(422, 'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.');
+
+    try {
+      const slotEnd = new Date(newDate.getTime() + appointment.duration * 60 * 1000);
+      const hasConflict = await hasAppointmentConflict({
+        slotStartIso: newDate.toISOString(),
+        slotEndIso: slotEnd.toISOString(),
+        excludeAppointmentId: appointment.id,
+      });
+      if (hasConflict) {
+        return errorResponse(409, 'Ce créneau n\'est plus disponible. Veuillez sélectionner un autre horaire.');
+      }
+    } catch (conflictError) {
+      console.error('[appointments/patch] Erreur vérification doublon (reschedule_paid):', conflictError);
+      return errorResponse(500, 'Erreur lors de la vérification du créneau');
+    }
+
+    // AUCUN appel Stripe, AUCUN changement de status/prix/credit_applied.
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from('appointments')
+      .update({
+        scheduled_at: newDate.toISOString(),
+        therapist_notes: therapist_notes ?? appointment.therapist_notes,
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError || !updated) {
+      console.error('[appointments/patch] Erreur reschedule_paid:', updateError);
+      return errorResponse(500, 'Erreur lors du report');
+    }
+
+    const updatedAppt = updated as Appointment;
+
+    await invalidateAvailabilityCache().catch(console.error);
+
+    // Mettre à jour l'événement Google Calendar existant (non-bloquant).
+    if (appointment.google_calendar_event_id) {
+      const start = new Date(updatedAppt.scheduled_at);
+      const end = new Date(start.getTime() + updatedAppt.duration * 60 * 1000);
+      await updateCalendarEvent(appointment.google_calendar_event_id, { start, end }).catch((calendarErr: unknown) => {
+        console.error('[appointments/patch] Erreur MAJ événement agenda (reschedule_paid):', calendarErr);
+      });
+    }
+
+    // Notifier le patient (email simple de notification, PAS de demande de paiement).
+    await sendEmail({
+      to: updatedAppt.patient_email,
+      threadKey: `appointment:${updatedAppt.id}:patient`,
+      subject: buildAppointmentConversationSubject(
+        'Votre rendez-vous a été reporté',
+        updatedAppt.id,
+      ),
+      react: createElement(AppointmentRescheduledPaid, {
+        patientName: updatedAppt.patient_name,
+        originalScheduledAt: appointment.scheduled_at,
+        newScheduledAt: newDate.toISOString(),
+        appointmentMode: updatedAppt.appointment_mode,
+        duration: updatedAppt.duration,
+        finalPrice: updatedAppt.final_price,
+        therapistNote: typeof therapist_notes === 'string' ? therapist_notes : undefined,
+      }),
+    }).catch((emailErr: unknown) => {
+      console.error('[appointments/patch] Erreur envoi email (reschedule_paid):', emailErr);
+    });
+
+    return jsonResponse({ appointment: updatedAppt, message: 'Rendez-vous reporté (paiement conservé).' });
+  }
+
+  // ---------------------------------------------------------------------------
   // Action: cancel_reschedule — annule la proposition de report, remet en pending 
   // ---------------------------------------------------------------------------
   if (action === 'cancel_reschedule') {
@@ -422,8 +626,9 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (appointment.appointment_mode === 'in-person' && !(await isCabinetEligibleSlot(rescheduled_to as string)))
       return errorResponse(422, 'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.');
 
-    if (!isWithinBusinessHours(rescheduled_to as string, appointment.duration))
-      return errorResponse(422, 'Le créneau doit être dans les plages horaires (8h-12h ou 14h-19h).');
+    // Note : pas de garde isWithinBusinessHours ici (contrairement aux flux patient).
+    // La thérapeute propose un créneau — elle connaît son agenda et peut reporter
+    // hors des plages affichées (ex. urgence). Cohérent avec la création manuelle admin.
 
     try {
       const slotEnd = new Date(newDate.getTime() + appointment.duration * 60 * 1000);

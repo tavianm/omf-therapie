@@ -1,0 +1,160 @@
+---
+issue: 63
+title: "Admin : annuler/reporter tout RDV + système d'avoir (crédit) sur annulation payée"
+status: approved
+tier: F-full
+created: 2026-07-03
+---
+
+## Problem Statement
+
+La thérapeute gère ses rendez-vous depuis `/mes-rdvs/` (`src/pages/mes-rdvs.astro`), mais le
+workflow d'action est incomplet :
+
+1. **Aucune action « Annuler » n'existe.** Le statut `cancelled` est défini dans le type
+   `AppointmentStatus` (`src/types/appointment.ts:30`) et la contrainte DB CHECK
+   (`supabase/migrations/001_init.sql:47-55`), mais **aucun handler ni bouton ne le produit**.
+   Seul `decline` (« Refuser ») existe — et il ne s'applique qu'aux nouvelles demandes non
+   payées (`pending`, `rescheduled`, `payment_pending`). Une fois un RDV confirmé ou payé,
+   la thérapeute n'a aucun moyen de l'annuler.
+
+2. **Le « Reporter » actuel re-facture les RDV vidéo déjà payés.** L'action `reschedule`
+   (`src/pages/api/appointments/[id].ts:408-503`) expire l'ancien Payment Link Stripe
+   (ligne 446) et, côté `accept_reschedule`, **régénère un nouveau lien Stripe pour la vidéo**
+   (lignes 583-592) — même si la séance était déjà en `payment_received`. C'est un bug latent
+   de double-facturation.
+
+3. **Aucun mécanisme d'avoir / crédit.** Le code ne contient aucun `stripe.refunds.create`,
+   aucune colonne/table de crédit, aucun concept d'avoir (recherche exhaustive : seulement
+   du texte informatif dans `src/pages/cgv.astro` et `src/components/pricing/PaymentInfo.tsx`).
+   Quand une téléconsultation payée doit être annulée, l'argent payé est « perdu » côté app
+   — pas de trace, pas de déduction possible sur une séance ultérieure.
+
+## Why This Matters
+
+- La thérapeute reçoit des appels et doit pouvoir annuler ou reporter **n'importe quel** RDV
+  confirmé/payé, pas seulement refuser les nouvelles demandes.
+- La fenêtre d'éligibilité inclut **la veille du jour actuel** (annulation de dernière
+  minute si pas eu le temps le jour même).
+- Quand une séance vidéo déjà payée est annulée, l'argent doit rester chez la thérapeute
+  (pas de remboursement Stripe réel) mais être tracé comme **avoir réutilisable** sur une
+  séance future — sinon le patient paie deux fois.
+- L'avoir est **admin-only** : le patient n'a pas d'UI pour le consulter ; il contacte la
+  thérapeute qui crée manuellement le nouveau RDV en appliquant l'avoir.
+
+## Success Criteria
+
+### A. Annulation (nouvelle action `cancel`)
+
+- [ ] Bouton **« Annuler »** visible sur `AppointmentCard` pour les RDV dans la fenêtre
+      d'éligibilité (voir critère E), tous statuts sauf `declined`/`cancelled`.
+- [ ] Action `cancel` dans le PATCH `src/pages/api/appointments/[id].ts` :
+      transition vers `cancelled`, message optionnel au patient, email de notification.
+- [ ] *Annuler* reste distinct de *Refuser* : Refuser = demande non payée (`→ declined`),
+      Annuler = RDV confirmé/payé (`→ cancelled`).
+- [ ] L'événement Google Calendar lié est supprimé (comme pour `decline`, `[id].ts:374-378`).
+
+### B. Avoir automatique sur annulation payée
+
+- [ ] Si le RDV annulé est en `payment_received` (vidéo payée) → une ligne **avoir** est
+      créée, montant = `final_price` (ce qui a été effectivement payé).
+- [ ] L'avoir est rattaché au `patient_email` (clé d'identité patient, normalisée lowercase).
+- [ ] **Aucun appel `stripe.refunds.create`** — l'argent reste.
+- [ ] Aucun avoir pour les annulations de RDV non payés (`confirmed` présentiel,
+      `payment_pending`, `pending`).
+
+### C. Réutilisation de l'avoir (admin-only)
+
+- [ ] Dans `AdminCreateButton.tsx` (création manuelle), une case **« Utiliser l'avoir
+      disponible »** apparaît quand le `patient_email` saisi a un avoir disponible.
+- [ ] Cocher la case déduit l'avoir du `final_price` (FIFO sur `remaining`).
+- [ ] Si le reliquat d'avoir est supérieur au prix, le **reliquat reste disponible** pour
+      une séance future.
+- [ ] Si le prix final après déduction = 0 → **aucun lien Stripe généré**, statut `confirmed`
+      directement (pas `payment_pending`).
+- [ ] Si le prix final > 0 et mode vidéo → un lien Stripe est généré pour le **solde restant**.
+- [ ] Le patient n'a **aucune UI** pour les avoirs (aucun changement à `BookingWizard.tsx`).
+
+### D. Restitution de l'avoir si le nouveau RDV est annulé
+
+- [ ] Si un RDV créé avec un avoir est lui-même annulé → l'avoir **revient** (restauration
+      des `remaining` sur les lignes consommées, via table `credit_usages`).
+- [ ] Aucun **nouvel** avoir n'est créé dans ce cas (aucun nouvel argent n'a été payé).
+
+### E. Fenêtre d'éligibilité
+
+- [ ] Les actions **Annuler** et **Reporter** ne sont proposées que pour les RDV avec
+      `scheduled_at ≥ début de la veille` (`startOfYesterday` en timezone Europe/Paris).
+- [ ] Les RDV antérieurs sont en lecture seule (historique).
+- [ ] La logique d'éligibilité est partagée (helper `isCancellableByTherapist` ou équivalent)
+      pour éviter la divergence client/serveur.
+
+### F. Report d'un RDV vidéo déjà payé (correction du bug double-facturation)
+
+- [ ] Pour un RDV en `payment_received` (vidéo payée), le **report** effectue un move
+      direct admin : `scheduled_at` mis à jour, statut reste `confirmed` (ou équivalent
+      payé), paiement conservé, Meet/Calendar mis à jour.
+- [ ] Aucune régénération de lien Stripe, aucun re-accept patient, aucun email de demande
+      de paiement — seulement un email de notification du nouveau créneau.
+- [ ] Pour les RDV non payés, le flow actuel de proposition au patient est conservé.
+
+## Constraints
+
+- **Pas de remboursement Stripe réel** (règle produit dure).
+- **Patient identifié par `patient_email`** (lowercase, normalisé à l'insertion) — pas de
+  table `patients` ni de FK. L'avoir est rattaché à l'email.
+- **Avoirs admin-only** : aucune exposition côté patient.
+- Toutes les mutations passent par `supabaseAdmin` (service_role), RLS active
+  (`001_init.sql:127-135`).
+- Réutiliser `calculatePrice` (`src/lib/pricing.ts`), `sendEmail`/`buildAppointmentConversationSubject`
+  (`src/lib/resend.ts`), les helpers `ics`, `deleteCalendarEvent`/`updateCalendarEvent`
+  (`src/lib/google-calendar.ts`).
+- Emails via templates Resend (`src/emails/*.tsx`) — nouveau template `AppointmentCancelled`.
+- Conformité aux conventions de code existantes (TypeScript strict, centimes pour les prix,
+  ISO 8601 pour les dates, français pour l'UI).
+
+## Out of Scope
+
+- Remboursement Stripe réel automatisé.
+- UI patient pour consulter / utiliser un avoir (le patient appelle la thérapeute).
+- Création manuelle d'avoir depuis la page Patients (soupape future, hors périmètre).
+- Annulation par le patient lui-même (self-service).
+- Migration rétroactive des RDV historiques.
+- Notifications SMS pour l'annulation (le rappel SMS est un autre epic, #40).
+
+## Stakeholders
+
+- **Oriane Montabonnet** (thérapeute) — utilisatrice finale du back-office.
+
+## Appetite
+
+Tier: **F-full**
+Reasoning :
+- **Multi-domaine** : nouvelle table DB (`credits`) + table de jointure (`credit_usages`),
+  modifications du state machine RDV (`[id].ts`), 2 nouveaux handlers d'action (`cancel`,
+  `reschedule_paid`), UI admin (boutons + cas Avoir dans `AppointmentCard` et
+  `AdminCreateButton`), nouveau template email, logique de ledger (FIFO + restitution).
+- **Migration DB** nécessaire → pas de F-lite.
+- **Décisions d'architecture** sur le modèle de crédit (ledger vs solde, restitution,
+  idempotence) → justifie analyze + architecture sketch.
+
+## Open Questions
+
+_Résolues par alignement produit (cette section documente les décisions pour mémoire) :_
+
+1. **Annuler vs Refuser** → distincts. Refuser = demande non payée (`declined`) ;
+   Annuler = RDV confirmé/payé (`cancelled`).
+2. **Avoir réel vs interne** → interne uniquement (pas de `stripe.refunds.create`).
+3. **Portée de la case Avoir** → admin-only (création manuelle).
+4. **Montant de l'avoir** → `final_price` réellement payé.
+5. **Report d'un RDV payé** → move direct admin (corrige le bug de double-facturation).
+6. **Restitution d'avoir sur re-annulation** → via `credit_usages` (pas de nouvel avoir).
+
+_Ouvertes pour analyze :_
+
+- Sémantique exacte du statut final d'un RDV vidéo payé après report direct (garder
+  `payment_received` vs `confirmed` ?) — voir analyze.
+- Doit-on exposer le solde d'avoir sur la carte RDV / page Patients pour information admin,
+  ou seulement dans le formulaire de création ? — voir analyze.
+- Granularité de la table `credit_usages` (une ligne par tranche FIFO consommée, ou une
+  ligne par RDV consommateur avec snapshot) ? — voir analyze.

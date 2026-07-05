@@ -10,6 +10,11 @@ import type { Period } from '@/types/manual-slots';
 import { fetchManualSlots } from './manual-slots.js';
 import { getParisISOWeekday, toParisDateString } from '../utils/date.js';
 
+// Re-export pour compatibilité des importations serveur existantes.
+// `isCancellableByTherapist` est défini dans `utils/date.ts` (module pur sans I/O)
+// pour rester bundlable côté client — voir la note dans `date.ts`.
+export { isCancellableByTherapist } from '../utils/date.js';
+
 // ---------------------------------------------------------------------------
 // Demi-journées ouvrées (heure locale Paris)
 // ---------------------------------------------------------------------------

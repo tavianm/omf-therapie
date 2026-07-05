@@ -36,6 +36,7 @@ interface FormState {
   is_solidarity: boolean;
   send_email: boolean;
   video_link: string;
+  use_credit: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +76,7 @@ const INITIAL_STATE: FormState = {
   is_solidarity: false,
   send_email: true,
   video_link: "",
+  use_credit: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -170,6 +172,22 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Solde d'avoir disponible pour le patient_email saisi (admin-only).
+  const [availableCredit, setAvailableCredit] = useState<number | null>(null);
+  useEffect(() => {
+    const email = form.patient_email.trim();
+    setAvailableCredit(null);
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+    const controller = new AbortController();
+    fetch(`/api/admin/credits?email=${encodeURIComponent(email)}`, { credentials: "same-origin", signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && typeof data.balance === "number") setAvailableCredit(data.balance);
+      })
+      .catch(() => { /* silencieux : pas d'avoir connu */ });
+    return () => controller.abort();
+  }, [form.patient_email]);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
@@ -247,6 +265,14 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
     [form.appointment_type, form.duration, form.override_first_session, form.is_solidarity, form.useOverridePrice, form.overridePrice],
   );
 
+  // Avoir déductible (centimes → euros). Plafonné au prix final si l'avoir est plus grand.
+  const creditEuros = useMemo(() => {
+    if (!form.use_credit || availableCredit == null || availableCredit <= 0) return 0;
+    return Math.min(availableCredit / 100, livePrice.finalPrice);
+  }, [form.use_credit, availableCredit, livePrice.finalPrice]);
+
+  const amountDueEuros = Math.max(0, livePrice.finalPrice - creditEuros);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -267,6 +293,9 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
         is_solidarity: form.is_solidarity,
         send_email: form.send_email,
         ...(form.useOverridePrice ? { override_price: form.overridePrice } : {}),
+        ...(form.use_credit && availableCredit != null && availableCredit > 0
+          ? { use_credit: true }
+          : {}),
       };
 
       if (form.appointment_mode === "video" && form.video_link.trim()) {
@@ -529,11 +558,37 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
                 {livePrice.discount > 0 && (
                   <span className="text-mint-700"> · remise −{livePrice.discount}€</span>
                 )}
+                {creditEuros > 0 && (
+                  <span className="text-mint-700"> · avoir −{creditEuros.toFixed(2)}€</span>
+                )}
               </span>
               <span className="text-base font-semibold text-sage-900 font-sans">
-                À régler : {livePrice.finalPrice}€
+                À régler : {amountDueEuros.toFixed(2)}€
               </span>
             </div>
+
+            {/* Case « Utiliser l'avoir » — admin-only, visible si le patient a un avoir */}
+            {availableCredit != null && availableCredit > 0 && (
+              <label className="mt-3 flex items-center gap-3 cursor-pointer group border-t border-sage-200 pt-3">
+                <input
+                  type="checkbox"
+                  checked={form.use_credit}
+                  onChange={e => update("use_credit", e.target.checked)}
+                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+                />
+                <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
+                  Utiliser l'avoir disponible{" "}
+                  <span className="text-mint-700 font-medium">
+                    ({(availableCredit / 100).toFixed(2)}€)
+                  </span>
+                  {form.use_credit && amountDueEuros === 0 && (
+                    <span className="block text-xs text-mint-700 mt-0.5">
+                      Avoir suffisant : aucun paiement en ligne ne sera demandé.
+                    </span>
+                  )}
+                </span>
+              </label>
+            )}
           </div>
 
           {/* ── Options ── */}
