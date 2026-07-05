@@ -34,7 +34,7 @@ type ModalType = 'confirm' | 'decline' | 'cancel' | 'reschedule' | 'reschedule_p
 // Constantes statut
 // ---------------------------------------------------------------------------
 
-const STATUS_LABELS: Record<AppointmentStatus, string> = {
+export const STATUS_LABELS: Record<AppointmentStatus, string> = {
   pending: 'En attente',
   confirmed: 'Confirmé',
   declined: 'Refusé',
@@ -44,7 +44,7 @@ const STATUS_LABELS: Record<AppointmentStatus, string> = {
   cancelled: 'Annulé',
 };
 
-const STATUS_BADGE: Record<AppointmentStatus, string> = {
+export const STATUS_BADGE: Record<AppointmentStatus, string> = {
   pending: 'bg-amber-100 text-amber-800',
   confirmed: 'bg-green-100 text-green-800',
   declined: 'bg-red-100 text-red-800',
