@@ -8,12 +8,6 @@ interface DesktopNavProps {
   pathname: string;
 }
 
-function normalizePathname(pathname: string): string {
-  if (!pathname) return '/';
-  if (pathname === '/') return '/';
-  return pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
-}
-
 export const DesktopNav = ({
   navigation,
   isActive,

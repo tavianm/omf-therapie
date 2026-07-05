@@ -1,6 +1,5 @@
 import { motion } from 'framer-motion';
-import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right';
-import Calendar from 'lucide-react/dist/esm/icons/calendar';
+import { ArrowRight, Calendar } from 'lucide-react';
 import { useMotionVariants } from '../../hooks/useMotionVariants';
 
 export const HeroSection = () => {

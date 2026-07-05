@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Blocking gate — must pass to merge.
+  # Three of the four quality gates enforced here today. Typecheck runs as a
+  # separate non-blocking job below (see `typecheck-advisory`) until the
+  # remaining pre-existing type errors are resolved (tracked in #68).
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
+
+  # Non-blocking advisory — surfaces type drift without blocking merges.
+  # The codebase has ~20 pre-existing type errors across auth/payments/calendar
+  # subsystems that predate this CI pipeline. Once those are cleared (#68),
+  # this job flips to `continue-on-error: false` and joins the blocking gate.
+  typecheck-advisory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck

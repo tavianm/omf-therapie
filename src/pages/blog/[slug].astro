@@ -1,5 +1,6 @@
 ---
 import type { GetStaticPaths } from 'astro';
+import type { CollectionEntry } from 'astro:content';
 import { getCollection } from 'astro:content';
 import { ArrowLeft, Calendar, Clock, Tag, User } from 'lucide-react';
 import Layout from '../../layouts/Layout.astro';
@@ -18,7 +19,8 @@ export const getStaticPaths: GetStaticPaths = async () => {
   }));
 };
 
-const { entry } = Astro.props;
+type Props = { entry: CollectionEntry<'blog'> };
+const { entry } = Astro.props as Props;
 const { Content } = await entry.render();
 const post = collectionEntryToBlogPost(entry);
 
