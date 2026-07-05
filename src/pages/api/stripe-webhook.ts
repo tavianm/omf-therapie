@@ -1,37 +1,14 @@
 export const prerender = false;
 
 import type { APIRoute } from 'astro';
-import { createElement } from 'react';
 import type Stripe from 'stripe';
 import { stripe } from '../../lib/stripe';
 import { supabaseAdmin } from '../../lib/supabase';
 import { logger } from '../../lib/logger';
-import { sendEmail, buildAppointmentConversationSubject } from '../../lib/resend';
-import { generateGoogleCalendarLink, generateOutlookCalendarLink, generateAppleCalendarInviteLink, CABINET_ADDRESS } from '../../lib/ics';
-import { createSecureLinkToken } from '../../lib/secure-links';
 import { getTypeLabel, getModeLabel } from '../../lib/pricing';
 import { createCalendarEvent } from '../../lib/google-calendar';
-import AppointmentConfirmed from '../../emails/AppointmentConfirmed';
-import PaymentReceivedNotification from '../../emails/PaymentReceivedNotification';
+import { buildAndSendConfirmationEmails } from '../../lib/notifications';
 import type { Appointment } from '../../types/appointment';
-
-function buildICSEvent(appt: Appointment) {
-  const start = new Date(appt.scheduled_at);
-  const end = new Date(start.getTime() + appt.duration * 60 * 1000);
-  const typeLabel = getTypeLabel(appt.appointment_type);
-  const modeLabel = getModeLabel(appt.appointment_mode);
-  return {
-    uid: appt.id,
-    summary: `Séance OMF Thérapie — ${typeLabel}`,
-    description: `${typeLabel} (${modeLabel}) · ${appt.duration} min`,
-    location: appt.appointment_mode === 'in-person' ? CABINET_ADDRESS : (appt.video_link ?? undefined),
-    url: appt.video_link ?? undefined,
-    start,
-    end,
-    organizerName: 'Oriane Montabonnet — OMF Thérapie',
-    organizerEmail: import.meta.env.RESEND_FROM_EMAIL ?? 'contact@omf-therapie.fr',
-  };
-}
 
 async function resolveAppointmentIdFromCheckoutSession(session: Stripe.Checkout.Session): Promise<string | null> {
   if (session.metadata?.appointment_id) {
@@ -197,7 +174,11 @@ export const GET: APIRoute = async ({ url }) => {
 // ---------------------------------------------------------------------------
 
 export async function handlePaymentSucceeded(appointmentId: string, paymentIntentId: string, eventId: string): Promise<void> {
-  // Atomic idempotency: only update if status is still payment_pending AND stripe_event_id is null
+  // N1 — Reçu de paiement (idempotence L1 sur stripe_event_id).
+  // On ne transitionne que si le statut est encore `payment_pending` ET
+  // `stripe_event_id` est NULL : premier livreur seulement effectue l'UPDATE.
+  // En cas de retry (0 lignes / erreur), on retombe sur un SELECT pour relire
+  // la ligne et vérifier le drapeau L2 `confirmation_sent_at` (N2 ci-dessous).
   const { data: updated, error: updateErr } = await supabaseAdmin
     .from('appointments')
     .update({
@@ -211,13 +192,39 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
     .select()
     .single();
 
+  let updatedAppt: Appointment;
+
   if (updateErr || !updated) {
-    // Already processed or not in payment_pending state — idempotent, return 200
-    logger.info('stripe-webhook: event already processed or appointment not payment_pending', { appointmentId });
-    return;
+    // Retry ou statut inattendu : relire la ligne plutôt que de bailer.
+    // Le garde-fou L2 (confirmation_sent_at) ci-dessous décide si l'on rejoue
+    // les side-effects ou si l'on retourne tôt (déjà livré).
+    const { data: fetched, error: fetchErr } = await supabaseAdmin
+      .from('appointments')
+      .select('*')
+      .eq('id', appointmentId)
+      .maybeSingle();
+
+    if (fetchErr || !fetched) {
+      // Ligne introuvable : on ne peut rien faire, sortir proprement (200).
+      logger.info('stripe-webhook: RDV introuvable après reçu de paiement', { appointmentId });
+      return;
+    }
+
+    updatedAppt = fetched as Appointment;
+  } else {
+    updatedAppt = updated as Appointment;
   }
 
-  const updatedAppt = updated as Appointment;
+  // N2 — Garde-fou durable des side-effects (idempotence L2, issue #68).
+  // `confirmation_sent_at` est positionné UNIQUEMENT après succès complet
+  // (email patient délivré). Non-null ⇒ déjà livré, retour tôt idempotent.
+  // NB : ce garde-fou remplace l'ancienne logique « bail si stripe_event_id set »
+  // comme garde principal des side-effects — stripe_event_id (N1) ne déduplique
+  // que l'accusé de paiement, pas les emails.
+  if (updatedAppt.confirmation_sent_at) {
+    logger.info('stripe-webhook: confirmations déjà délivrées (L2), skip idempotent', { appointmentId });
+    return;
+  }
 
   // Génération événement calendrier + lien visio (non-bloquant)
   let videoLink = updatedAppt.video_link ?? undefined;
@@ -320,64 +327,47 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
     }
   }
 
-  // 2. Envoyer les emails (patient + thérapeute) en non-bloquant
-  try {
-    const apptForIcs = videoLink ? { ...updatedAppt, video_link: videoLink } : updatedAppt;
-    const icsEvent = buildICSEvent(apptForIcs);
-    const googleCalendarLink = generateGoogleCalendarLink(icsEvent);
-    const outlookCalendarLink = generateOutlookCalendarLink(icsEvent);
-    const baseUrl = import.meta.env.BETTER_AUTH_URL ?? 'https://omf-therapie.fr';
-    const inviteToken = createSecureLinkToken({
-      appointmentId: updatedAppt.id,
-      purpose: 'ics-invite',
-      expiresInSeconds: 60 * 60 * 24 * 180,
-      nonce: updatedAppt.scheduled_at,
-    });
-    const appleCalendarLink = generateAppleCalendarInviteLink(baseUrl, updatedAppt.id, inviteToken);
+  // N2bis — Envoyer les emails de confirmation (patient + thérapeute) via le
+  // module partagé. L'idempotence L1 (clé Resend `confirm:{stripe_payment_intent_id}`,
+  // ~24h TTL) est gérée à l'intérieur de `buildAndSendConfirmationEmails`.
+  // Ici, on n'attrape PAS l'exception : si l'appel rejette, elle propage vers
+  // le gestionnaire POST qui retourne 500 → Stripe retry. C'est intentionnel :
+  // on ne positionne `confirmation_sent_at` QUE sur succès complet.
+  const result = await buildAndSendConfirmationEmails(updatedAppt, {
+    videoLink,
+    calendarEventCreated,
+    adminEmail: import.meta.env.ADMIN_EMAIL,
+    baseUrl: import.meta.env.BETTER_AUTH_URL ?? import.meta.env.SITE_URL,
+  });
 
-    await Promise.allSettled([
-      sendEmail({
-        to: updatedAppt.patient_email,
-        threadKey: `appointment:${updatedAppt.id}:patient`,
-        subject: buildAppointmentConversationSubject(
-          `Votre rendez-vous est confirmé — ${new Intl.DateTimeFormat('fr-FR', {
-            day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
-          }).format(new Date(updatedAppt.scheduled_at))}`,
-          updatedAppt.id,
-        ),
-        react: createElement(AppointmentConfirmed, {
-          patientName: updatedAppt.patient_name,
-          appointmentType: updatedAppt.appointment_type,
-          appointmentMode: updatedAppt.appointment_mode,
-          scheduledAt: updatedAppt.scheduled_at,
-          duration: updatedAppt.duration,
-          finalPrice: updatedAppt.final_price,
-          videoLink,
-          googleCalendarLink,
-          appleCalendarLink,
-          outlookCalendarLink,
-          cabinetAddress: undefined, // vidéo uniquement
-        }),
-      }),
-      sendEmail({
-        to: import.meta.env.ADMIN_EMAIL,
-        subject: `Prépaiement reçu — ${updatedAppt.patient_name}`,
-        react: createElement(PaymentReceivedNotification, {
-          patientName: updatedAppt.patient_name,
-          patientEmail: updatedAppt.patient_email,
-          appointmentType: updatedAppt.appointment_type,
-          appointmentMode: updatedAppt.appointment_mode,
-          scheduledAt: updatedAppt.scheduled_at,
-          duration: updatedAppt.duration,
-          finalPrice: updatedAppt.final_price,
-          videoLink,
-          dashboardUrl: `${baseUrl}/mes-rdvs/`,
-          calendarEventCreated,
-        }),
-      }),
-    ]);
-  } catch (emailErr) {
-    // L'email ne doit pas bloquer le webhook
-    logger.error('stripe-webhook: post-payment email send failed', { appointmentId: updatedAppt.id }, emailErr);
+  // N3 — Marquer livré (drapeau durable L2). UNIQUEMENT si l'email patient
+  // (le must-succeed) est délivré. Sur échec, on ne positionne RIEN afin que
+  // l'appelant retourne 500 et que Stripe rejoue tout l'événement.
+  // Garde `confirmation_sent_at IS NULL` contre une write race concurrente
+  // (sweep + webhook). Ne JAMAIS reset.
+  if (!result.patientEmailSent) {
+    logger.error(
+      'stripe-webhook: échec envoi email patient — confirmation_sent_at non positionné, Stripe retry',
+      { appointmentId },
+    );
+    throw new Error(`Échec envoi email patient pour ${appointmentId}`);
+  }
+
+  const { error: confirmUpdateErr } = await supabaseAdmin
+    .from('appointments')
+    .update({ confirmation_sent_at: new Date().toISOString() })
+    .eq('id', appointmentId)
+    .is('confirmation_sent_at', null);
+
+  if (confirmUpdateErr) {
+    // L'email est parti mais le drapeau n'est pas persisté : la prochaine
+    // retry verra confirmation_sent_at=NULL et renverra l'email (L1 dédup
+    // côté Resend absorbera le doublon si dans la fenêtre de 24h). On log
+    // sans throw — ne pas échouer après un envoi réussi.
+    logger.error(
+      'stripe-webhook: échec persistance confirmation_sent_at (L1 dédup absorbera le doublon)',
+      { appointmentId },
+      confirmUpdateErr,
+    );
   }
 }

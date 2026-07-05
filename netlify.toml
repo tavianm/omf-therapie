@@ -55,6 +55,7 @@
   #
   # PUBLIC_GA4_ID                 — Tracking ID Google Analytics 4 (ex. G-XXXXXXXXXX)
   #                                 Préfixe PUBLIC_ requis pour exposition côté client (Astro)
+  #
   # PUBLIC_SENTRY_DSN             — DSN Sentry (error tracking) — differ prod/staging
   #                                 Préfixe PUBLIC_ requis pour exposition côté client (Astro)
   #                                 Format: https://<key>@o<orgId>.ingest.<region>.sentry.io/<projectId>
@@ -74,6 +75,34 @@
   #                                   - le canary serveur émet 'deploy: unknown' même post-deploy
   #                                 (production bugs observés 2026-07-19, corrigés par ce snapshotting).
   #                                 CONTEXT = "production" | "deploy-preview" | "branch-deploy".
+  #
+  # SITE_URL                      — URL publique du site (fallback de BETTER_AUTH_URL pour
+  #                                 les fonctions programmées — reconcile-confirmations, etc.)
+
+# ---------------------------------------------------------------------------
+# Fonctions programmées (Netlify Scheduled Functions)
+# ---------------------------------------------------------------------------
+# Ces fonctions s'exécutent dans le runtime Node.js de Netlify : elles lisent
+# `process.env` (PAS `import.meta.env`, réservé au build Vite/Astro). Les clients
+# (Supabase, Resend) sont instanciés localement dans chaque fonction.
+#
+# netlify/functions/send-reminders.ts          — rappels J-1 (quotidien 18h00 UTC)
+#   Requiert : SUPABASE_DATABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+#              RESEND_API_KEY, RESEND_FROM_EMAIL
+#
+# netlify/functions/calendar-token-heartbeat.ts — refresh token Google OAuth (@weekly)
+#   Requiert : SUPABASE_DATABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+#              GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET,
+#              ADMIN_EMAIL, RESEND_API_KEY, RESEND_FROM_EMAIL
+#
+# netlify/functions/reconcile-confirmations.ts — sweep de réconciliation #68 (horaire :05)
+#   Backstop du webhook Stripe : renvoie les emails de confirmation pour les
+#   rendez-vous `payment_received` avec `confirmation_sent_at IS NULL`.
+#   Requiert : SUPABASE_DATABASE_URL, SUPABASE_SERVICE_ROLE_KEY (écriture
+#              confirmation_sent_at), RESEND_API_KEY, RESEND_FROM_EMAIL,
+#              ADMIN_EMAIL (optionnel — sinon notification thérapeute ignorée),
+#              BETTER_AUTH_SECRET (signature du jeton .ics),
+#              BETTER_AUTH_URL ou SITE_URL (URL de base pour les liens)
 
 # ---------------------------------------------------------------------------
 # Contextes de déploiement — variables non-sensibles par contexte
