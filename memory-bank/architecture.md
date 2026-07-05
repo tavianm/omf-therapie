@@ -1,6 +1,6 @@
 # Architecture
 
-**Last Updated:** May 14, 2026
+**Last Updated:** July 5, 2026
 
 ## Project Structure
 
@@ -13,7 +13,7 @@ omf-therapie/
 │   └── robots.txt            # Search engine directives
 ├── src/
 │   ├── components/           # Astro + React components
-│   │   ├── admin/           # Admin dashboard (AppointmentCard, AdminCreateButton)
+│   │   ├── admin/           # Admin dashboard (AppointmentCard, AdminCreateButton, AppointmentsManager)
 │   │   ├── blog/            # Blog-specific components
 │   │   ├── common/          # Shared components
 │   │   ├── contact/         # Contact page components
@@ -29,9 +29,19 @@ omf-therapie/
 │   ├── hooks/               # Custom React hooks (used in islands only)
 │   ├── layouts/             # Astro layouts (Layout.astro, ServiceLayout.astro)
 │   ├── lib/                 # Server-side libraries
+│   │   ├── appointment-conflicts.ts  # Slot-conflict detection
+│   │   ├── appointment-eligibility.ts  # Cancel/reschedule eligibility (pure module)
 │   │   ├── auth.server.ts  # BetterAuth configuration
+│   │   ├── authz.ts        # Authorization checks
+│   │   ├── calendar-cache.ts  # Google Calendar caching
+│   │   ├── credits.ts      # Internal credit (avoir) system — FIFO consumption
 │   │   ├── google-calendar.ts  # Google Calendar / Meet link generation
+│   │   ├── ics.ts          # .ics calendar file generation
+│   │   ├── manual-slots.ts # Manual slot overrides
 │   │   ├── pricing.ts      # Pricing calculation (basePrice, discount, finalPrice)
+│   │   ├── rate-limit.ts   # API rate limiting
+│   │   ├── resend.ts       # Resend (prod) email transport
+│   │   ├── secure-links.ts # Signed-link generation for patient actions
 │   │   ├── stripe.ts       # Stripe payment links
 │   │   └── supabase.ts     # Supabase/PostgREST client
 │   ├── pages/               # Astro file-based routes
@@ -52,7 +62,7 @@ omf-therapie/
 │   └── utils/               # Utility functions (blogApi.ts, schema.ts)
 ├── scripts/                  # Utility scripts (seed-admin.ts)
 ├── supabase/
-│   └── migrations/          # PostgreSQL schema (001_init.sql)
+│   └── migrations/          # PostgreSQL schema (001_init.sql → 008_credits.sql)
 ├── docker-compose.yml        # Local dev infrastructure
 ├── memory-bank/             # Project knowledge repository
 └── artifacts/               # Dev workflow artifacts (frames, specs, plans)
@@ -73,7 +83,7 @@ omf-therapie/
 Patient                     Admin (Thérapeute)
    │                              │
    ▼                              ▼
-/rendez-vous/             /mes-rdvs/  (BetterAuth)
+/rendez-vous/             /mes-rdvs/  (BetterAuth) — liste compacte gérée par <AppointmentsManager>
    │                        │
    └── POST /api/appointments/       ← créé avec status=pending
               │
@@ -85,25 +95,27 @@ Patient                     Admin (Thérapeute)
   Mailpit (dev)     Resend (prod)
   Admin notif       Patient ack
               │
-              ▼ Admin action (confirm/decline/reschedule)
+              ▼ Admin action (confirm/decline/reschedule/cancel/reschedule_paid)
      PATCH /api/appointments/[id]/
               │
-    ┌─────────┼──────────┐
-    ▼         ▼          ▼
- confirm   decline   reschedule
-    │                    │
-    │              Email patient
-    │              (bouton "Accepter")
-    │                    │
-    │              /rdv/accepter-report/[id]/
-    ▼                    ▼
+    ┌─────────┬──────────┬───────────────┐
+    ▼         ▼          ▼               ▼
+ confirm   decline   reschedule       cancel / reschedule_paid
+    │                    │               │
+    │              Email patient         │ Annulation → email AppointmentCancelled
+    │              (bouton "Accepter")   │ Si RDV vidéo déjà payé → émission d'un avoir interne
+    │                    │               │ (statut `payment_received` + crédit final_price − credit_applied)
+    │              /rdv/accepter-report/[id]/   │ Report d'un RDV vidéo payé → action `reschedule_paid`
+    ▼                    ▼                       (paiement conservé, pas de nouveau lien Stripe)
 Email confirm      payment_pending (télé)
 (présentiel)       ou confirmed (présentiel)
     │                    │
     └────────────────────┘
               │
-    payment_pending → Stripe link → stripe-webhook → confirmed
+    payment_pending → Stripe link → stripe-webhook → payment_received (= "réglé", Stripe ou avoir)
 ```
+
+**Statuts unifiés (depuis #63/#66)** : `payment_received` = « séance réglée » (Stripe **ou** avoir) — remplace `confirmed` comme statut de paiement pour les RDV vidéo. `confirmed` reste pour le présentiel.
 
 ### Authentication
 
@@ -112,12 +124,19 @@ Email confirm      payment_pending (télé)
 - Login : `/login/` → `/mes-rdvs/` (redirect protégée)
 - API routes admin : vérifient `session.user` via `auth.api.getSession()`
 
+### CI / Quality Gates
+
+- **Workflow** `.github/workflows/ci.yml` (#85) : job `build` bloquant = `lint → test → build`. Job `typecheck-advisory` non bloquant (`continue-on-error: true`) qui surfacera les erreurs résiduelles (#68 suit les ~20 erreurs de typage préexistantes — googleapis, better-auth, stripe, react-email).
+- **Node** : `.nvmrc` pinne Node 20 (parité avec `netlify.toml`).
+- **Branch protection** (manuel) : après le 1er run sur `main`, exiger `CI / build` + « Dismiss stale pull request approvals ».
+
 ### Database (PostgreSQL 16)
 
-Schema défini dans `supabase/migrations/001_init.sql`. Table principale `appointments` :
-- Colonnes critiques NOT NULL : `patient_name`, `patient_email`, `patient_phone`, `patient_postal_code`, `patient_city`, `patient_reason`, `appointment_type`, `appointment_mode`, `duration`, `base_price`, `final_price`, `scheduled_at`
-- Statuts : `pending → confirmed | declined | rescheduled → payment_pending → confirmed | cancelled`
-- Créneaux bloqués : statuts `confirmed` et `payment_pending` uniquement (pas `pending`)
+Schema défini dans `supabase/migrations/` (`001_init.sql` → `008_credits.sql`). Table principale `appointments` :
+- Colonnes critiques NOT NULL : `patient_name`, `patient_email`, `patient_phone`, `patient_postal_code`, `patient_city`, `patient_reason`, `appointment_type`, `appointment_mode`, `duration`, `base_price`, `final_price`, `scheduled_at`, `credit_applied` (depuis `008_credits.sql`)
+- Statuts : `pending → confirmed | declined | rescheduled → payment_pending → payment_received | cancelled`
+- Créneaux bloqués : statuts `confirmed`, `payment_pending` et `payment_received` (pas `pending`)
+- **Système d'avoirs** (`008_credits.sql`, #63/#66) : tables `credits` + `credit_usages`, RPC `consume_credits` (FIFO atomique, `SECURITY DEFINER`) et `restore_credits` (restitution sur re-annulation). RLS service_role-only — l'émission et la consommation d'avoirs sont **admin-only** (aucune UI patient).
 
 ### Pricing
 
@@ -140,9 +159,13 @@ Templates React Email dans `src/emails/` :
 - `AppointmentConfirmed` — confirmation (présentiel ou télé après paiement)
 - `AppointmentDeclined` — refus
 - `AppointmentRescheduled` — proposition nouveau créneau
-- `AdminNewAppointment` — notification admin
-- `PaymentRequest` — demande de prépaiement (télé)
+- `AppointmentCancelled` — annulation par l'admin (mentionne l'avoir éventuel, **jamais** le mot « remboursement »)
+- `AppointmentRequestNotification` / `AppointmentRequestReceived` — notification admin / accusé patient
+- `AppointmentReminder` — rappel avant séance
+- `PaymentRequest` / `PaymentReminder` — demande / relance de prépaiement (télé)
+- `PaymentReceivedNotification` — confirmation d'encaissement
 - `ReviewRequest` — demande d'avis post-séance
+- `CalendarAuthAlert` — alerte technique (auth Google expirée)
 
 **Local** : Nodemailer → Mailpit (SMTP `localhost:1025`)  
 **Production** : Resend API
@@ -150,7 +173,9 @@ Templates React Email dans `src/emails/` :
 ### Stripe Integration
 
 - Paiement uniquement pour les téléconsultations (`appointment_mode = 'video'`)
-- Flow : admin confirme → création Payment Link Stripe → email patient → patient paie → webhook → `status = confirmed`
+- Flow : admin confirme → création Payment Link Stripe → email patient → patient paie → webhook → `status = payment_received`
+- **Statut unifié `payment_received`** (#63/#66) : « séance réglée » via Stripe **ou** avoir interne. L'action `reschedule_paid` reporte un RDV vidéo déjà payé sans régénérer de lien Stripe (corrige la double-facturation). L'action `cancel` sur un RDV `payment_received` émet un avoir interne — **aucun remboursement Stripe réel**.
+- **Création manuelle avec avoir** (admin) : déduction FIFO via `consume_credits` ; si le solde dû = 0 → `payment_received`/`confirmed` sans lien Stripe, sinon lien Stripe pour le reliquat uniquement.
 - **Local mock** : si `STRIPE_SECRET_KEY` est un placeholder, lien fictif généré (pas d'erreur)
 
 ## Data Flow
@@ -174,3 +199,5 @@ Templates React Email dans `src/emails/` :
 - **BetterAuth** : choisi pour session PostgreSQL native, pas de dépendance Supabase Auth
 - **PostgREST** : simule Supabase en local pour compatibilité SDK `@supabase/supabase-js`
 - **trailingSlash: 'always'** : tous les fetch() et redirects côté client DOIVENT inclure le slash final
+- **Avoirs internes plutôt que remboursements Stripe** (#63/#66) : annulation d'un RDV vidéo payé → avoir interne réutilisable (cash conservé). Aucun Stripe refund — `payment_received` = statut unifié « réglé ».
+- **CI bloquant, typecheck advisory** (#85) : lint+test+build ferment le merge ; typecheck reste advisory jusqu'à résolution de #68.
