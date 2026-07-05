@@ -98,7 +98,9 @@ From analysis: the bug conflates payment-receipt idempotency (`stripe_event_id`,
 | Agent | Task count | Files |
 |-------|-----------|-------|
 | backend-dev-A | 4 | `src/lib/resend.ts`, `src/lib/notifications.ts`, `src/types/appointment.ts`, `src/pages/api/stripe-webhook.ts` |
-| devops-A | 3 | `supabase/migrations/008_payment_intent_unique.sql`, `supabase/migrations/009_confirmation_sent_at.sql`, `netlify/functions/reconcile-confirmations.ts` |
+| devops-A | 3 | `supabase/migrations/010_payment_intent_unique.sql`, `supabase/migrations/011_confirmation_sent_at.sql`, `netlify/functions/reconcile-confirmations.ts` |
+
+> **Renumber note (post-rebase):** main merged `008_credits.sql` (#66) after this plan was written. Migrations renumbered 008→010, 009→011 to avoid collision. Spec SCs still read "008"/"009" by number — the files are 010/011.
 | tester-A | 2 | `tests/unit/notifications.test.ts`, `tests/unit/stripe-webhook.test.ts` |
 
 ## Wave Structure
@@ -145,9 +147,9 @@ All instances within caps (Σ ops ≤ 50, |tasks| ≤ 4, subjects ≤ 2).
 
 ## Micro-Tasks
 
-### T1 — Migration 008: dedupe + partial unique index on `stripe_payment_intent_id`
+### T1 — Migration 010: dedupe + partial unique index on `stripe_payment_intent_id`
 
-- **File:** `supabase/migrations/008_payment_intent_unique.sql` (NEW)
+- **File:** `supabase/migrations/010_payment_intent_unique.sql` (NEW)
 - **Agent instance:** devops-A
 - **Subject:** migrations
 - **Slice:** V1 (Increment A)
@@ -187,9 +189,9 @@ All instances within caps (Σ ops ≤ 50, |tasks| ≤ 4, subjects ≤ 2).
 - **Expected output:** Index exists; duplicate insert now fails with unique violation.
 - **Time:** 6 min.
 
-### T2 — Migration 009: add `confirmation_sent_at` column
+### T2 — Migration 011: add `confirmation_sent_at` column
 
-- **File:** `supabase/migrations/009_confirmation_sent_at.sql` (NEW)
+- **File:** `supabase/migrations/011_confirmation_sent_at.sql` (NEW)
 - **Agent instance:** devops-A
 - **Subject:** migrations
 - **Slice:** V2 (Increment A)
@@ -496,8 +498,8 @@ All instances within caps (Σ ops ≤ 50, |tasks| ≤ 4, subjects ≤ 2).
      Task list (TodoWrite) tracks these inline; the dev-pipeline tasks above
      (recheck/frame/analyze/spec/plan/implement/pr/validate/review/fix) are
      owned by /dev and tracked separately. -->
-- T1: devops-A — migrations (migration 008: dedupe + unique index)
-- T2: devops-A — migrations (migration 009: confirmation_sent_at column)
+- T1: devops-A — migrations (migration 010: dedupe + unique index)
+- T2: devops-A — migrations (migration 011: confirmation_sent_at column)
 - T3: backend-dev-A — email (idempotencyKey param in sendEmail)
 - T4: backend-dev-A — email (buildAndSendConfirmationEmails extraction)
 - T5: backend-dev-A — webhook (webhook reorder + idempotency keys)
