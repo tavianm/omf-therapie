@@ -1,145 +1,67 @@
 # Technical Stack
 
-**Last Updated:** January 14, 2025
+**Last Updated:** July 5, 2026
 
-## Core Technologies
+> ⚠️ **Note de révision** — ce fichier décrivait la stack React SPA d'origine (React Router, Vite direct, React Helmet, `port 5173`). La migration vers **Astro 5 SSG + Islands** a remplacé toute cette stack. Voir aussi `CLAUDE.md`, `AGENTS.md`, et `docs/architecture/` pour la source de vérité actuelle.
 
-### Frontend Framework
+## Core Framework
 
-- **React 18.3.1** - Modern UI library with hooks and concurrent features
-- **TypeScript 5.5.3** - Type-safe JavaScript with enhanced IDE support
-- **Vite 5.4.2** - Fast build tool and dev server with HMR
+- **Astro 5.18+** — Static Site Generation (SSG) par défaut, SSR hybride pour les routes API via l'adaptateur Netlify. Une page `.astro` = une URL.
+- **TypeScript 5.5+** — mode strict, pas de `any`.
+- **Islands Architecture** — rendu serveur par défaut, React hydraté uniquement où l'interactivité est nécessaire (`client:load`, `client:idle`, `client:visible`).
 
-### Routing
+> L'ancienne stack `Vite direct + React Router + React Helmet` est **supprimée**. Les alias `vite.config` (`astro.config.mjs`) neutralisent `react-router-dom` et `react-helmet-async` (legacy non installés) — ne pas les réintroduire.
 
-- **React Router DOM 6.22.3** - Client-side routing with future flags enabled
-  - `v7_startTransition` - Smooth transitions
-  - `v7_relativeSplatPath` - Improved path resolution
+## Frontend
 
-### Styling
+- **React 18** — utilisé uniquement pour les îles hydratées (`src/components/islands/`).
+- **Tailwind CSS 3.4** — utility-first uniquement ; pas de CSS personnalisé hors `src/index.css`. Pas de dark mode.
+- **framer-motion 11** — animations via le hook `useMotionVariants` (désactivé sur touch/WKWebView). **Jamais** pour les animations continues (utiliser Tailwind `animate-spin`).
+- **Lucide React** — icônes.
+- **react-hot-toast** — notifications.
+- **date-fns 4** — utilitaires de dates.
 
-- **Tailwind CSS 3.4.1** - Utility-first CSS framework
-- **PostCSS 8.4.35** - CSS transformations
-- **Autoprefixer 10.4.18** - Vendor prefix automation
-- **@tailwindcss/typography 0.5.10** - Beautiful typographic defaults
-- **@tailwindcss/line-clamp 0.4.4** - Multi-line text truncation
+## Backend / Data
 
-### UI Components & Icons
+- **Pas d'ORM** (stack.yml: `orm: none`). SQL brut via `@supabase/supabase-js` (PostgREST) ou `pg`.
+- **Supabase / PostgreSQL 16** — base de données principale. Migrations dans `supabase/migrations/` (`001_init.sql` → `008_credits.sql`).
+- **BetterAuth 1.6** — authentification session-based, backend PostgreSQL. **Monocompte** (une seule praticienne ; le hook `beforeUserCreated` bloque toute inscription).
+- **Stripe** — Payment Links uniquement pour `appointment_mode = 'video'` (ADR-014). Avoirs internes plutôt que refunds (ADR-015).
+- **Google Calendar / Meet API** — créneaux + liens Meet (`googleapis`). `GOOGLE_CALENDAR_MOCK=true` en dev (créneaux fictifs le mercredi).
+- **Resend** — transport email prod (templates React Email). **Nodemailer → Mailpit** en dev local.
 
-- **Lucide React 0.344.0** - Beautiful open-source icon library
-- **Framer Motion 11.0.8** - Production-ready animation library
+## Build & Deploy
 
-### Forms & Communication
+- **Build :** `npm run build` (`astro build` → `dist/`).
+- **Dev server :** `npm run dev` — port **4321** (Astro), pas 5173 (Vite direct n'est plus utilisé).
+- **Adaptateur :** `@astrojs/netlify` — génère `_redirects` + edge functions pour les routes SSR.
+- **Plateforme :** Netlify (auto-déploiement depuis `main`).
+- **CI gate** (`.github/workflows/ci.yml`, PR #85) : `lint → test → build` bloquant ; `typecheck` advisory (issue #68 trace les ~20 erreurs résiduelles).
+- **Node :** 20 (`.nvmrc`, correspond à `netlify.toml`).
 
-- **@emailjs/browser 4.3.3** - Client-side email sending service
-- **React Hot Toast 2.4.1** - Notification/toast system
+## Tooling
 
-### SEO & Meta
+- **ESLint 9** — flat config (`eslint.config.js`).
+- **Vitest** — tests unitaires / intégration (`tests/unit/**`, env `node`).
+- **Playwright** — tests e2e (`e2e/*.spec.ts`).
+- **pa11y + Lighthouse** — audits accessibilité WCAG 2.1 AA (`npm run audit:a11y`). **Requis avant tout PR UI.**
+- **Astro Content Collections** — blog Markdown validé par Zod (`src/content.config.ts`).
 
-- **React Helmet Async 2.0.4** - Dynamic head management for SEO
+## Env vars (Astro `import.meta.env.*`)
 
-### Utilities
+Voir `docs/INFRA.md` (prod) et `docs/LOCAL_DEV.md` (local). Variables critiques : `DATABASE_URL`, `SUPABASE_*`, `BETTER_AUTH_*`, `STRIPE_*`, `RESEND_*`, `SMTP_*`, `GOOGLE_CALENDAR_*` / `GOOGLE_OAUTH_*`, `SITE_URL`.
 
-- **date-fns 4.1.0** - Modern date utility library
-- **html-react-parser 5.2.2** - HTML string to React component parser
+## Conventions clés
 
-## Development Tools
+- **Trailing slash obligatoire** sur toute URL côté client (ADR-013) — `fetch("/api/foo/")`, `window.location.href = "/mes-rdvs/"`.
+- **Langue :** code/types/commentaires en anglais ; texte utilisateur et emails en **français** ; commits en **français présent**.
+- **Statuts RDV :** `pending → confirmed | declined | rescheduled → payment_pending → payment_received | cancelled`. `payment_received` = « réglé » (Stripe **ou** avoir).
+- **Avoirs internes** (#63/#66) : pas de Stripe refund — émission via `credits`/`credit_usages`, RPC FIFO `consume_credits`/`restore_credits`. Admin-only.
 
-### Code Quality
+## Références
 
-- **ESLint 9.9.1** - JavaScript/TypeScript linting
-- **@eslint/js** - ESLint JavaScript configs
-- **eslint-plugin-react-hooks** - React Hooks linting rules
-- **eslint-plugin-react-refresh** - React Fast Refresh validation
-- **TypeScript ESLint 8.3.0** - TypeScript-specific linting
-
-### Build Optimization
-
-- **Terser 5.38.1** - JavaScript minification
-- **cssnano 6.0.5** - CSS minification and optimization
-
-### Accessibility Auditing
-
-- **pa11y 9.0.1** - Automated accessibility testing
-- **pa11y-ci 4.0.1** - CI/CD accessibility testing
-- **pa11y-reporter-html 2.0.0** - HTML report generation
-- **Lighthouse 12.8.2** - Performance and accessibility auditing
-
-### Type Definitions
-
-- **@types/react 18.3.5** - React TypeScript definitions
-- **@types/react-dom 18.3.0** - React DOM TypeScript definitions
-
-## Architecture Patterns
-
-### Component Organization
-
-- **Lazy Loading** - Routes loaded on demand for better performance
-- **Code Splitting** - Automatic via Vite and React.lazy()
-- **Suspense Boundaries** - Graceful loading states
-
-### State Management
-
-- **React Hooks** - useState, useEffect, custom hooks
-- **No external state library** - Props and context for simple state needs
-
-### Styling Approach
-
-- **Utility-First** - Tailwind CSS for rapid development
-- **Component-Scoped** - Styles defined per component
-- **Responsive-First** - Mobile-first breakpoint system
-
-### Type Safety
-
-- **Strict TypeScript** - Full type coverage across codebase
-- **Interface Definitions** - Clear type contracts in /src/types/
-
-## Build & Deployment
-
-### Build Process
-
-- **Bundler:** Vite with React plugin (@vitejs/plugin-react 4.3.1)
-- **Output:** Static files to `dist/` directory
-- **Optimization:** Tree-shaking, minification, code splitting
-
-### Development
-
-- **Dev Server:** Vite dev server with HMR
-- **Port:** Default (5173) or configured
-- **Preview:** `npm run preview` for production build testing
-
-### Scripts Available
-
-```json
-{
-  "dev": "vite",
-  "build": "vite build",
-  "lint": "eslint .",
-  "preview": "vite preview",
-  "generate-sitemap": "node generate-sitemap.js",
-  "audit:a11y": "node scripts/run-a11y-audit.mjs",
-  "audit:lighthouse": "lighthouse https://omf-therapie.fr ..."
-}
-```
-
-## Browser Support
-
-- Modern browsers with ES6+ support
-- Based on Vite's default targets
-- No legacy browser support needed
-
-## Performance Considerations
-
-- Route-based code splitting
-- Lazy loaded components
-- Optimized images and assets
-- CSS purging via Tailwind
-- Minified production builds
-
-## Accessibility Standards
-
-- WCAG 2.1 AA compliance target
-- Automated testing with pa11y
-- Lighthouse accessibility audits
-- Semantic HTML structure
-- ARIA attributes where needed
+- `CLAUDE.md` — instructions détaillées pour agents.
+- `AGENTS.md` — couche quick-reference (domaines, conventions critiques, gotchas).
+- `docs/architecture/index.md` — conception système + couches + domaines.
+- `docs/architecture/patterns.md` — patterns de code + AI Quick Reference.
+- `memory-bank/decisions.md` — ADRs (ADR-001 à ADR-016).

@@ -1,6 +1,8 @@
 # Coding Conventions
 
-**Last Updated:** January 14, 2025
+**Last Updated:** July 5, 2026
+
+> ⚠️ **Note de révision** — ce fichier a été écrit pour l'ancienne stack React SPA (jan 2025). La migration vers **Astro 5 SSG + Islands** a remplacé plusieurs patterns ci-dessous (lazy loading par route, gestion SPA du state, tests absents). Les sections obsolètes sont marquées ; pour la version à jour voir `docs/standards/frontend-patterns.md`, `docs/standards/testing.md`, et `AGENTS.md`.
 
 ## Language & Tooling
 
@@ -311,8 +313,10 @@ try {
 
 ### Component Optimization
 
-- **Lazy load routes** with React.lazy()
-- **Code splitting** at route level
+> ⚠️ **Obsolète pour Astro** — Le lazy loading par route via `React.lazy()` concernait l'ancienne stack SPA. Sous Astro 5 SSG + Islands, le code splitting est géré automatiquement par le framework : chaque page `.astro` est pré-rendue statiquement, et React n'est hydraté que pour les îles (`client:load`/`client:idle`/`client:visible`). Ne pas utiliser `React.lazy()` pour le routing (qui n'existe plus — voir ADR-001). Voir `docs/standards/frontend-patterns.md` § Hydration directives.
+
+- ~~**Lazy load routes** with React.lazy()~~ → remplacé par Islands Architecture d'Astro
+- **Code splitting** automatique par Astro (une page = un chunk statique)
 - **Avoid premature optimization** - measure first
 
 ### Asset Optimization
@@ -329,17 +333,25 @@ try {
 
 ## Testing Conventions
 
+> ℹ️ **Mis à jour juillet 2026** — L'ancienne section "No automated tests" (jan 2025) est obsolète. Tests Vitest + Playwright désormais en place.
+
 ### Current State
 
-- **No automated tests** currently implemented
-- **Manual testing** for features
-- **Accessibility audits** via pa11y and Lighthouse
+- **Vitest** — tests unitaires / intégration dans `tests/unit/**` (env `node`). Couvre notamment `appointment-eligibility.ts`, `credits.ts`, `google-calendar.ts`.
+- **Playwright** — tests e2e dans `e2e/*.spec.ts` (`smoke.spec.ts`, `manual-slots.spec.ts`).
+- **pa11y + Lighthouse** — audits accessibilité WCAG 2.1 AA, **requis avant tout PR UI** (`npm run audit:a11y`).
+- **CI** (`.github/workflows/ci.yml`) — `lint → test → build` bloquant ; `typecheck` advisory (issue #68).
 
-### Future Recommendations
+### Commands
 
-- **Vitest** for unit tests
-- **React Testing Library** for component tests
-- **E2E tests** with Playwright/Cypress
+```bash
+npm run test              # Vitest run
+npm run test:watch        # Vitest watch
+npm run audit:a11y        # pa11y (nécessite le dev server)
+npx playwright test --project=chromium
+```
+
+Voir `docs/standards/testing.md` pour les conventions détaillées (modules purs, mocks au boundary, selectors `[data-testid]`).
 
 ## Documentation
 
