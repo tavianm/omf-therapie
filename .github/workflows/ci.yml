@@ -10,40 +10,52 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded runs on PRs; let every main commit complete so trunk
+  # signal is unambiguous (a cancelled run can't prove the commit is green).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Blocking gate — must pass to merge.
-  # Three of the four quality gates enforced here today. Typecheck runs as a
-  # separate non-blocking job below (see `typecheck-advisory`) until the
-  # remaining pre-existing type errors are resolved (tracked in #68).
+  # Blocking gate — must pass to merge. Three of the four quality gates
+  # enforced here. Typecheck runs separately as non-blocking (see below).
+  # CI build is a smoke test; Netlify rebuilds from source on its own hook.
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run test
-      - run: npm run build
+      - name: Install
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm run test
+      - name: Build
+        run: npm run build
 
   # Non-blocking advisory — surfaces type drift without blocking merges.
-  # The codebase has ~20 pre-existing type errors across auth/payments/calendar
-  # subsystems that predate this CI pipeline. Once those are cleared (#68),
-  # this job flips to `continue-on-error: false` and joins the blocking gate.
+  # The codebase has pre-existing type errors across auth/payments/calendar
+  # subsystems that predate this CI pipeline. Tracked in #68 — once cleared,
+  # remove `continue-on-error` on the typecheck step and this job joins the
+  # blocking gate.
   typecheck-advisory:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
-      - run: npm run typecheck
+      - name: Install
+        run: npm ci
+      - name: Typecheck (advisory)
+        continue-on-error: true
+        run: npm run typecheck
