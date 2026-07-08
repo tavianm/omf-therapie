@@ -67,6 +67,14 @@ export interface SendEmailParams {
   react: ReactElement;
   /** Adresse de réponse optionnelle */
   replyTo?: string;
+  /**
+   * Clé d'idempotence Resend (~24h TTL) — déduplique les envois concurrents
+   * in-flight côté serveur via l'en-tête `Idempotency-Key`. Deux tentatives
+   * simultanées (ex : webhook + sweep de réconciliation) avec la même clé
+   * ne produisent qu'un seul email. En chemin SMTP (dev/Mailpit), la clé est
+   * répercutée dans un en-tête `Message-ID` déterministe (parité de contrat).
+   */
+  idempotencyKey?: string;
 }
 
 export interface SendEmailResult {
@@ -210,7 +218,7 @@ async function sendEmailViaSMTP(
   params: SendEmailParams,
   fromEmail: string,
 ): Promise<SendEmailResult> {
-  const { to, bcc, subject, react, replyTo, threadKey } = params;
+  const { to, bcc, subject, react, replyTo, threadKey, idempotencyKey } = params;
 
   try {
     const html = await render(react);
@@ -225,6 +233,11 @@ async function sendEmailViaSMTP(
       html,
       ...(threadContext.headers ? { headers: threadContext.headers } : {}),
       ...(replyTo ? { replyTo } : {}),
+      // Parité dev : répercute la clé d'idempotence dans un Message-ID déterministe
+      // (Mailpit ne déduplique pas réellement, mais le contrat reste honnête).
+      ...(idempotencyKey
+        ? { messageId: `<${idempotencyKey}@omf-therapie.local>` }
+        : {}),
     });
 
     if (normalizedThreadKey && info.messageId) {
@@ -258,7 +271,7 @@ async function sendEmailViaResend(
     return { success: false, error: 'RESEND_API_KEY manquante' };
   }
 
-  const { to, bcc, subject, react, replyTo, threadKey } = params;
+  const { to, bcc, subject, react, replyTo, threadKey, idempotencyKey } = params;
 
   try {
     const html = await render(react);
@@ -279,7 +292,12 @@ async function sendEmailViaResend(
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
-        const { data, error } = await resendClient.emails.send(payload);
+        const { data, error } = await resendClient.emails.send(
+          payload,
+          // Clé d'idempotence Resend (~24h TTL) — envoyée via l'en-tête
+          // `Idempotency-Key` ; déduplique les envois concurrents in-flight.
+          { ...(idempotencyKey ? { idempotencyKey } : {}) },
+        );
 
         if (!error) {
           if (normalizedThreadKey && data?.id) {
