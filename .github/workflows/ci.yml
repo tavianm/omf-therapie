@@ -34,11 +34,17 @@ jobs:
       - name: Verify google-auth-library dedupe
         # Guard against a future googleapis bump silently re-splitting
         # google-auth-library, which re-introduces the ts2322/2769 overload
-        # cascade cleared in #86. Fails loudly if more than one copy resolves.
+        # cascade cleared in #86. Fails loudly if more than one distinct
+        # version resolves. (Count distinct versions, not install paths —
+        # the same version may legitimately appear at multiple tree positions
+        # once npm dedupes to a single resolved copy.)
         run: |
-          count=$(npm ls google-auth-library --all --json | jq '[.. | objects | select(has("google-auth-library"))] | length')
+          versions=$(npm ls google-auth-library --all --json \
+            | jq -r '[.. | objects | select(has("google-auth-library")) | ."google-auth-library".version] | unique')
+          echo "google-auth-library versions: $versions"
+          count=$(echo "$versions" | jq 'length')
           if [ "$count" -ne 1 ]; then
-            echo "Expected 1 google-auth-library copy, found $count"
+            echo "Expected 1 distinct google-auth-library version, found $count"
             npm ls google-auth-library --all
             exit 1
           fi
