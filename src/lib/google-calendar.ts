@@ -625,7 +625,12 @@ export interface CreateEventResult {
 }
 
 
-function extractEventResult(data: { id?: string | null; conferenceData?: { entryPoints?: Array<{ uri?: string } | null> | null } | null; hangoutLink?: string | null }): CreateEventResult {
+// Accept the canonical googleapis Schema$Event shape (id, conferenceData,
+// hangoutLink) rather than a hand-rolled partial — callers pass response.data
+// directly. `Pick` narrows to the fields this function reads.
+type EventResultInput = Pick<calendar_v3.Schema$Event, 'id' | 'conferenceData' | 'hangoutLink'>;
+
+function extractEventResult(data: EventResultInput): CreateEventResult {
   const eventId = data.id;
   if (!eventId) {
     throw new GoogleCalendarError(
@@ -636,8 +641,7 @@ function extractEventResult(data: { id?: string | null; conferenceData?: { entry
   const meetLink =
     data.conferenceData?.entryPoints?.find((entryPoint) => {
       if (!entryPoint) return false;
-      const typed = entryPoint as { uri?: string; entryPointType?: string };
-      return typed.entryPointType === 'video' && typeof typed.uri === 'string';
+      return entryPoint.entryPointType === 'video' && typeof entryPoint.uri === 'string';
     })?.uri ??
     data.hangoutLink ??
     undefined;
@@ -662,7 +666,8 @@ async function pollMeetLink(
     const response = await calendar.events.get({
       calendarId,
       eventId,
-      conferenceDataVersion: 1,
+      // conferenceDataVersion is only valid on insert/patch, not get
+      // (not in Params$Resource$Events$Get) — see googleapis calendar_v3 types.
     });
     const result = extractEventResult(response.data);
     if (result.meetLink) return result.meetLink;

@@ -25,7 +25,7 @@ interface Props {
   patientName: string;
   scheduledAt: string;
   appointmentType: 'individual' | 'couple' | 'family';
-  duration: 60 | 90;
+  duration: number; // DB value (Appointment.duration); 60|90 is a booking-input constraint
   finalPrice: number; // centimes
   stripePaymentUrl: string;
   expiresAt?: string;

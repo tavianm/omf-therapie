@@ -24,7 +24,7 @@ interface Props {
   originalScheduledAt: string;
   newScheduledAt: string;
   appointmentMode: 'in-person' | 'video';
-  duration: 60 | 90;
+  duration: number; // DB value (Appointment.duration); 60|90 is a booking-input constraint
   finalPrice: number; // centimes
   therapistNote?: string;
   acceptUrl: string;

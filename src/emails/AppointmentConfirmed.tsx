@@ -25,7 +25,9 @@ interface Props {
   appointmentType: 'individual' | 'couple' | 'family';
   appointmentMode: 'in-person' | 'video';
   scheduledAt: string;
-  duration: 60 | 90;
+  // Database value: Appointment.duration is `number`; the 60|90 constraint
+  // belongs to the patient booking input (AppointmentDuration), not rendering.
+  duration: number;
   finalPrice: number; // centimes
   videoLink?: string;
   googleCalendarLink: string;

@@ -15,9 +15,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Blocking gate — must pass to merge. Three of the four quality gates
-  # enforced here. Typecheck runs separately as non-blocking (see below).
-  # CI build is a smoke test; Netlify rebuilds from source on its own hook.
+  # Blocking gate — must pass to merge. All four quality gates enforced here
+  # (lint, test, build, typecheck). CI build is a smoke test; Netlify rebuilds
+  # from source on its own hook.
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -31,6 +31,17 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
+      - name: Verify google-auth-library dedupe
+        # Guard against a future googleapis bump silently re-splitting
+        # google-auth-library, which re-introduces the ts2322/2769 overload
+        # cascade cleared in #86. Fails loudly if more than one copy resolves.
+        run: |
+          count=$(npm ls google-auth-library --all --json | jq '[.. | objects | select(has("google-auth-library"))] | length')
+          if [ "$count" -ne 1 ]; then
+            echo "Expected 1 google-auth-library copy, found $count"
+            npm ls google-auth-library --all
+            exit 1
+          fi
       - name: Lint
         run: npm run lint
       - name: Test
@@ -38,12 +49,10 @@ jobs:
       - name: Build
         run: npm run build
 
-  # Non-blocking advisory — surfaces type drift without blocking merges.
-  # The codebase has pre-existing type errors across auth/payments/calendar
-  # subsystems that predate this CI pipeline. Tracked in #68 — once cleared,
-  # remove `continue-on-error` on the typecheck step and this job joins the
-  # blocking gate.
-  typecheck-advisory:
+  # Blocking gate member — type errors fail the run. The codebase previously
+  # carried 26 pre-existing type errors (auth/payments/calendar/emails) that
+  # predated CI; cleared in #86. This job now blocks merges alongside `build`.
+  typecheck:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -56,6 +65,5 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
-      - name: Typecheck (advisory)
-        continue-on-error: true
+      - name: Typecheck
         run: npm run typecheck
