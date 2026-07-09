@@ -9,7 +9,7 @@ Email threading (RFC 2822 `In-Reply-To` / `References`) groups all emails for a 
 
 ---
 
-## 8 Email Templates
+## 14 Email Templates
 
 | # | Template | Trigger | Recipient(s) | Thread key |
 |---|----------|---------|--------------|------------|
@@ -20,7 +20,13 @@ Email threading (RFC 2822 `In-Reply-To` / `References`) groups all emails for a 
 | 5 | `AppointmentRescheduled` | Admin proposes new slot | Patient | `appointment:{id}:patient` |
 | 6 | `PaymentRequest` | Admin confirms a video appointment (→ payment_pending) | Patient | `appointment:{id}:patient` |
 | 7 | `ReviewRequest` | Admin clicks "Envoyer avis" in dashboard | Patient | — |
-| 8 | `AppointmentReminder` | Netlify cron J-1 (daily 08:00 UTC) | Patient (no thread) | — |
+| 8 | `AppointmentReminder` | Netlify cron J-1 (daily 08:00 UTC) for confirmed/payment_received appointments | Patient (no thread) | — |
+| 9 | `AppointmentCancelled` | Admin cancels appointment | Patient | `appointment:{id}:patient` |
+| 10 | `AppointmentRescheduledPaid` | Admin directly moves a paid/confirmed appointment (reschedule_paid action) | Patient | `appointment:{id}:patient` |
+| 11 | `PaymentReminder` | Netlify cron J-1 (daily 08:00 UTC) for payment_pending appointments | Patient (no thread) | — |
+| 12 | `PaymentReceivedNotification` | Stripe webhook receives payment | Admin (no thread) | — |
+| 13 | `CalendarAuthAlert` | Google Calendar OAuth token expires | Admin (no thread) | — |
+| 14 | `ContactFormEmail` | Contact form submission | Admin (no thread) | — |
 
 Template files: `src/emails/*.tsx`
 
@@ -129,8 +135,22 @@ Stripe → POST /api/stripe-webhook  (checkout.session.completed)
         ├─ Generate Google Meet link
         └─ await Promise.allSettled([
               sendEmail → [3] AppointmentConfirmed → patient
-              sendEmail → [2] AppointmentRequestNotification → admin (payment received)
+              sendEmail → [12] PaymentReceivedNotification → admin
            ])
+        │
+        ▼
+200 OK
+```
+
+### Review request (admin-triggered)
+
+```
+Admin clicks "Envoyer avis" in /mes-rdvs
+        │
+        ▼
+POST /api/send-review-email  { appointmentId }
+        │
+        └─ await sendEmail → [7] ReviewRequest → patient
         │
         ▼
 200 OK
@@ -151,17 +171,67 @@ netlify/functions/send-reminders.ts
         └─ for each appointment:
                resend.emails.send → [8] AppointmentReminder → patient
                if ok: update reminder_sent_at = now()
+        │
+        ├─ Query appointments: scheduled_at in [tomorrow Paris start, tomorrow Paris end]
+        │                       status = payment_pending
+        │                       reminder_sent_at IS NULL
+        │
+        └─ for each appointment:
+               resend.emails.send → [11] PaymentReminder → patient
+               if ok: update reminder_sent_at = now()
 ```
 
-### Review request (admin-triggered)
+### Admin cancel flow
 
 ```
-Admin clicks "Envoyer avis" in /mes-rdvs
+PATCH /api/appointments/:id  { action: 'cancel' }
+        │
+        ├─ Restitute credits if applicable
+        ├─ Emit new credit for paid appointments
+        ├─ Update status: cancelled
+        │
+        └─ await sendEmail → [9] AppointmentCancelled → patient
         │
         ▼
-POST /api/send-review-email  { appointmentId }
+200 OK
+```
+
+### Admin reschedule_paid flow (direct move)
+
+```
+PATCH /api/appointments/:id  { action: 'reschedule_paid', rescheduled_to: ISO }
         │
-        └─ await sendEmail → [7] ReviewRequest → patient
+        ├─ Update scheduled_at: new date
+        ├─ Update Google Calendar event
+        │
+        └─ await sendEmail → [10] AppointmentRescheduledPaid → patient
+           (No payment link, no acceptance required - payment is conserved)
+        │
+        ▼
+200 OK
+```
+
+### Calendar auth alert flow
+
+```
+Google Calendar API returns 401/403 (token expired)
+        │
+        ▼
+src/lib/google-calendar.ts detects auth failure
+        │
+        └─ await sendEmail → [13] CalendarAuthAlert → admin
+           (with reauthorizeUrl to /api/admin/google-oauth)
+```
+
+### Contact form flow
+
+```
+Patient submits contact form
+        │
+        ▼
+POST /api/contact
+        │
+        └─ await sendEmail → [14] ContactFormEmail → admin
         │
         ▼
 200 OK
