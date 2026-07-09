@@ -107,11 +107,12 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
   const isReadOnly = status === 'declined' || status === 'cancelled';
   // Éligibilité à l'annulation / report (fenêtre veille incluse, Europe/Paris).
   const isCancellable = isCancellableByTherapist(appointment);
-  // Un RDV déjà arrimé (confirmed ∨ payment_received, tous modes) se reporte par
-  // move direct admin : la thérapeute déplace le créneau, paiement/avoir conservé,
-  // patient notifié. Pas de re-validation, pas de proposition.
+  // Un RDV vidéo déjà payé (payment_received) ou un RDV présentiel déjà confirmé
+  // (confirmed) se reporte par move direct admin : la thérapeute déplace le créneau
+  // sans re-validation du patient. Pour les RDV vidéo, le paiement Stripe est conservé.
   const isDirectReschedule =
-    status === 'confirmed' || status === 'payment_received';
+    (appointment.appointment_mode === 'video' && status === 'payment_received') ||
+    (appointment.appointment_mode === 'in-person' && status === 'confirmed');
 
   // ── PATCH helper ─────────────────────────────────────────────────────────
 

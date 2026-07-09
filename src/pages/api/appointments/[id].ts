@@ -493,11 +493,15 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // Conditions : vidéo + payment_received + éligible (fenêtre veille).
   // ---------------------------------------------------------------------------
   if (action === 'reschedule_paid') {
-    // Move direct admin : tout RDV déjà arrimé (confirmed ∨ payment_received),
-    // tous modes confondus. La thérapeute déplace le créneau, le paiement/avoir
-    // est conservé, le patient est notifié (pas de re-validation).
-    if (appointment.status !== 'confirmed' && appointment.status !== 'payment_received')
-      return errorResponse(409, 'Le report direct ne s\'applique qu\'aux rendez-vous déjà confirmés.');
+    // Move direct admin : RDV vidéo déjà payé (payment_received) ou RDV présentiel
+    // déjà confirmé (confirmed). La thérapeute déplace le créneau sans re-validation
+    // du patient. Pour les RDV vidéo, le paiement Stripe est conservé.
+    if (!(
+      (appointment.appointment_mode === 'video' && appointment.status === 'payment_received') ||
+      (appointment.appointment_mode === 'in-person' && appointment.status === 'confirmed')
+    )) {
+      return errorResponse(409, 'Le report direct ne s\'applique qu\'aux rendez-vous vidéo déjà payés ou en présentiel déjà confirmés.');
+    }
     if (!isCancellableByTherapist(appointment))
       return errorResponse(409, 'Ce rendez-vous ne peut pas être reporté (hors fenêtre).');
 
