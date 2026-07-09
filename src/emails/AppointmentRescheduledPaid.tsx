@@ -63,11 +63,13 @@ export default function AppointmentRescheduledPaid({
         <strong>{formatDateFR(newScheduledAt)}</strong> ({duration} min).
       </Text>
 
-      <Text style={S.body}>
-        Bonne nouvelle : votre paiement est{' '}
-        <strong>conservé et reste valable</strong> pour ce nouveau créneau.
-        Aucune action n'est attendue de votre part.
-      </Text>
+      {appointmentMode === 'video' && (
+        <Text style={S.body}>
+          Bonne nouvelle : votre paiement est{' '}
+          <strong>conservé et reste valable</strong> pour ce nouveau créneau.
+          Aucune action n'est attendue de votre part.
+        </Text>
+      )}
 
       {/* Message personnalisé */}
       {therapistNote && (
