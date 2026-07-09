@@ -85,9 +85,11 @@ export const auth = betterAuth({
   // BetterAuth v1.6.11 : hooks.before = single function (not array of {matcher,handler}).
   hooks: {
     before: async (context) => {
-      // better-auth v1.6.11: MiddlewareInputContext does not expose `.path` or
-      // `.context.adapter` on its public type, but the runtime fields are present
-      // (see better-auth hooks/middleware docs). Narrow-cast to access them safely.
+      // better-auth v1.6.23 (declared ^1.6.11): MiddlewareInputContext does not
+      // expose `.path` or `.context.adapter` on its public type, but the runtime
+      // fields are present (see better-auth hooks/middleware docs). Narrow-cast
+      // to access them safely; if a future bump exposes these on the public type,
+      // drop the cast.
       const ctx = context as unknown as {
         path: string;
         context: {

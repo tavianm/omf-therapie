@@ -18,12 +18,14 @@ export const isStripeMock = !stripeKey || stripeKey === 'sk_test_placeholder' ||
 
 /** Instance Stripe singleton */
 export const stripe: Stripe = new Stripe(stripeKey, {
-  // Stripe pins requests to the account's API version (Dashboard → Developers
-  // → API version), not the SDK's bundled types. stripe@22 bundles the
+  // Explicitly pin the API version literal to the live account's pinned version
+  // (Dashboard → Developers → API version). stripe@22 bundles the
   // "2026-06-24.dahlia" types; our account is still on "2024-12-18.acacia".
-  // Per Stripe's recommendation, pass null to use the account version and
-  // ignore the SDK type drift. To upgrade: bump the account version first,
-  // verify response shapes, then set this to the matching literal.
+  // Stripe pins requests to the account version regardless of this value, so
+  // the literal documents intent; the @ts-expect-error bridges the SDK-type
+  // drift and self-invalidates if the literal ever matches LatestApiVersion.
+  // To upgrade: bump the account version first, verify response shapes, then
+  // set this literal to match (the @ts-expect-error will drop automatically).
   // @ts-expect-error — account version differs from bundled LatestApiVersion
   apiVersion: '2024-12-18.acacia',
 });

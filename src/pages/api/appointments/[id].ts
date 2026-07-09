@@ -824,9 +824,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       return errorResponse(500, 'Erreur lors de la mise à jour');
     }
 
-    // `let`, not `const`: re-bound at :882 after google_calendar_event_id
-    // persistence (reschedule-accept sync). `as unknown as` bridges the
-    // Supabase GenericStringError→Appointment boundary (non-overlapping types).
+    // `let`, not `const`: re-bound after google_calendar_event_id persistence
+    // in the reschedule-accept sync below (`updatedAppt = refreshedAfterCalendar`).
+    // `as unknown as` bridges the Supabase GenericStringError→Appointment
+    // boundary (non-overlapping types).
     let updatedAppt = updated as unknown as Appointment;
 
     await invalidateAvailabilityCache().catch(console.error);
