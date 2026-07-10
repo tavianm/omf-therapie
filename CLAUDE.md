@@ -34,7 +34,11 @@ npm run dev              # Start dev server (Astro)
 npm run build            # Production build (SSG via astro build)
 npm run preview          # Preview production build locally
 npm run lint             # Run ESLint
+npm run typecheck        # Type-check via `astro check` (advisory in CI — see #68 for the 20 pre-existing errors)
+npm run test             # Vitest unit/integration tests
 ```
+
+> **CI:** `.github/workflows/ci.yml` gates merges to `main` with `lint → test → build`. Typecheck runs as a non-blocking advisory until #68 clears the remaining type errors. After the workflow reports once on `main`, require `CI / build` in branch protection.
 
 ### Accessibility Audits
 ```bash
@@ -301,10 +305,12 @@ Reports saved to `public/reports/latest/` with:
 - Don't add error handling for impossible scenarios
 
 ### Deployment
-- **Platform:** Netlify (automatic deployment from main branch)
+- **Platform:** Netlify (automatic deployment from `main`)
+- **CI gate:** GitHub Actions (`CI / build` = `lint → test → build`) must pass before merge — see `.github/workflows/ci.yml`. Typecheck is advisory (see issue #68).
+- **Node version:** pinned via `.nvmrc` (matches `netlify.toml`)
 - **Build command:** `npm run build`
 - **Publish directory:** `dist/`
-- **Custom domain:** Configured via CNAME in public/
+- **Custom domain:** Configured via CNAME in `public/`
 
 ### Git Workflow
 - **Main branch:** Production-ready code

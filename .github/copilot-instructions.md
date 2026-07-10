@@ -1,6 +1,6 @@
 # Instructions pour les agents AI Copilot
 
-**Dernière mise à jour :** 14 mai 2026
+**Dernière mise à jour :** 5 juillet 2026
 
 ## 🎯 Aperçu du Projet
 
@@ -34,7 +34,7 @@ Entrées disponibles : Project Overview · Architecture · Coding Conventions ·
 omf-therapie/
 ├── src/
 │   ├── components/     # Composants React (islands/) et Astro
-│   │   ├── admin/      # Dashboard admin (AppointmentCard, AdminCreateButton)
+│   │   ├── admin/      # Dashboard admin (AppointmentCard, AdminCreateButton, AppointmentsManager)
 │   │   ├── islands/    # React islands hydratés côté client (Navbar, BlogClientWrapper)
 │   │   └── ...         # home/, blog/, contact/, footer/, navigation/, pricing/
 │   ├── config/         # Configuration globale
@@ -43,17 +43,17 @@ omf-therapie/
 │   ├── emails/         # Templates React Email (Nodemailer/Resend)
 │   ├── hooks/          # Hooks React personnalisés (utilisés dans les islands)
 │   ├── layouts/        # Layouts Astro (Layout.astro, ServiceLayout.astro)
-│   ├── lib/            # Librairies serveur (auth.server.ts, pricing.ts, stripe.ts, google-calendar.ts, supabase.ts)
+│   ├── lib/            # Librairies serveur (auth.server.ts, pricing.ts, stripe.ts, credits.ts, google-calendar.ts, supabase.ts)
 │   ├── pages/          # Routes Astro (fichiers .astro → URLs)
 │   │   ├── api/        # Endpoints API SSR (appointments, auth, availability, stripe-webhook, admin/)
 │   │   ├── rdv/        # Pages patient post-booking (accepter-report, merci)
 │   │   ├── rendez-vous.astro  # Wizard de prise de rendez-vous (patient)
-│   │   ├── mes-rdvs.astro     # Dashboard admin (BetterAuth requis)
+│   │   ├── mes-rdvs.astro     # Dashboard admin (BetterAuth requis) — liste compacte gérée par <AppointmentsManager>
 │   │   └── login.astro        # Authentification admin
 │   ├── types/          # Définitions TypeScript
 │   └── utils/          # Utilitaires (schema.ts, blogApi.ts, etc.)
 ├── supabase/
-│   └── migrations/     # Schéma PostgreSQL (001_init.sql)
+│   └── migrations/     # Schéma PostgreSQL (001_init.sql → 008_credits.sql)
 ├── scripts/            # Scripts utilitaires (seed-admin.ts)
 ├── memory-bank/        # Standards de développement (astro.md, conventions.md, etc.)
 └── public/             # Assets statiques et rapports

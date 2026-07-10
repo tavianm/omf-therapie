@@ -1,6 +1,10 @@
 # Plan SEO / GEO — omf-therapie.fr
 
-> Site vitrine React SPA + React Router + Helmet, déployé sur Netlify.  
+> ⚠️ **Document de planification historique (pré-migration).** La description technique ci-dessous (« React SPA + React Router + Helmet ») reflète l'ancienne stack. Le site est désormais un **Astro 5 SSG + Islands** (juillet 2026) — les recommandations techniques de la section 6 (React Helmet, `_redirects`, `React.lazy`, sitemap manuel) sont **obsolètes** : la meta/JSON-LD est gérée via `src/utils/schema.ts` + `src/layouts/`, le sitemap est auto-généré par `@astrojs/sitemap` (filtré dans `astro.config.mjs`), et les redirects legacy sont dans `netlify.toml`. La **stratégie de contenu** (sections 1–5) reste pertinente.
+>
+> Pour la stack actuelle voir `memory-bank/technical-stack.md`, `docs/architecture/index.md`, `AGENTS.md`.
+>
+> Site vitrine ~~React SPA + React Router + Helmet~~ **Astro 5 SSG + Islands**, déployé sur Netlify.
 > Praticienne : Oriane Montabonnet, psychopraticienne à Montpellier.
 
 ---
@@ -85,6 +89,8 @@ Chaque article : lien en fin de page vers la page service correspondante + page 
 ## 6. Technique React / Helmet / Netlify
 
 ### 6.1 React Helmet — 1 set de balises par route
+
+> ⚠️ **Obsolète sous Astro.** Le `<Helmet>` React n'est plus utilisé. Les balises meta + JSON-LD sont désormais gérées côté serveur dans les layouts/pages `.astro` via `src/utils/schema.ts` et `<Layout>` / `<ServiceLayout>`. Cette section est conservée pour contexte historique.
 
 Dans chaque composant de page, déclarer un `<Helmet>` complet :
 
@@ -187,7 +193,7 @@ const schemaBlogPosting = {
 
 ## 8. Performance & Core Web Vitals
 
-- **Code splitting** : `React.lazy` + `Suspense` par route pour ne pas tout charger sur la home.
+- ~~**Code splitting** : `React.lazy` + `Suspense` par route~~ → sous Astro 5, le code splitting est automatique (une page `.astro` = un chunk statique pré-rendu ; React n'est hydraté que pour les îles).
 - **Images** : formats compressés (WebP de préférence), dimensions adaptées, `loading="lazy"` sur les visuels hors viewport initial.
 - **Suivi** : Google Search Console (Core Web Vitals) + Lighthouse / PageSpeed Insights.
 
@@ -215,6 +221,8 @@ const schemaBlogPosting = {
 **Recommandation : non à court terme (6–12 mois).**
 
 En appliquant les optimisations ci-dessus (prerender Netlify + Helmet + sitemap), la SPA React peut atteindre un niveau SEO satisfaisant pour un site vitrine de cette taille.
+
+> ✅ **Mise à jour juillet 2026** — La migration vers Astro 5 SSG (achevée en 2025) a rendu ces optimisations SPA caduques : le pré-rendu est désormais natif (SSG), la meta/JSON-LD est server-side dans les layouts, et le sitemap est auto-généré par `@astrojs/sitemap`. Le seuil « volume augmente > 20 pages » a été franchi (blog riche + pages services), confirmant le bien-fondé de la migration.
 
 **Un changement vers Astro ou Next.js (SSG) devient pertinent si :**
 - Le volume de contenu augmente significativement (>20 pages, blog riche).

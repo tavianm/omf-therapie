@@ -1,39 +1,52 @@
 # Active Context
 
-**Last Updated:** May 14, 2026
+**Last Updated:** July 5, 2026
 
 This document tracks current work in progress, recent changes, and immediate next steps. Update this regularly to maintain continuity between development sessions.
 
 ## Current Status
 
-**Project State:** 🚀 Feature branch `feat/15-prise-de-rendez-vous` — PR #18 ouverte vers `main`
+**Project State:** ✅ `main` — 3 PRs mergées cette semaine (#85, #66, #65)
 
-**Recent Activity:** Système complet de prise de rendez-vous (issues #15, #21, #22, #24–#27) — tests E2E validés, artifacts mis à jour `implemented`, issues à fermer sur GitHub
+**Recent Activity:** CI pipeline en place, système d'avoirs interne livré, refonte de l'espace admin `/mes-rdvs/`.
 
-**Active Work:** PR #18 prête à merger — issues #21, #22, #24, #25, #26, #27 à fermer
+**Active Work:** Issue #68 — Stripe payment confirmation reconciliation + idempotency (frame ✅, spec ✅, plan ✅ — à implémenter). Dépendance : débloquer le typecheck bloquant (#68 trace aussi les ~20 erreurs de typage préexistantes).
 
-**Remaining (P2):** Issue #23 — Vue patients admin (historique + nouveau RDV pré-rempli) — pas encore commencé
+**Next:**
+- Appliquer `008_credits.sql` en production (tables `credits`/`credit_usages` + RPC + colonne `credit_applied`)
+- Activer la branch protection sur `CI / build` après le 1er run sur `main` (suivi de #85)
+- #68 — implémenter la réconciliation d'idempotencité Stripe
 
 ## Recent Changes
 
-### Mai 2026 — Système de prise de rendez-vous complet
+### Semaine du 29 juin – 5 juillet 2026
+
+- ✅ **#85** (PR merged) — CI pipeline GitHub Actions : job `build` bloquant (`lint → test → build`) + job `typecheck-advisory` non bloquant. Ajoute `.nvmrc` (Node 20), script `typecheck`, devDep `@astrojs/check`. Nettoie 13 des 33 erreurs de typage (les 20 restantes tracées dans #68).
+- ✅ **#66** (PR merged, ferme #63) — Annulation/report RDV + système d'avoir interne :
+  - Nouveau statut `cancelled` (action `cancel` dans `PATCH /api/appointments/[id]`) + email `AppointmentCancelled`.
+  - Avoir automatique sur annulation d'un RDV vidéo `payment_received` (cash réellement encaissé, idempotent via `UNIQUE(source_appointment_id)`). **Aucun Stripe refund.**
+  - Restitution d'avoir sur re-annulation d'un RDV créé avec avoir (`restore_credits`).
+  - Action `reschedule_paid` : report d'un RDV vidéo payé sans re-facturer (corrige la double-facturation du `reschedule` classique).
+  - Création manuelle avec avoir (admin) : case « Utiliser l'avoir » dans `AdminCreateButton`, consommation FIFO atomique (`consume_credits`).
+  - Migration `008_credits.sql` (tables `credits` + `credit_usages`, RPC FIFO, RLS service_role-only).
+  - Statut unifié : `payment_received` = « réglé » (Stripe ou avoir).
+- ✅ **#65** (PR merged, ferme #64) — Refonte `/mes-rdvs/` : îlot React `<AppointmentsManager>` (liste compacte ~56 px/ligne, recherche instantanée via `useDeferredValue`, partition À venir / Passés, regroupement par jour). Corrige `google_calendar_event_id` et `patient_city` absents de la projection SQL. Gain : scroll d'ouverture ~35 000 px → ~3 500 px.
+
+### Migration à appliquer en prod
+
+`008_credits.sql` (post-merge de #66) — créer les tables/RPC + colonne `appointments.credit_applied`. À exécuter manuellement en prod et en local (`npm run db:reset` ne rejoue que `001_init.sql`).
+
+### Mai 2026 — Système de prise de rendez-vous complet (historique)
 
 Issues implémentées et testées E2E (Playwright MCP) :
 
-- ✅ **#15** — Wizard patient multi-étapes (`/rendez-vous/`) : type, mode, durée, créneau, infos, confirmation
-- ✅ **#21** — Contrôle des tarifs admin : remise nouveau client & tarif solidaire (cases à cocher mutuellement exclusives dans modal de confirmation)
-- ✅ **#22** — Création manuelle de RDV par l'admin (`/mes-rdvs/` → bouton "Nouveau rendez-vous")
-- ✅ **#24** — Remise nouveau client disponible aussi dans AdminCreateButton
-- ✅ **#25** — Génération automatique Google Meet via `src/lib/google-calendar.ts` (mock local, Google Calendar API en prod)
-- ✅ **#26** — Flow acceptation report patient : page `/rdv/accepter-report/[id]/`, email prépaiement (télé) ou confirmation directe (présentiel), action `cancel_reschedule` pour l'admin
-- ✅ **#27** — Blocage des créneaux dès statuts actifs (`confirmed`, `payment_pending`) — pas pour `pending`
-
-### Bugs corrigés durant les tests
-
-- Trailing slashes manquants dans `accepter-report.astro` et `AdminCreateButton.tsx`
-- `cancel_reschedule` absent de la whitelist dans `appointments/[id].ts`
-- AdminCreate 500 : colonnes NOT NULL manquantes dans l'insert (`patient_postal_code`, `patient_city`, `base_price`)
-- `.playwright-mcp/` et `test-booking.cjs` exclus du tracking git
+- ✅ **#15** — Wizard patient multi-étapes (`/rendez-vous/`)
+- ✅ **#21** — Contrôle des tarifs admin : remise nouveau client & tarif solidaire
+- ✅ **#22** — Création manuelle de RDV par l'admin
+- ✅ **#24** — Remise nouveau client dans `AdminCreateButton`
+- ✅ **#25** — Génération Google Meet via `src/lib/google-calendar.ts`
+- ✅ **#26** — Flow acceptation report patient (page `/rdv/accepter-report/[id]/`)
+- ✅ **#27** — Blocage des créneaux dès statuts actifs
 
 ## Infrastructure locale
 
@@ -45,4 +58,4 @@ Issues implémentées et testées E2E (Playwright MCP) :
 
 ## Current Branch
 
-**Branch:** feat/15-prise-de-rendez-vous → PR #18 → main
+**Branch:** `main` (clean) — dernières PRs : #85, #66, #65 toutes mergées.

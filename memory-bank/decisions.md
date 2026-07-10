@@ -266,6 +266,54 @@ Each decision entry should include:
 
 ---
 
+## ADR-015: Avoirs internes plutôt que remboursements Stripe
+
+**Date:** Juillet 2026 (#63 / PR #66)
+
+**Context:** Lorsqu'un RDV vidéo déjà payé doit être annulé ou reporté, comment compenser le patient sans complexité comptable ni friction opérationnelle ?
+
+**Decision:** Émettre un **avoir interne** (tables `credits` / `credit_usages`, RPC FIFO `consume_credits`/`restore_credits`) plutôt qu'un remboursement Stripe. Le statut `payment_received` devient le statut unifié « séance réglée » (Stripe **ou** avoir). L'action `reschedule_paid` permet de reporter un RDV vidéo payé sans régénérer de lien Stripe.
+
+**Rationale:**
+
+- Évite les frais Stripe et la latence des refunds
+- L'argent reste chez le praticien ; le patient réutilise l'avoir sur un prochain RDV
+- Consommation FIFO atomique côté Postgres (`SECURITY DEFINER`, `REVOKE EXECUTE FROM PUBLIC`) — pas de race possible
+- Email d'annulation mentionne « avoir » mais jamais « remboursement » (gestion d'attente patient)
+
+**Consequences:**
+
+- ✅ Pas de Stripe refund à gérer ; comptabilité simplifiée
+- ✅ `payment_received` clarifie le statut « réglé » quel que soit le moyen
+- ⚠️ Avoirs **admin-only** (aucune UI patient self-service) — le patient doit contacter la thérapeute
+- ⚠️ Migration `008_credits.sql` à exécuter en prod après merge
+- ⚠️ Restitution d'avoir sur re-annulation d'un RDV créé avec avoir (via `restore_credits`) — cas à tester
+
+---
+
+## ADR-016: CI bloquant (lint + test + build), typecheck advisory
+
+**Date:** Juillet 2026 (#67 / PR #85)
+
+**Context:** Le repo se déploie en production via Netlify à chaque push sur `main`, **sans aucun quality gate**. Il faut fermer la porte aux régressions sans bloquer l'équipe sur des erreurs de typage préexistantes.
+
+**Decision:** Workflow GitHub Actions (`.github/workflows/ci.yml`) avec un job `build` **bloquant** (`lint → test → build`) et un job `typecheck-advisory` **non bloquant** (`continue-on-error: true`). `.nvmrc` pinne Node 20 (parité avec `netlify.toml`). Branch protection à activer manuellement une fois le 1er run sur `main` passé.
+
+**Rationale:**
+
+- Lint + tests + build sont déjà verts : passage en bloquant sans douleur
+- Le typecheck révèle 33 erreurs préexistantes (Netlify ne typecheckait pas) — 13 fixées mécaniquement, 20 restantes (googleapis, better-auth, stripe, react-email) nécessitent une investigation par sous-système (tracées dans #68)
+- `continue-on-error` évite de bloquer les merges tout en surfaceant le drift de types
+
+**Consequences:**
+
+- ✅ Plus aucun push direct en prod sans lint + tests + build verts
+- ✅ Type drift désormais visible (au lieu de silencieux)
+- ⚠️ Tant que #68 n'est pas résolu, le typecheck reste advisory — basculer `continue-on-error: false` une fois les 20 erreurs éliminées
+- ⚠️ Branch protection (manuel) : exige `CI / build` + « Dismiss stale pull request approvals »
+
+---
+
 ## Future Decisions to Document
 
 - Multi-language support approach (if implemented)

@@ -237,8 +237,12 @@ npx playwright show-report public/reports/playwright
 
 ```bash
 npm run lint              # ESLint
+npm run typecheck         # astro check (advisory — voir #68 pour les erreurs résiduelles)
+npm run test              # Vitest (tests unit/integration)
 npm run audit:a11y        # Audit pa11y (nécessite le dev server actif)
 ```
+
+> **CI** (`.github/workflows/ci.yml`) : `lint → test → build` bloquants, `typecheck` advisory. Node 20 via `.nvmrc`.
 
 ---
 
@@ -293,9 +297,12 @@ Vérifier `GOOGLE_CALENDAR_MOCK=true` dans `.env`. En mode mock, seuls les **mer
 
 Avec `STRIPE_SECRET_KEY=sk_test_placeholder` (valeur par défaut), le mode **Stripe mock** est actif :
 - La confirmation d'une téléconsultation passe en statut `payment_pending` et envoie un email de demande de paiement avec un **lien fictif** (pas de vrai appel Stripe).
+- Une fois « payé », le RDV passe en `payment_received` (statut unifié « réglé » — Stripe ou avoir, depuis #63/#66).
 - Aucune erreur 500 — le bypass est intentionnel pour le développement local.
 
 Pour tester le vrai tunnel de paiement, remplacer par de vraies clés de test [dashboard.stripe.com/test/apikeys](https://dashboard.stripe.com/test/apikeys).
+
+> **Avoirs internes (#63/#66)** : l'annulation d'un RDV `payment_received` émet un avoir interne (tables `credits`/`credit_usages`) — **pas de Stripe refund**. La migration `008_credits.sql` doit être appliquée à la base locale avant de tester ce flux (`npm run db:reset` ne rejoue que `001_init.sql` — appliquer `008_credits.sql` manuellement après).
 
 ### BetterAuth — erreur `INVALID_ORIGIN` à la connexion
 
