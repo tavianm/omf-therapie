@@ -74,11 +74,13 @@ export function buildLocalBusinessSchema(): Record<string, unknown> {
     description: COMPANY_DESCRIPTION,
     image: OWNER_IMAGE,
     sameAs: SAME_AS,
+    // Real ratings from the therapist's Google Business Profile (verified 2026-07).
+    // The site is SSG — re-sync these values periodically (e.g. each content release)
+    // to avoid drift. Future enhancement: fetch live from GBP/Places API at build time.
     aggregateRating: {
       '@type': 'AggregateRating',
-      ratingValue: '5.0', // ⚠️ Placeholder — à confirmer dans Google Business Profile
-      ratingCount: 14,
-      reviewCount: 14,
+      ratingValue: '5.0',
+      reviewCount: 16,
       bestRating: '5',
       worstRating: '1',
     },
