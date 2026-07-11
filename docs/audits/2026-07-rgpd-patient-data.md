@@ -78,7 +78,7 @@ Triée par sévérité décroissante (P1 → P4), puis par domaine.
 | D4.1 | Consentement | P3 | `trackEvent()` sans gate consentement | Gater sur `__ckyAnalyticsReady` (comme `merci.astro`) |
 | D4.2 | Consentement | P3 | `url_passthrough: true` (L88) envoie URL pré-consent | Revenir à `false` |
 | D4.3 | Consentement | P3 | Consent update entièrement délégué CookieYes (non vérifiable code) | Vérification manuelle tableau de bord CookieYes |
-| D4.4 | Consentement | P4 | CSP `script-src` manque `google-analytics.com` | Ajouter domaine à CSP `netlify.toml:71` |
+| D4.4 | Consentement | P4 | CSP `script-src` — vérification runtime recommandée | Vérifier console navigateur ; corriger si blocage observé |
 | D4.5 | Consentement | P4 | GA4 gtag.js chargé inconditionnellement | Chargement différé sur consentement |
 | D4.6 | Consentement | P4 | Plafond polling `__ckyAnalyticsReady` 6 s | Augmenter plafond OU écouter événement consent |
 
@@ -109,26 +109,25 @@ Ce domaine dresse l'inventaire des champs PII collectés, leur table de stockage
 | Sous-traitant | Champs PII transmis | Chemin |
 |---|---|---|
 | **Resend (email)** | **TOUS les 6** incluant `patient_reason` en clair | `src/emails/AppointmentRequestNotification.tsx:131` → thérapeute (l'unique sortie de `patient_reason` vers un sous-traitant externe) |
-| **Google Calendar** | `patient_name` + `patient_email` (titre + description + attendee) | 8 sites d'appel : `appointments/[id].ts:203,254,850`, `admin/appointments/index.ts:247`, `admin/appointments/[id]/regenerate-calendar.ts:58`, `stripe-webhook.ts:231,294` |
+| **Google Calendar** | `patient_name` + `patient_email` (titre + description + attendee) | 8 sites d'appel : `appointments/[id].ts:203,254,850`, `admin/appointments/index.ts:247`, `admin/appointments/[id]/regenerate-calendar.ts:58`, `stripe-webhook.ts:241,275,305` |
 | **Stripe** | **Aucun** (metadata = `appointment_id` seulement ; `patientName`/`patientEmail` détruits avant l'appel) | `src/lib/stripe.ts:83,110-125` |
 | **Logs Netlify** | `patient_email` explicite (6 lignes) + erreurs Supabase brutes (2 lignes) | `netlify/functions/send-reminders.ts:192,206,221,243,257`, `appointments/index.ts:174`, `admin/appointments/index.ts:217` |
 | **URLs / historique** | `?name=<prénom>` legacy (parsé mais non construit côté serveur) ; `?email=` sur admin credits | `merci.astro:28`, `admin/credits.ts:33` |
 
 **Constat clé.** `patient_reason` (le champ le plus sensible) ne sort de la DB vers un sous-traitant externe que via un email à la thérapeute — légitime (intérêt légitime de gestion du RDV), mais stocké dans les logs d'envoi Resend. Les emails patients ne contiennent que `patient_name`. Google Calendar reçoit l'identité du patient mais jamais le motif.
 
-**Note de minimisation.** `patient_reason` ET `therapist_notes` transitent aussi vers l'UI admin (`mes-rdvs.astro:42` via `APPOINTMENT_COLUMNS` → island `<AppointmentsManager>`). Cet affichage est légitime : l'espace admin est gardé par `auth.api.getSession` + `isAdminSession` (`mes-rdvs.astro:24-31`), avec `noindex:true`. Ce n'est pas une exposition patient, mais un axe de minimisation existe : **ne sélectionner ces colonnes qu'au dépliement de carte**, pas en liste.
+**Note de minimisation.** `patient_reason` ET `therapist_notes` transitent aussi vers l'UI admin (`mes-rdvs.astro:37-46` via `APPOINTMENT_COLUMNS` → island `<AppointmentsManager>`). Cet affichage est légitime : l'espace admin est gardé par `auth.api.getSession` + `isAdminSession` (`mes-rdvs.astro:24-31`), avec `noindex:true`. Ce n'est pas une exposition patient, mais un axe de minimisation existe : **ne sélectionner ces colonnes qu'au dépliement de carte**, pas en liste.
 
 **Renvoi croisé :** D1.1 → D3.1 (collecte `patient_reason`), D5.1 (politique).
 
-**Remédiation (direction).** Voir D3.1 pour la facette transversale `patient_reason`. Axe propre à D1.1 : minimisation de l'affichage admin (sélectionner `patient_reason`/`therapist_notes` à la demande, pas par défaut). Surface : `src/pages/mes-rdvs.astro:42`, composant `AppointmentsManager`. Effort S.
+**Remédiation (direction).** Voir D3.1 pour la facette transversale `patient_reason`. Axe propre à D1.1 : minimisation de l'affichage admin (sélectionner `patient_reason`/`therapist_notes` à la demande, pas par défaut). Surface : `src/pages/mes-rdvs.astro:37-46`, composant `AppointmentsManager`. Effort S.
 
 ## D1.2 — Logs Netlify fuient `patient_email` (P3)
 
 **Preuve.** Sites où `patient_email` apparaît explicitement dans des logs :
 
 - `netlify/functions/send-reminders.ts:192,206,221,243,257` — 5 lignes d'email explicite dans les logs de rappels.
-- `appointments/index.ts:174` — `console.error` d'insert qui peut échoer le payload PII complet en cas d'échec Supabase.
-- `admin/appointments/index.ts:217` — `console.error` similaire.
+- `appointments/index.ts:174` et `admin/appointments/index.ts:217` — `console.error` qui loguent l'objet d'erreur Supabase. Les erreurs PostgREST contiennent `{message, details, hint, code}` et **n'échoent normalement pas le payload PII soumis**, mais le risque résiduel d'une fuite via un message d'erreur détaillé n'est pas nul.
 
 **Risque.** Les logs Netlify sont agrégés côté plateforme ; `patient_email` y persiste hors du contrôle direct de la praticienne. Si `patient_reason` est un jour logué (il ne l'est pas actuellement côté Netlify — uniquement via Resend), le risque Art. 9 s'applique.
 
@@ -248,7 +247,7 @@ L'audit **ne tranche pas** la classification de `patient_reason`. Deux scénario
 
 **Nuance.** Consent Mode v2 en défaut-denied supprime les cookies, mais avec `url_passthrough:true` (D4.2), des **pings sans cookie contenant l'URL partent quand même**.
 
-**Remédiation.** Gater `trackEvent` sur `window.__ckyAnalyticsReady`, comme le fait déjà `merci.astro:314-316`. Surface : `src/lib/analytics.ts:19-26`. Effort S.
+**Remédiation.** Gater `trackEvent` sur `window.__ckyAnalyticsReady`, comme le fait déjà `rdv/merci.astro:314-315`. Surface : `src/lib/analytics.ts:19-26`. Effort S.
 
 ## D4.2 — `url_passthrough: true` envoie l'URL pré-consent (P3, ex-D4.B)
 
@@ -264,9 +263,9 @@ L'audit **ne tranche pas** la classification de `patient_reason`. Deux scénario
 
 ## D4.4 — CSP `script-src` manque `google-analytics.com` (P4, ex-D4.D)
 
-**Preuve.** `netlify.toml:71` — la CSP `script-src` ne contient pas `https://www.google-analytics.com`. Par ailleurs, `*.cookieyes.com` n'est présent que dans `connect-src`, pas dans `script-src`. Des blocages au runtime sont donc possibles.
+**Preuve.** `netlify.toml:71` — inspection de la CSP : le loader GA4 (`googletagmanager.com/gtag/js`) est bien dans `script-src`, et les hits de mesure (`google-analytics.com/g/collect`) sont couverts par `connect-src`. Aucun domaine fonctionnellement manquant n'a été identifié par lecture statique. Ce constat est **à vérifier au runtime** (console du navigateur) pour confirmer l'absence de blocages résiduels — la lecture statique ne peut pas détecter les edge cases de chargement conditionnel.
 
-**Remédiation.** Ajouter `https://www.google-analytics.com` à `script-src` dans `netlify.toml:71`. Effort XS.
+**Remédiation.** Vérification runtime recommandée (console navigateur, onglet Network/Security). Si un blocage est observé, ajouter le domaine manquant à la directive CSP correspondante dans `netlify.toml:71`. Effort XS (vérification).
 
 ## D4.5 — GA4 `gtag.js` chargé inconditionnellement (P4, ex-D4.E)
 
@@ -524,7 +523,7 @@ Libellés suggérés par constat, suffisamment précis pour création post-merge
 
 ## P4 (regrouper dans un ticket « durcissement couche consentement »)
 
-- **[D4.4 / D4.5 / D4.6]** `chore(consent): CSP script-src +google-analytics.com, chargement GA4 différé, plafond polling __ckyAnalyticsReady`
+- **[D4.4 / D4.5 / D4.6]** `chore(consent): vérification runtime CSP, chargement GA4 différé, plafond polling __ckyAnalyticsReady`
   - Surface : `netlify.toml:71`, `src/layouts/Layout.astro:129,137`.
   - Effort : S.
 
@@ -551,7 +550,7 @@ Libellés suggérés par constat, suffisamment précis pour création post-merge
 | `src/pages/api/availability.ts` | Disponibilités — D2.1 (filtre) |
 | `src/pages/api/calendar/invite/[id].ts` | Invitation calendrier — D2.1 (filtre) |
 | `src/pages/mes-rdvs.astro` | UI admin — D1.1, D2.1 |
-| `src/pages/merci.astro` | Page de remerciement — D4.1 (pattern gate), D4.6 |
+| `src/pages/rdv/merci.astro` | Page de remerciement — D4.1 (pattern gate), D4.6 |
 | `netlify/functions/send-reminders.ts` | Rappels, logs — D1.2, D2.1 |
 | `netlify.toml` | CSP, déploiement — D4.4 |
 
