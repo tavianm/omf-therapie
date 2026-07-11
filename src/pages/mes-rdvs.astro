@@ -51,11 +51,15 @@ const { data: rows, error } = await supabaseAdmin
   .is('deleted_at', null)
   .order('scheduled_at', { ascending: false });
 
-const appointments: Appointment[] = (rows ?? []) as Appointment[];
-
 if (error) {
   console.error('[mes-rdvs] Erreur Supabase :', error);
 }
+
+// Cast applies only on the verified-success branch: the Supabase error shape
+// (GenericStringError) does not overlap with Appointment, so the cast must not
+// run when `error` is truthy — an empty array renders a degraded dashboard
+// instead of masking the error as fake Appointment rows.
+const appointments: Appointment[] = error ? [] : (rows as unknown as Appointment[]);
 
 // ── Comptages par statut (pour l'en-tête de page : « N · X en attente ») ───────
 const counts: Record<string, number> = { all: appointments.length };

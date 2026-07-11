@@ -25,7 +25,7 @@ interface Props {
   appointmentType: 'individual' | 'couple' | 'family';
   appointmentMode: 'in-person' | 'video';
   scheduledAt: string; // ISO string
-  duration: 60 | 90;
+  duration: number; // DB value (Appointment.duration); 60|90 is a booking-input constraint
   finalPrice: number; // centimes
   isFirstSession: boolean;
 }

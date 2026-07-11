@@ -58,7 +58,9 @@ export const supabase: SupabaseClient<any> = createClient(
   supabaseUrl ?? '',
   supabaseAnonKey ?? '',
   {
-    ...(realtimeTransport ? { realtime: { transport: realtimeTransport } } : {}),
+    // Type skew: @types/ws `WebSocket` (address: string|URL) vs @supabase/realtime-js
+    // `WebSocketLikeConstructor` (address: null). Runtime-compatible — bridge at boundary.
+    ...(realtimeTransport ? { realtime: { transport: realtimeTransport as unknown as never } } : {}),
   },
 );
 
@@ -84,6 +86,6 @@ export const supabaseAdmin: SupabaseClient<any> = createClient(
       persistSession: false,
       autoRefreshToken: false,
     },
-    ...(realtimeTransport ? { realtime: { transport: realtimeTransport } } : {}),
+    ...(realtimeTransport ? { realtime: { transport: realtimeTransport as unknown as never } } : {}),
   },
 );

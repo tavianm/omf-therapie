@@ -35,17 +35,12 @@ export default defineConfig({
         },
       },
     },
-    // Legacy components (Footer.tsx, SEO.tsx) imported react-router-dom / react-helmet-async
-    // which are no longer installed. Mark them as external to prevent dev-server scan errors.
-    resolve: {
-      alias: {
-        'react-router-dom': '/dev/null',
-        'react-helmet-async': '/dev/null',
-      },
-    },
-    optimizeDeps: {
-      exclude: ['react-router-dom', 'react-helmet-async'],
-    },
+    // Legacy react-router-dom / react-helmet-async aliases removed: the orphaned
+    // Footer.tsx and SEO.tsx that imported them were deleted in #86 (dead code
+    // from the pre-Astro SPA migration; all pages use components/layout/Footer.astro).
+    // The /dev/null alias was non-portable (resolved on Windows MSYS, failed on
+    // Linux CI's tsc under astro check — the latent ts(2307) surfaced once
+    // typecheck became a blocking gate).
     ssr: {
       // Keep these as external so Vite/Rollup doesn't try to bundle them.
       // nodemailer is CommonJS; googleapis is enormous and has CJS/ESM interop issues.

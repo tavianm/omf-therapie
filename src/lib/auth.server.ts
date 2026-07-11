@@ -85,14 +85,27 @@ export const auth = betterAuth({
   // BetterAuth v1.6.11 : hooks.before = single function (not array of {matcher,handler}).
   hooks: {
     before: async (context) => {
+      // better-auth v1.6.23 (declared ^1.6.11): MiddlewareInputContext does not
+      // expose `.path` or `.context.adapter` on its public type, but the runtime
+      // fields are present (see better-auth hooks/middleware docs). Narrow-cast
+      // to access them safely; if a future bump exposes these on the public type,
+      // drop the cast.
+      const ctx = context as unknown as {
+        path: string;
+        context: {
+          adapter: {
+            findMany: (opts: { model: string; limit: number }) => Promise<unknown[]>;
+          };
+        };
+      };
       // Only intercept the sign-up route
-      if (context.path !== '/sign-up/email') return;
+      if (ctx.path !== '/sign-up/email') return;
 
       // Use BetterAuth's internal adapter (same DB connection as all other operations).
       // Avoids a separate pg.Pool connection that may fail in serverless environments
       // when DATABASE_URL uses a direct Supabase host instead of the pooler.
       try {
-        const users = await context.context.adapter.findMany({
+        const users = await ctx.context.adapter.findMany({
           model: 'user',
           limit: 1,
         });

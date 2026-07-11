@@ -1,0 +1,112 @@
+---
+title: "fix(ts): clear 26 pre-existing typecheck errors and promote typecheck to blocking gate"
+issue: 86
+status: approved
+tier: F-full
+date: 2026-07-05
+---
+
+## Problem
+
+The repo runs `astro check` as the typecheck (`npm run typecheck`), and as of the
+CI pipeline added in #67/#85 it reports **26 errors, 0 warnings**. Those errors
+were never caught because (a) Netlify does not typecheck on build, and (b) there
+was no `typecheck` script before #67. PR #85 therefore shipped CI with a
+**non-blocking advisory** typecheck job (`continue-on-error: true`) so the
+pipeline could land without resolving the backlog.
+
+The cost: type drift accumulates silently. The 26 errors already include **two
+suspected real logic bugs** (not just cosmetic type mismatches) in the
+appointments API — the kind of defects a blocking typecheck exists to catch.
+Every PR merged while the gate stays advisory inherits and compounds this debt.
+
+Concrete current state (re-verified locally, no drift from the issue's counts):
+
+| Subsystem | File | Errors | Codes |
+|---|---|---|---|
+| Appointment duration union | `src/pages/api/appointments/[id].ts` | 5 | ts(2769) `number` → `60\|90` |
+| Appointment duration union | `src/pages/api/stripe-webhook.ts` | 2 | ts(2769) `number` → `60\|90` |
+| Supabase error casts | `appointments/[id].ts`, `mes-rdvs.astro` | 3 | ts(2352) `GenericStringError` → `Appointment` |
+| **Suspected logic bug** | `appointments/[id].ts:213` | 1 | ts(2367) `"video" === "in-person"` no overlap |
+| **Suspected logic bug** | `appointments/[id].ts:882` | 1 | ts(2588) cannot assign to const `updatedAppt` |
+| googleapis (npm dedup drift) | `src/lib/google-calendar.ts` | 7 | ts(2769/2322/2345/2339) — duplicate `google-auth-library` |
+| Stripe version pin | `src/lib/stripe.ts` | 1 | ts(2694) `Stripe.LatestApiVersion` removed |
+| Supabase realtime ws transport | `src/lib/supabase.ts` | 2 | ts(2345) `typeof ws` ≠ `WebSocketLikeConstructor` |
+| better-auth middleware | `src/lib/auth.server.ts` | 2 | ts(2339) `.path` / `.context` not on ctx |
+| google-calendar `Schema$Event` | `google-calendar.ts:800` | 1 | ts(2345) shape mismatch |
+| **Total** | | **26** | (8 distinct root causes) |
+
+## Who
+
+- **Primary:** Maintainers (Tavian) — currently have no automated signal when a
+  PR introduces a type error; the advisory job's green check is noise.
+- **Secondary:** Future contributors — a blocking gate gives them early,
+  actionable feedback instead of inheriting an opaque backlog. Patients are
+  downstream of the two suspected logic bugs (wrong consultation location,
+  failed calendar-update recovery) if those turn out to be real.
+
+## Constraints
+
+- **No runtime regressions** in auth (better-auth), payments (stripe), or
+  calendar (google-calendar) subsystems — these are revenue- and
+  privacy-sensitive. Library version bumps are allowed only if the fix
+  requires them and the change is locally verifiable.
+- **Netlify builds must still pass** — the build does not run typecheck, so a
+  type-only change cannot break deploy, but any code change to fix a "real
+  bug" must keep the runtime path correct.
+- **The two suspected logic bugs must be investigated, not papered over.**
+  `:213` (appointment_mode comparison) and `:882` (const reassignment) get
+  real fixes or are documented as intentional with a narrower cast.
+- **Out of scope (per issue):** SHA-pinning GitHub Actions (separate
+  hardening pass); Node 20 → 22 upgrade (EOL since 2026-04-30, coordinated
+  cross-system change).
+
+## Out of Scope
+
+- SHA-pinning the GitHub Actions used in `.github/workflows/ci.yml`.
+- Node 20 → Node 22 runtime upgrade.
+- Refactoring the appointments API beyond what the 26 error sites require.
+- Adding new tests for currently-untested code beyond regression coverage for
+  the two suspected logic bugs (if confirmed real).
+
+## Premise Validity
+
+**Success in 6 months:** `npm run typecheck` exits 0 on `main`, and the CI
+typecheck job is a blocking member of the build gate (no `continue-on-error`).
+A PR that introduces a type error is rejected by CI before merge.
+
+**Failure in 6 months:** A production incident traces back to one of the casts
+this PR added or preserved — e.g. an `as unknown as Appointment` hides a real
+Supabase error shape that should have been branch-handled, or the `:213`
+appointment_mode dispatch silently sends patients to the wrong consultation
+location. Observable via an incident report or a patient-facing bug. This is
+the abort condition: if fixing the types cleanly would require a cast that
+masks a runtime defect, we stop and fix the defect first.
+
+**Simplest alternative:** `// @ts-ignore` + `as any` on all 26 sites, then flip
+the gate.
+
+**Why not simplest:** It papers over the two suspected real logic bugs
+(`:213` mode comparison, `:882` const reassignment), locks in wrong types
+across the appointments/payments/calendar boundary, and gives future refactors
+zero signal — the exact failure mode the blocking gate is meant to prevent.
+
+## Complexity
+
+**Tier: F-full** — 26 errors span 6 subsystems (auth, payments, calendar,
+email-render, supabase-realtime, CI config) with 8 distinct root causes, and
+the scope includes investigating two possible runtime logic bugs. The fixes
+are not mechanically independent: the `duration: 60 | 90` union is the root
+cause behind 7 of the 26 errors (cascading fix), and the googleapis errors
+trace to a single npm dedup problem. Routing this as F-lite would skip
+`/analyze` and miss the cross-subsystem dependency mapping needed to fix the
+right things in the right order.
+
+**Signals observed:**
+
+- 8 distinct root causes across 6 subsystems (multi-domain).
+- 2 suspected real logic bugs requiring investigation, not just type edits.
+- Cascading fixes (duration union = 7 errors; googleapis dedup = 7 errors).
+- Acceptance criteria include a CI workflow change (gate promotion), not just
+  source edits.
+- P1 label, `bug` label.

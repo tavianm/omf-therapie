@@ -210,7 +210,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
               `Type: ${getTypeLabel(appointment.appointment_type)}`,
               `Durée: ${appointment.duration} min`,
             ].join('\n'),
-            location: appointment.appointment_mode === 'in-person' ? CABINET_ADDRESS : 'Téléconsultation',
+            location: 'Téléconsultation', // branch narrowed to video at :196
             attendeeEmail: appointment.patient_email,
             withMeet: true,
             appointmentId: id,
@@ -824,7 +824,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       return errorResponse(500, 'Erreur lors de la mise à jour');
     }
 
-    const updatedAppt = updated as Appointment;
+    // `let`, not `const`: re-bound after google_calendar_event_id persistence
+    // in the reschedule-accept sync below (`updatedAppt = refreshedAfterCalendar`).
+    // `as unknown as` bridges the Supabase GenericStringError→Appointment
+    // boundary (non-overlapping types).
+    let updatedAppt = updated as unknown as Appointment;
 
     await invalidateAvailabilityCache().catch(console.error);
 
@@ -883,7 +887,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
             console.error('[appointments/patch] Erreur persistance google_calendar_event_id après acceptation de report:', refreshError);
             return errorResponse(500, 'Erreur lors de la synchronisation agenda');
           }
-          updatedAppt = refreshedAfterCalendar as Appointment;
+          updatedAppt = refreshedAfterCalendar as unknown as Appointment;
         }
       } catch (calendarErr) {
         console.error('[appointments/patch] Erreur mise à jour événement agenda après acceptation de report:', calendarErr);

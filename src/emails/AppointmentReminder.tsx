@@ -23,7 +23,7 @@ interface Props {
   patientName: string;
   appointmentMode: 'in-person' | 'video';
   scheduledAt: string;
-  duration: 60 | 90;
+  duration: number; // DB value (Appointment.duration); 60|90 is a booking-input constraint
   videoLink?: string;
   cabinetAddress?: string;
 }
