@@ -1,0 +1,208 @@
+---
+title: "Observability: error tracking, structured logging, uptime monitoring"
+issue: 75
+tier: F-full
+status: approved
+date: 2026-07-13
+promoted_from: artifacts/analyses/75-error-tracking-structured-logging-uptime-monitoring-analysis.mdx
+shape: 2
+---
+
+## Context
+
+Promoted from [`artifacts/analyses/75-error-tracking-structured-logging-uptime-monitoring-analysis.mdx`](../analyses/75-error-tracking-structured-logging-uptime-monitoring-analysis.mdx), which selected **Shape 2** (`@sentry/node` + `@sentry/browser` manual wiring) over `@sentry/astro` (adapter-compatibility risk) and logger-only (no proactive alerting). Frame: [`artifacts/frames/75-error-tracking-structured-logging-uptime-monitoring-frame.mdx`](../frames/75-error-tracking-structured-logging-uptime-monitoring-frame.mdx).
+
+This spec converts the analysis recommendation into binary acceptance criteria, a breadboard of affordances → handlers → data, and vertical slices. It does **not** re-litigate the shape decision.
+
+## Goal
+
+A production failure (Supabase outage, Resend 5xx storm, Stripe webhook timeout, cron misfire/non-zero exit) surfaces in Sentry within minutes with diagnostic context (`route`, `requestId`, `appointmentId`), detected before a patient reports it — and instrumentation health is **deterministically initiated** (deploy canary fired per cold start) and **verifiable post-deploy by the operator** (canary event visible in the Sentry project within 5 minutes of deploy; absence = broken ingestion). The outcome activates post-provisioning (operator creates the Sentry project + uptime monitor accounts per `docs/INFRA.md` §7).
+
+## Users
+
+- **Primary (user):** the maintainer — sole operator who today discovers prod failures reactively (patient complaint for patient-in-loop paths; never, for operator-only cron paths).
+- **Indirect beneficiary:** patients — via faster operator time-to-fix on failed booking/payment transactions. (No patient-visible change in this PR; a booking that fails today fails identically after this ships.)
+
+## Expected Behavior
+
+### Server side (API routes + middleware)
+
+1. On cold start of any on-demand Astro route Function, `@sentry/node` initializes **once per container** (module top-level, guarded by an initialized flag) if `PUBLIC_SENTRY_DSN` is set. If unset, initialization is skipped and the logger degrades to `console.*`.
+2. A new `src/middleware.ts` runs on every on-demand request. It wraps each request in `Sentry.withScope(...)`, generates a `requestId` (UUID v4), attaches `requestId` + `route` (from `context.url.pathname`) to both `context.locals` and the current Sentry scope, and **clears the scope** on response (preventing tag leakage across warm-container invocations).
+3. The middleware also emits a **deploy canary** — `Sentry.captureMessage('deploy: <git-sha>')` exactly once per cold start (tracked by an in-module boolean), so "canary absent in Sentry within minutes of deploy" is the deterministic instrumentation-health signal.
+4. In the three named paths, every `console.error`/`console.warn` site calls `logger.error(...)` / `logger.warn(...)` instead. The logger writes structured JSON to stdout AND, when DSN is set, calls `Sentry.captureException` (for errors) / `Sentry.addBreadcrumb` (for warns/info). In `appointments/[id].ts` specifically, the **swallowed catch sites** (not the input-validation catches) additionally call `Sentry.captureException` so caught errors reach telemetry — Sentry's auto-capture only catches *unhandled* errors. The exact target sites (verified by `rg -n 'catch' src/pages/api/appointments/[id].ts`):
+   - **2 bare `} catch {`** (lines 77, 167) — input-validation early-returns (JSON parse, URL parse → 400). **NOT capture targets** (expected control flow, no diagnostic value).
+   - **12 `} catch (binding)`** (lines 189, 226, 274, 408, 424, 533, 647, 656, 769, 802, 845, 892) — real swallow sites (log + continue / log + 500). **ALL must call `Sentry.captureException(<binding>)`.**
+   - **6 `.catch(console.error)`** (lines 247, 360, 449, 556, 682, 833) — silent promise-rejection swallows (cache invalidation failures vanish). **ALL must become `.catch((err) => { logger.error('cache invalidate failed', {...}, err); Sentry.captureException(err); })`.**
+   - **5 `.catch((fn))`** (lines 378, 453, 475, 562, 584) — already have typed handlers; those that swallow-and-continue need capture, those that genuinely handle (e.g., meet-link fallback) may skip. Assessed per-site during implementation.
+
+### Cron side (standalone Netlify Functions)
+
+5. Both `netlify/functions/send-reminders.ts` and `netlify/functions/calendar-token-heartbeat.ts` import a dedicated `netlify/functions/_lib/sentry.ts` (using `process.env` — these files cannot import `src/lib/*` which uses `import.meta.env`).
+6. Each handler is wrapped with `Sentry.withMonitor('send-reminders', { schedule: { type: 'crontab', value: '...' } }, handler)` so Sentry receives a check-in on each expected run and can detect **misfires** (Netlify's scheduler has no built-in alerting when a cron doesn't fire).
+7. Each `console.error` site in the cron functions calls `logger.error(...)` AND `Sentry.captureException`. Critically, each handler body is wrapped so that on any thrown error, `await Sentry.flush(2000)` runs before the handler returns — without this, the Lambda execution-environment freeze kills in-flight events.
+
+### Client side (browser)
+
+8. `@sentry/browser` initializes in `src/layouts/Layout.astro` via an inline `<script>` (covered by the existing CSP `script-src 'unsafe-inline'`), gated on `import.meta.env.PUBLIC_SENTRY_DSN`. It captures unhandled client-side exceptions and console errors.
+
+### PII scrubbing
+
+9. A `beforeSend` hook on both server and client SDKs redacts PII from any event before it leaves the system: values matching the keys `patient_reason`, `patientReason`, `email`, `phone`, `message`, `notes` are scrubbed (replaced with `[REDACTED]`) in breadcrumbs, extra, and request body contexts.
+
+### Uptime monitoring (operator-provisioned, code-supported)
+
+10. A new lightweight `GET /api/health` endpoint returns `{ ok: true }` (HTTP 200) with no external dependencies, no query params, and no auth — suitable for external probing at any interval.
+11. The external uptime monitor (Better Stack / UptimeRobot — operator-provisioned) probes `/` (homepage) and `/api/health`. It does **not** probe `/api/availability` (requires `mode`+`duration` query params → bare GET returns 400; every probe would consume Google Calendar + Supabase quota).
+
+### CSP + env
+
+12. `netlify.toml` `connect-src` is widened so the browser SDK envelope ingest is not blocked. **The host must be exact, not a wildcard**: per CSP3, a `*` wildcard matches exactly one DNS label and does not cross dots. The `@sentry/browser` SDK POSTs envelopes to a **multi-level** host — `https://o{orgId}.ingest.us.sentry.io` (US orgs) or `https://o{orgId}.ingest.de.sentry.io` (EU orgs). `https://*.sentry.io` would match `app.sentry.io` (1 label) but **NOT** `o12345.ingest.us.sentry.io` (3 labels), silently breaking browser telemetry. (The codebase's existing `https://*.supabase.co` works only because Supabase's API host is single-label — that precedent does **not** transfer.) The CSP must allowlist the exact org ingest host, e.g. `https://o{orgId}.ingest.us.sentry.io`. Alternatively (recommended for a mono-praticien site to avoid leaking the org id in a public header), configure the Sentry **`tunnel`** option — envelopes proxy through the site's own origin under `connect-src 'self'`, avoiding both the CSP exposure and ad-blocker blocking. `script-src` requires **no change** (init is inline, covered by existing `'unsafe-inline'`). Verification: `npm run build` then assert no CSP violation in a deployed preview's browser console.
+13. `PUBLIC_SENTRY_DSN` is added to `.env.example`, the `netlify.toml` env-doc comment block, AND **`src/env.d.ts`** (`readonly PUBLIC_SENTRY_DSN?: string` added to the `ImportMetaEnv` interface — without this, `astro check` fails on every read site). Mirrors the existing client-exposed-var pattern.
+
+## Data Model & Consumers
+
+> Forge-chart visual sidecars unavailable in this install; documented textually.
+
+**Data structures:**
+
+```ts
+// src/lib/logger.ts
+type LogLevel = 'error' | 'warn' | 'info' | 'debug';
+interface LogFields {
+  route?: string;          // from context.url.pathname
+  requestId?: string;      // UUID v4, generated in middleware
+  appointmentId?: string;  // optional, set per-handler
+  // + arbitrary structured fields
+}
+// logger.error(msg, fields?, err?) → JSON to stdout + Sentry.captureException(err)
+// logger.warn / .info / .debug → JSON to stdout + Sentry.addBreadcrumb
+// Degrades to console.* when PUBLIC_SENTRY_DSN unset.
+```
+
+```ts
+// src/lib/sentry.server.ts
+// initSentry(): idempotent module-level init (guarded by boolean flag)
+// withRequestScope<T>(ctx, fn): Sentry.withScope wrapper attaching requestId/route
+// scrubPii(event): beforeSend hook — redacts patient_reason/email/phone/message/notes
+```
+
+```ts
+// netlify/functions/_lib/sentry.ts
+// initSentry(): cron-side init using process.env (NOT import.meta.env)
+// captureAndFlush(err, ms=2000): captureException + await flush — for cron handlers
+```
+
+```ts
+// context.locals (middleware)
+interface Locals {
+  requestId: string;
+  route: string;
+  sentryScopeCleared?: boolean;
+}
+```
+
+**Consumer map:**
+
+| Consumer | Fields consumed | When | Status |
+|---|---|---|---|
+| `src/middleware.ts` | `requestId`, `route` | every on-demand request | this issue |
+| `src/pages/api/appointments/[id].ts` | `requestId` (from locals), `appointmentId` | booking patch (32 sites + 8 swallow catches) | this issue |
+| `src/pages/api/stripe-webhook.ts` | `requestId`, `appointmentId` | webhook handling (14 sites) | this issue |
+| `netlify/functions/send-reminders.ts` | — (cron, no request scope) | daily reminders (13 sites) | this issue |
+| `netlify/functions/calendar-token-heartbeat.ts` | — (cron, no request scope) | weekly heartbeat (12 sites) | this issue |
+| `src/pages/api/health.ts` | none | uptime probe target | this issue |
+| Other API routes (~70 console.* sites) | — | — | **follow-up** (tracked) |
+
+## Breadboard
+
+> Affordances (UI/API elements) → handlers → data. IDs feed into Slices.
+
+| ID | Affordance | Handler | Data wired |
+|---|---|---|---|
+| S1 | `src/middleware.ts` (on-demand request) | `withRequestScope` → attach requestId/route; deploy canary once per cold start | `context.locals`, Sentry scope |
+| S2 | `src/lib/sentry.server.ts` init (cold start) | `initSentry()` guarded by flag; `scrubPii` beforeSend | `@sentry/node` SDK |
+| S3 | `src/lib/logger.ts` module | `logger.{error,warn,info}` → stdout JSON + Sentry capture/breadcrumb | LogFields, Sentry |
+| S4 | `appointments/[id].ts` migration (32 console.* + 18 catch sites: 12 `} catch (b)` + 6 `.catch(console.error)`) | replace console.* → logger; `captureException` at all 18 swallow sites (2 bare `} catch {` are input-validation, NOT targeted) | requestId (from locals), appointmentId |
+| S5 | `stripe-webhook.ts` migration (14 console.*) | replace console.* → logger; captureException | requestId, appointmentId |
+| S6 | `netlify/functions/_lib/sentry.ts` | `initSentry()` (process.env) + `captureAndFlush` | `@sentry/node` SDK |
+| S7 | `send-reminders.ts` cron wrap (13 console.*) | `withMonitor` + per-catch captureException + `await flush(2000)` in finally; **fix schedule drift**: header L4 says "08h00 UTC" and `docs/INFRA.md` L197 says `'0 8 * * *'`, but the actual `Config.schedule` (L275) is `'0 18 * * *'` (18h00 UTC) — reconcile header + INFRA.md to 18h00 | Sentry cron check-in |
+| S8 | `calendar-token-heartbeat.ts` cron wrap (12 console.*) | `withMonitor` + per-catch captureException + `flush` in finally. **No schedule drift here** (L7 header + L46 config are both consistent `@weekly`) | Sentry cron check-in |
+| S9 | `src/layouts/Layout.astro` browser init | inline `<script>` init `@sentry/browser` + scrubPii | `@sentry/browser` SDK |
+| S10 | `src/pages/api/health.ts` | `GET` → `{ ok: true }`, no deps/params/auth | — |
+| S11 | `netlify.toml` CSP + env | `connect-src` allowlist exact Sentry ingest host (NOT `*.sentry.io` wildcard) OR `tunnel`; `PUBLIC_SENTRY_DSN` doc | CSP header, env |
+| S12 | `.env.example` + `astro.config.mjs` | `PUBLIC_SENTRY_DSN=`; `manualChunks['sentry']` | build config |
+| S13 | `tests/unit/logger.test.ts` + `sentry-scrub.test.ts` | field shaping, PII redaction, no-op-when-unset, `vi.mock` no-phone-home | — |
+| S14 | `docs/INFRA.md` section 7 | Sentry project creation, DSN retrieval, uptime config, canary verification, CSP dependency; fix 08h00/18h00 drift | docs |
+
+## Slices
+
+Vertical increments, independently demo-able. Ordered by dependency.
+
+| Slice | Includes | Demo |
+|---|---|---|
+| **1. Logger + Sentry server foundation** | S2, S3, S1, S13 | `npm test` — logger emits JSON, PII scrubbed, no-op when DSN unset; middleware attaches requestId (unit test with mock request) |
+| **2. Browser + infra** | S9, S10, S11, S12 | `npm run build` succeeds; `GET /api/health` → 200; CSP header includes sentry.io (verify with `curl -I`) |
+| **3. API route migration (booking + webhook)** | S4, S5 | `npm run typecheck` + `npm run test` pass; booking error path emits structured log with requestId/appointmentId (unit/integration test) |
+| **4. Cron migration + withMonitor** | S6, S7, S8 | `npm run typecheck` + `npm run test` pass; cron handlers flush before exit (unit test asserting `flush` called in finally) |
+| **5. Docs + operator checklist** | S14 | `docs/INFRA.md` section 7 readable; provisioning steps + canary verification documented |
+
+## Success Criteria
+
+**Instrumentation (code-verified):**
+
+- [ ] `@sentry/node` initializes (gated on `PUBLIC_SENTRY_DSN`) and a `beforeSend` hook scrubs PII keys (`patient_reason`, `patientReason`, `email`, `phone`, `message`, `notes`) → `[REDACTED]` — verified by `tests/unit/sentry-scrub.test.ts` passing. **The same `beforeSend` scrubbing applies to `@sentry/browser`** (client-side) — verified by a shared scrub test that runs against both the server and client scrub functions (extracted to a pure `scrubPii(event)` helper imported by both configs).
+- [ ] `@sentry/browser` initializes client-side in `src/layouts/Layout.astro` via inline `<script>` (covered by existing CSP `script-src 'unsafe-inline'`), gated on `import.meta.env.PUBLIC_SENTRY_DSN` — verified by `npm run build` (with the DSN set) then `rg 'Sentry\.init' dist/index.html` returning ≥1 match. (Building without the DSN compiles the guard to a dead branch that may be tree-shaken — the `manualChunks['sentry']` chunk-existence check in Uptime+infra is the build-config guarantee.)
+- [ ] `src/middleware.ts` exists, wraps each on-demand request in `Sentry.withScope`, attaches `requestId` (UUID v4) + `route` to `context.locals` and Sentry scope, and **clears scope on response** (preventing `requestId`/`appointmentId` tag leakage across warm-container invocations — a leaked tag would cross-contaminate Sentry events between patients) — verified by a unit test asserting requestId is set and the scope is cleared on both success and throw paths.
+- [ ] Both cron functions (`send-reminders.ts`, `calendar-token-heartbeat.ts`) call `await Sentry.flush(...)` **inside a `finally` block** covering both success and error paths (Lambda execution-environment freeze kills in-flight events otherwise) — verified by a unit test asserting `flush` is awaited in the `finally` path on both resolved and rejected handler outcomes.
+- [ ] Both cron handlers are wrapped with `Sentry.withMonitor(slug, handler, { schedule: { type: 'crontab', value: <const> }, checkInMargin: 5, maxRuntime: 10 })` so Sentry receives expected-run check-ins and detects misfires (Netlify's scheduler has no built-in alerting). **No `schedule_timezone` set** → both Sentry and Netlify default to UTC (consistent; avoids the known Sentry tz-crontab bug getsentry/sentry#52950). `checkInMargin` (5 min) prevents false "missed" alerts on slow Lambda cold starts. — verified by reading the wrapped export.
+
+**Migration (code-verified):**
+
+- [ ] Zero `console.error`/`console.warn`/`console.info` calls remain in `src/pages/api/appointments/[id].ts`, `src/pages/api/stripe-webhook.ts`, `netlify/functions/send-reminders.ts`, `netlify/functions/calendar-token-heartbeat.ts` (all migrated to `logger.*`) — verified by `rg "console\.(error|warn|info)" <paths>` returning 0.
+- [ ] All **18 swallow sites** in `appointments/[id].ts` call `Sentry.captureException` — verified per-site, NOT by a raw count: each of the 12 `} catch (binding)` blocks (lines 189, 226, 274, 408, 424, 533, 647, 656, 769, 802, 845, 892) and each of the 6 `.catch(console.error)` sites (lines 247, 360, 449, 556, 682, 833) must contain a `captureException` call. The 2 bare `} catch {` (lines 77, 167) are input-validation and are **excluded** by design. Use `rg -A2 'catch' src/pages/api/appointments/[id].ts | rg captureException` to audit.
+
+**Logger contract (code-verified):**
+
+- [ ] `tests/unit/logger.test.ts` passes: asserts JSON field shape (`level`, `msg`, `route`, `requestId`, `appointmentId`, `err.message`), level filtering, graceful no-op when `PUBLIC_SENTRY_DSN` unset, and `vi.mock('@sentry/node')` structurally guarantees no phone-home during tests.
+
+**Uptime + infra (code-verified):**
+
+- [ ] `GET /api/health` returns `200` with body `{ ok: true }`, requires no query params, no auth, makes no external calls, AND declares `export const prerender = false` (so it exists as an on-demand Function, not a build-time artifact) — verified by a route test.
+- [ ] `netlify.toml` `connect-src` includes the **exact** Sentry ingest host (e.g. `https://o{orgId}.ingest.us.sentry.io`), NOT a `*.sentry.io` wildcard (which would not match the 3-label ingest host and silently break browser telemetry) — verified by reading the `[[headers]] for = "/*"` block at `netlify.toml:71`. A `tunnel` config (proxy via `'self'`) is the recommended alternative.
+- [ ] `.env.example` contains `PUBLIC_SENTRY_DSN=` entry — verified by `rg PUBLIC_SENTRY_DSN .env.example`.
+- [ ] `src/env.d.ts` `ImportMetaEnv` interface declares `readonly PUBLIC_SENTRY_DSN?: string` — verified by `rg PUBLIC_SENTRY_DSN src/env.d.ts` (without this, `astro check` fails on every read site).
+- [ ] `astro.config.mjs` `manualChunks` includes `'sentry': ['@sentry/browser']` AND the build output contains `dist/_astro/sentry*.js` (proves the SDK is bundled, not tree-shaken by the DSN guard) — verified by `npm run build && ls dist/_astro/sentry*.js`.
+
+**Deploy canary (split: code-gated + operator-gated):**
+
+- [ ] **Code-gated:** `Sentry.captureMessage('deploy: <git-sha>')` is called exactly once per cold start, gated by an in-module boolean flag, idempotent across warm invocations — verified by a unit test asserting `captureMessage` called once on double-invocation. *(This proves the call is made, not that the event is ingested.)*
+- [ ] **Operator-gated (documented):** `docs/INFRA.md` includes a step: "after each deploy, confirm a `deploy: <sha>` message appears in the Sentry project within 5 minutes; absence = broken ingestion, not a healthy quiet site." *(This is the deterministic health signal the analysis promised.)*
+
+**Quality gates:**
+
+- [ ] `npm run lint` passes (0 errors) on new files.
+- [ ] `npm run test` passes (existing + new tests).
+- [ ] `npm run build` succeeds with and without `PUBLIC_SENTRY_DSN` set (graceful degradation).
+
+**Operator-side (documented, not code-gated):**
+
+- [ ] `docs/INFRA.md` section "7. Observabilité" documents all of: (a) Sentry project creation steps, (b) Client Keys DSN retrieval, (c) `PUBLIC_SENTRY_DSN` set in Netlify with **production scope** (mechanism at `netlify.toml` "Add a new scope"), (d) `PUBLIC_SENTRY_DSN` set in `deploy-preview` scope for staging (see OQ1 — staging project provisioned), (e) uptime monitor probe config (`/` + `/api/health`, expected status, interval, alert email), (f) CSP-widening dependency (reverting the `netlify.toml` CSP edit silently breaks ingest), (g) the canary verification step. Each sub-step enumerated so the criterion is binary.
+- [ ] `docs/INFRA.md` **send-reminders schedule drift** corrected: §6 Cron de rappels J-1 (L197) says "08h00 UTC ... `'0 8 * * *'`" but the actual `Config.schedule` is `'0 18 * * *'` (18h00 UTC). Reconcile the doc + the `send-reminders.ts` header docstring (L4) to 18h00. **Note: `calendar-token-heartbeat.ts` has NO drift** (L7 + L46 both `@weekly`) — do not edit its schedule.
+- [ ] Stale `netlify.toml` comment (`# Le site utilise @astrojs/netlify avec output: 'hybrid'.`, currently ~L102) corrected to `static` to match `astro.config.mjs` `output: 'static'`.
+
+**Out of scope (tracked as GitHub follow-up issues, NOT this PR's criteria):**
+
+Three follow-up issues will be created (linked to #75 via "part of") so they are durable work items, not prose that rots in a closed PR:
+
+- _Follow-up issue (S):_ migrate remaining ~70 `console.*` sites across other API routes to `logger.*`.
+- _Follow-up issue (S):_ anti-swallow pass — add `Sentry.captureException` to `} catch` / `.catch(` swallow sites in the un-migrated routes (the invisible-failure risk lives in the swallow pattern, not the `console.log` noise).
+- _Follow-up issue (S):_ source-map upload via `@sentry/cli` in a Netlify build plugin (improves bundled-code stack traces).
+
+## Open Questions (resolved)
+
+1. **Staging Sentry project?** ✅ **Resolved: provision a separate staging project.** A staging regression that breaks Sentry init would land in prod undetected if preview no-ops (DSN unset). Sentry dev tier is free; setup is one-time; and the infra already distinguishes prod/staging for every other secret (`netlify.toml` `[context.deploy-preview.environment]`). The staging `PUBLIC_SENTRY_DSN` is set in `deploy-preview` scope; events carry a Sentry `environment: 'staging'` tag to distinguish from prod. *(DevOps reviewer recommendation, confirmed.)*
+2. **Uptime monitor vendor.** Better Stack vs UptimeRobot — operator preference, picked at provisioning. Both probe `/` + `/api/health` by email alert. **Default: document both in `docs/INFRA.md` §7**, operator picks.
+3. **`withMonitor` schedule string source.** ✅ **Resolved: per-function.** For `send-reminders`, a shared crontab const works: `const SCHEDULE = '0 18 * * *' as const` feeds both `Config.schedule: SCHEDULE` and `withMonitor(slug, handler, { schedule: { type: 'crontab', value: SCHEDULE }, checkInMargin: 5, maxRuntime: 10 })`. For `calendar-token-heartbeat`, the shared-const approach **breaks**: Netlify accepts the nickname `'@weekly'`, but Sentry's `MonitorSchedule` does not accept a bare `'@weekly'` string (it requires `{ type: 'crontab', value }` or `{ type: 'interval', value, unit }`). Resolution: migrate Netlify to the explicit crontab `'0 0 * * 0'` (matching the existing header comment "every Sunday at 00:00 UTC") so both sides share the const — OR keep the two strings separate and document the type-incompatibility reason. *(Architect reviewer finding.)*
+
+[NEEDS CLARIFICATION] count: 0 (all three resolved with concrete answers).
