@@ -1,0 +1,92 @@
+---
+title: "Spec — safe-batch dependency bump (semver + nodemailer CVE + Node 22 + Dependabot)"
+issue: 95
+status: approved
+tier: F-lite
+source: artifacts/frames/95-deps-safe-batch-bump-frame.mdx
+---
+
+## Context
+
+Derived from the approved frame. The dependency tree carries 2 HIGH
+vulnerabilities (both in nodemailer), Node 20 is EOL, and there is no
+automated dependency-update flow. This spec covers the **safe batch** only:
+semver-range bumps, the nodemailer HIGH-CVE fix, Node 20 → 22, and a
+Dependabot config. Framework majors are tracked separately.
+
+The nodemailer surface in this repo is minimal and standard:
+`src/lib/resend.ts:29-31` calls `nodemailer.createTransport({ host, port,
+secure: false })` (dev-only, Mailpit) and `:218` calls `sendMail({ from, to,
+bcc, subject, html, headers, replyTo })`. Both are core stable APIs across
+nodemailer 7 → 9; no deprecated options are used.
+
+## Goal
+
+`npm audit` reports **0 high** vulnerabilities, Node 22 is pinned in all
+three config locations, Dependabot is configured, and all quality gates
+(lint, test, build) are green — without touching any framework major.
+
+## Expected Behavior
+
+1. `npm update` bumps the 9 in-range packages to their `wanted` versions and
+   the lockfile reflects only semver-compatible changes (no new major
+   resolves for any non-nodemailer package).
+2. `nodemailer` resolves to `^9.0.3` in `package.json`; `src/lib/resend.ts`
+   compiles and the SMTP path still constructs a transport and sends via
+   `sendMail` with the same option shape.
+3. `.nvmrc` contains `22`; `.github/workflows/ci.yml`
+   `actions/setup-node` `node-version` is `22`; `netlify.toml`
+   `NODE_VERSION` is `"22"`.
+4. `.github/dependabot.yml` exists with two ecosystems (`npm`, `github-actions`),
+   grouped updates, weekly schedule.
+5. The `overrides` block (`"google-auth-library": "10.9.0"`) is unchanged.
+6. `npm run lint`, `npm run test`, `npm run build` all exit 0 on Node 22.
+
+## Acceptance Criteria
+
+- [ ] **AC1 — Semver bumps applied.** `package-lock.json` diff shows only
+  `wanted`-version changes for the 9 in-range packages; no unintended major
+  bump lands. (`npm ls <pkg> --depth=0` confirms.)
+- [ ] **AC2 — nodemailer at 9.x.** `node -p "require('./package.json').dependencies.nodemailer"`
+  prints `^9.0.3` (or newer 9.x). `npm audit` reports **0 high** advisories
+  attributable to nodemailer.
+- [ ] **AC3 — resend.ts unchanged or minimally adapted.** If nodemailer 9
+  requires no code change, `src/lib/resend.ts` is byte-identical. If it
+  requires an adaptation, the diff is limited to the transport/sendMail call
+  and a comment cites the nodemailer 9 CHANGELOG entry.
+- [ ] **AC4 — Node 22 pinned in all three locations.**
+  `cat .nvmrc` → `22`; grep `node-version` in CI → `22`; grep `NODE_VERSION`
+  in `netlify.toml` → `"22"`.
+- [ ] **AC5 — Dependabot config valid.** `cat .github/dependabot.yml`
+  validates against the Dependabot schema (two `updates` entries: `package-ecosystem: npm`
+  and `package-ecosystem: github-actions`, both with `schedule.interval: weekly`
+  and a `groups` block). `npm` ecosystem groups by development/production.
+- [ ] **AC6 — overrides preserved.** `node -p "require('./package.json').overrides"`
+  prints `{ 'google-auth-library': '10.9.0' }`. The CI
+  `Verify google-auth-library dedupe` step stays green (one distinct version).
+- [ ] **AC7 — Quality gates green.** `npm run lint && npm run test && npm run build`
+  exit 0 on Node 22.
+- [ ] **AC8 — Audit clean of HIGH.** `npm audit` reports 0 high (moderate/low
+  remaining must be attributable to out-of-scope framework majors, noted in
+  the PR description).
+
+## Out of Scope
+
+(See frame §"Scope decision" — React 19, astro 7, tailwind 4, TypeScript 7,
+eslint 10, lucide-react 1. Each gets its own issue.)
+
+## Risks & Mitigations
+
+| Risk | Mitigation |
+|---|---|
+| nodemailer 9 transport API drift | Usage is `createTransport` + `sendMail` only; verify with `npm run build` + existing unit tests. Read nodemailer 9 CHANGELOG at implement time. |
+| `npm update` re-splits `google-auth-library` | CI guard step already enforces single distinct version (#86). |
+| Node 22 surfaces transitive engine warnings | `npm ci && npm run build` on Node 22 locally before pushing. |
+| Dependabot opens noisy PRs post-merge | `groups` config batches updates; weekly cadence limits volume. |
+
+## Verification (manual, post-PR)
+
+- `npm audit` → 0 high.
+- `npm outdated` → framework majors still flagged (expected — separate issues).
+- Trigger one Dependabot run manually (or wait for weekly) to confirm the
+  config parses.
