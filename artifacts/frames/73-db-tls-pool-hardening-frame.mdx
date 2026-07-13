@@ -1,0 +1,100 @@
+---
+title: "fix(security): DB TLS verification disabled + pg.Pool untuned for serverless"
+issue: 73
+status: approved
+tier: F-lite
+date: 2026-07-13
+---
+
+## Problem
+
+The single `pg.Pool` instance at `src/lib/auth.server.ts:15-20` — the only raw-Postgres
+connection in the app, consumed by BetterAuth for auth/session storage — has two security
+and availability defects affecting a system that handles **patient and authentication data**:
+
+1. **TLS certificate verification disabled (confidentiality).** For any non-localhost
+   `DATABASE_URL`, the pool is created with `ssl: { rejectUnauthorized: false }`
+   (`auth.server.ts:17-19`). This defeats TLS man-in-the-middle protection: any party that
+   can intercept traffic between the Netlify Function and Supabase can read or alter
+   auth/patient data in transit. The internal code-review backend reviewer ranked this Low;
+   for a patient-data system it is **High**.
+
+2. **Pool untuned for serverless (availability).** `new Pool({ connectionString, ssl })`
+   uses `node-pg` defaults (`max: 10`, `idleTimeoutMillis: 30000`). On Netlify Functions,
+   each warm instance can open up to 10 TCP connections; idle connections are not proactively
+   closed between frozen invocations. Combined with the current `.env.example` default that
+   points `DATABASE_URL` at Supabase's **direct** host (`db.<ref>.supabase.co:5432`, not the
+   pooler on `6543`), this risks exhausting Supabase's direct-connection budget and causing
+   cascading connection-starvation failures under modest load.
+
+**Why now:** this is a P1 item on the "Security & RGPD Compliance" milestone. The defects
+sit on the auth path, which every admin and patient-facing authenticated request traverses.
+
+## Who
+
+- **Primary (confidentiality):** patients and the practitioner — auth/session data and any
+  patient rows touched transit the unverified TLS channel.
+- **Primary (availability):** any authenticated user — connection starvation would surface
+  as failed logins, failed `/mes-rdvs` loads, and failed booking writes.
+- **Secondary:** the operator, who must hold RGPD posture and keep the booking flow live.
+
+## Constraints
+
+- **Serverless runtime:** Netlify Functions (Node 20), output `static` + Netlify adapter;
+  each API route with `prerender = false` is a separate function. Cold/warm instance reuse
+  governs connection lifecycle — pools cannot assume a long-lived process.
+- **Single connection point:** `auth.server.ts` is the only `pg` consumer. `src/lib/supabase.ts`
+  is a parallel HTTPS/REST layer (Supabase JS client) and is **out of scope** — its TLS is
+  handled at the HTTP layer, not configurable here. The two scheduled functions
+  (`netlify/functions/*.ts`) also use the Supabase JS client, not `pg`.
+- **BetterAuth coupling:** the pool is passed as `database: pool` to `betterAuth()`; the
+  internal adapter already avoids a second pool (comment at `auth.server.ts:115-117`).
+- **Env delivery:** secrets come from the Netlify dashboard (per-env: production / deploy-preview),
+  not from `netlify.toml`. No CA cert file currently exists in the repo.
+- **Local dev:** `DATABASE_URL` points at a plain-Postgres Docker container (`localhost:5432`),
+  no TLS — must keep working with `ssl: false`.
+
+## Out of Scope
+
+- **Supabase JS client** (`supabase.ts`) — separate HTTPS transport, no `pg` SSL config to change.
+- **Netlify scheduled functions** — use Supabase JS client, not `pg`.
+- **Schema/migrations** (`supabase/migrations/*`) — no DDL change; `008_credits.sql` remains latest.
+- **BetterAuth upgrade or adapter swap** — keep the existing `database: pool` wiring.
+- **Connection-leak load-testing infra** — acceptance is a static/warm-reuse verification, not a
+  new perf harness (see Premise).
+- **Switching off Supabase / DB vendor.**
+
+## Premise Validity
+
+**Success in 6 months:** Every production DB connection from the app verifies the server
+certificate against the Supabase CA (`rejectUnauthorized: true` with pinned CA), the pool is
+capped at `max: 2` with short idle/connection timeouts, and `DATABASE_URL` documentation and
+`.env.example` point serverless deployments at the Supabase pooler (port `6543`). Verified by:
+a read of `auth.server.ts` showing the new config, an updated `.env.example`, and zero
+"connection limit" errors in production over the following release cycle.
+
+**Failure in 6 months (falsifiable):** EITHER (a) a `git grep rejectUnauthorized` on
+`src/lib/auth.server.ts` still shows `false` after this release ships (binary, observable),
+OR (b) production logs contain a Supabase direct-connection-limit error
+(`remaining connection slots are reserved` / `too many connections`) traceable to the auth
+pool within 30 days of release. Either condition is grounds to treat the fix as incomplete.
+
+**Simplest alternative:** Set only `rejectUnauthorized: true` (rely on the host OS CA bundle)
+and leave the pool and `DATABASE_URL` defaults untouched.
+**Why not simplest:** On Netlify's serverless Node runtime the system CA bundle is not
+guaranteed to carry the Supabase root CA, so bare `rejectUnauthorized: true` risks
+intermittent `UNABLE_TO_VERIFY_LEAF_SIGNATURE` connection failures on the auth path; pinning
+the Supabase CA via an env var makes verification deterministic. It also leaves the
+connection-starvation risk unaddressed, so it does not meet the availability half of the goal.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (DB connection layer), no architectural change.
+
+Signals observed:
+- Issue carries `Size: M` label (4–10 files, ~1 day) → F-lite per tier matrix.
+- Touches ~5 files: `auth.server.ts` (SSL + pool config), `.env.example`, `src/env.d.ts`
+  (add missing `DATABASE_URL` typing), and docs (`docs/INFRA.md`, possibly `docs/LOCAL_DEV.md`).
+- One module owns the connection; no cross-domain refactor, no new abstraction.
+- Acceptance criteria are concrete and testable from the issue body.
+- No unknowns requiring deep exploration (analyze skipped).
