@@ -1,0 +1,243 @@
+---
+title: "Spec — DB TLS verification + pg.Pool serverless tuning"
+issue: 73
+status: approved
+tier: F-lite
+date: 2026-07-13
+promoted_from: artifacts/frames/73-db-tls-pool-hardening-frame.mdx
+---
+
+## Context
+
+Promoted from the approved frame `artifacts/frames/73-db-tls-pool-hardening-frame.mdx`
+(F-lite, issue #73). Analysis was skipped (F-lite) — the issue body already supplies
+concrete acceptance criteria and a proposed approach.
+
+GitHub issue: tavianm/omf-therapie#73
+Milestone: "Security & RGPD Compliance".
+
+**Problem + premise validity** live in the frame:
+`artifacts/frames/73-db-tls-pool-hardening-frame.mdx` (§ Problem, § Premise Validity).
+Summary: the auth/patient data path uses an unverified TLS connection
+(`rejectUnauthorized: false`) and an untuned pool that risks Supabase direct-connection
+exhaustion. Success in 6 months = verified TLS + capped pool + pooler default, verified
+by zero connection-limit errors over a release cycle. Failure = `rejectUnauthorized` still
+`false` in `git grep`, OR a Supabase connection-limit error in prod logs within 30 days.
+
+## Goal
+
+Harden the single `pg.Pool` at `src/lib/auth.server.ts:15-20` (the only raw-Postgres
+connection, consumed by BetterAuth) so production connections verify the Supabase TLS
+certificate against a pinned CA, the pool is sized for Netlify serverless, and the
+`DATABASE_URL` default steers serverless deployments to the Supabase pooler.
+
+## Users
+
+- **Patients + practitioner** (confidentiality) — auth/session rows traverse the verified
+  TLS channel instead of an unverified one.
+- **All authenticated users** (availability) — capped, short-lived connections avoid
+  Supabase direct-connection exhaustion.
+- **Operator** — RGPD posture + a documented connection story for serverless.
+
+## Expected Behavior
+
+### Production (Netlify Functions, non-localhost `DATABASE_URL`)
+
+1. `auth.server.ts` constructs `new Pool({...})` with:
+   - `connectionString: import.meta.env.DATABASE_URL` (unchanged),
+   - `ssl: { ca: SUPABASE_CA_CERT, rejectUnauthorized: true }` (NEW — replaces
+     `{ rejectUnauthorized: false }`),
+   - `max: 2` (NEW — was `pg` default `10`),
+   - `idleTimeoutMillis: 10_000` (NEW — was `30_000`),
+   - `connectionTimeoutMillis: 5_000` (NEW — was unset/infinite).
+2. `SUPABASE_CA_CERT` is read from `import.meta.env` and supplied as the `ca` member of
+   the TLS config. If it is **unset/empty in production**, the module logs a clear
+   **English** error (operator/dev-facing log, not user-facing — per AGENTS.md logs are
+   dev-facing and follow the English code convention) and fails fast at first DB use —
+   the TLS handshake aborts because `ca` is `undefined` while `rejectUnauthorized` is
+   `true`. **Do not silently fall back to verification disabled.** Suggested message:
+   `"SUPABASE_CA_CERT is not set — cannot enable TLS verification on the DB pool. Set the Supabase root CA in the Netlify dashboard (per-env: production + deploy-preview)."`.
+3. BetterAuth still receives `database: pool` — no adapter/API change.
+4. **PEM newline handling:** `SUPABASE_CA_CERT` must be the **literal multi-line PEM**
+   (real `\n` newlines, as stored by Netlify's dashboard env UI, not escaped `\\n`).
+   `node-pg`'s `ssl.ca` expects the PEM string verbatim; `tls.createServer`-style
+   escaping breaks the chain. The operator pastes the raw contents of Supabase's
+   `prod-ca-2021.crt` into the dashboard field — no transformation.
+
+### Supavisor transaction-mode compatibility (verified)
+
+The Supabase pooler (`:6543`) runs in transaction mode, which breaks **named** prepared
+statements (the classic PgBouncer/Supavisor "prepared statement already exists" collision).
+Verified safe for this app: `node-pg@8.22.0` only assigns a statement `name` when the
+caller passes one (`client.js:_handleParseComplete`), and **Kysely's** PostgresDriver
+calls `client.query({...})` without a `name` field
+(`postgres-adapter.js` has no query execution; the driver uses unnamed statements).
+BetterAuth's internal Kysely dialect therefore emits only **unnamed** statements →
+transaction-mode pooling is safe. This is documented in `docs/INFRA.md` to preempt the
+"classic pitfall" worry.
+
+### Local development (`DATABASE_URL` contains `localhost` or `127.0.0.1`)
+
+5. `ssl: false` is kept verbatim (plain Docker Postgres, no TLS). No `ca`, no
+   `rejectUnauthorized`. No env-var requirement for `SUPABASE_CA_CERT`.
+
+### Documentation + typing
+
+6. `.env.example` flips its default to the **pooler** string
+   (`...pooler.supabase.com:6543/postgres`), with the direct-host string kept as a
+   documented alternative. A new `SUPABASE_CA_CERT=` placeholder line is added with a
+   one-line comment explaining how to fetch the cert (Supabase Dashboard → Database →
+   Connection string → SSL / "Root certificate"), and that the value is the **literal
+   multi-line PEM** (see #4).
+7. `src/env.d.ts` adds `readonly DATABASE_URL: string;` and
+   `readonly SUPABASE_CA_CERT?: string;` to `ImportMetaEnv` (both currently missing).
+   - **Clarify (not a fix):** `SUPABASE_DATABASE_URL` already in `env.d.ts:6` is **not**
+     a typo for `DATABASE_URL` — it is the Supabase *REST project URL*
+     (`https://<ref>.supabase.co`, consumed by `src/lib/supabase.ts`), distinct from the
+     raw-Postgres `DATABASE_URL`. Both coexist; this issue adds `DATABASE_URL` alongside
+     it, they are not merged.
+8. `docs/INFRA.md` is updated: (a) the `DATABASE_URL` example uses the pooler host; (b) a
+   short subsection documents `SUPABASE_CA_CERT` (where to get it, that it must be set in
+   the Netlify dashboard per-env as literal PEM, see #4); (c) the stale
+   `?sslmode=require` query-string example is removed (pg does not read it — the `ssl:`
+   option does); (d) a one-line note that transaction-mode pooling is safe here
+   (unnamed statements — see "Supavisor transaction-mode compatibility" above).
+9. `netlify.toml` env-var comment block (lines 8–43) is extended with a one-line
+   `# SUPABASE_CA_CERT` entry for operator discoverability (parity with the existing
+   `DATABASE_URL` line at `netlify.toml:19`). **No secret values are committed** — only
+   the comment enumeration.
+
+### Deploy ordering + monitoring (operational)
+
+10. **Deploy order (mandatory):** `SUPABASE_CA_CERT` must be set in the Netlify dashboard
+    **for both production and deploy-preview scopes BEFORE merging the code** — otherwise
+    AC7's fail-fast turns every auth request into a 5xx on the next deploy. Roll-back path:
+    either set the env var (instant, no redeploy) or redeploy the previous commit. Document
+    this order in `docs/INFRA.md` as a short numbered runbook.
+11. **Post-deploy monitoring (first 24h):** watch Netlify Function logs for TLS errors
+    (surface as 5xx on auth endpoints) and Supabase dashboard connection metrics for
+    connection-limit errors. No new alerting infra — operator-driven for this release.
+
+### Non-goals (restated)
+
+- Supabase JS client (`src/lib/supabase.ts`) — separate HTTPS transport, untouched.
+- `netlify/functions/*.ts` scheduled functions — use the Supabase JS client, untouched.
+- Schema/migrations, BetterAuth upgrade, switching DB vendor, load-test harness.
+- New automated alerting / monitoring infra (operator-driven post-deploy check only).
+
+## Data Model & Consumers
+
+**Data structure:** [DB Connection Layer — Data Model & Consumers](../visuals/73-db-tls-pool-hardening-data-model.html)
+**Consumer map:** [Consumer Map — who depends on the pg.Pool](../visuals/73-db-tls-pool-hardening-consumers.html)
+
+Open locally:
+- `file:///home/gindji/projects/omf-therapie/artifacts/visuals/73-db-tls-pool-hardening-data-model.html`
+- `file:///home/gindji/projects/omf-therapie/artifacts/visuals/73-db-tls-pool-hardening-consumers.html`
+
+The `pg.Pool` is the only data node that carries patient/auth rows. Its fields
+(`connectionString`, `ssl`, `max`, `idleTimeoutMillis`, `connectionTimeoutMillis`) are all
+either modified or newly set by this issue. The BetterAuth instance is the sole consumer
+of the pool via `database: pool`. The Supabase JS client and the Netlify scheduled
+functions are shown as **dashed / out-of-scope** — they use a different transport and do
+not touch the `pg.Pool`.
+
+### Consumer summary
+
+| Consumer | Fields consumed | When | Status |
+|----------|-----------------|------|--------|
+| `betterAuth({ database: pool })` | the `Pool` object (all fields) | every authenticated request (login, session, `/mes-rdvs`, admin API) | **this issue** — pool config changes |
+| Netlify env (dashboard) | `DATABASE_URL`, `SUPABASE_CA_CERT` | function cold start | **this issue** — `SUPABASE_CA_CERT` newly required |
+| `src/env.d.ts` (`ImportMetaEnv`) | type declarations | build / typecheck | **this issue** — adds the two missing typings |
+| `.env.example`, `docs/INFRA.md` | connection-string docs | operator setup | **this issue** — pooler default + CA docs |
+| `src/lib/supabase.ts` | — | — | out of scope (HTTPS REST, no `pg`) |
+| `netlify/functions/*.ts` | — | — | out of scope (Supabase JS client, no `pg`) |
+
+## Breadboard
+
+No UI affordance in this issue (pure server-side config + docs). The "affordances" are the
+config knobs and their fail modes:
+
+| Element | Trigger | Handler / effect | Data / side-effect |
+|---------|---------|------------------|--------------------|
+| **N1** `Pool` constructor (prod) | module load in a Netlify Function | builds `ssl: { ca, rejectUnauthorized: true }`, `max: 2`, `idle/conn` timeouts | one pool per warm instance, ≤2 conns |
+| **N2** `Pool` constructor (local) | module load in `npm run dev` | builds `ssl: false` (localhost branch) | connects to Docker Postgres |
+| **N3** Missing `SUPABASE_CA_CERT` in prod | `ssl.ca` resolves to `undefined` while `!isLocal` | log error `SUPABASE_CA_CERT manquant…`, set `rejectUnauthorized: true` (connection will fail with a clear TLS error on first use rather than silently disabling verification) | fail-fast, no silent downgrade |
+| **D1** `.env.example` default | operator copies `.env.example` | `DATABASE_URL=` points at `:6543` pooler; new `SUPABASE_CA_CERT=` line present | operator uses the pooler + supplies CA |
+| **D2** `docs/INFRA.md` | operator reads infra doc | pooler example + CA subsection; `?sslmode=require` removed | documented, reproducible setup |
+| **T1** `src/env.d.ts` | `astro check` / build | `DATABASE_URL: string`, `SUPABASE_CA_CERT?: string` declared | typecheck passes, editor autocomplete |
+
+### Wiring
+
+`auth.server.ts` (only file that imports `pg`) → `betterAuth({ database: pool })` →
+BetterAuth's internal Kysely/Postgres dialect → Supabase Postgres over TLS. The env is
+delivered by Netlify per-environment (production vs deploy-preview) via the dashboard;
+`netlify.toml` is **only** modified to add a one-line `# SUPABASE_CA_CERT` comment to the
+env-var discovery block (no secret values, no `[context.*.environment]` change — secrets stay
+dashboard-scoped per `netlify.toml:13,47,57`).
+
+## Slices
+
+Vertical increments; each is independently verifiable from the acceptance criteria.
+
+| # | Slice | Files | Verifies | Demo |
+|---|-------|-------|----------|------|
+| **S1** | SSL hardening | `src/lib/auth.server.ts`, `src/env.d.ts` | AC#1, AC#4, AC#5, AC#7, AC#8 | `git grep rejectUnauthorized src/` shows `true`; localhost branch still `ssl:false`; `git grep "rejectUnauthorized:\s*false" src/` empty in prod branch |
+| **S2** | Pool tuning | `src/lib/auth.server.ts` | AC#2 | `git grep -nE 'max:\s*2\|idleTimeoutMillis\|connectionTimeoutMillis'` shows the new values |
+| **S3** | Docs + env example + runbook | `.env.example`, `docs/INFRA.md` | AC#3, AC#6, AC#10 | `.env.example` default `:6543`; `docs/INFRA.md` has CA subsection + numbered deploy runbook; `?sslmode=require` removed |
+| **S4** | Operator discovery | `netlify.toml` | AC#9 | `git grep SUPABASE_CA_CERT netlify.toml` returns the new comment line |
+
+S1 and S2 touch the same lines of `auth.server.ts` and are typically committed together;
+they are split here so the plan can assign them as separate micro-tasks. S3 + S4 are pure
+docs/config and can land independently. AC11 is post-deploy validation, not a slice.
+
+## Success Criteria
+
+- [ ] AC1 — `src/lib/auth.server.ts` uses `ssl: { ca: SUPABASE_CA_CERT, rejectUnauthorized: true }`
+      for non-localhost `DATABASE_URL` (binary: present / not).
+- [ ] AC2 — `new Pool({...})` is configured with `max: 2`, `idleTimeoutMillis: 10_000`,
+      `connectionTimeoutMillis: 5_000` (binary: all three literals present).
+- [ ] AC3 — `.env.example` default `DATABASE_URL` points at the Supabase pooler (`:6543`);
+      `docs/INFRA.md` documents the pooler and the `SUPABASE_CA_CERT` env var (binary).
+- [ ] AC4 — Local dev branch (`localhost`/`127.0.0.1`) still uses `ssl: false` with no
+      `ca`/`rejectUnauthorized` (binary: localhost guard present).
+- [ ] AC5 — `src/env.d.ts` declares `DATABASE_URL: string` and `SUPABASE_CA_CERT?: string`
+      (binary: both present in `ImportMetaEnv`).
+- [ ] AC6 — `?sslmode=require` removed from `docs/INFRA.md` (pg does not read it)
+      (binary: grep returns nothing).
+- [ ] AC7 — Missing `SUPABASE_CA_CERT` in prod fails fast with a clear **English** logged
+      error, and the code path **does NOT** contain any branch that sets
+      `rejectUnauthorized: false` for a non-localhost host (binary: error log present AND
+      `git grep "rejectUnauthorized:\s*false" src/` returns nothing in the prod branch).
+- [ ] AC8 — `npm run typecheck` passes (no new errors introduced; advisory gate stays green).
+- [ ] AC9 — `netlify.toml` env-var comment block includes a `# SUPABASE_CA_CERT` line
+      (binary: present — operator discoverability, parity with the `DATABASE_URL` comment).
+- [ ] AC10 — `docs/INFRA.md` contains a numbered deploy-order runbook requiring
+      `SUPABASE_CA_CERT` to be set in prod + deploy-preview scopes **before** code merge
+      (binary: the numbered steps are present).
+- [ ] AC11 (behavioral outcome, validated post-deploy) — within 24h of production deploy,
+      Netlify Function logs show **no** TLS-handshake errors on auth endpoints and Supabase
+      connection metrics show **no** direct-connection-limit errors (binary: operator
+      confirms in the PR thread after deploy, or rolls back per #10). This is the
+      outcome-level check that AC1's literal grep cannot prove on its own.
+
+## Risks / Open Questions
+
+- **R1 (low, mitigated in spec):** pinning the Supabase CA via an env var means operators
+  must set `SUPABASE_CA_CERT` in the Netlify dashboard **before** code merge, or auth
+  breaks (AC7 makes it fail-fast, but fail-fast on the auth path = every login 5xx).
+  Mitigation: AC10 documents a numbered deploy-order runbook; AC9 makes the var
+  discoverable in `netlify.toml`; AC7 makes the failure loud. The Supabase root CA
+  (`prod-ca-2021.crt`) is public and stable — not a secret.
+- **R2 (low, verified safe):** Supabase's pooler (Supavisor, port `:6543`) runs in
+  transaction mode, which disables session-level features and breaks **named** prepared
+  statements. **Verified safe for this app:** `node-pg@8.22.0` only names a statement when
+  the caller passes `name` (`client.js:_handleParseComplete`), and Kysely's PostgresDriver
+  calls `client.query({...})` without `name` (see "Supavisor transaction-mode compatibility"
+  above). BetterAuth's workload uses unnamed statements + no `LISTEN`/session features.
+  Mitigation: a one-line note in `docs/INFRA.md` documents the verification to preempt the
+  classic pitfall concern.
+- **R3 (low):** `connectionTimeoutMillis: 5_000` could be approached under combined
+  cold-start + TLS handshake + Supabase load. Mitigation: 5s is comfortably inside the
+  Netlify Function execution budget; AC11 catches real-world regressions in the first 24h.
+  Do not silently tighten to 2s without data.
+- No `[NEEDS CLARIFICATION]` items.
