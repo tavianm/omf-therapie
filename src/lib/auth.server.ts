@@ -59,7 +59,7 @@ export const auth = betterAuth({
     },
   },
 
-  // ── Options avancées (cookies) ────────────────────────────────────────────
+  // ── Options avancées (cookies + résolution IP) ─────────────────────────────
   advanced: {
     // Cookies Secure uniquement en production (HTTPS obligatoire)
     useSecureCookies: import.meta.env.PROD ?? false,
@@ -67,6 +67,17 @@ export const auth = betterAuth({
     defaultCookieAttributes: {
       httpOnly: true,
       sameSite: 'lax',
+    },
+    // Résolution de l'IP client pour le rate-limiting BetterAuth.
+    // Par défaut BetterAuth ne lit que 'x-forwarded-for', souvent absent ou
+    // peu fiable derrière Netlify Functions → getIp() renvoie null → fallback
+    // sur un bucket partagé unique (WARN de prod + risque de DoS accidentel :
+    // 5 tentatives par n'importe qui bloquent tous les autres utilisateurs).
+    // 'x-nf-client-connection-ip' est défini exclusivement par l'infra Netlify
+    // (non falsifiable par le client) — même header utilisé dans contact.ts et
+    // appointments/index.ts. La liste est parcourue dans l'ordre.
+    ipAddress: {
+      ipAddressHeaders: ['x-nf-client-connection-ip', 'x-forwarded-for'],
     },
   },
 
