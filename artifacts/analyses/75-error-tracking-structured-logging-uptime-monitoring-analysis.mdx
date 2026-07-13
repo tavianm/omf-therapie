@@ -1,0 +1,156 @@
+---
+title: "Observability: error tracking, structured logging, uptime monitoring"
+description: "Deep technical analysis for #75 — Sentry + structured logger + uptime probe on Astro 5 SSG + Netlify."
+issue: 75
+tier: F-full
+date: 2026-07-13
+reviewed: 2026-07-13
+---
+
+## Source
+
+> "Zero error tracking, monitoring, or alerting across the codebase. ~88 `console.*` calls in API routes and Netlify Functions write only to Netlify function logs (ephemeral, unsearchable). […] A Supabase outage, Resend 5xx storm, or webhook timeout is invisible."
+> — Issue #75
+
+> *Exploration found 101, not 88: 76 in `src/pages/api/` + 25 in `netlify/functions/`. The issue's ~88 figure predates recent API growth; the discrepancy does not change the premise.*
+
+## Problem
+
+The application has **no error telemetry**: failures surface only through the ephemeral Netlify function log stream, which cannot be queried after a short retention window, cannot be filtered by `appointmentId`/`requestId`, and triggers no alerts. The two scheduled cron jobs and the booking API fail **silently** — the maintainer learns of prod outages reactively, via a patient complaint (patient-in-loop paths) or not at all (operator-only cron paths).
+
+Concretely confirmed during exploration:
+
+- **~101 `console.*` calls** across `src/pages/api/` (76) + `netlify/functions/` (25). The booking patch handler (`appointments/[id].ts`) alone has 32; the Stripe webhook has 14; the reminders cron has 13.
+- **No structured logger, no Sentry/OTel/Datadog.** All instrumentation is ad-hoc string prefixes (`'[appointments/patch]'`, `'[stripe-webhook]'`, `'[send-reminders]'`).
+- **No Astro middleware** (`src/middleware.ts` absent) — there is nowhere to establish request-scoped Sentry scope or inject a `requestId`.
+- **Errors are caught-and-swallowed, not propagated.** 8 top-level `} catch {` blocks in `appointments/[id].ts` swallow typed errors silently after logging; 7 sites use `.catch(console.error)` for promise rejections. **Both cron functions swallow every error and exit 0 even on total failure** (`send-reminders.ts` L128/143/203, `calendar-token-heartbeat.ts` L101/127/165 — the last with an explicit comment "don't throw; scheduled functions shouldn't fail noisily"). Sentry's auto-capture only catches *unhandled* errors — caught-and-swallowed errors never reach it. This is the central design constraint for instrumentation: **the capture must happen at each swallow site, not rely on a process-level hook.**
+
+## Outcome
+
+Two outcome streams (the failure modes are different products):
+
+- **Patient-in-loop failures (booking, payment webhook):** a failure surfaces in Sentry within minutes, carrying enough context (`route`, `requestId`, `appointmentId`) to diagnose without reproducing locally — and the maintainer sees the alert **before a patient reports it**.
+- **Operator-only failures (reminders cron, OAuth heartbeat cron):** a failure surfaces in Sentry at all (today it surfaces nowhere), and cron misfires are detected (Netlify's scheduler has no built-in alerting when a cron doesn't fire).
+
+A **deploy-time canary** (`Sentry.captureMessage('deploy: <git-sha>')` emitted once per cold start) is required so "no events in N days" can *only* mean broken ingestion, not a healthy quiet site (see Risks).
+
+**Scope-bound (not totalizing):** this PR instruments the three high-stakes paths (booking, webhook, reminders + heartbeat). Errors in the ~70 un-migrated `console.*` sites — specifically their swallowed `catch` blocks — remain invisible until a targeted anti-swallow follow-up. The outcome is scoped to the named paths; full visibility is a tracked follow-up, not this PR's deliverable.
+
+## Appetite
+
+Single PR, ≤3 days — `Size: L`. Covers logger module + 3 named migration paths + Sentry (client + server + 2 cron functions) + external uptime monitor + deploy canary. Full ~101 console migration and the anti-swallow pass on the 8 catch sites are deferred to a follow-up.
+
+## Shapes
+
+### Shape 1: `@sentry/astro` (official SDK)
+
+Drop-in Astro integration via `astro add @sentry/astro` — registers a `sentry.server.config.ts` (server) and `sentry.client.config.ts` (browser). Auto-instruments routes, captures unhandled rejections, and provides the `Sentry` import for manual `captureException`.
+
+**Trade-offs:**
+- ✅ Pro: First-class Astro integration — middleware injection, route naming, source-map upload handled.
+- ✅ Pro: Browser + server in one package (matches both client and API AC).
+- ⚠️ Con: **Netlify is not on Sentry's named-support list.** Sentry docs scope `@sentry/astro` to "Node runtimes such as the Node adapter or Vercel with Lambda functions" — Netlify is not named. Netlify Functions are AWS Lambda running Node, so the runtime qualifies, but the combination is **untested by Sentry**. Open issues document adapter-specific failures in adjacent stacks: netlify/build#5738 (Astro SSR + Netlify), sentry-javascript #9544 (SvelteKit+netlify), #13217 (Cloudflare+Astro middleware incompatibility).
+- ⚠️ Con: SDK hooks Astro internals; an upstream Astro patch could regress instrumentation invisibly.
+
+> **Note (peer-range):** `@sentry/astro`'s peer range is `astro >=3.x || >=4.0.0-beta || >=7.0.0-beta`. Astro 5.18.x **satisfies** `>=3.x` (verified: `semver.satisfies('5.18.2', '>=3.x') → true`), so the install is clean with no `--legacy-peer-deps`. The range is **not** evidence against Astro-5 maturity — it admits 5.x. The deciding risk is the undocumented Netlify combination above, not the peer range.
+
+**Rough scope:** M — install + 2 config files + middleware is small; **the Netlify-compatibility verification effort is the cost.**
+
+### Shape 2: `@sentry/node` + `@sentry/browser` manually
+
+Two SDKs wired explicitly: `@sentry/node` initialised once per cold start (module top-level, guarded by an init flag), `@sentry/browser` initialised in a client layout. A new `src/middleware.ts` wraps each on-demand request in `Sentry.withScope(...)` to attach `requestId`/`route` and isolate scope across warm-container invocations. The cron functions import a dedicated `netlify/functions/_lib/sentry.ts` init helper and wrap their handler body in `try { … } catch (e) { Sentry.captureException(e); await Sentry.flush(2000); throw e; }`.
+
+**Trade-offs:**
+- ✅ Pro: **No Astro-version coupling** — these SDKs are runtime-targeted (Node 20), not framework-targeted. Survives Astro 5→6→7 upgrades (6 is GA on Netlify since Mar 2026).
+- ✅ Pro: **Adapter-agnostic** — `@sentry/node` runs in any Node Function regardless of which Astro adapter produced it. The Netlify caveat that constrains Shape 1 does not apply.
+- ✅ Pro: Explicit control over scope, sampling, `beforeSend` (Sentry's pre-event hook that can mutate/drop fields — used for PII scrubbing). No magic auto-instrumentation to debug.
+- ⚠️ Con: More boilerplate — manual `init()` in server + cron + browser, manual `withScope` middleware. ~80 LOC total across the new files.
+- ⚠️ Con: Loses `@sentry/astro`'s automatic route naming — must be set by hand in middleware (small).
+
+**Rough scope:** M — middleware + 3 inits + cron wiring is more code than Shape 1, but **zero compatibility gamble.**
+
+### Shape 3: Lightweight logger + external uptime only (no Sentry)
+
+Build the structured `src/lib/logger.ts` (JSON to stdout, fields `{ level, route, requestId, appointmentId, msg, err }`), migrate the 3 named paths, and add an external uptime probe on `/` and a new lightweight `/api/health`. **Skip error tracking entirely.**
+
+**Trade-offs:**
+- ✅ Pro: Zero new runtime dependency, zero SDK risk.
+- ✅ Pro: Logger alone unblocks the *correlation* outcome (queryable by `appointmentId`).
+- ❌ Con: **No proactive error alerting as scoped.** The operator must *go look* at logs — which is precisely the complaint-driven posture the problem rejects. (A logger draining to Logflare/Loki with an ERROR-level alert rule *would* add proactive alerting, but standing up a queryable sink + alert rules is effort comparable to adopting Sentry, which is purpose-built for exactly this — so there is no cost advantage to the logger-first path either.)
+- ❌ Con: Cron-job failure still has no outbound alert beyond the existing Resend email path.
+
+**Rough scope:** S — but **does not satisfy the success criterion** ("appears in Sentry within minutes"). Eliminated on capability grounds (no proactive alerting as scoped) and cost grounds (closing the gap costs as much as Sentry).
+
+## Fit Check
+
+**Recommendation: Shape 2 (`@sentry/node` + `@sentry/browser` manual wiring).**
+
+| Constraint (from frame) | Shape 1 (`@sentry/astro`) | Shape 2 (manual Node/Browser) | Shape 3 (logger only) |
+|---|---|---|---|
+| Astro 5.18.x + `@astrojs/netlify ^6.6.5` | ⚠️ Netlify adapter untested by Sentry (issues documented) | ✅ Runtime-targeted (Node 20) — framework-agnostic | ✅ |
+| `output: 'static'` + on-demand `/api/*` Functions | ✅ | ✅ | ✅ |
+| No middleware exists (must create `src/middleware.ts`) | partial — SDK may inject its own | ✅ explicit | ✅ |
+| Strict CSP needs Sentry ingest exception | ✅ | ✅ | n/a |
+| PII scrubbing (patient_reason, email, phone, message) | ✅ via `beforeSend` | ✅ via `beforeSend` | ✅ (never logs PII) |
+| Cron functions need standalone capture (not Astro routes) | ⚠️ via separate `withMonitor` wiring | ✅ via `_lib/sentry.ts` + `flush` | ⚠️ no error alerting |
+| **Satisfies success: "appears in Sentry within minutes"** | ✅ (if Netlify compat holds) | ✅ | ❌ |
+
+**Discriminating rows:** Astro/Netlify compatibility, cron standalone capture, and the success criterion. (CSP, PII, and middleware are constraint-validation rows — they document that these constraints don't change the recommendation.)
+
+**Why Shape 2 over Shape 1:**
+
+1. **The Netlify-named-support uncertainty is the deciding factor.** Netlify Functions are AWS Lambda running Node, so the runtime genuinely qualifies — the risk is "untested by Sentry," not "known broken." For a single-operator site where the cost of debugging an adapter incompatibility mid-deploy exceeds the cost of ~80 LOC of boilerplate, risk-aversion under uncertainty is the right call.
+2. **Upgrade resilience.** This project is on Astro 5.18; Astro 6 is GA on Netlify (Mar 2026). Shape 1 couples the instrumentation to the framework version; Shape 2 is runtime-only and survives the next Astro major.
+3. The boilerplate cost of Shape 2 is **bounded and one-time** — a ~40-line middleware + three `init()` calls + cron wrappers. The risk cost of Shape 1 is **unbounded** (could blow the whole appetite on adapter debugging).
+
+**Shapes eliminated:** Shape 3 fails the core outcome (no proactive error visibility as scoped, and no cost advantage once alerting is added). Shape 1 is viable but carries compatibility risk that Shape 2 avoids at a small, known cost.
+
+## Files impacted
+
+| File | Change | Shape 2 |
+|---|---|---|
+| `src/lib/logger.ts` | **NEW** — structured logger wrapping `@sentry/node` + `console` (JSON fields `{ level, route, requestId, appointmentId, msg, err }`); degrades to `console.*` when DSN unset | ✅ |
+| `src/lib/sentry.server.ts` | **NEW** — server `initSentry()` with `beforeSend` PII scrubbing; `Sentry.captureException` re-export; `withScope` helper for middleware | ✅ |
+| `src/middleware.ts` | **NEW** — `Sentry.withScope(...)` per request, attach `requestId`/`route` to `context.locals` + Sentry scope; clear scope at response (warm-container isolation) | ✅ |
+| `src/layouts/Layout.astro` (or root layout) | Init `@sentry/browser` client-side (inline `<script>`, covered by existing CSP `script-src 'unsafe-inline'`) | ✅ |
+| `netlify/functions/_lib/sentry.ts` | **NEW** — cron-side `initSentry()` using `process.env` (cron files cannot import `src/lib/*` which uses `import.meta.env`); `captureAndFlush(err)` helper | ✅ |
+| `src/pages/api/health.ts` | **NEW** — lightweight liveness probe (`GET` → `{ ok: true }`, no external deps, no query params) for uptime monitoring | ✅ |
+| `src/pages/api/appointments/[id].ts` | Migrate 32 `console.*` → logger; add `Sentry.captureException` at the 8 `} catch {` swallow sites (booking patch) | ✅ |
+| `src/pages/api/stripe-webhook.ts` | Migrate 14 `console.*` → logger; capture at swallow sites (webhook) | ✅ |
+| `netlify/functions/send-reminders.ts` | Wrap handler in `Sentry.withMonitor` (cron check-in) + per-catch `captureException`; `await Sentry.flush(2000)` in finally | ✅ |
+| `netlify/functions/calendar-token-heartbeat.ts` | Same `withMonitor` + `captureException` + `flush` pattern; **fix stale schedule comment** (L4 says 08h00 UTC; actual config L273 is `'0 18 * * *'` — 18h00 UTC) | ✅ |
+| `astro.config.mjs` | Decide `@sentry/node` bundling vs `ssr.external`; add `'sentry': ['@sentry/browser']` to `manualChunks` (client bundle ~50KB) | ✅ |
+| `netlify.toml` | Add `PUBLIC_SENTRY_DSN` env-doc comment; widen CSP `connect-src` += `*.sentry.io`; fix stale `output: 'hybrid'` comment L102 (actual is `static`) | ✅ |
+| `.env.example` | Add `PUBLIC_SENTRY_DSN=` entry (mirrors `PUBLIC_GA4_ID` pattern) | ✅ |
+| `package.json` | `+@sentry/node`, `+@sentry/browser` (pin majors; note: `@sentry/node` 9.x is already transitive via lighthouse — declare explicitly) | ✅ |
+| `docs/INFRA.md` | New "7. Observabilité" section: Sentry project creation, DSN retrieval, `PUBLIC_SENTRY_DSN` per-context (prod/staging), uptime monitor probe config, CSP-widening dependency; fix 08h00/18h00 schedule drift | ✅ |
+| `tests/unit/logger.test.ts` | **NEW** — field shaping, PII redaction on `beforeSend`, level filtering, graceful no-op when DSN unset; `vi.mock('@sentry/node')` to structurally guarantee no phone-home during tests | ✅ |
+| `tests/unit/sentry-scrub.test.ts` | **NEW** — `beforeSend` PII-scrub unit tests (patient_reason, email, phone, message redacted) | ✅ |
+
+## Risks & open questions
+
+1. **Operator provisioning is outside the PR.** Sentry project + DSN + uptime monitor account are operator-side. The PR wires the SDK behind `if (PUBLIC_SENTRY_DSN)` and documents the steps; the falsifiability test (below) is only meaningful once the operator sets the env var and provisions the project. **Mitigation:** logger degrades gracefully to `console.*` when DSN absent — dev/test/preview unaffected.
+
+2. **Falsifiability test closed with a deploy canary.** The naive test ("0 Sentry events after 30 days ⇒ instrumentation inert") has an **absence-of-evidence hole**: a healthy low-traffic single-practitioner site can plausibly run 30 days without a server-side exception, falsely "failing" working instrumentation. **Fix:** emit a deploy-time canary (`Sentry.captureMessage('deploy: <git-sha>')` once per cold start, in `src/middleware.ts` or `src/lib/sentry.server.ts`). The canary is guaranteed to fire on every deploy if the pipeline is alive, so "canary absent in Sentry project within minutes of a deploy" is a **deterministic** falsification signal — distinguishing broken ingestion from genuine quiet. This is the real health check, not raw event count.
+
+3. **Staging vs production Sentry projects.** Best practice is a separate Sentry project for staging with the DSN scoped per-context (`netlify.toml` `[context.deploy-preview.environment]`), so preview/branch-deploy errors don't pollute prod alerts. The DSN is a public key (not secret), so there's no barrier. Decision to confirm during spec: provision staging project, or accept "graceful no-op in preview" as the default. Recommendation: provision staging — preview regressions invisible is a worse default than slightly more setup.
+
+4. **CSP exception for `*.sentry.io`.** The strict CSP in `netlify.toml` will block the browser SDK's envelope ingest unless `connect-src` is widened. `script-src` does **not** need changes provided the browser init is inline (covered by existing `'unsafe-inline'`). For French users where ad-blockers/strict extensions are common, a server-side **tunnel** (proxy that avoids the third-party origin) is an option to mention in docs and reject (added complexity, low payoff for a mono-praticien site).
+
+5. **Lambda freeze drops events without `flush()`.** AWS Lambda (backing Netlify Functions) freezes the execution environment the moment the handler returns, killing in-flight Sentry network requests. `Sentry.captureException` is non-blocking; without `await Sentry.flush(2000)` before return, **error events are silently dropped** — the single most common cause of "0 events" false-negatives. Both cron handlers MUST `flush` in their finally/return path. (Mitigated in the files-impacted table.)
+
+6. **Non-risk (confirmed):** `framer-motion` and existing client islands are unaffected — `@sentry/browser` init is additive in the layout and does not touch island hydration.
+
+7. **Source maps.** API routes and cron functions are bundled/minified by Vite (server) and zip-it-and-ship-it (cron). Raw `@sentry/node` stack traces will point at bundled code — less useful for "diagnose without reproducing." **Accepted degradation** for this PR (stack traces still carry function/file names and messages); source-map upload via `@sentry/cli` in a Netlify `plugins:` build step is a documented follow-up, not a blocker.
+
+8. **Performance traces deliberately omitted.** The frame excludes "Custom metrics / APM" and "Distributed tracing / OpenTelemetry." Enabling `tracesSampleRate` (even at 1.0) adds Sentry transaction volume/cost in mild tension with that boundary. **Decision: error-only instrumentation** — omit `tracesSampleRate` entirely (traces default off). Note: `tracesSampleRate` governs **only performance transactions**; error events (`captureException`, unhandled rejections) are always sent at 100% regardless of the trace rate, so omitting traces has zero effect on error capture.
+
+## Verification approach
+
+- **Logger:** unit tests (`tests/unit/logger.test.ts`) assert field shape, PII redaction on `beforeSend`, level filtering, graceful no-op when DSN unset. `vi.mock('@sentry/node')` guarantees no network during tests.
+- **PII scrubbing:** `tests/unit/sentry-scrub.test.ts` asserts `beforeSend` redacts `patient_reason`, `email`, `phone`, `message`.
+- **Sentry init:** `import.meta.env.PUBLIC_SENTRY_DSN` presence gates init; build must succeed with and without the var.
+- **Migration correctness:** `npm run typecheck` + `npm run test` after each path migration; `npm run lint` for the new modules.
+- **Deploy canary (operator, post-merge):** after each deploy, confirm the `deploy: <sha>` canary message appears in the Sentry project within minutes — this is the deterministic instrumentation-health signal.
+- **Context richness (operator, post-merge):** trigger a deliberate error in a preview deploy, confirm the event **carries** `requestId`/`route`/`appointmentId` (not merely that *an* event arrived).
+- **Uptime monitor (operator):** probe `/` (homepage) and `/api/health` (lightweight, no deps, no query params). **Do NOT probe `/api/availability`** — it requires `mode`+`duration` query params (bare GET returns 400) and every request hits Google Calendar + Supabase, consuming quota.
