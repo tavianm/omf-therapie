@@ -198,9 +198,12 @@ interface SendContext {
  * classified error so the caller can apply the poison-message escape.
  */
 async function sendConfirmationEmails(appt: Appointment, ctx: SendContext): Promise<SendOutcome> {
-  const idempotencyKey = appt.stripe_payment_intent_id
-    ? `confirm:${appt.stripe_payment_intent_id}`
-    : undefined;
+  // Clés d'idempotence scoppées par destinataire (issue #68) — voir
+  // src/lib/notifications.ts pour la justification (Resend déduplique sur la
+  // valeur de la clé, pas sur un hash du body).
+  const pi = appt.stripe_payment_intent_id;
+  const patientIdempotencyKey = pi ? `confirm:patient:${pi}` : undefined;
+  const therapistIdempotencyKey = pi ? `confirm:therapist:${pi}` : undefined;
   const videoLink = appt.video_link ?? undefined;
   const icsEvent = buildICSEvent(appt);
   const googleCalendarLink = generateGoogleCalendarLink(icsEvent);
@@ -239,7 +242,7 @@ async function sendConfirmationEmails(appt: Appointment, ctx: SendContext): Prom
       }).format(new Date(appt.scheduled_at))}`,
       html: patientHtml,
     },
-    idempotencyKey ? { idempotencyKey } : undefined,
+    patientIdempotencyKey ? { idempotencyKey: patientIdempotencyKey } : undefined,
   );
 
   if (patientError) {
@@ -275,7 +278,7 @@ async function sendConfirmationEmails(appt: Appointment, ctx: SendContext): Prom
           subject: `Prépaiement reçu — ${appt.patient_name}`,
           html: therapistHtml,
         },
-        idempotencyKey ? { idempotencyKey } : undefined,
+        therapistIdempotencyKey ? { idempotencyKey: therapistIdempotencyKey } : undefined,
       );
     } catch (err: unknown) {
       // Therapist notification is best-effort; don't fail the row over it.
@@ -332,24 +335,59 @@ export default async function handler(): Promise<void> {
 
   // 3. Query stale rows — payment_received, confirmation pending, within the
   //    14-day window, soonest-first. LIMIT bounds the batch.
-  const { data: rows, error: fetchError } = await supabase
+  //    Filtre `deleted_at IS NULL` (issue #68) : un RDV soft-supprimé ne doit
+  //    pas être re-emailé — mirage du pattern send-reminders.ts:126.
+  //    Filtre `video_link NOT NULL` pour les RDV vidéo (issue #68) : le sweep
+  //    est email-only et ne crée pas l'événement calendrier. Un RDV vidéo sans
+  //    video_link signifie que le webhook n'a pas encore créé le Meet — le sweep
+  //    ne doit pas envoyer un email de confirmation sans lien de connexion.
+  const query = supabase
     .from('appointments')
     .select('*')
     .eq('status', 'payment_received')
     .is('confirmation_sent_at', null)
+    .is('deleted_at', null)
     .gt('created_at', new Date(Date.now() - CREATED_WITHIN_DAYS * 86_400_000).toISOString())
     .order('scheduled_at', { ascending: true })
     .limit(BATCH_LIMIT);
+
+  // Les RDV vidéo doivent avoir un video_link (Meet) ; les RDV en présentiel
+  // n'en ont pas besoin. On filtre via une post-filtration côté JS car Supabase
+  // ne supporte pas `OR(video_link.neq.null, appointment_mode.eq.in-person)`
+  // de façon fiable avec les chaînes de filtre. La LIMIT (25) laisse de la
+  // marge — les rows vidéo sans lien sont rares et seront rattrapées par le
+  // webhook avant le prochain sweep.
+
+  const { data: rows, error: fetchError } = await query;
 
   if (fetchError) {
     console.error('[reconcile] Supabase query failed:', fetchError.message);
     return;
   }
 
-  const appointments = (rows ?? []) as Appointment[];
-  const counts = { found: appointments.length, sent: 0, failed: 0, deadlineHit: false };
+  const allRows = (rows ?? []) as Appointment[];
+
+  // Post-filtre vidéo (issue #68) : le sweep ne peut pas envoyer un email de
+  // confirmation pour un RDV vidéo sans lien de connexion. On laisse le webhook
+  // (ou un opérateur) créer l'événement calendrier d'abord. Les rows ignorées
+  // restent confirmation_sent_at=NULL et seront rattrapées au prochain sweep
+  // une fois le video_link persisté.
+  const skippedNoVideo: string[] = [];
+  const appointments = allRows.filter((appt) => {
+    if (appt.appointment_mode === 'video' && !appt.video_link) {
+      skippedNoVideo.push(appt.id);
+      return false;
+    }
+    return true;
+  });
+  const counts = { found: appointments.length, sent: 0, failed: 0, deadlineHit: false, skippedNoVideo: skippedNoVideo.length };
 
   if (appointments.length === 0) {
+    if (skippedNoVideo.length > 0) {
+      console.warn(
+        `[reconcile] Skipped ${skippedNoVideo.length} video appointment(s) without video_link: ${skippedNoVideo.join(', ')}. The webhook must create the Meet event first.`,
+      );
+    }
     console.log(
       JSON.stringify({ ...counts, msElapsed: Date.now() - startedAt }),
     );

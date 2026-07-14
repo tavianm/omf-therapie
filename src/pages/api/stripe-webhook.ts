@@ -260,9 +260,14 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
       calendarEventCreated = true;
       if (result.meetLink) {
         videoLink = result.meetLink;
+        // Persister video_link ET google_calendar_event_id (issue #68) : le
+        // garde-fou `if (google_calendar_event_id)` en ligne 233 devient ainsi
+        // un vrai check d'idempotence. Sans cela, chaque retry recrée un
+        // événement calendrier + salle Meet (le garde était mort car on ne
+        // persistait que video_link).
         await supabaseAdmin
           .from('appointments')
-          .update({ video_link: result.meetLink })
+          .update({ video_link: result.meetLink, google_calendar_event_id: result.eventId })
           .eq('id', updatedAppt.id);
       } else {
         throw new Error('Meet non retourné par Google Calendar');
@@ -280,7 +285,7 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
         logger.error('stripe-webhook: failed to persist fallback video link', { appointmentId: updatedAppt.id }, persistErr);
       }
       try {
-        await createCalendarEvent({
+        const fallbackResult = await createCalendarEvent({
           title,
           start: start.toISOString(),
           end: end.toISOString(),
@@ -292,6 +297,11 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
           colorId: '11',
         });
         calendarEventCreated = true;
+        // Persister l'eventId du fallback (issue #68) — même raison que ci-dessus.
+        await supabaseAdmin
+          .from('appointments')
+          .update({ google_calendar_event_id: fallbackResult.eventId })
+          .eq('id', updatedAppt.id);
       } catch (calendarErr) {
         logger.error('stripe-webhook: fallback calendar event creation failed', { appointmentId: updatedAppt.id }, calendarErr);
       }
@@ -310,7 +320,7 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
     ].join('\n');
 
     try {
-      await createCalendarEvent({
+      const eventResult = await createCalendarEvent({
         title,
         start: start.toISOString(),
         end: end.toISOString(),
@@ -322,6 +332,11 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
         colorId: '11',
       });
       calendarEventCreated = true;
+      // Persister l'eventId (issue #68) — évite la duplication sur retry.
+      await supabaseAdmin
+        .from('appointments')
+        .update({ google_calendar_event_id: eventResult.eventId })
+        .eq('id', updatedAppt.id);
     } catch (calendarErr) {
       logger.error('stripe-webhook: calendar event creation failed (existing video link)', { appointmentId: updatedAppt.id }, calendarErr);
     }

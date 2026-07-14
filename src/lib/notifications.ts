@@ -7,10 +7,14 @@
  * Cela permet de partager la logique entre le webhook Astro et le sweep de
  * réconciliation Netlify.
  *
- * Idempotence L1 : les deux emails portent une clé Resend
- * `confirm:{stripe_payment_intent_id}` (~24h TTL) qui déduplique les envois
- * concurrents in-flight côté serveur. Le drapeau durable `confirmation_sent_at`
- * (L2) est géré par l'appelant, pas ici.
+ * Idempotence L1 : chaque email porte une clé Resend scoppée par destinataire —
+ * `confirm:patient:{stripe_payment_intent_id}` pour l'email patient,
+ * `confirm:therapist:{stripe_payment_intent_id}` pour la notification thérapeute
+ * (~24h TTL). Le scoping par destinataire est essentiel : Resend déduplique
+ * uniquement sur la valeur de la clé (PAS sur un hash du body), donc deux
+ * emails distincts (to/subject/body différents) partageant la même clé
+ * entraîneraient le rejet silencieux du second comme « replay ».
+ * Le drapeau durable `confirmation_sent_at` (L2) est géré par l'appelant.
  */
 
 import { createElement } from 'react';
@@ -80,8 +84,8 @@ export function buildICSEvent(appt: Appointment) {
  *
  * - Extrait verbatim du bloc inline de `stripe-webhook.ts` (lignes ~322-378).
  * - `Promise.allSettled` : un échec n'empêche pas l'autre envoi.
- * - Les deux envois portent la clé d'idempotence `confirm:{stripe_payment_intent_id}`
- *   (primitive L1, ~24h TTL Resend).
+ * - Chaque envoi porte une clé d'idempotence scoppée par destinataire
+ *   (`confirm:patient:{pi}` / `confirm:therapist:{pi}`, primitive L1, ~24h TTL Resend).
  *
  * @returns `{ patientEmailSent, therapistEmailSent }` — `true` uniquement si
  *          l'envoi correspondant a résolu avec `success: true`.
@@ -95,9 +99,13 @@ export async function buildAndSendConfirmationEmails(
   const baseUrl = options.baseUrl ?? 'https://omf-therapie.fr';
   const videoLink = options.videoLink ?? appointment.video_link ?? undefined;
   const calendarEventCreated = options.calendarEventCreated ?? false;
-  const idempotencyKey = appointment.stripe_payment_intent_id
-    ? `confirm:${appointment.stripe_payment_intent_id}`
-    : undefined;
+  // Clés d'idempotence scoppées par destinataire (issue #68) : Resend déduplique
+  // sur la valeur de la clé, pas sur un hash du body. Deux emails distincts
+  // (patient vs thérapeute) partageant la même clé entraîneraient le rejet
+  // silencieux du second. Le préfixe `patient:` / `therapist:` les isole.
+  const pi = appointment.stripe_payment_intent_id;
+  const patientIdempotencyKey = pi ? `confirm:patient:${pi}` : undefined;
+  const therapistIdempotencyKey = pi ? `confirm:therapist:${pi}` : undefined;
 
   // 1. Construire l'événement ICS + les liens calendrier (lift verbatim du webhook ~325-336)
   const apptForIcs = videoLink ? { ...appointment, video_link: videoLink } : appointment;
@@ -135,7 +143,7 @@ export async function buildAndSendConfirmationEmails(
       outlookCalendarLink,
       cabinetAddress: undefined, // vidéo uniquement
     }),
-    idempotencyKey,
+    idempotencyKey: patientIdempotencyKey,
   };
 
   // 3. Email thérapeute — skip gracieux si pas d'adminEmail ; sinon props verbatim (webhook ~362-378)
@@ -156,7 +164,7 @@ export async function buildAndSendConfirmationEmails(
           dashboardUrl: `${baseUrl}/mes-rdvs/`,
           calendarEventCreated,
         }),
-        idempotencyKey,
+        idempotencyKey: therapistIdempotencyKey,
       }
     : null;
 

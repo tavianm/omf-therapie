@@ -55,6 +55,8 @@ function makeAppointment(
     created_at: '2026-07-01T00:00:00.000Z',
     updated_at: '2026-07-01T00:00:00.000Z',
     deleted_at: null,
+    // L2 idempotency flag (issue #68) — NULL = not yet delivered.
+    confirmation_sent_at: null,
     ...overrides,
   };
 }
@@ -72,8 +74,10 @@ beforeEach(() => {
 });
 
 describe('buildAndSendConfirmationEmails — idempotency key', () => {
-  it('passes idempotency key `confirm:{stripe_payment_intent_id}` to both emails', async () => {
-    // Arrange
+  it('passes recipient-scoped idempotency keys to patient and therapist emails', async () => {
+    // Arrange — issue #68 fix: keys MUST be scoped per recipient. Resend
+    // deduplicates on key value (not body hash), so a shared key would
+    // silently drop the second email as a "replay."
     const sendFn = createSendFn();
     const appointment = makeAppointment({ stripe_payment_intent_id: 'pi_test_123' });
     const options: BuildAndSendOptions = {
@@ -84,11 +88,29 @@ describe('buildAndSendConfirmationEmails — idempotency key', () => {
     // Act
     await buildAndSendConfirmationEmails(appointment, options);
 
-    // Assert — two sends, both carrying the derived idempotency key
+    // Assert — two sends, each with a recipient-scoped key
     expect(sendFn).toHaveBeenCalledTimes(2);
     const [patientCall, therapistCall] = sendFn.mock.calls;
-    expect(patientCall[0].idempotencyKey).toBe('confirm:pi_test_123');
-    expect(therapistCall[0].idempotencyKey).toBe('confirm:pi_test_123');
+    expect(patientCall[0].idempotencyKey).toBe('confirm:patient:pi_test_123');
+    expect(therapistCall[0].idempotencyKey).toBe('confirm:therapist:pi_test_123');
+  });
+
+  it('uses distinct keys for patient and therapist (key-collision guard)', async () => {
+    // Arrange — falsification check: if the recipient prefix were removed,
+    // these two keys would be equal and the test would fail.
+    const sendFn = createSendFn();
+    const appointment = makeAppointment({ stripe_payment_intent_id: 'pi_test_456' });
+    const options: BuildAndSendOptions = {
+      sendFn,
+      adminEmail: 'therapeute@example.com',
+    };
+
+    // Act
+    await buildAndSendConfirmationEmails(appointment, options);
+
+    // Assert
+    const [patientCall, therapistCall] = sendFn.mock.calls;
+    expect(patientCall[0].idempotencyKey).not.toBe(therapistCall[0].idempotencyKey);
   });
 
   it('omits the idempotency key (undefined) when stripe_payment_intent_id is null', async () => {
@@ -159,5 +181,30 @@ describe('buildAndSendConfirmationEmails — result aggregation', () => {
 
     // Assert — partial success reflected, no throw propagated.
     expect(result).toEqual({ patientEmailSent: false, therapistEmailSent: true });
+  });
+
+  it('returns patientEmailSent: false when sendFn resolves with {success: false} (not a throw)', async () => {
+    // Arrange — issue #68 review: the real sendEmail returns {success:false}
+    // on a permanent Resend 4xx WITHOUT throwing. The guard
+    // `results[0].value?.success === true` must catch this. If the `=== true`
+    // were deleted, this test would fail (patientEmailSent would be true).
+    // This is the falsification test for the guard.
+    const sendFn = createSendFn();
+    sendFn
+      .mockResolvedValueOnce({ success: false, error: 'validation_failed' })
+      .mockResolvedValueOnce({ success: true, id: 're_789' });
+    const appointment = makeAppointment();
+    const options: BuildAndSendOptions = {
+      sendFn,
+      adminEmail: 'therapeute@example.com',
+    };
+
+    // Act
+    const result = await buildAndSendConfirmationEmails(appointment, options);
+
+    // Assert — patient send "succeeded" (resolved) but returned success:false.
+    // The guard must detect this so confirmation_sent_at is NOT set.
+    expect(result.patientEmailSent).toBe(false);
+    expect(result.therapistEmailSent).toBe(true);
   });
 });
