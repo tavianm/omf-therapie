@@ -14,7 +14,9 @@
 
 import { Resend } from 'resend';
 import { render } from '@react-email/render';
-import nodemailer from 'nodemailer';
+// nodemailer 9 + @types/nodemailer 8 dropped the default export — use the
+// named `createTransport` export instead of `import nodemailer from 'nodemailer'`.
+import { createTransport as createSmtpTransport } from 'nodemailer';
 import type { ReactElement } from 'react';
 import { supabaseAdmin } from './supabase';
 
@@ -27,7 +29,7 @@ const smtpPort = Number((import.meta.env.SMTP_PORT as string | undefined) ?? 102
 
 /** Nodemailer transport — non-null only when SMTP_HOST is set */
 const smtpTransport = smtpHost
-  ? nodemailer.createTransport({ host: smtpHost, port: smtpPort, secure: false })
+  ? createSmtpTransport({ host: smtpHost, port: smtpPort, secure: false })
   : null;
 
 if (smtpTransport) {
