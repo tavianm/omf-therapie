@@ -1,0 +1,29 @@
+version: 2
+# Dependency update automation. Added in #95 alongside the safe-batch bump.
+# Groups keep dev/prod dependencies separate and bundle major-version bumps
+# into a single PR, so coordinated upgrades (e.g. React 19 + framer-motion 12)
+# land together instead of as split, mid-bump PRs.
+updates:
+  # npm — application dependencies (src/) and devDependencies (tooling).
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        dependency-type: development
+      production-dependencies:
+        dependency-type: production
+    commit-message:
+      prefix: "chore(deps)"
+
+  # GitHub Actions — keep actions/checkout, actions/setup-node, etc. current.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "chore(ci)"

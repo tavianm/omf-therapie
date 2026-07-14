@@ -11,7 +11,7 @@
   directory = "netlify/functions"
 
 [build.environment]
-  NODE_VERSION = "20"
+  NODE_VERSION = "22"
   # ---------------------------------------------------------------------------
   # Variables d'environnement requises
   # (à configurer dans le dashboard Netlify — NE PAS committer de valeurs ici)
