@@ -62,6 +62,7 @@ Format `DATABASE_URL` (pooler Supavisor, recommandé en serverless) : `postgres:
 Pour vérifier le certificat TLS du serveur Supabase (et ne PAS accepter aveuglément tout certificat), le `pg.Pool` de BetterAuth est configuré avec `ssl: { ca, rejectUnauthorized: true }`. Le certificat racine doit être fourni via la variable `SUPABASE_CA_CERT`.
 
 - **Récupération** : Supabase Dashboard → *Database* → *Connection string* → *SSL* / « Root certificate » → fichier `prod-ca-2021.crt` (certificat racine public Supabase — ce n'est **pas** un secret).
+  > ⚠️ **Pooler vs direct** : `prod-ca-2021.crt` est le certificat racine de la connexion **directe** (`db.<ref>.supabase.co:5432`). Le pooler Supavisor (`aws-0-…pooler.supabase.com:6543`) est une terminaison TLS distincte qui peut présenter une chaîne **différente** (souvent signée par une CA publique). L'étape 4 du runbook ci-dessous est donc une **porte obligatoire** : si le login échoue en TLS avec `prod-ca-2021.crt` sur le pooler, télécharger le certificat racine du pooler depuis le Dashboard (onglet Connection pooling → SSL) OU retirer le `ca` épinglé et s'appuyer sur le trust store système + `rejectUnauthorized: true` (le certificat pooler est signé par une CA publique, donc vérifié par les racines Mozilla).
 - **Format** : coller le **PEM multiline littéral** tel quel (vraies nouvelles lignes, pas de `\n` échappés), ex. :
   ```
   -----BEGIN CERTIFICATE-----
@@ -79,7 +80,7 @@ Pour vérifier le certificat TLS du serveur Supabase (et ne PAS accepter aveugl�
 1. Télécharger `prod-ca-2021.crt` (Supabase Dashboard → Database → Connection string → SSL → Root certificate).
 2. Coller le contenu PEM dans la variable Netlify `SUPABASE_CA_CERT`, scope **production**.
 3. Répéter pour le scope **deploy-preview** (projet Supabase staging — même certificat racine).
-4. Lancer un déploiement de preview et vérifier qu'un login réussit (Function logs sans erreur TLS).
+4. **PORTE OBLIGATOIRE** : lancer un déploiement de preview et vérifier qu'un login réussit (Function logs sans erreur TLS). Si échec TLS, le pooler présente une chaîne différente — voir la note « Pooler vs direct » ci-dessus et adapter le certificat avant de continuer.
 5. Merger le code de la PR #73.
 6. Surveiller pendant 24 h : logs Netlify Functions (erreurs `SUPABASE_CA_CERT` / TLS) + Supabase → Database → Connection metrics (pas d'erreurs de limite de connexion directe).
 

@@ -16,8 +16,8 @@
   # SUPABASE_DATABASE_URL         — URL REST du projet Supabase (differ prod/staging)
   # SUPABASE_ANON_KEY             — Clé publique Supabase (differ prod/staging)
   # SUPABASE_SERVICE_ROLE_KEY     — Clé service_role Supabase (differ prod/staging)
-  # DATABASE_URL                  — Connexion PostgreSQL directe pour BetterAuth (differ prod/staging)
-  # SUPABASE_CA_CERT              — Certificat racine Supabase (PEM) pour vérification TLS (differ prod/staging)
+  # DATABASE_URL                  — Connexion PostgreSQL (pooler Supavisor recommandé, alternative directe) pour BetterAuth (differ prod/staging)
+  # SUPABASE_CA_CERT              — Certificat racine Supabase (PEM) pour vérification TLS (même certificat prod/staging ; scope par contexte requis)
   #
   # BETTER_AUTH_SECRET            — Secret de signature Better Auth
   # BETTER_AUTH_URL               — URL publique du site (differ prod/staging)
