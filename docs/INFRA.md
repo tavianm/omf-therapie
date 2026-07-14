@@ -55,7 +55,33 @@ Cela crée :
 | `SUPABASE_SERVICE_ROLE_KEY` | Settings → API → **service_role** (anciens projets) ou **Secret key** `sb_secret_…` (nouveaux projets) — ⚠️ confidentielle |
 | `DATABASE_URL` | Settings → **Database** → Connection string → URI (mode `Transaction` ou `Session`) |
 
-Format `DATABASE_URL` : `postgresql://postgres:[password]@db.<ref>.supabase.co:5432/postgres?sslmode=require`
+Format `DATABASE_URL` (pooler Supavisor, recommandé en serverless) : `postgres://postgres.[ref]:[password]@aws-0-eu-west-3.pooler.supabase.com:6543/postgres`
+
+### Vérification TLS (`SUPABASE_CA_CERT`)
+
+Pour vérifier le certificat TLS du serveur Supabase (et ne PAS accepter aveuglément tout certificat), le `pg.Pool` de BetterAuth est configuré avec `ssl: { ca, rejectUnauthorized: true }`. Le certificat racine doit être fourni via la variable `SUPABASE_CA_CERT`.
+
+- **Récupération** : Supabase Dashboard → *Database* → *Connection string* → *SSL* / « Root certificate » → fichier `prod-ca-2021.crt` (certificat racine public Supabase — ce n'est **pas** un secret).
+- **Format** : coller le **PEM multiline littéral** tel quel (vraies nouvelles lignes, pas de `\n` échappés), ex. :
+  ```
+  -----BEGIN CERTIFICATE-----
+  MIID...ligne 1...
+  ...lignes suivantes...
+  -----END CERTIFICATE-----
+  ```
+- **Configuration Netlify** : `Site settings → Environment variables → Add variable → SUPABASE_CA_CERT`, avec un scope **par contexte** (production **et** deploy-preview), car les projets Supabase prod et staging partagent le même certificat racine mais la variable doit exister dans les deux scopes.
+- **Mode transactionnel sécurisé** : le pooler Supavisor (`:6543`, mode transaction) désactive les prepared statements nommés. BetterAuth/Kysely utilise des statements **non nommés** → aucune collision Supavisor. Safe.
+
+#### Runbook de déploiement (ordre obligatoire)
+
+⚠️ `SUPABASE_CA_CERT` doit être défini **avant** le merge du code, sinon le pool échoue en fail-closed (AC7 — erreur au chargement du module) et toutes les connexions auth renvoient 5xx.
+
+1. Télécharger `prod-ca-2021.crt` (Supabase Dashboard → Database → Connection string → SSL → Root certificate).
+2. Coller le contenu PEM dans la variable Netlify `SUPABASE_CA_CERT`, scope **production**.
+3. Répéter pour le scope **deploy-preview** (projet Supabase staging — même certificat racine).
+4. Lancer un déploiement de preview et vérifier qu'un login réussit (Function logs sans erreur TLS).
+5. Merger le code de la PR #73.
+6. Surveiller pendant 24 h : logs Netlify Functions (erreurs `SUPABASE_CA_CERT` / TLS) + Supabase → Database → Connection metrics (pas d'erreurs de limite de connexion directe).
 
 ---
 

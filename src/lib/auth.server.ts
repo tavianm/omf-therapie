@@ -12,11 +12,32 @@ import { Pool } from 'pg';
 // Pool PostgreSQL partagé (BetterAuth + hook anti-inscription)
 // ---------------------------------------------------------------------------
 
+const databaseUrl = import.meta.env.DATABASE_URL;
+const isLocal = databaseUrl?.includes('localhost') || databaseUrl?.includes('127.0.0.1');
+
 export const pool = new Pool({
-  connectionString: import.meta.env.DATABASE_URL,
-  ssl: import.meta.env.DATABASE_URL?.includes('localhost') || import.meta.env.DATABASE_URL?.includes('127.0.0.1')
+  connectionString: databaseUrl,
+  ssl: isLocal
     ? false
-    : { rejectUnauthorized: false },
+    : (() => {
+        const ca = import.meta.env.SUPABASE_CA_CERT;
+        if (!ca) {
+          // AC7 fail-closed: refuse to start the pool rather than silently downgrading
+          // to the default Mozilla CA bundle. Node treats `ca: undefined` as "omitted"
+          // (falls back to public roots), so returning it would NOT fail the handshake —
+          // throwing at module load makes a misconfigured deploy 5xx immediately and
+          // diagnosably. Required on this patient-data (RGPD) path.
+          const message =
+            'SUPABASE_CA_CERT is not set — cannot enable TLS verification on the DB pool. ' +
+            'Set the Supabase root CA in the Netlify dashboard (per-env: production + deploy-preview).';
+          console.error(message);
+          throw new Error(message);
+        }
+        return { ca, rejectUnauthorized: true };
+      })(),
+  max: 2,
+  idleTimeoutMillis: 10_000,
+  connectionTimeoutMillis: 5_000,
 });
 
 // ---------------------------------------------------------------------------
