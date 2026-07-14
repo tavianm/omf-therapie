@@ -185,10 +185,12 @@ describe('buildAndSendConfirmationEmails — result aggregation', () => {
 
   it('returns patientEmailSent: false when sendFn resolves with {success: false} (not a throw)', async () => {
     // Arrange — issue #68 review: the real sendEmail returns {success:false}
-    // on a permanent Resend 4xx WITHOUT throwing. The guard
-    // `results[0].value?.success === true` must catch this. If the `=== true`
-    // were deleted, this test would fail (patientEmailSent would be true).
-    // This is the falsification test for the guard.
+    // on a permanent Resend 4xx WITHOUT throwing (sendEmailViaResend at
+    // resend.ts:~317). The guard `results[0].value?.success === true` must
+    // distinguish a *fulfilled* send from a *successful* one. Without this
+    // test, a resolved {success:false} would be indistinguishable from
+    // success, and confirmation_sent_at would be set despite the email
+    // never landing — the exact bug this PR fixes.
     const sendFn = createSendFn();
     sendFn
       .mockResolvedValueOnce({ success: false, error: 'validation_failed' })
@@ -202,9 +204,33 @@ describe('buildAndSendConfirmationEmails — result aggregation', () => {
     // Act
     const result = await buildAndSendConfirmationEmails(appointment, options);
 
-    // Assert — patient send "succeeded" (resolved) but returned success:false.
+    // Assert — patient send resolved (not rejected) but returned success:false.
     // The guard must detect this so confirmation_sent_at is NOT set.
     expect(result.patientEmailSent).toBe(false);
     expect(result.therapistEmailSent).toBe(true);
+  });
+
+  it('falsification: patientEmailSent stays false for a truthy-non-true success value', async () => {
+    // Arrange — this is the falsification test for the `=== true` guard.
+    // If the guard were `value?.success` (truthy check) instead of
+    // `value?.success === true` (strict boolean), a truthy non-true value
+    // (e.g. the string "ok") would bypass the guard and set patientEmailSent
+    // to truthy. With `=== true`, the string "ok" yields false correctly.
+    // Deleting `=== true` makes this test FAIL.
+    const sendFn = createSendFn();
+    // @ts-expect-error — deliberately malformed result to test the guard
+    sendFn.mockResolvedValueOnce({ success: 'ok' });
+    sendFn.mockResolvedValueOnce({ success: true, id: 're_000' });
+    const appointment = makeAppointment();
+    const options: BuildAndSendOptions = {
+      sendFn,
+      adminEmail: 'therapeute@example.com',
+    };
+
+    // Act
+    const result = await buildAndSendConfirmationEmails(appointment, options);
+
+    // Assert — "ok" is truthy but not === true, so patientEmailSent must be false.
+    expect(result.patientEmailSent).toBe(false);
   });
 });
