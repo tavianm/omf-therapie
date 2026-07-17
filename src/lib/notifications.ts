@@ -49,7 +49,9 @@ export interface BuildAndSendOptions {
   sendFn?: typeof sendEmail;
   /** Email admin (le webhook lit la var d'env Astro ADMIN_EMAIL ; le sweep passe process.env.ADMIN_EMAIL). */
   adminEmail?: string;
-  /** URL de base pour le jeton d'invitation .ics + le lien tableau de bord (le webhook lit `BETTER_AUTH_URL`). */
+  /** URL de base pour le jeton d'invitation .ics + le lien tableau de bord.
+   *  En prod, l'appelant DOIT résoudre `BETTER_AUTH_URL ?? SITE_URL` et le passer.
+   *  Le fallback codé en dur n'est qu'un filet de sécurité pour les tests. */
   baseUrl?: string;
 }
 
@@ -96,6 +98,9 @@ export async function buildAndSendConfirmationEmails(
   options: BuildAndSendOptions = {},
 ): Promise<SendConfirmationsResult> {
   const send = options.sendFn ?? sendEmail;
+  // baseUrl : les appelants de production (webhook, sweep) DOIVENT passer
+  // `BETTER_AUTH_URL ?? SITE_URL`. Ce fallback codé en dur n'est qu'un filet
+  // de sécurité pour les tests — ne pas y compter en prod (issue #68 review).
   const baseUrl = options.baseUrl ?? 'https://omf-therapie.fr';
   const videoLink = options.videoLink ?? appointment.video_link ?? undefined;
   const calendarEventCreated = options.calendarEventCreated ?? false;

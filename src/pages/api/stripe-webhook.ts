@@ -265,10 +265,13 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
         // un vrai check d'idempotence. Sans cela, chaque retry recrée un
         // événement calendrier + salle Meet (le garde était mort car on ne
         // persistait que video_link).
-        await supabaseAdmin
+        const { error: persistMeetErr } = await supabaseAdmin
           .from('appointments')
           .update({ video_link: result.meetLink, google_calendar_event_id: result.eventId })
           .eq('id', updatedAppt.id);
+        if (persistMeetErr) {
+          console.error('[stripe-webhook] Échec persistance google_calendar_event_id ( Meet):', persistMeetErr);
+        }
       } else {
         throw new Error('Meet non retourné par Google Calendar');
       }
@@ -298,10 +301,13 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
         });
         calendarEventCreated = true;
         // Persister l'eventId du fallback (issue #68) — même raison que ci-dessus.
-        await supabaseAdmin
+        const { error: persistFallbackErr } = await supabaseAdmin
           .from('appointments')
           .update({ google_calendar_event_id: fallbackResult.eventId })
           .eq('id', updatedAppt.id);
+        if (persistFallbackErr) {
+          console.error('[stripe-webhook] Échec persistance google_calendar_event_id (fallback):', persistFallbackErr);
+        }
       } catch (calendarErr) {
         logger.error('stripe-webhook: fallback calendar event creation failed', { appointmentId: updatedAppt.id }, calendarErr);
       }
@@ -333,10 +339,13 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
       });
       calendarEventCreated = true;
       // Persister l'eventId (issue #68) — évite la duplication sur retry.
-      await supabaseAdmin
+      const { error: persistEventErr } = await supabaseAdmin
         .from('appointments')
         .update({ google_calendar_event_id: eventResult.eventId })
         .eq('id', updatedAppt.id);
+      if (persistEventErr) {
+        console.error('[stripe-webhook] Échec persistance google_calendar_event_id (event):', persistEventErr);
+      }
     } catch (calendarErr) {
       logger.error('stripe-webhook: calendar event creation failed (existing video link)', { appointmentId: updatedAppt.id }, calendarErr);
     }

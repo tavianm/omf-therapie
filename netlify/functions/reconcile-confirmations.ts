@@ -136,8 +136,11 @@ function isRetryableResendError(error: ResendApiError | null | undefined): boole
  * Builds the signed .ics invite token (HMAC-SHA256) using process.env.
  * Local replica of `src/lib/secure-links.ts#createSecureLinkToken` — that
  * module reads `import.meta.env.BETTER_AUTH_SECRET` and so is not importable
- * here. The output MUST be byte-identical to the app's signer so the
- * `/api/calendar/invite/:id` endpoint accepts the token.
+ * here. Le token vérifie sous la même clé HMAC que le signeur de l'app, donc
+ * le `/api/calendar/invite/:id` l'accepte. NB : l'`exp` dépend de l'horloge
+ * murale, donc la « byte-identité » stricte est impossible — mais la forme du
+ * payload (clés + structure) est alignée verbatim sur l'app, y compris
+ * l'émission conditionnelle du nonce (`...(nonce ? { n: nonce } : {})`).
  */
 function createInviteToken(appointmentId: string, nonce: string, secret: string): string {
   const payload = {
@@ -145,7 +148,7 @@ function createInviteToken(appointmentId: string, nonce: string, secret: string)
     p: 'ics-invite',
     aid: appointmentId,
     exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 180, // 180 days
-    n: nonce,
+    ...(nonce ? { n: nonce } : {}),
   };
   const payloadEncoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
   const signature = createHmac('sha256', secret).update(payloadEncoded).digest('base64url');

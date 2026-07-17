@@ -2,6 +2,11 @@
 -- Migration 010 — Uniqueness on appointments.stripe_payment_intent_id
 -- Issue #68 (T1): prevent duplicate payment rows on dual-event delivery.
 --
+-- Numérotation : numérotée 010 (pas 009) car main a fusionné 008_credits après
+-- le point de branche ; 009 est intentionnellement réservé/sauté — voir le
+-- commit de plan 79efca1. Supabase suit les migrations par nom de fichier,
+-- donc le saut est inoffensif à l'application.
+--
 -- Stripe can deliver payment_intent.succeeded and checkout.session.completed
 -- for the same intent in quick succession. Without a uniqueness constraint,
 -- dual-event delivery can create duplicate payment rows.

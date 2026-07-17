@@ -115,6 +115,10 @@ function isRetryableResendError(error: ResendApiError | null | undefined): boole
   if (!error) return false;
   const status = error.statusCode ?? null;
   if (status === null || status >= 500) return true;
+  // 429 (rate limit) est retryable malgré être un 4xx — la limite est transitoire.
+  // Aligné avec le prédicat miroir dans netlify/functions/reconcile-confirmations.ts
+  // (issue #68 review : les deux chemins webhook + sweep doivent s'accorder).
+  if (status === 429) return true;
   return error.name === 'application_error';
 }
 
