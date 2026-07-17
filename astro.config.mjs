@@ -31,6 +31,11 @@ export default defineConfig({
             'react-vendor': ['react', 'react-dom'],
             'motion': ['framer-motion'],
             'ui': ['lucide-react'],
+            // Keep Sentry out of the eager bundle — it's dynamically imported
+            // from Layout.astro only when PUBLIC_SENTRY_DSN is set, so most
+            // visitors never pay the cost. Manual chunking makes the dynamic
+            // import deterministic and cacheable across deploys.
+            'sentry': ['@sentry/browser'],
           },
         },
       },

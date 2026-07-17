@@ -194,7 +194,7 @@ Ajouter dans *Site settings → Environment variables*. Pour les variables qui d
 
 ### Cron de rappels J-1
 
-La fonction `netlify/functions/send-reminders.ts` se déclenche **automatiquement à 08h00 UTC** (09h00 / 10h00 heure de Paris selon DST) — aucune configuration manuelle requise, Netlify lit le `schedule: '0 8 * * *'` déclaré dans le code.
+La fonction `netlify/functions/send-reminders.ts` se déclenche **automatiquement à 18h00 UTC** (19h00 / 20h00 heure de Paris selon DST) — aucune configuration manuelle requise, Netlify lit le `schedule: '0 18 * * *'` déclaré dans le code (const partagée avec le monitor Sentry — voir §7).
 
 ### Build settings
 
@@ -203,6 +203,95 @@ Build command  : npm run build
 Publish dir    : dist
 Node version   : 20
 ```
+
+---
+
+## 7. Observabilité (Sentry + uptime monitoring)
+
+Cette section couvre l'instrumentation error tracking + structured logging
+ajoutée dans l'issue #75. Shape 2 : `@sentry/node` (server) + `@sentry/browser`
+(client) câblés manuellement (pas `@sentry/astro` — risque de compatibilité
+avec l'adaptateur Netlify).
+
+### 7.1 Création du projet Sentry
+
+1. Sur [sentry.io](https://sentry.io), créer un projet **Node.js** pour le
+   server (`omf-therapie-server`).
+2. Créer un second projet **Browser JavaScript** pour le client
+   (`omf-therapie-client`) — OU réutiliser le même projet (DSN unique). La
+   séparation permet de filtrer les erreurs navigateur vs serveur.
+3. Créer un projet **Node.js** séparé pour le staging
+   (`omf-therapie-server-staging`) — évite que les erreurs de
+   `deploy-preview` ne polluent le project prod.
+
+### 7.2 Récupération du DSN
+
+Dans **Project Settings → Client Keys (DSN)**, copier le DSN. Il s'agit d'une
+clé publique (safe to expose) — le préfixe `PUBLIC_` permet à Astro de
+l'exposer côté client (mirroir de `PUBLIC_GA4_ID`).
+
+### 7.3 Configuration Netlify (production)
+
+Dans **Site settings → Environment variables**, scope `Production` :
+
+| Variable | Valeur |
+|----------|--------|
+| `PUBLIC_SENTRY_DSN` | `https://<key>@o<orgId>.ingest.us.sentry.io/<projectId>` |
+
+### 7.4 Configuration Netlify (deploy-preview / staging)
+
+Scope `Deploy previews` :
+
+| Variable | Valeur |
+|----------|--------|
+| `PUBLIC_SENTRY_DSN` | DSN du projet staging (§7.1 étape 3) |
+
+Quand `PUBLIC_SENTRY_DSN` est absent (ex : dev local), le SDK reste inerte —
+le logger dégrade vers `console.*` uniquement.
+
+### 7.5 Monitors Sentry (cron check-ins)
+
+Les cron functions sont enveloppées par `Sentry.withMonitor()`. Dans Sentry :
+
+1. **Alerts → Monitors** : vérifier que `send-reminders` (crontab
+   `0 18 * * *`, checkInMargin 5 min) et `calendar-token-heartbeat` (crontab
+   `0 0 * * 0`, checkInMargin 5 min) apparaissent après le premier
+   déclenchement.
+2. Configurer une alerte email/Slack sur **No check-ins** (mauvais fire) et
+   **Execution duration** (timeout).
+
+Netlify scheduler n'ayant pas d'alerting natif, les monitors Sentry sont le
+seul canal de détection des ratés.
+
+### 7.6 Uptime monitoring (sonde externe)
+
+Configurer un service externe (Better Stack / UptimeRobot / Pingdom) avec deux
+sondes :
+
+| Sonde | URL | Réponse attendue | Rôle |
+|-------|-----|------------------|------|
+| `site-up` | `https://omf-therapie.fr/` | 200 | Détecte un build cassé ou une panne static |
+| `runtime-up` | `https://omf-therapie.fr/api/health` | 200 `{ok:true}` | Détecte un runtime serverless cassé (la route n'a aucune dépendance — pas de Supabase/Google) |
+
+Interval recommandé : 5 min. Alert email : `ADMIN_EMAIL`. Documenter le vendor
+retenu dans ce tableau (les deux sont interchangeables).
+
+### 7.7 Dépendance CSP
+
+L'enveloppe Sentry est POSTée vers `https://o<orgId>.ingest.us.sentry.io`.
+Cette hôte à 3 labels **n'est pas** couverte par `*.sentry.io` (CSP ne match
+qu'un seul label DNS) — `netlify.toml` allowliste l'hôte exacte. Alternative :
+configurer `tunnel` dans `Sentry.init` (route `/sentry-tunnel/` locale) pour
+tout ramener sous `connect-src 'self'`.
+
+### 7.8 Vérification post-déploiement (canary)
+
+Après chaque déploiement, vérifier dans Sentry qu'un message
+`deploy: <git-sha>` apparaît dans les **5 minutes** suivant le deploy. Ce
+canary est émis une fois par cold start (server via `emitDeployCanary()`,
+client via `captureMessage` dans `Layout.astro`). Son absence signifie que
+l'instrumentation est cassée (DSN mauvais, CSP bloquante, SDK non chargé) —
+à distinguer d'un site sain mais silencieux.
 
 ---
 

@@ -69,6 +69,61 @@ const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
     <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
     <link rel="manifest" href="/assets/site.webmanifest" />
 
+    {/* Sentry browser SDK — error tracking.
+        Dynamic import keeps the SDK out of the eager bundle (manualChunks also
+        groups it into a cacheable chunk). Gated on PUBLIC_SENTRY_DSN so local
+        dev and any environment without a DSN never load the SDK. PII scrubbing
+        mirrors src/lib/sentry.server.ts scrubPii (kept in sync by hand — the
+        client cannot import the server module). */}
+    <script is:inline define:vars={{ sentryDsn: import.meta.env.PUBLIC_SENTRY_DSN, commitRef: import.meta.env.COMMIT_REF }}>
+      if (sentryDsn) {
+        var PII_KEYS = ['patient_reason', 'patientReason', 'email', 'phone', 'message', 'notes'];
+        function isRecord(v) { return v && typeof v === 'object' && !Array.isArray(v); }
+        function redactDeep(value) {
+          if (Array.isArray(value)) return value.map(redactDeep);
+          if (isRecord(value)) {
+            var clone = {};
+            for (var key in value) {
+              if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+              clone[key] = PII_KEYS.indexOf(key) !== -1 ? '[REDACTED]' : redactDeep(value[key]);
+            }
+            return clone;
+          }
+          return value;
+        }
+        import('@sentry/browser').then(function (Sentry) {
+          Sentry.init({
+            dsn: sentryDsn,
+            environment: location.hostname === 'omf-therapie.fr' ? 'production' : 'staging',
+            beforeSend: function (event) {
+              if (event.request && typeof event.request.data === 'string') {
+                try { event.request.data = JSON.stringify(redactDeep(JSON.parse(event.request.data))); }
+                catch (e) { /* malformed body — leave as-is */ }
+              }
+              if (event.extra) event.extra = redactDeep(event.extra);
+              if (event.breadcrumbs) {
+                event.breadcrumbs = event.breadcrumbs.map(function (crumb) {
+                  if (isRecord(crumb.data)) {
+                    var data = {};
+                    for (var k in crumb.data) {
+                      if (!Object.prototype.hasOwnProperty.call(crumb.data, k)) continue;
+                      data[k] = PII_KEYS.indexOf(k) !== -1 ? '[REDACTED]' : crumb.data[k];
+                    }
+                    crumb.data = data;
+                  }
+                  return crumb;
+                });
+              }
+              return event;
+            },
+          });
+          // Deploy canary: one message per page load confirms ingestion is
+          // wired. Its absence after a deploy = broken instrumentation.
+          Sentry.captureMessage('deploy: ' + (commitRef || 'unknown'));
+        });
+      }
+    </script>
+
     {import.meta.env.PROD && (
       <>
         <script is:inline>

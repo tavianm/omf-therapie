@@ -25,8 +25,25 @@ interface ImportMetaEnv {
   readonly GOOGLE_OAUTH_CLIENT_SECRET?: string;
   readonly GOOGLE_OAUTH_REFRESH_TOKEN?: string;
   readonly GOOGLE_OAUTH_REDIRECT_URI?: string;
+
+  // Sentry (observability — error tracking + structured logging).
+  // PUBLIC_ prefix so @sentry/browser can read it client-side, mirroring
+  // PUBLIC_GA4_ID. Optional: when unset the SDK stays inert (local dev and
+  // environments without monitoring degrade to console.* only).
+  readonly PUBLIC_SENTRY_DSN?: string;
 }
 
 interface ImportMeta {
   readonly env: ImportMetaEnv;
+}
+
+// Per-request locals populated by src/middleware.ts. Declared here (not in
+// .astro/types.d.ts) so middleware and API routes share a typed contract.
+declare namespace App {
+  interface Locals {
+    /** UUID v4 set by middleware — threads through to Sentry scope + logs. */
+    requestId?: string;
+    /** Route pathname (context.url.pathname) set by middleware. */
+    route?: string;
+  }
 }
