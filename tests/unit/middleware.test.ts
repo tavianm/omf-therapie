@@ -3,37 +3,38 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // `astro:middleware` is an Astro virtual module unavailable under vitest.
 // defineMiddleware just wraps the handler — we provide a passthrough that
 // calls the factory so the middleware body is exercised.
-const scope = {
-  setTag: vi.fn(),
-  clear: vi.fn(),
-};
+//
+// IMPORTANT: we do NOT mock `@/lib/sentry.server` here. The middleware's
+// warm-container PII-leak guard lives in the real `withRequestScope`'s finally
+// (`scope.clear()`). Mocking it out (with an inline reimplementation that
+// calls `scope.clear()` itself) makes the "clears the scope" assertions
+// tautological — they would still pass if the real code were broken. Instead
+// we mock only the external SDK boundary (`@sentry/node`'s `withScope`) so the
+// REAL `withRequestScope` runs and exercises its own setTag/clear contract.
+//
+// `scope` is hoisted because the `vi.mock('@sentry/node', ...)` factory runs
+// before any top-level const (vitest 4 hoisting rule).
+const { scope } = vi.hoisted(() => ({
+  scope: {
+    setTag: vi.fn(),
+    clear: vi.fn(),
+  },
+}));
 
 vi.mock('astro:middleware', () => ({
   defineMiddleware: <H>(handler: H): H => handler,
 }));
 
-vi.mock('@/lib/sentry.server', () => ({
-  initSentry: vi.fn(),
-  emitDeployCanary: vi.fn(),
+vi.mock('@sentry/node', () => ({
+  // Synchronously invoke the callback with the shared scope and RETURN its
+  // value (the promise) so `await withRequestScope(...)` resolves correctly —
+  // the real implementation relies on withScope returning the callback's value.
+  withScope: vi.fn(<T>(cb: (s: typeof scope) => T): T => cb(scope)),
+  init: vi.fn(),
   captureException: vi.fn(),
+  captureMessage: vi.fn(),
   addBreadcrumb: vi.fn(),
-  // The middleware uses withRequestScope, which internally calls Sentry.withScope
-  // and scope.setTag/clear. Re-implement it here against the shared `scope` so
-  // assertions on setTag/clear stay uniform with the real contract.
-  withRequestScope: vi.fn(
-    async <T>(
-      ctx: { locals: { requestId?: string; route?: string } },
-      fn: () => Promise<T>,
-    ): Promise<T> => {
-      if (ctx.locals.requestId) scope.setTag('requestId', ctx.locals.requestId);
-      if (ctx.locals.route) scope.setTag('route', ctx.locals.route);
-      try {
-        return await fn();
-      } finally {
-        scope.clear();
-      }
-    },
-  ),
+  flush: vi.fn(async () => true),
 }));
 
 // Import after mocks are registered.

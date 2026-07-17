@@ -294,4 +294,6 @@ async function sendReminders(): Promise<void> {
 export const config: Config = {
   /** Chaque jour à 18h00 UTC (= 19h00 hiver / 20h00 été Paris) */
   schedule: SCHEDULE,
+  // No schedule_timezone → Netlify defaults to UTC (matches Sentry monitor default).
+  // Do not add Europe/Paris here — SCHEDULE is calibrated for UTC.
 };

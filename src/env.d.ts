@@ -31,6 +31,11 @@ interface ImportMetaEnv {
   // PUBLIC_GA4_ID. Optional: when unset the SDK stays inert (local dev and
   // environments without monitoring degrade to console.* only).
   readonly PUBLIC_SENTRY_DSN?: string;
+
+  // Netlify-injected (NOT operator-configured). Undefined in local dev;
+  // the canary degrades to "deploy: unknown" when absent.
+  /** Git SHA of the deployed commit — auto-set by Netlify at build time. */
+  readonly COMMIT_REF?: string;
 }
 
 interface ImportMeta {

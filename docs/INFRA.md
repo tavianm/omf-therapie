@@ -213,6 +213,11 @@ ajoutée dans l'issue #75. Shape 2 : `@sentry/node` (server) + `@sentry/browser`
 (client) câblés manuellement (pas `@sentry/astro` — risque de compatibilité
 avec l'adaptateur Netlify).
 
+> **Ordre impératif :** projet Sentry → hôte ingest → CSP → DSN → déploiement.  
+> Suivre les étapes ci-dessous dans l'ordre numérique — ne **pas** configurer
+> `PUBLIC_SENTRY_DSN` avant d'avoir élargi le CSP, sinon la télémétrie
+> client est bloquée silencieusement au premier déploiement.
+
 ### 7.1 Création du projet Sentry
 
 1. Sur [sentry.io](https://sentry.io), créer un projet **Node.js** pour le
@@ -224,11 +229,28 @@ avec l'adaptateur Netlify).
    (`omf-therapie-server-staging`) — évite que les erreurs de
    `deploy-preview` ne polluent le project prod.
 
-### 7.2 Récupération du DSN
+Récupérer le DSN dans **Project Settings → Client Keys (DSN)** pour chaque
+projet. Il s'agit d'une clé publique (safe to expose) — le préfixe `PUBLIC_`
+permet à Astro de l'exposer côté client (mirroir de `PUBLIC_GA4_ID`).
 
-Dans **Project Settings → Client Keys (DSN)**, copier le DSN. Il s'agit d'une
-clé publique (safe to expose) — le préfixe `PUBLIC_` permet à Astro de
-l'exposer côté client (mirroir de `PUBLIC_GA4_ID`).
+### 7.2 Élargir le CSP avec l'hôte ingest exact
+
+> **⚠️ À faire AVANT de configurer `PUBLIC_SENTRY_DSN`** — sinon la
+> télémétrie client est bloquée silencieusement au premier déploiement.
+
+L'enveloppe Sentry est POSTée vers
+`https://o<orgId>.ingest.us.sentry.io`. Cette hôte à 3 labels **n'est pas**
+couverte par `*.sentry.io` (CSP ne match qu'un seul label DNS). Dans
+`netlify.toml`, ajouter l'hôte exact à `connect-src` :
+
+```
+connect-src … https://stats.g.doubleclick.net/ https://o<orgId>.ingest.us.sentry.io …
+```
+
+Le `<orgId>` provient du DSN récupéré à l'étape 7.1. Alternative : configurer
+`tunnel` dans `Sentry.init` (route `/sentry-tunnel/` locale) pour tout
+ramener sous `connect-src 'self'`. Le SDK serveur n'est pas affecté (les
+requêtes server-side bypassent le CSP navigateur).
 
 ### 7.3 Configuration Netlify (production)
 
@@ -271,20 +293,12 @@ sondes :
 | Sonde | URL | Réponse attendue | Rôle |
 |-------|-----|------------------|------|
 | `site-up` | `https://omf-therapie.fr/` | 200 | Détecte un build cassé ou une panne static |
-| `runtime-up` | `https://omf-therapie.fr/api/health` | 200 `{ok:true}` | Détecte un runtime serverless cassé (la route n'a aucune dépendance — pas de Supabase/Google) |
+| `runtime-up` | `https://omf-therapie.fr/api/health/` | 200 `{ok:true}` | Détecte un runtime serverless cassé (la route n'a aucune dépendance — pas de Supabase/Google) |
 
 Interval recommandé : 5 min. Alert email : `ADMIN_EMAIL`. Documenter le vendor
 retenu dans ce tableau (les deux sont interchangeables).
 
-### 7.7 Dépendance CSP
-
-L'enveloppe Sentry est POSTée vers `https://o<orgId>.ingest.us.sentry.io`.
-Cette hôte à 3 labels **n'est pas** couverte par `*.sentry.io` (CSP ne match
-qu'un seul label DNS) — `netlify.toml` allowliste l'hôte exacte. Alternative :
-configurer `tunnel` dans `Sentry.init` (route `/sentry-tunnel/` locale) pour
-tout ramener sous `connect-src 'self'`.
-
-### 7.8 Vérification post-déploiement (canary)
+### 7.7 Vérification post-déploiement (canary)
 
 Après chaque déploiement, vérifier dans Sentry qu'un message
 `deploy: <git-sha>` apparaît dans les **5 minutes** suivant le deploy. Ce

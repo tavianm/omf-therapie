@@ -45,6 +45,13 @@
   #                                 Préfixe PUBLIC_ requis pour exposition côté client (Astro)
   #                                 Format: https://<key>@o<orgId>.ingest.us.sentry.io/<projectId>
   #                                 Optionnel : si absent, le SDK reste inerte (logs console.* seuls)
+  #                                 Configurer DEUX scopes dans le dashboard :
+  #                                   Production → DSN projet prod
+  #                                   Deploy previews → DSN projet staging (voir INFRA.md §7.4)
+  #
+  # COMMIT_REF, CONTEXT            — Injectés automatiquement par Netlify (non configurés par l'opérateur).
+  #                                 COMMIT_REF = SHA du commit (utilisé par le canary Sentry).
+  #                                 CONTEXT = "production" | "deploy-preview" | "branch-deploy".
 
 # ---------------------------------------------------------------------------
 # Contextes de déploiement — variables non-sensibles par contexte
@@ -60,6 +67,10 @@
 # Les previews (branches + PRs) pointent vers Supabase staging
 # Les variables sensibles staging sont configurées dans le dashboard Netlify
 # avec le scope "deploy-preview"
+
+[context.deploy-preview.environment]
+# PUBLIC_SENTRY_DSN is set via the Netlify dashboard (deploy-preview scope)
+# so staging events go to a separate Sentry project. See docs/INFRA.md §7.4.
 
 [dev]
   framework = "astro"

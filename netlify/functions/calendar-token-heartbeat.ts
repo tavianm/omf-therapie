@@ -55,6 +55,8 @@ const SCHEDULE = '0 0 * * 0' as const;
 
 export const config: Config = {
   schedule: SCHEDULE,
+  // No schedule_timezone → Netlify defaults to UTC (matches Sentry monitor default).
+  // Do not add Europe/Paris here — SCHEDULE is calibrated for UTC.
 };
 
 // ---------------------------------------------------------------------------

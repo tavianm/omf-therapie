@@ -5,34 +5,42 @@
  * `import.meta.env` is unavailable. Env vars are read via `process.env`, and
  * this module cannot import from src/lib/** (server-side Astro module graph).
  *
- * The PII scrubber is duplicated here for the same reason — a shared module
- * under src/lib would not resolve at cron build time.
+ * TODO: Mirrors src/lib/pii-scrub.ts — keep in sync. Cannot share because the
+ * cron bundler doesn't resolve src/lib. (Parity test is a separate medium
+ * finding, deferred.) When updating PII_KEYS or the breadcrumb/extra walk,
+ * apply the same change to src/lib/pii-scrub.ts.
  */
 
 import * as Sentry from '@sentry/node';
 import type { Event } from '@sentry/node';
 
 const PII_KEYS = [
+  // Real appointment columns (supabase/migrations/001_init.sql)
+  'patient_name',
+  'patient_email',
+  'patient_phone',
+  'patient_postal_code',
+  'patient_city',
   'patient_reason',
+  'therapist_notes',
+  // Aliases / generic key forms (camelCase, bare)
   'patientReason',
   'email',
   'phone',
   'message',
   'notes',
+  // Operator PII (therapist/practitioner) — calendar heartbeat logs adminEmail
+  'adminEmail',
+  'admin_email',
+  // Video session link (sensitive: meeting URL)
+  'video_link',
+  'videoLink',
 ] as const;
 
 const REDACTED = '[REDACTED]';
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-function redactRecord(record: Record<string, unknown>): void {
-  for (const key of Object.keys(record)) {
-    if ((PII_KEYS as readonly string[]).includes(key)) {
-      record[key] = REDACTED;
-    }
-  }
 }
 
 function redactDeep(value: unknown): unknown {
@@ -58,7 +66,11 @@ function redactJsonString(body: string): string {
   }
 }
 
-/** PII scrubber applied to every outbound Sentry event via beforeSend. */
+/**
+ * PII scrubber applied to every outbound Sentry event via beforeSend.
+ * Breadcrumbs use the same deep walk as extra so nested forwarded fields are
+ * redacted at every depth.
+ */
 export function scrubPii(event: Event): Event {
   const next: Event = { ...event };
 
@@ -75,9 +87,7 @@ export function scrubPii(event: Event): Event {
     next.breadcrumbs = next.breadcrumbs.map((crumb) => {
       const copy = { ...crumb };
       if (isRecord(copy.data)) {
-        const data = { ...copy.data };
-        redactRecord(data);
-        copy.data = data;
+        copy.data = redactDeep(copy.data) as Record<string, unknown>;
       }
       return copy;
     });

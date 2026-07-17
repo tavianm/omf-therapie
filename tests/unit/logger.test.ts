@@ -3,13 +3,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Mock the Sentry server module so the logger never phones home and we can
 // assert on capture/breadcrumb calls in isolation. vi.hoisted runs the
 // factory before vi.mock's own hoist, so the mock fns are initialised in time.
-const { captureException, addBreadcrumb } = vi.hoisted(() => ({
+const { captureException, captureMessage, addBreadcrumb } = vi.hoisted(() => ({
   captureException: vi.fn(),
+  captureMessage: vi.fn(),
   addBreadcrumb: vi.fn(),
 }));
 
 vi.mock('@/lib/sentry.server', () => ({
   captureException,
+  captureMessage,
   addBreadcrumb,
 }));
 
@@ -20,6 +22,7 @@ let stdoutSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   captureException.mockClear();
+  captureMessage.mockClear();
   addBreadcrumb.mockClear();
   stdoutSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -100,9 +103,15 @@ describe('logger — Sentry forwarding (DSN set)', () => {
     });
   });
 
-  it('does NOT capture when level=error but no err is passed', () => {
+  it('calls captureMessage (not captureException) when level=error but no err is passed', () => {
+    // config-fatal strings ("missing STRIPE_WEBHOOK_SECRET", "refresh_token is
+    // null", "invalid_grant") are logged as bare logger.error(msg) with no err
+    // — they must still create a Sentry issue rather than vanishing into a
+    // breadcrumb.
     logger.error('noted without err');
     expect(captureException).not.toHaveBeenCalled();
+    expect(captureMessage).toHaveBeenCalledTimes(1);
+    expect(captureMessage).toHaveBeenCalledWith('noted without err', 'error');
   });
 });
 
