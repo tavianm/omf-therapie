@@ -34,7 +34,7 @@ build:
   formatter_fix_cmd: "npx eslint . --fix"
 
 testing:
-  unit: none                       # no unit test runner yet (a11y audits only)
+  unit: vitest                     # vitest run (tests/unit/**, node env)
   e2e: playwright                  # @playwright/test present
 
 hooks:
@@ -56,7 +56,7 @@ docs:
 commands:
   dev: npm run dev
   build: npm run build
-  test: npm run audit:a11y         # accessibility audit (no unit tests yet)
+  test: npm run test               # vitest run (unit tests)
   lint: npm run lint
   typecheck: npx astro check
   format: "npx eslint . --fix"
