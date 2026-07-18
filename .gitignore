@@ -40,6 +40,9 @@ audit-results.json
 # Playwright MCP snapshots
 .playwright-mcp/
 
+# ZCode agent worktrees (local checkouts, never commit)
+.claude/worktrees/
+
 # Test scripts
 test-booking.cjs
 
