@@ -1,0 +1,342 @@
+---
+title: "Plan: DB TLS verification + pg.Pool serverless tuning"
+issue: 73
+spec: artifacts/specs/73-db-tls-pool-hardening-spec.mdx
+complexity: 3/10
+tier: F-lite
+generated: 2026-07-13T22:20:00Z
+---
+
+## Summary
+
+Harden the single `pg.Pool` in `src/lib/auth.server.ts:15-20`: flip `rejectUnauthorized:false`
+→ `true` with a pinned Supabase CA, add `max:2` + short idle/connection timeouts, and steer
+the documented `DATABASE_URL` default to the Supabase pooler (`:6543`). ~6 micro-tasks across
+5 agent instances; no architectural change; existing tests unaffected (test stub uses
+`localhost`, which hits the unchanged `ssl:false` branch).
+
+## Architecture
+
+**Data flow:** [Plan #73 — Data flow: config → pool → BetterAuth → Supabase](../visuals/73-db-tls-pool-hardening-data-flow.html)
+**File map:** [Plan #73 — File × Function map](../visuals/73-db-tls-pool-hardening-file-map.html)
+
+Open locally:
+- `file:///home/gindji/projects/omf-therapie/.claude/worktrees/73-db-tls-pool-hardening/artifacts/visuals/73-db-tls-pool-hardening-data-flow.html`
+- `file:///home/gindji/projects/omf-therapie/.claude/worktrees/73-db-tls-pool-hardening/artifacts/visuals/73-db-tls-pool-hardening-file-map.html`
+
+## Bootstrap Context
+
+(No analysis artifact — F-lite. Survey: `src/lib/auth.server.ts` is the **only** `pg` consumer
+in `src/`. `src/lib/supabase.ts` is a separate HTTPS/REST layer, out of scope. `tests/unit/setup.ts:19`
+already stubs `DATABASE_URL=...localhost:5432` → the test path hits the unchanged `ssl:false`
+branch, so no test stub changes are required for `SUPABASE_CA_CERT`. BetterAuth/Kysely use
+**unnamed** prepared statements → Supavisor transaction-mode (`:6543`) is safe.)
+
+## Reference patterns
+
+- `src/lib/auth.server.ts:15-20` — the only Pool literal to edit (S1 + S2 share these lines)
+- `src/lib/supabase.ts:27-43` — existing pattern for emitting clear env-var warnings (read for
+  the AC7 fail-fast log style; keep consistent)
+- `netlify.toml:8-43` — the env-var comment block (S4 adds one line in this style)
+- `docs/INFRA.md:56-58` — the stale `?sslmode=require` example to replace (S3)
+
+## Agents
+
+| Agent instance | Tasks | Files |
+|----------------|-------|-------|
+| backend-dev-A | T1, T2 | `src/lib/auth.server.ts`, `src/env.d.ts` |
+| doc-writer-A | T3 | `.env.example`, `docs/INFRA.md` |
+| devops-A | T4 | `netlify.toml` |
+| tester-A | T5 | (verification — no source edits) |
+| security-auditor-A | T6 | (review — no source edits) |
+
+## Wave Structure
+
+3 waves, max 3 parallel agents. Elapsed ~1 wave-cycle vs ~3 sequential.
+
+| Wave | Trigger | Agents | Tasks |
+|------|---------|--------|-------|
+| 1 | start | 3 ∥ | backend-dev-A: T1 · doc-writer-A: T3 · devops-A: T4 |
+| 2 | Wave 1 done (T1) | 1 | backend-dev-A: T2 (blocked by T1 — same file/lines) |
+| 3 | Wave 2 done (T2) | 2 ∥ | tester-A: T5 · security-auditor-A: T6 |
+
+### Budget — per task
+
+| Task | Items | Class | Est. ops | Split? |
+|------|-------|-------|----------|--------|
+| T1 — SSL hardening + types | 2 files | judgmental | 5 | — |
+| T2 — Pool tuning | 1 literal edit | bounded | 2 | — |
+| T3 — Docs + runbook | 2 files | judgmental | 6 | — |
+| T4 — netlify.toml comment | 1 line | trivial | 1 | — |
+| T5 — Verify (typecheck + tests + AC7 grep) | verification | bounded | 3 | — |
+| T6 — Security review | review | judgmental | 4 | — |
+
+**Total estimated ops: 21**
+
+### Budget — per agent instance
+
+| Instance | Tasks | Σ ops | Subjects | Split? |
+|----------|-------|-------|----------|--------|
+| backend-dev-A | T1, T2 | 7 | auth, pool | — |
+| doc-writer-A | T3 | 6 | docs | — |
+| devops-A | T4 | 1 | config | — |
+| tester-A | T5 | 3 | verify | — |
+| security-auditor-A | T6 | 4 | security | — |
+
+No splits required — all instances within caps (ops ≤ 50, |tasks| ≤ 4, subjects ≤ 2).
+
+## Consistency Report
+
+**Acceptance criteria coverage:**
+
+| AC | Owner task | Status |
+|----|-----------|--------|
+| AC1 (ssl verified TLS) | T1 | covered |
+| AC2 (pool max/timeouts) | T2 | covered |
+| AC3 (.env.example pooler + docs) | T3 | covered |
+| AC4 (localhost ssl:false) | T1 | covered |
+| AC5 (env.d.ts typings) | T1 | covered |
+| AC6 (remove ?sslmode=require) | T3 | covered |
+| AC7 (fail-fast, no false fallback) | T1 + T5 (verify) + T6 (review) | covered |
+| AC8 (typecheck passes) | T5 | covered |
+| AC9 (netlify.toml comment) | T4 | covered |
+| AC10 (deploy runbook) | T3 | covered |
+| AC11 (post-deploy outcome) | — | **exempt** — post-deploy operator validation, not an implementation task |
+
+**Coverage: 10/10 implementable ACs. 1 exempt (AC11, post-deploy). 0 uncovered. 0 untraced tasks.**
+
+## Micro-Tasks
+
+### Slice S1 — SSL hardening (V1)
+
+#### T1 — Replace ssl config + add env typings — backend-dev-A — subject: auth
+
+**Files:** `src/lib/auth.server.ts` (lines 15-20), `src/env.d.ts` (lines 4-8)
+**Spec trace:** AC1, AC4, AC5, AC7
+
+Edit `src/lib/auth.server.ts` pool literal to:
+
+```ts
+const databaseUrl = import.meta.env.DATABASE_URL;
+const isLocal = databaseUrl?.includes('localhost') || databaseUrl?.includes('127.0.0.1');
+
+export const pool = new Pool({
+  connectionString: databaseUrl,
+  ssl: isLocal
+    ? false
+    : (() => {
+        const ca = import.meta.env.SUPABASE_CA_CERT;
+        if (!ca) {
+          // Fail fast — do NOT silently fall back to rejectUnauthorized:false.
+          // AC7: missing CA on a patient-data path must be loud, not insecure.
+          console.error(
+            'SUPABASE_CA_CERT is not set — cannot enable TLS verification on the DB pool. ' +
+              'Set the Supabase root CA in the Netlify dashboard (per-env: production + deploy-preview).',
+          );
+        }
+        return { ca, rejectUnauthorized: true };
+      })(),
+  max: 2,
+  idleTimeoutMillis: 10_000,
+  connectionTimeoutMillis: 5_000,
+});
+```
+
+Edit `src/env.d.ts` `ImportMetaEnv` (after line 8 `SUPABASE_SERVICE_ROLE_KEY`):
+
+```ts
+  // PostgreSQL (raw connection for BetterAuth — distinct from SUPABASE_* REST)
+  /** Connection string Supabase PostgreSQL (pooler :6543 recommandé en serverless). */
+  readonly DATABASE_URL: string;
+  /** Certificat racine Supabase (PEM multiline) pour vérification TLS. Optionnel en local. */
+  readonly SUPABASE_CA_CERT?: string;
+```
+
+**Verify command:**
+```bash
+git grep -n "rejectUnauthorized" src/lib/auth.server.ts   # → must show only rejectUnauthorized: true
+git grep -nE "rejectUnauthorized:\s*false" src/            # → must be EMPTY
+git grep -n "DATABASE_URL\|SUPABASE_CA_CERT" src/env.d.ts  # → both present
+```
+**Expected output:** first grep shows `rejectUnauthorized: true` only; second grep empty; third shows both declarations.
+**Time estimate:** 5 min
+**Difficulty:** 3
+
+---
+
+### Slice S2 — Pool tuning (V1)
+
+#### T2 — Confirm pool sizing literals — backend-dev-A — subject: pool — blockedBy: T1
+
+**Files:** `src/lib/auth.server.ts` (same Pool literal edited in T1)
+**Spec trace:** AC2
+
+T1's snippet above already includes `max: 2`, `idleTimeoutMillis: 10_000`,
+`connectionTimeoutMillis: 5_000`. This task exists to **verify** AC2 independently (the spec
+keeps S1 and S2 as separate slices; T1 writes both because they share the same literal). If T1
+landed without the sizing, add them now.
+
+**Verify command:**
+```bash
+git grep -nE "max:\s*2|idleTimeoutMillis:\s*10_000|connectionTimeoutMillis:\s*5_000" src/lib/auth.server.ts
+```
+**Expected output:** all three literals present.
+**Time estimate:** 2 min
+**Difficulty:** 1
+
+**RED-GATE (S1+S2):** `git grep -cE "rejectUnauthorized:\s*false" src/` must return `0` before Wave 3.
+
+---
+
+### Slice S3 — Docs + runbook (V1)  [P]
+
+#### T3 — Flip .env.example default + document CA + runbook — doc-writer-A — subject: docs
+
+**Files:** `.env.example` (lines 12-16), `docs/INFRA.md` (lines 56-58 + new subsection)
+**Spec trace:** AC3, AC6, AC10
+
+`.env.example` (lines 12-16) — replace with:
+
+```
+# ── BetterAuth ────────────────────────────────────────────────────────────────
+# Connexion PostgreSQL Supabase (BetterAuth + pg.Pool)
+# Pooler (recommandé en serverless) : postgres://postgres.[ref]:[password]@aws-0-eu-west-3.pooler.supabase.com:6543/postgres
+# Direct (alternative)              : postgresql://postgres:[password]@db.<ref>.supabase.co:5432/postgres
+DATABASE_URL=postgres://postgres.[ref]:[password]@aws-0-eu-west-3.pooler.supabase.com:6543/postgres
+# Certificat racine Supabase (PEM multiline, coller tel quel) pour la vérification TLS.
+# À récupérer sur Supabase Dashboard → Database → Connection string → SSL / "Root certificate".
+# Requis en production (Netlify dashboard, scope prod + deploy-preview). Optionnel en local.
+SUPABASE_CA_CERT=
+```
+
+`docs/INFRA.md` line 58 — replace `?sslmode=require` example:
+```markdown
+Format `DATABASE_URL` (pooler Supavisor, recommandé en serverless) :
+`postgres://postgres.[ref]:[password]@aws-0-eu-west-3.pooler.supabase.com:6543/postgres`
+```
+
+Add a new subsection after line 58 (e.g. `### Vérification TLS (SUPABASE_CA_CERT)`) covering:
+- where to fetch the cert (Supabase Dashboard → Database → Connection string → SSL / Root certificate, `prod-ca-2021.crt`)
+- value is the **literal multiline PEM** (paste verbatim, not escaped `\n`)
+- set in Netlify dashboard per-env (production + deploy-preview) **before** code merge
+- transaction-mode pooling is safe here (Kysely uses unnamed prepared statements — no Supavisor collision)
+- **numbered deploy runbook (AC10):** (1) download `prod-ca-2021.crt`, (2) paste PEM into Netlify env `SUPABASE_CA_CERT` for production scope, (3) repeat for deploy-preview scope, (4) verify with a preview deploy, (5) merge code, (6) monitor Function logs + Supabase connection metrics for 24h (AC11).
+
+**Verify command:**
+```bash
+git grep -n ":6543" .env.example                                    # → pooler default present
+git grep -n "SUPABASE_CA_CERT" .env.example                         # → present
+git grep -n "?sslmode=require" docs/INFRA.md                        # → EMPTY (AC6)
+git grep -ncE "^[0-9]+\." docs/INFRA.md | head                      # → numbered runbook present (manual check)
+```
+**Expected output:** pooler default + CA in `.env.example`; `?sslmode=require` gone; numbered steps visible in the new subsection.
+**Time estimate:** 6 min
+**Difficulty:** 3
+
+---
+
+### Slice S4 — Operator discovery (V1)  [P]
+
+#### T4 — Add SUPABASE_CA_CERT to netlify.toml env comment block — devops-A — subject: config
+
+**Files:** `netlify.toml` (line 19 area — env-var comment block)
+**Spec trace:** AC9
+
+After the `# DATABASE_URL` comment line (~line 19), add one line in the same comment style:
+
+```toml
+  # SUPABASE_CA_CERT             — Certificat racine Supabase (PEM) pour vérification TLS (differ prod/staging)
+```
+
+**No secret value, no `[context.*.environment]` change** — comment-only, parity with the
+existing `DATABASE_URL` enumeration.
+
+**Verify command:**
+```bash
+git grep -n "SUPABASE_CA_CERT" netlify.toml   # → the new comment line
+```
+**Expected output:** one matching line in the comment block.
+**Time estimate:** 1 min
+**Difficulty:** 1
+
+---
+
+### Verification + review (after S1+S2)
+
+#### T5 — Verify typecheck + tests + AC7 negative grep — tester-A — subject: verify — blockedBy: T1, T2
+
+**Files:** (no source edits)
+**Spec trace:** AC8 (+ confirms AC1, AC4, AC7)
+
+```bash
+npm run typecheck     # AC8 — must pass (0 new errors)
+npm run test          # existing suite must still pass (localhost branch, no CA needed)
+git grep -cE "rejectUnauthorized:\s*false" src/    # AC7 — must print 0
+git grep -n "ssl:\s*false" src/lib/auth.server.ts  # AC4 — localhost branch present
+```
+
+**Expected output:** typecheck 0 errors; tests green; the AC7 grep prints `0`; the AC4 grep shows the `isLocal ? false :` branch.
+**Time estimate:** 3 min
+**Difficulty:** 2
+
+#### T6 — Security review of final pool config — security-auditor-A — subject: security — blockedBy: T1, T2
+
+**Files:** (review `src/lib/auth.server.ts:15-20` only)
+**Spec trace:** confirms AC1, AC7
+
+Review the final Pool literal for security posture:
+1. No code path sets `rejectUnauthorized: false` for a non-localhost host (AC7 negative).
+2. The `ca` is sourced from `SUPABASE_CA_CERT` env (not hardcoded, not committed).
+3. Missing `SUPABASE_CA_CERT` logs an error AND does not downgrade to insecure (the TLS
+   handshake simply fails because `ca: undefined` + `rejectUnauthorized: true`).
+4. localhost branch is genuinely `ssl: false` with no `ca`/`rejectUnauthorized` leak.
+
+Return: pass / concerns + specific line refs. On concerns → loop back to backend-dev-A.
+**Time estimate:** 4 min
+**Difficulty:** 3
+
+---
+
+## Task Seeding Blueprint
+
+<!-- Used by /implement to seed TaskCreate calls on session start.
+     Format: T{n} | agent-instance | blockedBy | subject
+     blockedBy refs T-numbers within this list (not session task IDs).
+     Agent instances are named (tester-A/B, backend-dev-A/B/C, devops-A/B)
+     so parallel tasks map to distinct spawned agents.
+     Seed in wave order; within a wave all rows are parallel (∥). -->
+
+### Wave 1 — no deps, 3 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T1 | backend-dev-A | — | auth |
+| T3 | doc-writer-A | — | docs |
+| T4 | devops-A | — | config |
+
+### Wave 2 — after Wave 1 (T1), 1 agent
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T2 | backend-dev-A | T1 | pool |
+
+### Wave 3 — after Wave 2 (T2), 2 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T5 | tester-A | T1, T2 | verify |
+| T6 | security-auditor-A | T1, T2 | security |
+
+## Task IDs
+
+<!-- Generated by /plan. Used by /implement to resume tasks on session restart.
+     Session task IDs from the active TodoWrite list (T1–T6 = 6 micro-tasks).
+     Re-attach by matching the [Wave N] prefix + task description. -->
+
+- T1 — SSL hardening + env typings (backend-dev-A, Wave 1) — subject: auth — AC1,4,5,7
+- T2 — verify pool sizing literals (backend-dev-A, Wave 2, blockedBy T1) — subject: pool — AC2
+- T3 — .env.example pooler + docs/INFRA.md CA + runbook (doc-writer-A, Wave 1) — subject: docs — AC3,6,10
+- T4 — netlify.toml SUPABASE_CA_CERT comment (devops-A, Wave 1) — subject: config — AC9
+- T5 — typecheck + tests + AC7 grep (tester-A, Wave 3, blockedBy T1,T2) — subject: verify — AC8
+- T6 — security review of pool config (security-auditor-A, Wave 3, blockedBy T1,T2) — subject: security — AC1,7
+

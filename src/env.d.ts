@@ -7,6 +7,12 @@ interface ImportMetaEnv {
   readonly SUPABASE_ANON_KEY: string;
   readonly SUPABASE_SERVICE_ROLE_KEY: string;
 
+  // PostgreSQL (raw connection for BetterAuth — distinct from SUPABASE_* REST)
+  /** Connection string Supabase PostgreSQL (pooler :6543 recommandé en serverless). */
+  readonly DATABASE_URL: string;
+  /** Certificat racine Supabase (PEM multiline) pour vérification TLS. Optionnel en local. */
+  readonly SUPABASE_CA_CERT?: string;
+
   // BetterAuth
   /** Clé secrète aléatoire pour BetterAuth (min 32 caractères). */
   readonly BETTER_AUTH_SECRET: string;

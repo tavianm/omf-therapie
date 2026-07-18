@@ -12,11 +12,47 @@ import { Pool } from 'pg';
 // Pool PostgreSQL partagé (BetterAuth + hook anti-inscription)
 // ---------------------------------------------------------------------------
 
+const databaseUrl = import.meta.env.DATABASE_URL;
+
+// Parse the hostname (not substring-match the whole URL, which includes the
+// password) so a credential containing "localhost" can't silently disable TLS.
+const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
+function isLocalConnection(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    return localHosts.has(new URL(url).hostname);
+  } catch {
+    // Malformed connection string — treat as non-local (the pool will fail to
+    // connect for the right reasons). Don't guess insecure.
+    return false;
+  }
+}
+
+// AC7 fail-closed: refuse to start the pool rather than silently downgrading
+// to the default Mozilla CA bundle. Node treats `ca: undefined` as "omitted"
+// (falls back to public roots), so returning it would NOT fail the handshake —
+// throwing at module load makes a misconfigured deploy 5xx immediately and
+// diagnosably. Required on this patient-data (RGPD) path.
+function resolveSslConfig(): false | { ca: string; rejectUnauthorized: true } {
+  if (isLocalConnection(databaseUrl)) return false;
+  const ca = import.meta.env.SUPABASE_CA_CERT;
+  if (!ca) {
+    const message =
+      'SUPABASE_CA_CERT is not set — cannot enable TLS verification on the DB pool. ' +
+      'Set the Supabase root CA in the Netlify dashboard (per-env: production + deploy-preview).';
+    // Explicit log: the thrown stack may be truncated in Netlify Function logs.
+    console.error(message);
+    throw new Error(message);
+  }
+  return { ca, rejectUnauthorized: true };
+}
+
 export const pool = new Pool({
-  connectionString: import.meta.env.DATABASE_URL,
-  ssl: import.meta.env.DATABASE_URL?.includes('localhost') || import.meta.env.DATABASE_URL?.includes('127.0.0.1')
-    ? false
-    : { rejectUnauthorized: false },
+  connectionString: databaseUrl,
+  ssl: resolveSslConfig(),
+  max: 2,
+  idleTimeoutMillis: 10_000,
+  connectionTimeoutMillis: 5_000,
 });
 
 // ---------------------------------------------------------------------------
