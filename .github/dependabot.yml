@@ -1,8 +1,16 @@
 version: 2
-# Dependency update automation. Added in #95 alongside the safe-batch bump.
-# Groups keep dev/prod dependencies separate and bundle major-version bumps
-# into a single PR, so coordinated upgrades (e.g. React 19 + framer-motion 12)
-# land together instead of as split, mid-bump PRs.
+# Dependency update automation. Added in #95 alongside the safe-batch bump,
+# tightened to ignore semver-major npm bumps after the grouped major PRs
+# (#102 dev-deps, #103 prod-deps) failed at `npm ci` on peer-dep conflicts.
+#
+# Strategy:
+#  - npm: only patch + minor updates are proposed automatically (grouped dev/prod).
+#    Major bumps (astro 7, React 19, tailwindcss 4, TypeScript 7, eslint 10, ...)
+#    are blocked because they break peer-dep resolution and need coordinated
+#    migration work (see #95 deferred-majors list). Lift the ignore rule or run
+#    `@dependabot unignore` on a specific PR to upgrade a major deliberately.
+#  - github-actions: all updates (incl. majors) — action majors are low-risk
+#    runtime bumps that CI will reject if anything actually breaks.
 updates:
   # npm — application dependencies (src/) and devDependencies (tooling).
   - package-ecosystem: npm
@@ -16,6 +24,10 @@ updates:
         dependency-type: development
       production-dependencies:
         dependency-type: production
+    ignore:
+      # Block framework/tooling majors — they require coordinated migration
+      # (peer-dep conflicts, breaking API changes). Patch + minor still flow.
+      - update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "chore(deps)"
 
