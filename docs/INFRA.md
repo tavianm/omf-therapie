@@ -238,19 +238,27 @@ permet à Astro de l'exposer côté client (mirroir de `PUBLIC_GA4_ID`).
 > **⚠️ À faire AVANT de configurer `PUBLIC_SENTRY_DSN`** — sinon la
 > télémétrie client est bloquée silencieusement au premier déploiement.
 
-L'enveloppe Sentry est POSTée vers
-`https://o<orgId>.ingest.us.sentry.io`. Cette hôte à 3 labels **n'est pas**
-couverte par `*.sentry.io` (CSP ne match qu'un seul label DNS). Dans
-`netlify.toml`, ajouter l'hôte exact à `connect-src` :
+L'enveloppe Sentry est POSTée vers l'hôte d'ingest de la région du projet
+(ex. `https://o<orgId>.ingest.de.sentry.io` pour l'EU). Cette hôte à 3 labels
+**n'est pas** couverte par `*.sentry.io` (CSP ne match qu'un seul label DNS).
+Dans `netlify.toml`, ajouter l'hôte exact à `connect-src` :
 
 ```
-connect-src … https://stats.g.doubleclick.net/ https://o<orgId>.ingest.us.sentry.io …
+connect-src … https://stats.g.doubleclick.net/ https://o<orgId>.ingest.<region>.sentry.io …
 ```
 
-Le `<orgId>` provient du DSN récupéré à l'étape 7.1. Alternative : configurer
-`tunnel` dans `Sentry.init` (route `/sentry-tunnel/` locale) pour tout
-ramener sous `connect-src 'self'`. Le SDK serveur n'est pas affecté (les
-requêtes server-side bypassent le CSP navigateur).
+L'hôte se lit dans le DSN récupéré à l'étape 7.1 (la partie entre `@` et la
+première `/`). L'`<orgId>` est stable par org Sentry — les projets prod et
+staging d'une même org partagent le même hôte d'ingest (seuls le key et le
+projectId diffèrent, neither n'apparaît dans le CSP). Si l'org est déplacée
+vers une autre région, mettre à jour l'hôte ici ET dans `netlify.toml`.
+Alternative : configurer `tunnel` dans `Sentry.init` (route `/sentry-tunnel/`
+locale) pour tout ramener sous `connect-src 'self'`. Le SDK serveur n'est pas
+affecté (les requêtes server-side bypassent le CSP navigateur).
+
+> Pour omf-therapie, l'org est en région EU : l'hôte d'ingest est
+> `https://o4511756155617280.ingest.de.sentry.io` (déjà allowlisté dans
+> `netlify.toml`).
 
 ### 7.3 Configuration Netlify (production)
 
@@ -258,7 +266,7 @@ Dans **Site settings → Environment variables**, scope `Production` :
 
 | Variable | Valeur |
 |----------|--------|
-| `PUBLIC_SENTRY_DSN` | `https://<key>@o<orgId>.ingest.us.sentry.io/<projectId>` |
+| `PUBLIC_SENTRY_DSN` | `https://<key>@o<orgId>.ingest.<region>.sentry.io/<projectId>` (region = `us` \| `de` \| … dépend de l'org) |
 
 ### 7.4 Configuration Netlify (deploy-preview / staging)
 

@@ -43,7 +43,8 @@
   #                                 Préfixe PUBLIC_ requis pour exposition côté client (Astro)
   # PUBLIC_SENTRY_DSN             — DSN Sentry (error tracking) — differ prod/staging
   #                                 Préfixe PUBLIC_ requis pour exposition côté client (Astro)
-  #                                 Format: https://<key>@o<orgId>.ingest.us.sentry.io/<projectId>
+  #                                 Format: https://<key>@o<orgId>.ingest.<region>.sentry.io/<projectId>
+  #                                 (region = us | de | … dépend de l'org Sentry)
   #                                 Optionnel : si absent, le SDK reste inerte (logs console.* seuls)
   #                                 Configurer DEUX scopes dans le dashboard :
   #                                   Production → DSN projet prod
@@ -84,15 +85,18 @@
     Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
     # connect-src note for Sentry (#75):
-    #   The browser SDK POSTs envelopes to https://o<orgId>.ingest.us.sentry.io.
-    #   `*.sentry.io` is INSUFFICIENT — CSP wildcards match exactly one DNS
-    #   label, and the ingest host has 3 labels. After provisioning the Sentry
-    #   project (docs/INFRA.md §7.1), append the exact host to connect-src:
-    #     ... https://stats.g.doubleclick.net/ https://oNNNN.ingest.us.sentry.io ...
+    #   The browser SDK POSTs envelopes to the Sentry ingest host. The host is
+    #   region-specific (here EU: oNNNN.ingest.de.sentry.io) and has 3 DNS
+    #   labels, so `*.sentry.io` is INSUFFICIENT (CSP wildcards match exactly
+    #   one DNS label). The exact host must be allowlisted in connect-src.
+    #   The org id is stable per Sentry org, so prod and deploy-preview (same
+    #   org, different project id) share the same ingest host. If the Sentry
+    #   org is ever moved to another region, update the host here AND in
+    #   docs/INFRA.md §7.2.
     #   Alternative: set `tunnel: '/sentry-tunnel/'` in the client init and
     #   proxy the request — everything stays under connect-src 'self'. The
     #   server SDK is unaffected (server-side fetch bypasses the browser CSP).
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' blob: https://js.stripe.com https://m.stripe.com https://www.googletagmanager.com cdn-cookieyes.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.stripe.com https://*.supabase.co https://resend.com https://api.resend.com https://www.googleapis.com https://accounts.google.com https://www.google-analytics.com https://*.analytics.google.com https://region1.google-analytics.com https://www.googletagmanager.com https://stats.g.doubleclick.net/ *.cookieyes.com cdn-cookieyes.com; worker-src 'self' blob:; frame-src 'self' https://www.google.com https://maps.google.com https://js.stripe.com; frame-ancestors 'none'"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' blob: https://js.stripe.com https://m.stripe.com https://www.googletagmanager.com cdn-cookieyes.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.stripe.com https://*.supabase.co https://resend.com https://api.resend.com https://www.googleapis.com https://accounts.google.com https://www.google-analytics.com https://*.analytics.google.com https://region1.google-analytics.com https://www.googletagmanager.com https://stats.g.doubleclick.net/ https://o4511756155617280.ingest.de.sentry.io *.cookieyes.com cdn-cookieyes.com; worker-src 'self' blob:; frame-src 'self' https://www.google.com https://maps.google.com https://js.stripe.com; frame-ancestors 'none'"
 
 # Legacy section-route redirects (301 permanent)
 [[redirects]]
