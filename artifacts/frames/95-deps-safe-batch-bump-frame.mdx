@@ -1,0 +1,93 @@
+---
+title: "chore(deps): safe-batch bump — semver updates, nodemailer HIGH CVE fix, Node 22, Dependabot"
+issue: 95
+status: approved
+tier: F-lite
+date: 2026-07-13
+---
+
+## Problem
+
+The dependency tree has drifted and accumulated security debt. As of
+2026-07-13 (verified locally):
+
+- **31 outdated packages** vs latest.
+- **32 vulnerabilities** — 6 low, 24 moderate, **2 high**.
+- The 2 HIGH CVEs both live in **nodemailer** (CRLF SMTP command injection
+  via `envelope.size`/EHLO/HELO, and improper TLS cert validation in OAuth2
+  token fetch enabling credential interception).
+- **Node 20 is EOL** (April 2026) yet is pinned in `.nvmrc`, CI
+  (`actions/setup-node`), and `netlify.toml`.
+- **No Dependabot config** — drift will recur silently after this batch.
+- Last lockfile touch was #86 (2026-07-09).
+
+The cost: two HIGH-severity SMTP vulnerabilities are reachable in production
+(nodemailer is used by `src/lib/resend.ts` for transactional email), Node 20
+receives no security backports, and every future PR inherits the drift.
+
+## Scope decision: phased strategy
+
+This issue is **Wave 1 + Wave 2** of a larger dependency strategy. Framework
+majors are deliberately excluded to keep this PR low-risk and independently
+mergeable:
+
+| In scope (this issue) | Out of scope (separate issues) |
+|---|---|
+| `npm update` (semver-range bumps, 9 pkgs) | React 18 → 19 (+ framer-motion 11 → 12, @types/react) — 32 files |
+| nodemailer 7 → 9 (HIGH CVE fix, 1 file) | astro 5 → 7 (+ @astrojs/netlify, @astrojs/react) |
+| Node 20 → 22 (3 pins) | tailwindcss 3 → 4 |
+| Dependabot config | TypeScript 5.9 → 7 |
+| | eslint 9 → 10 (+ react-hooks plugin) |
+| | lucide-react 0.562 → 1.24 |
+
+## Who
+
+- **Primary:** the maintainer (Tavian) — needs a green CI, no known HIGH
+  vulns, and a Node version still receiving security patches.
+- **Secondary:** future contributors — Dependabot turns dependency hygiene
+  from a manual investigation into an automated, incremental flow.
+- **Downstream:** patients receive transactional email (confirmations,
+  reminders) through the nodemailer/Resend path that the HIGH CVEs touch.
+
+## Constraints
+
+- **No runtime regressions** in the email path (`src/lib/resend.ts`) — the
+  nodemailer 7 → 9 bump is two majors; the transport API must be verified,
+  not assumed compatible.
+- **The `overrides` block** (`"google-auth-library": "10.9.0"`) is
+  intentional (#86) and guarded by a CI step that fails if more than one
+  distinct version resolves. It must be preserved, and `npm update` must not
+  re-split the dedupe.
+- **Node pin must change in all three places atomically** — `.nvmrc`, CI
+  `actions/setup-node`, and `netlify.toml`. A partial bump breaks local/CI/deploy
+  parity.
+- **Quality gates stay green:** `npm run lint && npm run test && npm run build`.
+- **Netlify build is unaffected** by the Node bump in terms of adapter
+  compatibility (`@astrojs/netlify` 6.x supports Node 22).
+
+## Out of scope
+
+- Any major-version bump other than nodemailer (see table above).
+- React 19 migration (coordinated, touches 32 files — its own issue).
+- SHA-pinning GitHub Actions (Dependabot will manage `github-actions`
+  ecosystem updates going forward, but existing `uses:` are not re-pinned here).
+- Changes to `src/lib/*` beyond what nodemailer 9 requires.
+
+## Key risks & mitigations
+
+| Risk | Likelihood | Mitigation |
+|---|---|---|
+| nodemailer 9 transport API changed shape | Medium | Read `src/lib/resend.ts`, diff against nodemailer 9 CHANGELOG, run `npm run build` + unit tests. |
+| `npm update` re-splits `google-auth-library` | Low | Existing CI guard (`Verify google-auth-library dedupe` step) fails the build. |
+| Node 22 surfaces engine warnings in transitive deps | Low | `npm ci` + `npm run build` on Node 22 locally before PR. |
+| Semver bump pulls a transitive that breaks build | Low | `npm update` stays within declared ranges; build is the gate. |
+
+## Success looks like
+
+- `npm audit` reports **0 high** vulnerabilities (moderate/low reduced or
+  noted as out-of-scope framework majors).
+- Node 22 in `.nvmrc`, CI, `netlify.toml`.
+- `.github/dependabot.yml` exists (npm + github-actions, grouped, weekly).
+- `overrides.google-auth-library` unchanged; CI dedupe guard green.
+- `lint`, `test`, `build` all green locally and in CI.
+- One PR, CI green, linked to #95.
