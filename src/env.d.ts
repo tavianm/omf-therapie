@@ -33,9 +33,16 @@ interface ImportMetaEnv {
   readonly PUBLIC_SENTRY_DSN?: string;
 
   // Netlify-injected (NOT operator-configured). Undefined in local dev;
-  // the canary degrades to "deploy: unknown" when absent.
+  // the server-side canary degrades to "deploy: unknown" when absent.
   /** Git SHA of the deployed commit — auto-set by Netlify at build time. */
   readonly COMMIT_REF?: string;
+
+  // PUBLIC_COMMIT_REF is the client-exposed mirror of COMMIT_REF. The build
+  // command in netlify.toml prefixes it: `PUBLIC_COMMIT_REF=$COMMIT_REF npm
+  // run build`. Without the PUBLIC_ prefix Astro strips COMMIT_REF from the
+  // client bundle → the browser canary would always emit "deploy: unknown".
+  /** Client-visible git SHA (same value as COMMIT_REF). Set by the Netlify build command. */
+  readonly PUBLIC_COMMIT_REF?: string;
 }
 
 interface ImportMeta {

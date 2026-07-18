@@ -84,7 +84,7 @@ const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
       import { scrubPii } from '../lib/pii-scrub';
 
       const sentryDsn = import.meta.env.PUBLIC_SENTRY_DSN;
-      const commitRef = import.meta.env.COMMIT_REF;
+      const commitRef = import.meta.env.PUBLIC_COMMIT_REF;
 
       if (sentryDsn) {
         Sentry.init({

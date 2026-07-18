@@ -1,5 +1,10 @@
 [build]
-  command = "npm run build"
+  # PUBLIC_COMMIT_REF surfaces Netlify's auto-injected COMMIT_REF (git SHA) to
+  # the client bundle. Astro only exposes vars prefixed with PUBLIC_ to client
+  # code, so without this the browser canary emits `deploy: unknown` (the SHA
+  # never reaches the SDK). Local dev: COMMIT_REF unset → empty → fallback to
+  # 'unknown' (acceptable — no real SHA in dev).
+  command = "PUBLIC_COMMIT_REF=$COMMIT_REF npm run build"
   publish = "dist"
 
 [functions]
@@ -51,7 +56,9 @@
   #                                   Deploy previews → DSN projet staging (voir INFRA.md §7.4)
   #
   # COMMIT_REF, CONTEXT            — Injectés automatiquement par Netlify (non configurés par l'opérateur).
-  #                                 COMMIT_REF = SHA du commit (utilisé par le canary Sentry).
+  #                                 COMMIT_REF = SHA du commit (utilisé par le canary serveur).
+  #                                 PUBLIC_COMMIT_REF = même SHA, exposé au bundle client (le canary
+  #                                 browser en a besoin — Astro ne expose que les vars préfixées PUBLIC_).
   #                                 CONTEXT = "production" | "deploy-preview" | "branch-deploy".
 
 # ---------------------------------------------------------------------------
