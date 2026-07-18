@@ -11,6 +11,11 @@ version: 2
 #    `@dependabot unignore` on a specific PR to upgrade a major deliberately.
 #  - github-actions: all updates (incl. majors) — action majors are low-risk
 #    runtime bumps that CI will reject if anything actually breaks.
+#
+# NOTE: the Dependabot schema requires `dependency-name` on every `ignore`
+# entry. The wildcard "*" applies the rule to every npm dependency, which is
+# what we want for a global semver-major block (an entry with only
+# `update-types` fails config validation — see #105).
 updates:
   # npm — application dependencies (src/) and devDependencies (tooling).
   - package-ecosystem: npm
@@ -27,7 +32,10 @@ updates:
     ignore:
       # Block framework/tooling majors — they require coordinated migration
       # (peer-dep conflicts, breaking API changes). Patch + minor still flow.
-      - update-types: ["version-update:semver-major"]
+      # `dependency-name: "*"` is required by the schema (matches every npm
+      # package); an entry with only `update-types` fails validation.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "chore(deps)"
 
