@@ -1,0 +1,60 @@
+---
+title: "feat(ops): add error tracking, structured logging, and uptime monitoring"
+issue: 75
+status: approved
+tier: F-full
+date: 2026-07-13
+---
+
+## Problem
+
+Production is a black box. The application has **zero error tracking, monitoring, or alerting**: ~101 `console.*` calls across `src/pages/api/` (76) and `netlify/functions/` (25) write only to Netlify function logs, which are ephemeral and effectively unsearchable. No Sentry, Datadog, Logflare, Bugsnag, or OpenTelemetry integration exists (`grep -riE "sentry|logflare|datadog|bugsnag|opentelemetry"` → nothing).
+
+A Supabase outage, a Resend 5xx storm, a Stripe webhook timeout, or a scheduled-job failure remains **invisible until a patient complains**. The two scheduled cron jobs (`netlify/functions/send-reminders.ts` — daily 18:00 UTC; `calendar-token-heartbeat.ts` — weekly) and the booking API can fail with no operator visibility.
+
+This is **P1** because the reliability and booking-correctness work elsewhere in the audit cannot be *verified healthy* without observability. The fixes are unverifiable without a signal.
+
+## Who
+
+- **Primary:** the maintainer (Tavian) — sole operator who today learns of prod failures reactively (patient complaint) rather than proactively (alert). Needs fast diagnosis with enough context (route, requestId, appointmentId) to fix without reproducing.
+- **Secondary:** patients — whose booking failures today silently drop into the void; upstream of any reliability fix, their failed transactions need to be traceable.
+
+## Constraints
+
+- **Astro 5 SSG + Netlify adapter, `output: 'static'`** — API routes (`src/pages/api/**`) run as on-demand Netlify Functions via per-route `export const prerender = false`; standalone cron functions live in `netlify/functions/`. Any instrumentation must span both surfaces.
+- **No Astro middleware exists** — `src/middleware.ts` is absent. Request-scoped Sentry scope + requestId injection needs a *new* middleware to be created (this is the largest architectural addition).
+- **CSP header** (`netlify.toml [[headers]]`) has a strict `connect-src` whitelist — adding the client-side Sentry SDK requires a Sentry ingest (`https://*.sentry.io`) exception.
+- **No observability deps** currently (`@sentry/*`, pino, winston all absent). This is greenfield instrumentation.
+- **PII discipline already good** — no raw-body / full-row logging exists today; only `error.message` and status strings are logged. PII scrubbing config still required defensively (patient_reason, email, phone, message must never enter breadcrumbs/extras).
+- **Mono-praticien, single operator** — alert routing is email-only (no Slack channel to provision). One inbox.
+- **Node 20** pinned (`.nvmrc`, `netlify.toml`).
+
+## Out of Scope
+
+- **Full migration of all ~101 `console.*` calls** — this PR introduces the logger module and migrates the three named paths (booking, webhook, reminders + heartbeat). Remaining routes migrate incrementally in a follow-up (tracked).
+- **Distributed tracing / OpenTelemetry** — overkill for a single-practitioner SSG site. Sentry breadcrumbs + structured logs suffice.
+- **Custom metrics / APM** — no dashboarding needs identified. Error events + uptime probe cover the stated failure modes.
+- **Synthetic booking flow** (end-to-end probe) — flagged "optional, harder" in the issue; external uptime covers `/` and `/api/availability` only.
+- **Alerting beyond email** — no Slack/Teams integration.
+
+## Premise Validity
+
+**Success in 6 months:** A prod outage (Supabase unreachable, Resend 5xx storm, webhook timeout, scheduled-job non-zero exit) appears in Sentry within minutes of occurring, with enough context (route, requestId, appointmentId where applicable) to diagnose the cause without reproducing it locally. The maintainer sees the alert before a patient reports it.
+
+**Failure in 6 months:** After 30 days in production with real traffic, Sentry has captured 0 events → the instrumentation is inert/broken and the premise ("errors are visible") is unfalsified. (Measurable: event count over a defined window; observable; actionable — triggers an instrument-debugging pass or abort.)
+
+**Simplest alternative:** Rely on Netlify function logs + ad-hoc `console.*` (the status quo).
+
+**Why not simplest:** Netlify function logs are ephemeral and effectively unsearchable — no retention beyond a short window, no query by `appointmentId`/`requestId`, no alerting, no aggregation. You cannot ask "show me all errors from last week" or "alert me when the reminders job fails." The simplest version is precisely the thing that fails the success criterion ("appears in Sentry within minutes... enough context to diagnose").
+
+## Complexity
+
+**Tier: F-full** — spans multiple domains and introduces new architectural patterns.
+
+Signals observed:
+- **New Astro middleware** (`src/middleware.ts`) — does not exist; must be created to establish request-scoped Sentry scope + requestId.
+- **Multiple integration surfaces** — client-side SDK, API route server capture, two standalone cron functions, structured logger module.
+- **New external dependency** (`@sentry/astro` or equivalent) + CSP/network policy change.
+- **Cross-cutting refactor** — logger module replaces ad-hoc `console.*` in 3+ high-traffic code paths (32 + 14 + 13 calls).
+- **Operational config outside code** — Sentry project + DSN, external uptime monitor, alert routing — touches infra/docs, not just `src/`.
+- Label **Size: L** ("≤3d, multi-domain") confirms F-full per tier rules.

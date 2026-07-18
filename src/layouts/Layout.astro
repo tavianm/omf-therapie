@@ -69,6 +69,50 @@ const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
     <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
     <link rel="manifest" href="/assets/site.webmanifest" />
 
+    {/* Sentry browser SDK — error tracking.
+        This is a NORMAL processed <script> (NOT is:inline) so Vite/Rollup
+        bundles it: the `import * as Sentry from '@sentry/browser'` specifier
+        is rewritten to a hashed chunk under /_astro/ and manualChunks groups it
+        into the cacheable 'sentry' chunk. (An is:inline script would emit the
+        bare specifier verbatim and the browser would fail to resolve it —
+        `TypeError: Failed to resolve module specifier`.)
+        Gated on PUBLIC_SENTRY_DSN so local dev and any environment without a
+        DSN never initialise the SDK. PII scrubbing reuses the shared pure
+        scrubPii from ../lib/pii-scrub (no Sentry imports → importable here). */}
+    <script>
+      import * as Sentry from '@sentry/browser';
+      import { scrubPii } from '../lib/pii-scrub';
+
+      const sentryDsn = import.meta.env.PUBLIC_SENTRY_DSN;
+      const commitRef = import.meta.env.COMMIT_REF;
+
+      if (sentryDsn) {
+        Sentry.init({
+          dsn: sentryDsn,
+          environment: location.hostname === 'omf-therapie.fr' ? 'production' : 'staging',
+          // scrubPii is generic and preserves the SDK's ErrorEvent type, so no
+          // cast is needed. It structurally redacts request/extra/breadcrumbs
+          // before the event leaves the browser.
+          beforeSend: (event) => scrubPii(event),
+        });
+
+        // Deploy canary: one message per browser session confirms ingestion is
+        // wired. Its absence after a deploy = broken instrumentation. Gated on
+        // sessionStorage so it fires once per session, not on every pageview
+        // (this processed script runs once per page load).
+        try {
+          if (!sessionStorage.getItem('omf_sentry_canary')) {
+            sessionStorage.setItem('omf_sentry_canary', '1');
+            Sentry.captureMessage('deploy: ' + (commitRef || 'unknown'));
+          }
+        } catch {
+          // sessionStorage may be unavailable (private mode / disabled) — emit
+          // the canary anyway so we don't lose the deploy signal.
+          Sentry.captureMessage('deploy: ' + (commitRef || 'unknown'));
+        }
+      }
+    </script>
+
     {import.meta.env.PROD && (
       <>
         <script is:inline>

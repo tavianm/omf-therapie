@@ -1,0 +1,528 @@
+---
+title: "Plan: Observability — error tracking, structured logging, uptime monitoring"
+issue: 75
+spec: artifacts/specs/75-error-tracking-structured-logging-uptime-monitoring-spec.mdx
+complexity: 7
+tier: F-full
+generated: "2026-07-14T00:00:00Z"
+---
+
+## Summary
+
+Implement **Shape 2** (manual `@sentry/node` + `@sentry/browser` wiring) per the approved spec: a structured logger module, a new Astro middleware for per-request Sentry scope + deploy canary, client-side browser init, migration of 3 named paths (booking, webhook, 2 cron functions), a lightweight `/api/health` endpoint, CSP/env/docs changes, and unit tests. Greenfield instrumentation — no existing observability deps.
+
+## Architecture
+
+> Forge-chart visual sidecars unavailable in this install; data flow + file map documented textually per the established pattern (frame/analysis/spec).
+
+### Data Flow
+
+```
+[on-demand API request]
+  → src/middleware.ts (cold start: initSentry() once via src/lib/sentry.server.ts;
+                        per-req: withScope → requestId(uuid) → locals + Sentry scope;
+                        finally: clear scope [warm-container isolation])
+    → src/pages/api/appointments/[id].ts | stripe-webhook.ts
+      → } catch (err) { logger.error(msg, {requestId, appointmentId}, err)
+          → stdout JSON + Sentry.captureException(err) }
+  → src/pages/api/health.ts (GET → {ok:true}, prerender=false, no deps)
+
+[Netlify cron trigger]
+  → Sentry.withMonitor(slug, handler, {schedule, checkInMargin:5})
+    → netlify/functions/_lib/sentry.ts initSentry() [process.env, NOT import.meta.env]
+    → handler → } catch { logger.error + captureException }
+    → finally: await Sentry.flush(2000) [Lambda freeze safety]
+
+[Browser JS error]
+  → @sentry/browser (init in src/layouts/Layout.astro <script is:inline>, gated PUBLIC_SENTRY_DSN)
+    → scrubPii(event) [shared pure fn] → POST envelope to o{orgId}.ingest.us.sentry.io
+```
+
+### File × Function Map
+
+| File | Functions/exports | New/Modified |
+|---|---|---|
+| `src/lib/sentry.server.ts` | `initSentry()` (idempotent), `withRequestScope(ctx, fn)`, `scrubPii(event)`, `emitDeployCanary()`, `captureException` re-export | NEW |
+| `src/lib/logger.ts` | `logger.{error,warn,info}` → JSON stdout + Sentry | NEW |
+| `src/middleware.ts` | `onRequest` (defineMiddleware) | NEW |
+| `netlify/functions/_lib/sentry.ts` | `initSentry()` (process.env), `captureAndFlush(err, ms)` | NEW |
+| `src/pages/api/health.ts` | `GET` handler → `{ ok: true }` | NEW |
+| `src/layouts/Layout.astro` | inline `<script is:inline>` Sentry.browser.init | MODIFIED |
+| `src/pages/api/appointments/[id].ts` | 32 console.* → logger; 18 catch sites → capture | MODIFIED |
+| `src/pages/api/stripe-webhook.ts` | 14 console.* → logger; captures | MODIFIED |
+| `netlify/functions/send-reminders.ts` | `withMonitor` wrap; 13 console.* → logger; flush | MODIFIED |
+| `netlify/functions/calendar-token-heartbeat.ts` | `withMonitor` wrap; 12 console.* → logger; flush | MODIFIED |
+| `src/env.d.ts` | +`PUBLIC_SENTRY_DSN?: string` | MODIFIED |
+| `.env.example` | +`PUBLIC_SENTRY_DSN=` | MODIFIED |
+| `netlify.toml` | CSP `connect-src` exact host; env doc; fix `output` comment | MODIFIED |
+| `astro.config.mjs` | `manualChunks['sentry']` | MODIFIED |
+| `docs/INFRA.md` | §7 Observabilité | MODIFIED |
+| `tests/unit/logger.test.ts` | field shape, PII redaction, no-op, vi.mock | NEW |
+| `tests/unit/sentry-scrub.test.ts` | scrubPii server + client | NEW |
+| `tests/unit/middleware.test.ts` | requestId set, scope cleared | NEW |
+| `tests/unit/health.test.ts` | 200 {ok:true}, prerender=false | NEW |
+
+## Bootstrap Context
+
+Analysis (`artifacts/analyses/75-*.mdx`) selected **Shape 2** over `@sentry/astro` (Shape 1) due to Netlify-adapter compatibility risk (`@sentry/astro` is untested with `@astrojs/netlify`) and Astro-version coupling. Shape 3 (logger-only) eliminated — no proactive alerting. Spec reviewers identified 5 blockers, all resolved in the approved spec: (1) catch-site count corrected (2 bare `} catch {` are input-validation, NOT targeted; 12 `} catch (binding)` + 6 `.catch(console.error)` = 18 real swallows), (2) CSP wildcard `*.sentry.io` won't match the 3-label ingest host — must allowlist exact host or use `tunnel`, (3) schedule drift is in `send-reminders.ts` (L4 says 08h00, config L275 is `'0 18 * * *'`), NOT the heartbeat, (4) `Sentry.flush(2000)` mandatory before Lambda handler return, (5) deploy canary closes the falsifiability hole. 3 OQs resolved: provision staging Sentry project, per-function schedule const (`@weekly` is type-incompatible with Sentry `MonitorSchedule` → migrate heartbeat to explicit crontab `'0 0 * * 0'`), document both uptime vendors.
+
+**Critical conventions:** `src/lib/**` is server-only; layer rule held. `@sentry/browser` init goes in `src/layouts/Layout.astro` (mirrors existing `<script is:inline define:vars>` gtag pattern). Cron files use `process.env` NOT `import.meta.env` — dedicated `netlify/functions/_lib/sentry.ts`. French user-facing text, English code/comments.
+
+## Agents
+
+| Agent | Task count | Files |
+|-------|-----------|-------|
+| backend-dev-A | 6 | `src/lib/sentry.server.ts`, `src/lib/logger.ts`, `src/middleware.ts`, `src/env.d.ts` |
+| backend-dev-B | 3 | `src/pages/api/appointments/[id].ts`, `src/pages/api/stripe-webhook.ts` |
+| backend-dev-C | 4 | `netlify/functions/_lib/sentry.ts`, `netlify/functions/send-reminders.ts`, `netlify/functions/calendar-token-heartbeat.ts`, `src/pages/api/health.ts` |
+| frontend-dev-A | 1 | `src/layouts/Layout.astro` |
+| devops-A | 3 | `netlify.toml`, `.env.example`, `astro.config.mjs` |
+| tester-A | 5 | `tests/unit/{logger,sentry-scrub,middleware,health}.test.ts`, test setup |
+| doc-writer-A | 1 | `docs/INFRA.md` |
+| architect | 0 (review only) | — |
+
+## Wave Structure
+
+4 waves, max 4 parallel agents. Elapsed ~3 waves vs ~7 sequential tasks.
+
+| Wave | Trigger | Agents | Tasks |
+|------|---------|--------|-------|
+| 1 | start | 4 ∥ | backend-dev-A: T1→T2→T3 · backend-dev-C: T4 (health) · devops-A: T5→T6 · tester-A: T7→T8→T9 (RED tests) |
+| 2 | Wave 1 done | 4 ∥ | backend-dev-B: T10→T11 · backend-dev-C: T12→T13 · frontend-dev-A: T14 · tester-A: T15 (RED cron/middleware tests) |
+| 3 | Wave 2 done | 2 ∥ | doc-writer-A: T16 · devops-A: T17 (netlify.toml env-doc + CSP) |
+| 4 | Wave 3 done | 1 | architect: T18 (integration review — full lint/typecheck/test/build) |
+
+### Budget — per task
+
+| Task | Items | Class | Est. ops | Split? |
+|------|-------|-------|----------|--------|
+| T1 sentry.server.ts | 4 fns | judgmental | 6 | — |
+| T2 logger.ts | 3 levels | judgmental | 5 | — |
+| T3 middleware.ts | onRequest + scope | judgmental | 6 | — |
+| T4 health.ts | 1 route | bounded | 3 | — |
+| T5 env.d.ts | 1 type | trivial | 2 | — |
+| T6 astro.config.mjs | manualChunks | bounded | 3 | — |
+| T7 logger.test.ts | RED | bounded | 4 | — |
+| T8 sentry-scrub.test.ts | RED | bounded | 4 | — |
+| T9 middleware+health RED tests | 2 files | bounded | 4 | — |
+| T10 appointments/[id].ts | 32+18 sites | judgmental | 8 | — |
+| T11 stripe-webhook.ts | 14 sites | bounded | 5 | — |
+| T12 cron _lib/sentry.ts | 2 fns | judgmental | 5 | — |
+| T13 cron migration (2 files) | 25 sites + wrap | judgmental | 8 | — |
+| T14 Layout.astro browser init | 1 inline script | bounded | 4 | — |
+| T15 cron/flush tests | RED | bounded | 4 | — |
+| T16 docs/INFRA.md §7 | 1 section | judgmental | 6 | — |
+| T17 netlify.toml CSP+env | CSP + comments | bounded | 4 | — |
+| T18 integration review | lint/type/test/build | bounded | 5 | — |
+
+**Total estimated ops: 86**
+
+### Budget — per agent instance
+
+Caps: `Σ ops > 50` OR `|tasks| > 4` OR `distinct subjects > 2` → split into new instance.
+
+| Instance | Tasks | Σ ops | Subjects | Split? |
+|----------|-------|-------|----------|--------|
+| backend-dev-A | T1, T2, T3, T5 | 17 | sentry, logger, middleware | — (3 subjects but ≤4 tasks, Σ < 50) |
+| backend-dev-B | T10, T11 | 13 | booking, webhook | — |
+| backend-dev-C | T4, T12, T13 | 16 | health, cron | — |
+| frontend-dev-A | T14 | 4 | browser | — |
+| devops-A | T6, T17 | 7 | build, csp | — |
+| tester-A | T7, T8, T9, T15 | 16 | tests | — (4 tasks = cap, Σ < 50, 1 subject) |
+| doc-writer-A | T16 | 6 | docs | — |
+
+No splits required.
+
+## Consistency Report
+
+- Criteria covered: 21/21 (all Success Criteria checkboxes trace to ≥1 micro-task)
+- Uncovered criteria: none
+- Tasks without spec backing: none
+- Gold plating exemptions applied: 1 (T18 integration review — quality gate, not spec-traced)
+
+## Micro-Tasks
+
+### Slice V1: Logger + Sentry server foundation
+
+#### Task 1: Create `src/lib/sentry.server.ts` → backend-dev-A
+- **File:** `src/lib/sentry.server.ts`
+- **Snippet:**
+  ```ts
+  import * as Sentry from '@sentry/node';
+  import type { APIContext } from 'astro';
+
+  const PII_KEYS = ['patient_reason', 'patientReason', 'email', 'phone', 'message', 'notes'];
+
+  let initialized = false;
+  let canarySent = false;
+
+  export function initSentry(): void {
+    const dsn = import.meta.env.PUBLIC_SENTRY_DSN;
+    if (!dsn || initialized) return;
+    initialized = true;
+    Sentry.init({ dsn, environment: process.env.CONTEXT === 'production' ? 'production' : 'staging', beforeSend: scrubPii });
+  }
+
+  // Pure PII scrubber — shared by server + client (exported, imported by Layout browser init).
+  export function scrubPii(event: Sentry.Event): Sentry.Event { /* redact PII_KEYS in breadcrumbs/extra/request */ }
+
+  export async function withRequestScope<T>(ctx: APIContext, fn: () => Promise<T>): Promise<T> {
+    return Sentry.withScope(async (scope) => {
+      scope.setTag('requestId', ctx.locals.requestId);
+      scope.setTag('route', ctx.locals.route);
+      try { return await fn(); }
+      finally { scope.clear(); }
+    });
+  }
+
+  export function emitDeployCanary(): void {
+    if (canarySent) return;
+    canarySent = true;
+    Sentry.captureMessage(`deploy: ${process.env.COMMIT_REF ?? 'unknown'}`);
+  }
+
+  export const { captureException, addBreadcrumb } = Sentry;
+  ```
+- **Verify:** `npx tsc --noEmit src/lib/sentry.server.ts` (deferred — needs deps) → fall back to `rg "export (function|const)" src/lib/sentry.server.ts` (ready)
+- **Expected:** 5 exports (`initSentry`, `scrubPii`, `withRequestScope`, `emitDeployCanary`, `captureException`/`addBreadcrumb`)
+- **Time:** 8 min | **Difficulty:** 4
+- **Traces:** SC-instrumentation-1, SC-instrumentation-6 (canary) | **Phase:** GREEN
+- **Subject:** sentry
+
+#### Task 2: Create `src/lib/logger.ts` → backend-dev-A
+- **File:** `src/lib/logger.ts`
+- **Snippet:**
+  ```ts
+  import { captureException, addBreadcrumb } from './sentry.server';
+  interface LogFields { route?: string; requestId?: string; appointmentId?: string; [k: string]: unknown; }
+  type Level = 'error' | 'warn' | 'info' | 'debug';
+  function emit(level: Level, msg: string, fields: LogFields = {}, err?: unknown): void {
+    console[level === 'debug' ? 'log' : level](JSON.stringify({ level, msg, ...fields, ...(err ? { err: err instanceof Error ? err.message : String(err) } : {}) }));
+    if (import.meta.env.PUBLIC_SENTRY_DSN) {
+      if (level === 'error' && err) captureException(err);
+      else addBreadcrumb({ level, message: msg, data: fields });
+    }
+  }
+  export const logger = {
+    error: (msg: string, fields?: LogFields, err?: unknown) => emit('error', msg, fields, err),
+    warn: (msg: string, fields?: LogFields) => emit('warn', msg, fields),
+    info: (msg: string, fields?: LogFields) => emit('info', msg, fields),
+    debug: (msg: string, fields?: LogFields) => emit('debug', msg, fields),
+  };
+  ```
+- **Verify:** `rg "export const logger" src/lib/logger.ts` (ready)
+- **Expected:** logger object with 4 levels, JSON stdout, Sentry gated on DSN
+- **Time:** 6 min | **Difficulty:** 3
+- **Traces:** SC-logger-1 | **Phase:** GREEN
+- **Subject:** logger
+
+#### Task 3: Create `src/middleware.ts` → backend-dev-A
+- **File:** `src/middleware.ts`
+- **Snippet:**
+  ```ts
+  import { defineMiddleware } from 'astro:middleware';
+  import { randomUUID } from 'node:crypto';
+  import { initSentry, withRequestScope, emitDeployCanary } from './lib/sentry.server';
+  initSentry();
+  emitDeployCanary();
+  export const onRequest = defineMiddleware(async (context, next) => {
+    context.locals.requestId = randomUUID();
+    context.locals.route = context.url.pathname;
+    return withRequestScope(context, () => next());
+  });
+  ```
+- **Verify:** `rg "defineMiddleware" src/middleware.ts` (ready)
+- **Expected:** middleware exports onRequest, requestId uuid, scope wrap+clear
+- **Time:** 8 min | **Difficulty:** 4
+- **Traces:** SC-instrumentation-3 | **Phase:** GREEN
+- **Subject:** middleware
+
+#### Task 4: Create `src/pages/api/health.ts` [P] → backend-dev-C
+- **File:** `src/pages/api/health.ts`
+- **Snippet:**
+  ```ts
+  export const prerender = false;
+  import type { APIRoute } from 'astro';
+  export const GET: APIRoute = () => new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  ```
+- **Verify:** `curl -s http://localhost:4321/api/health/` (deferred — dev server) → `rg "prerender = false" src/pages/api/health.ts` (ready)
+- **Expected:** prerender=false, GET returns 200 {ok:true}, no deps/params/auth
+- **Time:** 3 min | **Difficulty:** 1
+- **Traces:** SC-uptime-1 | **Phase:** GREEN
+- **Subject:** health
+
+#### Task 5: Add `PUBLIC_SENTRY_DSN` to `src/env.d.ts` [P] → backend-dev-A
+- **File:** `src/env.d.ts`
+- **Snippet:** Add `readonly PUBLIC_SENTRY_DSN?: string;` to `ImportMetaEnv` interface (after Google OAuth block).
+- **Verify:** `rg "PUBLIC_SENTRY_DSN" src/env.d.ts` (ready)
+- **Expected:** type declared so `astro check` passes on read sites
+- **Time:** 2 min | **Difficulty:** 1
+- **Traces:** SC-uptime-3 | **Phase:** GREEN
+- **Subject:** types
+
+#### Task 6: Add `manualChunks['sentry']` to `astro.config.mjs` [P] → devops-A
+- **File:** `astro.config.mjs`
+- **Snippet:** Add `'sentry': ['@sentry/browser']` to existing `build.rollupOptions.output.manualChunks` object (alongside `react-vendor`, `motion`, `ui`).
+- **Verify:** `rg "'sentry'" astro.config.mjs` (ready)
+- **Expected:** manualChunks entry added; build produces `dist/_astro/sentry*.js`
+- **Time:** 3 min | **Difficulty:** 2
+- **Traces:** SC-uptime-5 | **Phase:** GREEN
+- **Subject:** build
+
+#### Task 7: Create `tests/unit/logger.test.ts` (RED) [P] → tester-A
+- **File:** `tests/unit/logger.test.ts`
+- **Snippet:**
+  ```ts
+  import { describe, it, expect, vi, beforeEach } from 'vitest';
+  vi.mock('@sentry/node', () => ({ captureException: vi.fn(), addBreadcrumb: vi.fn(), withScope: vi.fn((_, fn) => fn()), init: vi.fn() }));
+  // tests: JSON field shape, PII not in stdout, level filter, no-op when DSN unset (no captureException call), vi.mock prevents phone-home
+  ```
+- **Verify:** `npm run test -- logger` (ready — expect FAIL until logger.ts exists, then pass)
+- **Expected:** RED: test file exists + named cases; GREEN after T2
+- **Time:** 6 min | **Difficulty:** 3
+- **Traces:** SC-logger-1 | **Phase:** RED
+- **Subject:** tests
+
+#### Task 8: Create `tests/unit/sentry-scrub.test.ts` (RED) [P] → tester-A
+- **File:** `tests/unit/sentry-scrub.test.ts`
+- **Snippet:** Test `scrubPii` redacts `patient_reason`, `patientReason`, `email`, `phone`, `message`, `notes` → `[REDACTED]` in breadcrumbs, extra, request body. Run against server scrub fn (pure).
+- **Verify:** `npm run test -- sentry-scrub` (ready — RED then GREEN after T1)
+- **Expected:** RED: cases exist; GREEN after T1
+- **Time:** 5 min | **Difficulty:** 3
+- **Traces:** SC-instrumentation-1 | **Phase:** RED
+- **Subject:** tests
+
+#### Task 9: Create `tests/unit/middleware.test.ts` + `tests/unit/health.test.ts` (RED) [P] → tester-A
+- **Files:** `tests/unit/middleware.test.ts`, `tests/unit/health.test.ts`
+- **Snippet:** middleware: assert requestId set (uuid), scope cleared on success + throw; health: GET → 200 {ok:true}, prerender=false declared.
+- **Verify:** `npm run test -- "middleware|health"` (ready — RED then GREEN after T3, T4)
+- **Expected:** RED: cases exist; GREEN after T3/T4
+- **Time:** 6 min | **Difficulty:** 3
+- **Traces:** SC-instrumentation-3, SC-uptime-1 | **Phase:** RED
+- **Subject:** tests
+
+#### RED-GATE: RED complete V1 → tester-A
+- **Verify:** all V1 test files (T7, T8, T9) exist; run `npm run test` — expect failures referencing not-yet-green modules
+- **Phase:** RED-GATE
+
+### Slice V2: Browser + infra
+
+#### Task 10: Migrate `src/pages/api/appointments/[id].ts` (32 console.* + 18 catch sites) → backend-dev-B
+- **File:** `src/pages/api/appointments/[id].ts`
+- **Snippet:**
+  ```ts
+  import { logger } from '../../../lib/logger';
+  import { captureException } from '../../../lib/sentry.server';
+  // For each of 32 console.error/warn/info → logger.error/warn/info(...)
+  // For each of 12 } catch (binding) blocks (L189,226,274,408,424,533,647,656,769,802,845,892):
+  //   add captureException(<binding>) inside the catch body
+  // For each of 6 .catch(console.error) sites (L247,360,449,556,682,833):
+  //   .catch((err) => { logger.error('cache invalidate failed', { appointmentId }, err); captureException(err); })
+  // 2 bare } catch { (L77, L167) are input-validation → LEAVE (no capture)
+  // 5 .catch((fn)) (L378,453,475,562,584) — assess per-site: swallow→capture, handle→skip
+  ```
+- **Verify:** `rg "console\.(error|warn|info)" src/pages/api/appointments/\[id\].ts | wc -l` → 0; `rg -A2 'catch' src/pages/api/appointments/\[id\].ts | rg -c captureException` ≥ 18 (ready)
+- **Expected:** 0 console calls; ≥18 captureException at swallow sites; 2 bare catch unchanged
+- **Time:** 12 min | **Difficulty:** 4
+- **Traces:** SC-migration-1, SC-migration-2 | **Phase:** GREEN
+- **Subject:** booking
+
+#### Task 11: Migrate `src/pages/api/stripe-webhook.ts` (14 console.*) → backend-dev-B
+- **File:** `src/pages/api/stripe-webhook.ts`
+- **Snippet:** Import logger + captureException; replace 14 console.* → logger.*; add captureException at catch sites that swallow.
+- **Verify:** `rg "console\.(error|warn|info)" src/pages/api/stripe-webhook.ts | wc -l` → 0 (ready)
+- **Expected:** 0 console calls; captures at swallow sites
+- **Time:** 8 min | **Difficulty:** 3
+- **Traces:** SC-migration-1 | **Phase:** GREEN
+- **Subject:** webhook
+
+#### Task 12: Create `netlify/functions/_lib/sentry.ts` → backend-dev-C
+- **File:** `netlify/functions/_lib/sentry.ts`
+- **Snippet:**
+  ```ts
+  import * as Sentry from '@sentry/node';
+  let initialized = false;
+  export function initSentry(): void {
+    const dsn = process.env.PUBLIC_SENTRY_DSN;  // process.env, NOT import.meta.env
+    if (!dsn || initialized) return;
+    initialized = true;
+    Sentry.init({ dsn, environment: process.env.CONTEXT === 'production' ? 'production' : 'staging', beforeSend: scrubPii });
+  }
+  export async function captureAndFlush(err: unknown, ms = 2000): Promise<void> {
+    Sentry.captureException(err);
+    await Sentry.flush(ms);
+  }
+  // scrubPii duplicated here (cron can't import src/lib/*)
+  ```
+- **Verify:** `rg "process\.env\.PUBLIC_SENTRY_DSN" netlify/functions/_lib/sentry.ts` (ready)
+- **Expected:** initSentry (process.env), captureAndFlush (flush for Lambda freeze)
+- **Time:** 6 min | **Difficulty:** 4
+- **Traces:** SC-instrumentation-4, SC-instrumentation-5 | **Phase:** GREEN
+- **Subject:** cron
+
+#### Task 13: Migrate cron functions + `withMonitor` wrap → backend-dev-C
+- **Files:** `netlify/functions/send-reminders.ts`, `netlify/functions/calendar-token-heartbeat.ts`
+- **Snippet:**
+  ```ts
+  // send-reminders.ts:
+  //   const SCHEDULE = '0 18 * * *' as const;  export const config = { schedule: SCHEDULE };
+  //   export default Sentry.withMonitor('send-reminders', async function handler() {
+  //     initSentry(); try { /* ...existing body, 13 console.* → logger... */ }
+  //     catch (err) { await captureAndFlush(err); throw err; }
+  //     finally { await Sentry.flush(2000); }
+  //   }, { schedule: { type: 'crontab', value: SCHEDULE }, checkInMargin: 5, maxRuntime: 10 });
+  //   FIX: header L4 "08h00 UTC" → "18h00 UTC" (reconcile with config)
+  // calendar-token-heartbeat.ts:
+  //   const SCHEDULE = '0 0 * * 0' as const;  export const config = { schedule: SCHEDULE };
+  //   (migrated from '@weekly' to explicit crontab so withMonitor shares the const)
+  //   same withMonitor + flush pattern; NO schedule drift here (was consistent @weekly)
+  ```
+- **Verify:** `rg "withMonitor|flush\(2000\)" netlify/functions/send-reminders.ts netlify/functions/calendar-token-heartbeat.ts` (ready)
+- **Expected:** both wrapped; flush in finally; send-reminders header fixed; heartbeat on explicit crontab
+- **Time:** 12 min | **Difficulty:** 4
+- **Traces:** SC-instrumentation-4, SC-instrumentation-5, SC-operator-2 | **Phase:** GREEN
+- **Subject:** cron
+
+#### Task 14: Add `@sentry/browser` init to `src/layouts/Layout.astro` → frontend-dev-A
+- **File:** `src/layouts/Layout.astro`
+- **Snippet:** Mirror existing `<script is:inline define:vars={{ ga4Id }}>` gtag pattern. Add:
+  ```astro
+  <script is:inline define:vars={{ sentryDsn: import.meta.env.PUBLIC_SENTRY_DSN, commitRef: import.meta.env.COMMIT_REF }}>
+    if (sentryDsn) {
+      import('@sentry/browser').then((Sentry) => Sentry.init({
+        dsn: sentryDsn,
+        environment: location.hostname === 'omf-therapie.fr' ? 'production' : 'staging',
+        beforeSend: (event) => { /* scrubPii inline — patient_reason/email/phone/message/notes */ return event; }
+      }));
+    }
+  </script>
+  ```
+  *(Note: dynamic import inside is:inline keeps the SDK out of the eager bundle; `manualChunks['sentry']` from T6 still applies if statically imported elsewhere.)*
+- **Verify:** `npm run build` then `rg "sentryDsn\|@sentry/browser" dist/index.html` (deferred — needs deps) → `rg "PUBLIC_SENTRY_DSN" src/layouts/Layout.astro` (ready)
+- **Expected:** inline script present, gated on DSN
+- **Time:** 6 min | **Difficulty:** 3
+- **Traces:** SC-instrumentation-2 | **Phase:** GREEN
+- **Subject:** browser
+
+#### Task 15: Create cron flush + middleware scope tests (RED) → tester-A
+- **Files:** extend `tests/unit/middleware.test.ts` (scope cleared on success+throw); add cron-flush assertion (unit test the `captureAndFlush` helper calls flush; mock `withMonitor` wrapper pattern)
+- **Verify:** `npm run test` (ready — RED then GREEN after T3, T12, T13)
+- **Expected:** scope-cleared assertions; flush-awaited-in-finally assertion
+- **Time:** 6 min | **Difficulty:** 3
+- **Traces:** SC-instrumentation-3, SC-instrumentation-4 | **Phase:** RED
+- **Subject:** tests
+
+#### RED-GATE: RED complete V2 → tester-A
+- **Verify:** V2 test extensions exist; `npm run test` — failures reference not-yet-green modules
+- **Phase:** RED-GATE
+
+### Slice V3: Docs + netlify.toml env
+
+#### Task 16: Add §7 Observabilité to `docs/INFRA.md` → doc-writer-A
+- **File:** `docs/INFRA.md`
+- **Snippet:** New "7. Observabilité" section: (a) Sentry project creation steps, (b) Client Keys DSN retrieval, (c) `PUBLIC_SENTRY_DSN` set in Netlify production scope, (d) `PUBLIC_SENTRY_DSN` in `deploy-preview` scope (staging project), (e) uptime monitor probe config (`/` + `/api/health`, status 200, interval, alert email), (f) CSP dependency note, (g) canary verification step ("after each deploy, confirm `deploy: <sha>` appears in Sentry within 5 min"). ALSO: fix §6 send-reminders schedule drift (L197 "08h00 UTC ... `'0 8 * * *'`" → "18h00 UTC ... `'0 18 * * *'`").
+- **Verify:** `rg "## 7\. Observabilité" docs/INFRA.md` && `rg "0 18 \* \* \*" docs/INFRA.md` (ready)
+- **Expected:** §7 heading + 7 sub-steps; 18h00 reconciliation
+- **Time:** 10 min | **Difficulty:** 3
+- **Traces:** SC-operator-1, SC-operator-2 | **Phase:** GREEN
+- **Subject:** docs
+
+#### Task 17: Update `netlify.toml` (CSP + env doc + output comment) → devops-A
+- **File:** `netlify.toml`
+- **Snippet:**
+  - `connect-src` (L71): add exact Sentry ingest host `https://o{orgId}.ingest.us.sentry.io` (NOT `*.sentry.io`). Document `tunnel` as alternative in a comment.
+  - env-doc comment block: add `# PUBLIC_SENTRY_DSN — Sentry DSN (public key, prefix PUBLIC_ for client exposure)`
+  - Fix stale comment ~L102: `output: 'hybrid'` → `output: 'static'`
+- **Verify:** `rg "ingest\." netlify.toml` (NOT `*.sentry.io`) && `rg "PUBLIC_SENTRY_DSN" netlify.toml` (ready)
+- **Expected:** exact ingest host in CSP; env doc line; output comment fixed
+- **Time:** 5 min | **Difficulty:** 2
+- **Traces:** SC-uptime-2, SC-uptime-3, SC-operator-3 | **Phase:** GREEN
+- **Subject:** csp
+
+### Slice V4: Integration review
+
+#### Task 18: Full quality-gate review → architect
+- **File:** (no file — review pass)
+- **Verify:** `npm install` (adds @sentry/node + @sentry/browser) → `npm run lint && npm run typecheck && npm run test && npm run build` (with + without `PUBLIC_SENTRY_DSN` set)
+- **Expected:** 0 lint errors; typecheck clean; all tests pass; build succeeds both with and without DSN (graceful degradation); `dist/_astro/sentry*.js` exists
+- **Time:** 8 min | **Difficulty:** 4
+- **Traces:** SC-quality-1, SC-quality-2, SC-quality-3 | **Phase:** REFACTOR
+- **Subject:** review
+
+#### RED-GATE: integration complete V4 → architect
+- **Verify:** `npm run lint && npm run test && npm run build` all green
+- **Phase:** RED-GATE
+
+## Task Seeding Blueprint
+
+<!-- Used by /implement to seed TaskCreate calls on session start.
+     Format: T{n} | agent-instance | blockedBy | subject
+     blockedBy refs T-numbers within this list (not session task IDs).
+     Agent instances are named so parallel tasks map to distinct spawned agents.
+     Seed in wave order; within a wave all rows are parallel (∥). -->
+
+### Wave 1 — no deps, 4 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T1 | backend-dev-A | — | sentry |
+| T4 | backend-dev-C | — | health |
+| T5 | backend-dev-A | — | types |
+| T6 | devops-A | — | build |
+| T7 | tester-A | — | tests |
+| T8 | tester-A | — | tests |
+| T9 | tester-A | — | tests |
+
+### Wave 2 — after Wave 1, 4 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T2 | backend-dev-A | T1 | logger |
+| T3 | backend-dev-A | T1, T5 | middleware |
+| T10 | backend-dev-B | T2, T3 | booking |
+| T11 | backend-dev-B | T2 | webhook |
+| T12 | backend-dev-C | T4 | cron |
+| T13 | backend-dev-C | T12 | cron |
+| T14 | frontend-dev-A | T5 | browser |
+| T15 | tester-A | T7, T8, T9 | tests |
+
+### Wave 3 — after Wave 2, 2 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T16 | doc-writer-A | T13 | docs |
+| T17 | devops-A | T6, T14 | csp |
+
+### Wave 4 — after Wave 3, 1 agent
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T18 | architect | T10, T11, T13, T14, T16, T17 | review |
+
+## Task IDs
+
+<!-- Generated by /plan. Used by /implement to resume tasks on session restart.
+     Tasks are seeded via the in-session TodoWrite list (dev-pipeline tasks)
+     and the Task Seeding Blueprint above. On session restart, /implement
+     re-attaches by reading this section + re-seeding from the blueprint.
+     Agent instances: backend-dev-A (T1,T2,T3,T5), backend-dev-B (T10,T11),
+     backend-dev-C (T4,T12,T13), frontend-dev-A (T14), devops-A (T6,T17),
+     tester-A (T7,T8,T9,T15), doc-writer-A (T16), architect (T18). -->
+- T1: plan-task — sentry.server.ts (initSentry, scrubPii, withRequestScope, emitDeployCanary)
+- T2: plan-task — logger.ts (4 levels, JSON stdout, Sentry gated on DSN)
+- T3: plan-task — middleware.ts (requestId, withScope, scope clear, canary)
+- T4: plan-task — health.ts (GET → {ok:true}, prerender=false)
+- T5: plan-task — env.d.ts (+PUBLIC_SENTRY_DSN type)
+- T6: plan-task — astro.config.mjs (manualChunks['sentry'])
+- T7: plan-task — logger.test.ts (RED: field shape, PII, no-op, vi.mock)
+- T8: plan-task — sentry-scrub.test.ts (RED: scrubPii redaction)
+- T9: plan-task — middleware+health.test.ts (RED: requestId, scope clear, 200)
+- T10: plan-task — appointments/[id].ts (32 console.* → logger; 18 swallow sites → capture)
+- T11: plan-task — stripe-webhook.ts (14 console.* → logger; captures)
+- T12: plan-task — cron _lib/sentry.ts (process.env init, captureAndFlush)
+- T13: plan-task — send-reminders + heartbeat (withMonitor, flush, schedule fix)
+- T14: plan-task — Layout.astro (@sentry/browser inline init, gated DSN)
+- T15: plan-task — cron flush + middleware scope tests (RED→GREEN)
+- T16: plan-task — docs/INFRA.md §7 Observabilité + schedule drift fix
+- T17: plan-task — netlify.toml (CSP exact host, env doc, output comment)
+- T18: plan-task — integration review (lint/typecheck/test/build, with+without DSN)

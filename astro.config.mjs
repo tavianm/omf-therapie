@@ -27,10 +27,19 @@ export default defineConfig({
     build: {
       rollupOptions: {
         output: {
-          manualChunks: {
-            'react-vendor': ['react', 'react-dom'],
-            'motion': ['framer-motion'],
-            'ui': ['lucide-react'],
+          // Function form: the object form above ('react-vendor', 'motion',
+          // 'ui', 'sentry') is silently ignored for Astro's hoisted client
+          // scripts (Astro runs its own Rollup pass for them), so none of the
+          // named chunks were ever emitted. The function form is invoked for
+          // every module and reliably splits @sentry/browser into its own
+          // cacheable chunk — keeping the ~70KB SDK out of the per-layout
+          // script hash so it stays cached across deploys. We only special-case
+          // Sentry here; the other vendor hints above are left as documentation
+          // of intent (single-importer modules are inlined regardless).
+          manualChunks: (id) => {
+            if (id.includes('node_modules/@sentry/browser')) {
+              return 'sentry';
+            }
           },
         },
       },

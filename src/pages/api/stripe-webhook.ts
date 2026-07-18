@@ -5,6 +5,7 @@ import { createElement } from 'react';
 import type Stripe from 'stripe';
 import { stripe } from '../../lib/stripe';
 import { supabaseAdmin } from '../../lib/supabase';
+import { logger } from '../../lib/logger';
 import { sendEmail, buildAppointmentConversationSubject } from '../../lib/resend';
 import { generateGoogleCalendarLink, generateOutlookCalendarLink, generateAppleCalendarInviteLink, CABINET_ADDRESS } from '../../lib/ics';
 import { createSecureLinkToken } from '../../lib/secure-links';
@@ -47,7 +48,7 @@ async function resolveAppointmentIdFromCheckoutSession(session: Stripe.Checkout.
       const fromPaymentIntent = paymentIntent.metadata?.appointment_id;
       if (fromPaymentIntent) return fromPaymentIntent;
     } catch (err) {
-      console.error('[stripe-webhook] Impossible de lire le PaymentIntent pour résoudre appointment_id:', err);
+      logger.error('stripe-webhook: failed to retrieve PaymentIntent to resolve appointment_id', { paymentIntentId }, err);
     }
   }
 
@@ -63,7 +64,7 @@ async function resolveAppointmentIdFromCheckoutSession(session: Stripe.Checkout.
       .maybeSingle();
 
     if (error) {
-      console.error('[stripe-webhook] Impossible de résoudre appointment_id via stripe_payment_link_id:', error);
+      logger.error('stripe-webhook: failed to resolve appointment_id via stripe_payment_link_id', { paymentLinkId }, error);
       return null;
     }
 
@@ -82,7 +83,7 @@ export const POST: APIRoute = async ({ request }) => {
   // 0. Vérifier que le secret webhook est configuré
   const webhookSecret = import.meta.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    console.error('[stripe-webhook] STRIPE_WEBHOOK_SECRET absent — webhooks désactivés');
+    logger.error('stripe-webhook: STRIPE_WEBHOOK_SECRET missing — webhooks disabled');
     return new Response('Configuration webhook manquante', { status: 500 });
   }
 
@@ -104,7 +105,7 @@ export const POST: APIRoute = async ({ request }) => {
     );
   } catch (err) {
     // Logguer en interne, retourner un message générique (pas de détails techniques)
-    console.error('[stripe-webhook] Signature invalide:', err instanceof Error ? err.message : err);
+    logger.error('stripe-webhook: invalid signature', {}, err);
     return new Response('Signature invalide', { status: 400 });
   }
 
@@ -116,7 +117,7 @@ export const POST: APIRoute = async ({ request }) => {
         const appointmentId = paymentIntent.metadata?.appointment_id;
 
         if (!appointmentId) {
-          console.warn('[stripe-webhook] payment_intent.succeeded sans appointment_id');
+          logger.warn('stripe-webhook: payment_intent.succeeded without appointment_id', { paymentIntentId: paymentIntent.id });
           break;
         }
 
@@ -133,7 +134,7 @@ export const POST: APIRoute = async ({ request }) => {
           : session.payment_intent?.id;
 
         if (!appointmentId) {
-          console.warn('[stripe-webhook] checkout.session.completed sans appointment_id (metadata/payment_intent/payment_link)');
+          logger.warn('stripe-webhook: checkout.session.completed without resolvable appointment_id (metadata/payment_intent/payment_link)', { paymentIntentId });
           break;
         }
 
@@ -146,7 +147,7 @@ export const POST: APIRoute = async ({ request }) => {
         break;
     }
   } catch (err) {
-    console.error('[stripe-webhook] Erreur traitement:', err);
+    logger.error('stripe-webhook: error processing event', { eventType: event.type, eventId: event.id }, err);
     // Retourner 500 pour que Stripe retente
     return new Response('Erreur interne', { status: 500 });
   }
@@ -183,7 +184,7 @@ export const GET: APIRoute = async ({ url }) => {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    console.error('[stripe-webhook] Erreur mock GET:', err);
+    logger.error('stripe-webhook: mock GET handler failed', { appointmentId }, err);
     return new Response(JSON.stringify({ ok: false, error: 'Erreur interne mock' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -212,7 +213,7 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
 
   if (updateErr || !updated) {
     // Already processed or not in payment_pending state — idempotent, return 200
-    console.info('[stripe-webhook] Événement déjà traité ou RDV non en attente de paiement:', appointmentId);
+    logger.info('stripe-webhook: event already processed or appointment not payment_pending', { appointmentId });
     return;
   }
 
@@ -260,7 +261,7 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
         throw new Error('Meet non retourné par Google Calendar');
       }
     } catch (meetErr) {
-      console.error('[stripe-webhook] Erreur création événement Meet, fallback sans Meet:', meetErr);
+      logger.error('stripe-webhook: Meet event creation failed, falling back without Meet', { appointmentId: updatedAppt.id }, meetErr);
       const fallbackVideoLink = buildFallbackVideoLink(updatedAppt.id);
       videoLink = fallbackVideoLink;
       try {
@@ -269,7 +270,7 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
           .update({ video_link: fallbackVideoLink })
           .eq('id', updatedAppt.id);
       } catch (persistErr) {
-        console.error('[stripe-webhook] Échec persistance fallback vidéo:', persistErr);
+        logger.error('stripe-webhook: failed to persist fallback video link', { appointmentId: updatedAppt.id }, persistErr);
       }
       try {
         await createCalendarEvent({
@@ -285,7 +286,7 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
         });
         calendarEventCreated = true;
       } catch (calendarErr) {
-        console.error('[stripe-webhook] Échec fallback événement calendrier:', calendarErr);
+        logger.error('stripe-webhook: fallback calendar event creation failed', { appointmentId: updatedAppt.id }, calendarErr);
       }
     }
   } else if (updatedAppt.appointment_mode === 'video') {
@@ -315,7 +316,7 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
       });
       calendarEventCreated = true;
     } catch (calendarErr) {
-      console.error('[stripe-webhook] Erreur création événement calendrier:', calendarErr);
+      logger.error('stripe-webhook: calendar event creation failed (existing video link)', { appointmentId: updatedAppt.id }, calendarErr);
     }
   }
 
@@ -377,6 +378,6 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
     ]);
   } catch (emailErr) {
     // L'email ne doit pas bloquer le webhook
-    console.error('[stripe-webhook] Erreur envoi emails post-paiement:', emailErr);
+    logger.error('stripe-webhook: post-payment email send failed', { appointmentId: updatedAppt.id }, emailErr);
   }
 }

@@ -4,7 +4,11 @@
  * Runs weekly to proactively refresh the Google OAuth access token, preventing
  * Google from revoking it due to inactivity (~6 months idle = automatic revocation).
  *
- * Schedule: @weekly (every Sunday at 00:00 UTC)
+ * Schedule: every Sunday at 00:00 UTC (`0 0 * * 0`). Explicit crontab (not the
+ * `@weekly` nickname) so Sentry.withMonitor's MonitorSchedule type accepts it
+ * and the const is shared between Netlify config and the Sentry monitor.
+ *
+ * Observabilité : enveloppé par Sentry.withMonitor (détection de non-exécution).
  *
  * ⚠️  Runtime: Node.js (Netlify Functions) — import.meta.env is NOT available.
  *     All env vars are read via process.env.
@@ -27,9 +31,11 @@
  *   SITE_URL                  (optional, fallback: https://omf-therapie.fr)
  *   RESEND_API_KEY            — for alert emails
  *   RESEND_FROM_EMAIL         (optional, fallback: OMF Thérapie <contact@omf-therapie.fr>)
+ *   PUBLIC_SENTRY_DSN         (optional — Sentry instrumentation)
  */
 
 import type { Config } from '@netlify/functions';
+import * as Sentry from '@sentry/node';
 import { createElement } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { google } from 'googleapis';
@@ -37,13 +43,20 @@ import ws from 'ws';
 import { Resend } from 'resend';
 import { render } from '@react-email/render';
 import CalendarAuthAlert from '../../src/emails/CalendarAuthAlert.js';
+import { initSentry, captureAndFlush } from './_lib/sentry';
+import { logger } from './_lib/logger';
 
 // ---------------------------------------------------------------------------
 // Schedule config
 // ---------------------------------------------------------------------------
 
+/** Sunday 00:00 UTC. Explicit crontab (not @weekly) — see file header. */
+const SCHEDULE = '0 0 * * 0' as const;
+
 export const config: Config = {
-  schedule: '@weekly',
+  schedule: SCHEDULE,
+  // No schedule_timezone → Netlify defaults to UTC (matches Sentry monitor default).
+  // Do not add Europe/Paris here — SCHEDULE is calibrated for UTC.
 };
 
 // ---------------------------------------------------------------------------
@@ -70,15 +83,12 @@ async function sendInvalidGrantAlert(
       html,
     });
     if (error) {
-      console.error('[calendar-heartbeat] Alert email failed (Resend error):', error);
+      logger.error('calendar-heartbeat: alert email failed (Resend error)', { adminEmail }, error);
     } else {
-      console.info('[calendar-heartbeat] Alert email sent to', adminEmail);
+      logger.info('calendar-heartbeat: alert email sent', { adminEmail });
     }
   } catch (err: unknown) {
-    console.error(
-      '[calendar-heartbeat] Alert email exception:',
-      err instanceof Error ? err.message : String(err),
-    );
+    logger.error('calendar-heartbeat: alert email threw', { adminEmail }, err);
   }
 }
 
@@ -86,7 +96,31 @@ async function sendInvalidGrantAlert(
 // Handler
 // ---------------------------------------------------------------------------
 
-export default async function handler(): Promise<void> {
+async function runHeartbeat(): Promise<void> {
+  initSentry();
+  try {
+    await heartbeat();
+  } catch (err) {
+    await captureAndFlush(err);
+    throw err;
+  } finally {
+    if (process.env.PUBLIC_SENTRY_DSN) {
+      await Sentry.flush(2000);
+    }
+  }
+}
+
+export default Sentry.withMonitor(
+  'calendar-token-heartbeat',
+  runHeartbeat,
+  {
+    schedule: { type: 'crontab', value: SCHEDULE },
+    checkInMargin: 5,
+    maxRuntime: 10,
+  },
+);
+
+async function heartbeat(): Promise<void> {
   // 1. Read and validate required env vars
   const clientId    = process.env.GOOGLE_OAUTH_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
@@ -99,12 +133,12 @@ export default async function handler(): Promise<void> {
   const fromEmail    = process.env.RESEND_FROM_EMAIL ?? 'OMF Thérapie <contact@omf-therapie.fr>';
 
   if (!clientId || !clientSecret) {
-    console.warn('[calendar-heartbeat] GOOGLE_OAUTH_CLIENT_ID or GOOGLE_OAUTH_CLIENT_SECRET missing — skipping.');
+    logger.warn('calendar-heartbeat: GOOGLE_OAUTH_CLIENT_ID or GOOGLE_OAUTH_CLIENT_SECRET missing — skipping');
     return;
   }
 
   if (!supabaseUrl || !serviceRoleKey) {
-    console.warn('[calendar-heartbeat] SUPABASE_DATABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing — skipping.');
+    logger.warn('calendar-heartbeat: SUPABASE_DATABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing — skipping');
     return;
   }
 
@@ -125,12 +159,12 @@ export default async function handler(): Promise<void> {
     .single();
 
   if (fetchError || !tokens) {
-    console.warn('[calendar-heartbeat] No token row found in DB — nothing to refresh. Connect Google Calendar first.');
+    logger.warn('calendar-heartbeat: no token row in DB — nothing to refresh. Connect Google Calendar first.', { fetchError });
     return;
   }
 
   if (!tokens.refresh_token) {
-    console.error('[calendar-heartbeat] Token row exists but refresh_token is null — re-authorization required.');
+    logger.error('calendar-heartbeat: token row exists but refresh_token is null — re-authorization required');
     if (adminEmail && resendApiKey) {
       await sendInvalidGrantAlert(adminEmail, siteUrl, resendApiKey, fromEmail);
     }
@@ -157,28 +191,25 @@ export default async function handler(): Promise<void> {
       .eq('id', 'therapist');
 
     if (updateError) {
-      console.error('[calendar-heartbeat] Failed to persist refreshed token:', updateError.message);
+      logger.error('calendar-heartbeat: failed to persist refreshed token', {}, updateError);
       return;
     }
 
-    console.info('[calendar-heartbeat] Token refreshed successfully');
+    logger.info('calendar-heartbeat: token refreshed successfully');
   } catch (err: unknown) {
     // 5a. invalid_grant → token revoked, alert admin
     const errData = (err as { response?: { data?: { error?: string } } })?.response?.data;
     if (errData?.error === 'invalid_grant') {
-      console.error('[calendar-heartbeat] invalid_grant — token revoked. Sending alert to admin.');
+      logger.error('calendar-heartbeat: invalid_grant — token revoked, sending alert to admin');
       if (adminEmail && resendApiKey) {
         await sendInvalidGrantAlert(adminEmail, siteUrl, resendApiKey, fromEmail);
       } else {
-        console.warn('[calendar-heartbeat] ADMIN_EMAIL or RESEND_API_KEY missing — cannot send alert.');
+        logger.warn('calendar-heartbeat: ADMIN_EMAIL or RESEND_API_KEY missing — cannot send alert');
       }
       return;
     }
 
     // 5b. Other errors — log and exit cleanly (don't throw; scheduled functions shouldn't fail noisily)
-    console.error(
-      '[calendar-heartbeat] Token refresh failed:',
-      (err as { response?: { status?: number } })?.response?.status ?? (err instanceof Error ? err.message : String(err)),
-    );
+    logger.error('calendar-heartbeat: token refresh failed', {}, err);
   }
 }
