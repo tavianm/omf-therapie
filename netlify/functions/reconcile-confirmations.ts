@@ -11,42 +11,44 @@
  *   - Transient infra failures that exceed Stripe's ~3-day retry window
  *
  * Two-layer idempotency (see spec SC table):
- *   - L1: Resend `idempotencyKey = confirm:{stripe_payment_intent_id}` (~24h TTL,
- *         server-side dedup) — concurrent in-flight sends with the webhook collapse
- *         to a single delivered email pair.
+ *   - L1: Resend `idempotencyKey = confirm:{patient|therapist}:{stripe_payment_intent_id}`
+ *         (~24h TTL, server-side dedup) — concurrent in-flight sends with the
+ *         webhook collapse to a single delivered email pair.
  *   - L2: `confirmation_sent_at` flag — set ONLY after the patient email succeeds,
  *         guarded by `WHERE confirmation_sent_at IS NULL` (write-race safety vs.
  *         a concurrent webhook retry). Never reset.
  *
  * ---------------------------------------------------------------------------
- * IMPORT DECISION — Path B (local replication), not Path A.
+ * IMPORT DECISION — Path A (shared module), retired from Path B.
  * ---------------------------------------------------------------------------
- * `src/lib/notifications.ts#buildAndSendConfirmationEmails` is itself
- * env-agnostic (T4 ensured DI via `BuildAndSendOptions`), BUT it statically
- * imports `./resend`, which reads `import.meta.env.{SMTP_HOST,RESEND_API_KEY,...}`
- * at MODULE LOAD TIME (resend.ts:25,26,41), and `./secure-links`, which reads
- * `import.meta.env.BETTER_AUTH_SECRET` at runtime. `import.meta.env` is a
- * Vite/Astro build-time transform; in the Netlify Functions Node.js runtime it
- * is `undefined`, so those module-level reads throw `TypeError` at first import.
+ * Historiquement, ce sweep répliquait `buildAndSendConfirmationEmails` localement
+ * (Path B) car `src/lib/notifications.ts` importait statiquement `./resend`, qui
+ * lit `import.meta.env.*` au chargement du module. `import.meta.env` est un
+ * transform Vite/Astro, indéfini dans le runtime Node de Netlify Functions.
  *
- * This was verified empirically: bundling a probe that imports
- * `buildAndSendConfirmationEmails` via `@netlify/zip-it-and-ship-it` (the real
- * deploy-time bundler) leaves `import.meta.env.SUPABASE_DATABASE_URL` etc. raw
- * in the emitted bundle — the function would crash on cold start. `astro build`
- * does NOT validate this, because Astro only bundles its own SSR entry, not
- * `netlify/functions/*.ts`.
+ * Issue #68 (post-rebase review) : `src/lib/resend.ts` a été refactoré pour
+ * lazy-init les transports (plus de lecture `import.meta.env` au module-load).
+ * Le sweep peut donc importer directement `notifications.ts` + `idempotency-keys`
+ * + `resend-errors` (primitives partagées entre webhook et sweep — plus de risque
+ * de dérive sur le format des clés, la classification d'erreur, ou le signeur HMAC).
  *
- * The codebase has already made this call: both existing scheduled functions
- * (`send-reminders.ts:20-22`, `calendar-token-heartbeat.ts:9`) deliberately
- * avoid importing `src/lib/*` for exactly this reason and instantiate clients
- * from `process.env`. This function mirrors that established pattern.
+ * La fonction `sendEmail` publique reste couplée à `import.meta.env` (pour
+ * `RESEND_FROM_EMAIL`, `ADMIN_EMAIL`, et l'auto-BCC admin). Le sweep l'évite en
+ * injectant son propre `sendFn` via `BuildAndSendOptions` — ce `sendFn` utilise
+ * un client Resend instancié depuis `process.env` et transmet la clé d'idempotence
+ * au header Resend. Le threadKey est honoré au niveau contrat (le header
+ * `X-Thread-Key` est posé) mais la persistance `email_threads` est webhook-only —
+ * le sweep ne crée pas de racine de thread, il s'appuie sur le thread existant
+ * créé par le webhook (ou aucun thread si la 1re notification vient du sweep,
+ * ce qui est rare car le webhook réussit dans >99% des cas).
  *
- * To honor spec SC18 ("no duplicated email logic") as far as is safe, the PURE
- * helpers are reused directly: `src/lib/ics.ts` (calendar-link builders),
- * `src/lib/pricing.ts` (labels), and the React email templates
- * (`AppointmentConfirmed`, `PaymentReceivedNotification`). Only the thin Resend
- * send call + the HMAC invite-token are re-implemented locally against
- * `process.env`, matching `send-reminders.ts`.
+ * ---------------------------------------------------------------------------
+ * Observability — Sentry.withMonitor + structured logger (pattern #99).
+ * ---------------------------------------------------------------------------
+ * Le scheduler Netlify n'a pas d'alerting natif. `Sentry.withMonitor` est le
+ * seul mécanisme qui détecte une exécution manquée (check-in attendu dans la
+ * fenêtre `checkInMargin`). Le logger structuré (`_lib/logger`) route les
+ * erreurs vers Sentry avec scrubbing PII (`patient_email`, `patient_phone`, …).
  *
  * ---------------------------------------------------------------------------
  * Required env vars (configure in Netlify dashboard — NEVER inline secrets):
@@ -61,35 +63,32 @@
  *                                   + therapist dashboard link
  *   BETTER_AUTH_SECRET            — HMAC secret for the .ics invite token
  *                                   (must match the app's signing key)
+ *   PUBLIC_SENTRY_DSN             — Sentry DSN (optional — instrumentation Sentry)
  */
 
 import type { Config } from '@netlify/functions';
+import * as Sentry from '@sentry/node';
 import { createClient } from '@supabase/supabase-js';
-import { createElement } from 'react';
 import { Resend } from 'resend';
-import { render } from '@react-email/render';
-import { createHmac } from 'node:crypto';
 import ws from 'ws';
-import AppointmentConfirmed from '../../src/emails/AppointmentConfirmed';
-import PaymentReceivedNotification from '../../src/emails/PaymentReceivedNotification';
-import {
-  generateGoogleCalendarLink,
-  generateOutlookCalendarLink,
-  generateAppleCalendarInviteLink,
-  CABINET_ADDRESS,
-  type ICSEvent,
-} from '../../src/lib/ics';
-import { getTypeLabel, getModeLabel } from '../../src/lib/pricing';
 import type { Appointment } from '../../src/types/appointment';
+import type { SendEmailParams, SendEmailResult } from '../../src/lib/resend';
+import { isRetryableResendError, type ResendApiError } from '../../src/lib/resend-errors';
+import { buildAndSendConfirmationEmails } from '../../src/lib/notifications';
+import { initSentry, captureAndFlush } from './_lib/sentry';
+import { logger } from './_lib/logger';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 /**
- * Wall-clock budget per invocation. Netlify Functions on the hobby tier enforce
- * a ~10s hard timeout; we leave a 1.5s margin for the final UPDATE + log flush.
- * When elapsed, the loop breaks and remaining rows drain on the next hourly run.
+ * Wall-clock budget per invocation. Netlify Scheduled Functions enforce a
+ * 30-second hard timeout (per Netlify docs — NOT 10s, which is the default
+ * synchronous function timeout). We use a conservative 8.5s budget to leave
+ * generous margin for the final UPDATE + Sentry flush + log drain; when
+ * elapsed, the loop breaks and remaining rows drain on the next hourly run.
+ * Issue #68 post-rebase review : comment corrigé (30s, pas 10s).
  */
 const DEADLINE_MS = 8500;
 
@@ -99,81 +98,106 @@ const CREATED_WITHIN_DAYS = 14;
 /** Max rows processed per invocation (bounds work + respects the deadline). */
 const BATCH_LIMIT = 25;
 
+/**
+ * Schedule partagée entre la config Netlify et le monitor Sentry — évite la
+ * dérive entre la cadence attendue par Sentry et le déclencheur réel Netlify.
+ */
+const SCHEDULE = '5 * * * *' as const;
+
 // ---------------------------------------------------------------------------
 // Schedule config — hourly at :05 to dodge webhook contention on the hour
 // ---------------------------------------------------------------------------
 
 export const config: Config = {
-  schedule: '5 * * * *',
+  schedule: SCHEDULE,
 };
 
 // ---------------------------------------------------------------------------
-// Local helpers (process.env equivalents of src/lib/* env-coupled code)
+// Local sendFn — process.env-instantiated Resend client honoring idempotencyKey
 // ---------------------------------------------------------------------------
 
-interface ResendApiError {
-  name?: string;
-  statusCode?: number | null;
-  message?: string;
-}
-
 /**
- * Classifies a Resend error as retryable (5xx, network, application_error) vs.
- * permanent (4xx validation — poison message). Mirrors the predicate in
- * `src/lib/resend.ts#isRetryableResendError` so the sweep's notion of
- * "permanent" matches the webhook's send path exactly.
+ * Crée un `sendFn` injecté dans `buildAndSendConfirmationEmails`.
+ *
+ * Pourquoi ne pas utiliser `sendEmail` de `src/lib/resend.ts` ?
+ *  - `sendEmail` lit `import.meta.env.RESEND_FROM_EMAIL` et `ADMIN_EMAIL` (BCC
+ *    auto-admin) au runtime — `import.meta.env` est undefined dans le runtime
+ *    cron, donc l'appel planterait.
+ *  - Le sweep instancie son propre client Resend depuis `process.env` et applique
+ *    une politique de retry simplifiée (pas de retry intra-row : le sweep s'appuie
+ *    sur sa propre cadence horaire pour ré-essayer les rows échoués).
+ *
+ * Le threadKey est reçu via `params.threadKey` et transmis comme en-tête
+ * `X-Thread-Key` à Resend (parité de contrat avec le webhook). La persistance
+ * `email_threads` (supabase) reste webhook-only : le sweep ne crée pas de
+ * racine de thread — il s'appuie sur le thread existant créé par le webhook
+ * (cas normal) ou émet l'email sans fil (cas rare d'un sweep avant webhook).
+ *
+ * `idempotencyKey` est transmis via l'en-tête Resend `Idempotency-Key` : deux
+ * tentatives concurrentes (webhook + sweep) avec la même clé ne produisent
+ * qu'un seul email côté Resend (dedup serveur, ~24h TTL).
  */
-function isRetryableResendError(error: ResendApiError | null | undefined): boolean {
-  if (!error) return false;
-  const status = error.statusCode ?? null;
-  if (status === null || status >= 500) return true;
-  // 429 (rate limit) is retryable despite being 4xx.
-  if (status === 429) return true;
-  return error.name === 'application_error';
-}
-
 /**
- * Builds the signed .ics invite token (HMAC-SHA256) using process.env.
- * Local replica of `src/lib/secure-links.ts#createSecureLinkToken` — that
- * module reads `import.meta.env.BETTER_AUTH_SECRET` and so is not importable
- * here. Le token vérifie sous la même clé HMAC que le signeur de l'app, donc
- * le `/api/calendar/invite/:id` l'accepte. NB : l'`exp` dépend de l'horloge
- * murale, donc la « byte-identité » stricte est impossible — mais la forme du
- * payload (clés + structure) est alignée verbatim sur l'app, y compris
- * l'émission conditionnelle du nonce (`...(nonce ? { n: nonce } : {})`).
+ * Crée un `sendFn` injecté dans `buildAndSendConfirmationEmails` + un accesseur
+ * pour récupérer la dernière erreur brute Resend (pour classification poison).
+ *
+ * Pourquoi ne pas utiliser `sendEmail` de `src/lib/resend.ts` ?
+ *  - `sendEmail` lit `import.meta.env.RESEND_FROM_EMAIL` et `ADMIN_EMAIL` (BCC
+ *    auto-admin) au runtime — `import.meta.env` est undefined dans le runtime
+ *    cron, donc l'appel planterait.
+ *  - Le sweep instancie son propre client Resend depuis `process.env` et applique
+ *    une politique de retry simplifiée (pas de retry intra-row : le sweep s'appuie
+ *    sur sa propre cadence horaire pour ré-essayer les rows échoués).
+ *
+ * Le threadKey est reçu via `params.threadKey` et transmis comme en-tête
+ * `X-Thread-Key` à Resend (parité de contrat avec le webhook). La persistance
+ * `email_threads` (supabase) reste webhook-only : le sweep ne crée pas de
+ * racine de thread — il s'appuie sur le thread existant créé par le webhook
+ * (cas normal) ou émet l'email sans fil (cas rare d'un sweep avant webhook).
+ *
+ * `idempotencyKey` est transmis via l'en-tête Resend `Idempotency-Key` : deux
+ * tentatives concurrentes (webhook + sweep) avec la même clé ne produisent
+ * qu'un seul email côté Resend (dedup serveur, ~24h TTL).
+ *
+ * Retourne `{ sendFn, lastError }` : `lastError` est mis à jour à chaque appel
+ * sendFn (récupère l'objet error brut de Resend avec statusCode/name pour la
+ * classification poison vs retryable).
  */
-function createInviteToken(appointmentId: string, nonce: string, secret: string): string {
-  const payload = {
-    v: 1,
-    p: 'ics-invite',
-    aid: appointmentId,
-    exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 180, // 180 days
-    ...(nonce ? { n: nonce } : {}),
+function makeSendFnWithCapture(resend: Resend, fromEmail: string) {
+  const state: { lastError: ResendApiError | null; lastTo: string[] } = {
+    lastError: null,
+    lastTo: [],
   };
-  const payloadEncoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
-  const signature = createHmac('sha256', secret).update(payloadEncoded).digest('base64url');
-  return `${payloadEncoded}.${signature}`;
+  const sendFn = async (params: SendEmailParams): Promise<SendEmailResult> => {
+    const { to, bcc, subject, react, replyTo, threadKey, idempotencyKey } = params;
+    state.lastTo = Array.isArray(to) ? to : [to];
+    state.lastError = null;
+    // `react` est un ReactElement (React Email) — Resend l'accepte directement
+    // via son SDK (il appelle @react-email/render en interne).
+    const { data, error } = await resend.emails.send(
+      {
+        from: fromEmail,
+        to: state.lastTo,
+        ...(bcc ? { bcc: Array.isArray(bcc) ? bcc : [bcc] } : {}),
+        subject,
+        react,
+        ...(replyTo ? { replyTo } : {}),
+        ...(threadKey ? { headers: { 'X-Thread-Key': threadKey } } : {}),
+      },
+      idempotencyKey ? { idempotencyKey } : undefined,
+    );
+    if (error) {
+      state.lastError = error as ResendApiError;
+      return { success: false, error: (error as ResendApiError).message ?? 'Erreur Resend' };
+    }
+    return { success: true, id: data?.id };
+  };
+  return { sendFn, state };
 }
 
-/** Lifts the ICS event shape from notifications.ts#buildICSEvent (pure). */
-function buildICSEvent(appt: Appointment): ICSEvent {
-  const start = new Date(appt.scheduled_at);
-  const end = new Date(start.getTime() + appt.duration * 60 * 1000);
-  const typeLabel = getTypeLabel(appt.appointment_type);
-  const modeLabel = getModeLabel(appt.appointment_mode);
-  const videoLink = appt.video_link ?? undefined;
-  return {
-    uid: appt.id,
-    summary: `Séance OMF Thérapie — ${typeLabel}`,
-    description: `${typeLabel} (${modeLabel}) · ${appt.duration} min`,
-    location: appt.appointment_mode === 'in-person' ? CABINET_ADDRESS : videoLink,
-    url: videoLink,
-    start,
-    end,
-    organizerName: 'Oriane Montabonnet — OMF Thérapie',
-    organizerEmail: 'contact@omf-therapie.fr',
-  };
-}
+// ---------------------------------------------------------------------------
+// Per-row processing
+// ---------------------------------------------------------------------------
 
 interface SendOutcome {
   patientEmailSent: boolean;
@@ -181,125 +205,91 @@ interface SendOutcome {
   permanentError?: ResendApiError;
 }
 
-/** Send-context bundle: clients + resolved env values for one invocation. */
-interface SendContext {
-  resend: Resend;
-  fromEmail: string;
-  adminEmail?: string;
-  baseUrl: string;
-  authSecret: string;
-}
-
 /**
- * Sends the patient + therapist confirmation emails for one appointment.
- * Local replica of `notifications.ts#buildAndSendConfirmationEmails` send path,
- * using a process.env-instantiated Resend client. Both emails carry the L1
- * idempotency key `confirm:{stripe_payment_intent_id}` so Resend dedupes vs.
- * any concurrent webhook attempt.
+ * Envoie les emails de confirmation (patient + thérapeute) pour un RDV via le
+ * module partagé `notifications.ts`. Le client Resend est injecté via `sendFn`.
  *
- * Returns `{ patientEmailSent }` plus, on permanent patient failure, the
- * classified error so the caller can apply the poison-message escape.
+ * Retourne `{ patientEmailSent }` + l'erreur classifiée en cas d'échec permanent
+ * (poison message) pour que l'appelant applique l'échappatoire.
+ *
+ * NOTE : `buildAndSendConfirmationEmails` ne distingue pas permanent vs retryable
+ * (elle retourne juste `{ patientEmailSent: false }`). Pour conserver la logique
+ * poison-escape du sweep (marquer livré pour stopper les retries sur une 4xx
+ * validation), on récupère l'erreur brute Resend via `state.lastError` et on la
+ * classifie via `isRetryableResendError` (partagé avec `src/lib/resend.ts`).
+ *
+ * Heuristique pour distinguer patient vs thérapeute : `state.lastTo` contient le
+ * destinataire du dernier sendFn appelé en échec. `notifications.ts` appelle le
+ * patient en 1er, puis le thérapeute — donc si lastTo contient appt.patient_email,
+ * l'échec est sur le patient. Si lastTo contient adminEmail, c'est le thérapeute
+ * (qui est best-effort, donc ignoré par la classification poison).
  */
-async function sendConfirmationEmails(appt: Appointment, ctx: SendContext): Promise<SendOutcome> {
-  // Clés d'idempotence scoppées par destinataire (issue #68) — voir
-  // src/lib/notifications.ts pour la justification (Resend déduplique sur la
-  // valeur de la clé, pas sur un hash du body).
-  const pi = appt.stripe_payment_intent_id;
-  const patientIdempotencyKey = pi ? `confirm:patient:${pi}` : undefined;
-  const therapistIdempotencyKey = pi ? `confirm:therapist:${pi}` : undefined;
-  const videoLink = appt.video_link ?? undefined;
-  const icsEvent = buildICSEvent(appt);
-  const googleCalendarLink = generateGoogleCalendarLink(icsEvent);
-  const outlookCalendarLink = generateOutlookCalendarLink(icsEvent);
+async function sendConfirmationEmails(
+  appt: Appointment,
+  ctx: {
+    sendBundle: ReturnType<typeof makeSendFnWithCapture>;
+    adminEmail?: string;
+    baseUrl: string;
+    authSecret: string;
+  },
+): Promise<SendOutcome> {
+  const result = await buildAndSendConfirmationEmails(appt, {
+    sendFn: ctx.sendBundle.sendFn,
+    adminEmail: ctx.adminEmail,
+    baseUrl: ctx.baseUrl,
+    signingSecret: ctx.authSecret,
+  });
 
-  // Patient email ----------------------------------------------------------
-  const patientHtml = await render(
-    createElement(AppointmentConfirmed, {
-      patientName: appt.patient_name,
-      appointmentType: appt.appointment_type,
-      appointmentMode: appt.appointment_mode,
-      scheduledAt: appt.scheduled_at,
-      duration: appt.duration as 60 | 90,
-      finalPrice: appt.final_price,
-      videoLink,
-      googleCalendarLink,
-      appleCalendarLink: generateAppleCalendarInviteLink(
-        ctx.baseUrl,
-        appt.id,
-        createInviteToken(appt.id, appt.scheduled_at, ctx.authSecret),
-      ),
-      outlookCalendarLink,
-      cabinetAddress: undefined,
-    }),
-  );
-
-  const { error: patientError } = await ctx.resend.emails.send(
-    {
-      from: ctx.fromEmail,
-      to: [appt.patient_email],
-      subject: `Votre rendez-vous est confirmé — ${new Intl.DateTimeFormat('fr-FR', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-        timeZone: 'Europe/Paris',
-      }).format(new Date(appt.scheduled_at))}`,
-      html: patientHtml,
-    },
-    patientIdempotencyKey ? { idempotencyKey: patientIdempotencyKey } : undefined,
-  );
-
-  if (patientError) {
-    return {
-      patientEmailSent: false,
-      permanentError: isRetryableResendError(patientError as ResendApiError)
-        ? undefined
-        : (patientError as ResendApiError),
-    };
-  }
-
-  // Therapist email — graceful skip if no admin email; never blocks the patient result.
-  if (ctx.adminEmail) {
-    try {
-      const therapistHtml = await render(
-        createElement(PaymentReceivedNotification, {
-          patientName: appt.patient_name,
-          patientEmail: appt.patient_email,
-          appointmentType: appt.appointment_type,
-          appointmentMode: appt.appointment_mode,
-          scheduledAt: appt.scheduled_at,
-          duration: appt.duration as 60 | 90,
-          finalPrice: appt.final_price,
-          videoLink,
-          dashboardUrl: `${ctx.baseUrl}/mes-rdvs/`,
-          calendarEventCreated: false, // sweep is email-only; calendar is webhook-only
-        }),
-      );
-      await ctx.resend.emails.send(
-        {
-          from: ctx.fromEmail,
-          to: [ctx.adminEmail],
-          subject: `Prépaiement reçu — ${appt.patient_name}`,
-          html: therapistHtml,
-        },
-        therapistIdempotencyKey ? { idempotencyKey: therapistIdempotencyKey } : undefined,
-      );
-    } catch (err: unknown) {
-      // Therapist notification is best-effort; don't fail the row over it.
-      console.warn(
-        `[reconcile] Therapist email failed for ${appt.id}:`,
-        err instanceof Error ? err.message : String(err),
-      );
+  if (!result.patientEmailSent) {
+    const lastError = ctx.sendBundle.state.lastError;
+    const lastToWasPatient = ctx.sendBundle.state.lastTo.includes(appt.patient_email);
+    if (lastError && lastToWasPatient && !isRetryableResendError(lastError)) {
+      return { patientEmailSent: false, permanentError: lastError };
     }
   }
-
-  return { patientEmailSent: true };
+  return { patientEmailSent: result.patientEmailSent };
 }
 
 // ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
 
-export default async function handler(): Promise<void> {
+/**
+ * Handler body. Wrapped by Sentry.withMonitor on export so missed executions
+ * surface as a Sentry monitor alert (Netlify's scheduler has no native
+ * alerting). The shared SCHEDULE const guarantees the monitor's expected
+ * cadence matches Netlify's actual trigger.
+ */
+async function runReconcile(): Promise<void> {
+  initSentry();
+  try {
+    await reconcile();
+  } catch (err) {
+    // Flush avant le retour : Lambda/Netlify gèle l'environnement d'exécution
+    // au retour, ce qui abandonnerait tout événement Sentry in-flight.
+    await captureAndFlush(err);
+    throw err;
+  } finally {
+    if (process.env.PUBLIC_SENTRY_DSN) {
+      await Sentry.flush(2000);
+    }
+  }
+}
+
+// Sentry.withMonitor enveloppe le handler : une exécution manquée (pas de
+// check-in dans `checkInMargin` minutes du schedule) lève une alerte Sentry.
+// checkInMargin et maxRuntime sont en minutes.
+export default Sentry.withMonitor(
+  'reconcile-confirmations',
+  runReconcile,
+  {
+    schedule: { type: 'crontab', value: SCHEDULE },
+    checkInMargin: 5,
+    maxRuntime: 10,
+  },
+);
+
+async function reconcile(): Promise<void> {
   const startedAt = Date.now();
 
   // 1. Read + validate required env vars (fail fast with a clear log).
@@ -313,17 +303,15 @@ export default async function handler(): Promise<void> {
   const authSecret = process.env.BETTER_AUTH_SECRET;
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
-    console.error(
-      '[reconcile] SUPABASE_DATABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing — aborting.',
-    );
+    logger.error('reconcile: SUPABASE_DATABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing — aborting');
     return;
   }
   if (!resendApiKey) {
-    console.error('[reconcile] RESEND_API_KEY missing — aborting.');
+    logger.error('reconcile: RESEND_API_KEY missing — aborting');
     return;
   }
   if (!authSecret || authSecret.trim().length < 32) {
-    console.error('[reconcile] BETTER_AUTH_SECRET missing or too short — aborting.');
+    logger.error('reconcile: BETTER_AUTH_SECRET missing or too short — aborting');
     return;
   }
 
@@ -335,16 +323,13 @@ export default async function handler(): Promise<void> {
     realtime: { transport: ws },
   });
   const resend = new Resend(resendApiKey);
+  const sendBundle = makeSendFnWithCapture(resend, fromEmail);
 
   // 3. Query stale rows — payment_received, confirmation pending, within the
   //    14-day window, soonest-first. LIMIT bounds the batch.
   //    Filtre `deleted_at IS NULL` (issue #68) : un RDV soft-supprimé ne doit
   //    pas être re-emailé — mirage du pattern send-reminders.ts:126.
-  //    Filtre `video_link NOT NULL` pour les RDV vidéo (issue #68) : le sweep
-  //    est email-only et ne crée pas l'événement calendrier. Un RDV vidéo sans
-  //    video_link signifie que le webhook n'a pas encore créé le Meet — le sweep
-  //    ne doit pas envoyer un email de confirmation sans lien de connexion.
-  const query = supabase
+  const { data: rows, error: fetchError } = await supabase
     .from('appointments')
     .select('*')
     .eq('status', 'payment_received')
@@ -354,27 +339,19 @@ export default async function handler(): Promise<void> {
     .order('scheduled_at', { ascending: true })
     .limit(BATCH_LIMIT);
 
-  // Les RDV vidéo doivent avoir un video_link (Meet) ; les RDV en présentiel
-  // n'en ont pas besoin. On filtre via une post-filtration côté JS car Supabase
-  // ne supporte pas `OR(video_link.neq.null, appointment_mode.eq.in-person)`
-  // de façon fiable avec les chaînes de filtre. La LIMIT (25) laisse de la
-  // marge — les rows vidéo sans lien sont rares et seront rattrapées par le
-  // webhook avant le prochain sweep.
-
-  const { data: rows, error: fetchError } = await query;
-
   if (fetchError) {
-    console.error('[reconcile] Supabase query failed:', fetchError.message);
+    logger.error('reconcile: Supabase query failed', {}, fetchError);
     return;
   }
 
   const allRows = (rows ?? []) as Appointment[];
 
-  // Post-filtre vidéo (issue #68) : le sweep ne peut pas envoyer un email de
-  // confirmation pour un RDV vidéo sans lien de connexion. On laisse le webhook
-  // (ou un opérateur) créer l'événement calendrier d'abord. Les rows ignorées
-  // restent confirmation_sent_at=NULL et seront rattrapées au prochain sweep
-  // une fois le video_link persisté.
+  // Post-filtre vidéo (issue #68) : le sweep est email-only et ne crée pas
+  // l'événement calendrier. Un RDV vidéo sans video_link signifie que le webhook
+  // n'a pas encore créé le Meet — le sweep ne doit pas envoyer un email de
+  // confirmation sans lien de connexion. Les rows ignorées restent
+  // confirmation_sent_at=NULL et seront rattrapées au prochain sweep une fois
+  // le video_link persisté par le webhook.
   const skippedNoVideo: string[] = [];
   const appointments = allRows.filter((appt) => {
     if (appt.appointment_mode === 'video' && !appt.video_link) {
@@ -383,17 +360,23 @@ export default async function handler(): Promise<void> {
     }
     return true;
   });
-  const counts = { found: appointments.length, sent: 0, failed: 0, deadlineHit: false, skippedNoVideo: skippedNoVideo.length };
+  const counts = {
+    found: appointments.length,
+    sent: 0,
+    failed: 0,
+    deadlineHit: false,
+    skippedNoVideo: skippedNoVideo.length,
+  };
 
   if (appointments.length === 0) {
     if (skippedNoVideo.length > 0) {
-      console.warn(
-        `[reconcile] Skipped ${skippedNoVideo.length} video appointment(s) without video_link: ${skippedNoVideo.join(', ')}. The webhook must create the Meet event first.`,
-      );
+      // Log sans PII : appointment IDs seulement (pas d'emails).
+      logger.warn('reconcile: skipped video appointments without video_link', {
+        count: skippedNoVideo.length,
+        appointmentIds: skippedNoVideo,
+      });
     }
-    console.log(
-      JSON.stringify({ ...counts, msElapsed: Date.now() - startedAt }),
-    );
+    logger.info('reconcile: done (empty batch)', { ...counts, msElapsed: Date.now() - startedAt });
     return;
   }
 
@@ -406,8 +389,7 @@ export default async function handler(): Promise<void> {
 
     try {
       const outcome = await sendConfirmationEmails(appt, {
-        resend,
-        fromEmail,
+        sendBundle,
         adminEmail,
         baseUrl,
         authSecret,
@@ -423,18 +405,19 @@ export default async function handler(): Promise<void> {
           .is('confirmation_sent_at', null);
 
         if (updateError) {
-          console.error(
-            `[reconcile] Failed to mark ${appt.id} delivered (email was sent):`,
-            updateError.message,
-          );
-          // Email sent but flag not set → next sweep re-attempts; L1 dedupes. Count as sent.
+          // Email envoyé mais drapeau non persisté → le prochain sweep renverra
+          // (L1 dédup côté Resend absorbera le doublon si dans les 24h).
+          logger.error('reconcile: failed to mark delivered (email was sent)', { appointmentId: appt.id }, updateError);
         }
         counts.sent += 1;
       } else if (outcome.permanentError) {
         // Permanent 4xx (validation, e.g. undeliverable address) → poison escape.
-        // Mark delivered to stop retrying; log at error so it surfaces.
-        console.error(
-          `[reconcile] Poison row ${appt.id} (${appt.patient_email}): permanent Resend error — escaping retry loop.`,
+        // Mark delivered to stop retrying; log at error so it surfaces in Sentry.
+        // PII: on ne log PAS patient_email (scrub Sentry le retirerait de toute
+        // façon, mais on garde aussi le drain Netlify propre).
+        logger.error(
+          'reconcile: poison row — permanent Resend error, escaping retry loop',
+          { appointmentId: appt.id },
           outcome.permanentError,
         );
         const { error: escapeError } = await supabase
@@ -443,29 +426,22 @@ export default async function handler(): Promise<void> {
           .eq('id', appt.id)
           .is('confirmation_sent_at', null);
         if (escapeError) {
-          console.error(`[reconcile] Poison-escape UPDATE failed for ${appt.id}:`, escapeError.message);
+          logger.error('reconcile: poison-escape UPDATE failed', { appointmentId: appt.id }, escapeError);
         }
         counts.failed += 1;
       } else {
         // Retryable failure (5xx, 429, network) → leave confirmation_sent_at NULL;
         // the next hourly sweep retries. L1 dedupes any partial send.
-        console.warn(
-          `[reconcile] Retryable failure for ${appt.id} (${appt.patient_email}); will retry next sweep.`,
-        );
+        logger.warn('reconcile: retryable failure; will retry next sweep', { appointmentId: appt.id });
         counts.failed += 1;
       }
     } catch (err: unknown) {
       // Unexpected exception — isolate to this row, continue the batch.
-      console.error(
-        `[reconcile] Unexpected error for ${appt.id}:`,
-        err instanceof Error ? err.message : String(err),
-      );
+      logger.error('reconcile: unexpected error for row', { appointmentId: appt.id }, err);
       counts.failed += 1;
     }
   }
 
-  // 5. Structured summary for Netlify's log drain.
-  console.log(
-    JSON.stringify({ ...counts, msElapsed: Date.now() - startedAt }),
-  );
+  // 5. Structured summary for Netlify's log drain + Sentry breadcrumb.
+  logger.info('reconcile: done', { ...counts, msElapsed: Date.now() - startedAt });
 }

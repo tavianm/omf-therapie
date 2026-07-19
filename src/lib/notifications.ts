@@ -3,9 +3,9 @@
  *
  * Module env-agnostic : n'accède jamais directement aux objets d'environnement
  * du runtime (ni celui d'Astro, ni `process.env`). Les valeurs environnementales
- * (BASE_URL, ADMIN_EMAIL, RESEND_FROM_EMAIL) sont injectées par l'appelant.
- * Cela permet de partager la logique entre le webhook Astro et le sweep de
- * réconciliation Netlify.
+ * (BASE_URL, ADMIN_EMAIL, RESEND_FROM_EMAIL, BETTER_AUTH_SECRET) sont injectées
+ * par l'appelant. Cela permet de partager la logique entre le webhook Astro et
+ * le sweep de réconciliation Netlify.
  *
  * Idempotence L1 : chaque email porte une clé Resend scoppée par destinataire —
  * `confirm:patient:{stripe_payment_intent_id}` pour l'email patient,
@@ -15,6 +15,10 @@
  * emails distincts (to/subject/body différents) partageant la même clé
  * entraîneraient le rejet silencieux du second comme « replay ».
  * Le drapeau durable `confirmation_sent_at` (L2) est géré par l'appelant.
+ *
+ * Issue #68 (post-rebase review) : les primitives partagées (clés d'idempotence,
+ * signeur HMAC) vivent désormais dans `./idempotency-keys` et `./secure-links`
+ * (avec DI du secret). Plus de duplication entre webhook et sweep.
  */
 
 import { createElement } from 'react';
@@ -30,6 +34,10 @@ import {
   CABINET_ADDRESS,
 } from './ics';
 import { createSecureLinkToken } from './secure-links';
+import {
+  patientConfirmationKey,
+  therapistConfirmationKey,
+} from './idempotency-keys';
 import { getTypeLabel, getModeLabel } from './pricing';
 import AppointmentConfirmed from '../emails/AppointmentConfirmed';
 import PaymentReceivedNotification from '../emails/PaymentReceivedNotification';
@@ -53,6 +61,14 @@ export interface BuildAndSendOptions {
    *  En prod, l'appelant DOIT résoudre `BETTER_AUTH_URL ?? SITE_URL` et le passer.
    *  Le fallback codé en dur n'est qu'un filet de sécurité pour les tests. */
   baseUrl?: string;
+  /**
+   * Secret HMAC pour signer le jeton d'invitation .ics (DI — issue #68 review).
+   *
+   * Par défaut, `createSecureLinkToken` lit `import.meta.env.BETTER_AUTH_SECRET`.
+   * Le sweep Netlify (runtime Node) doit passer `process.env.BETTER_AUTH_SECRET`
+   * explicitement car `import.meta.env` y est undefined.
+   */
+  signingSecret?: string;
 }
 
 /**
@@ -108,20 +124,26 @@ export async function buildAndSendConfirmationEmails(
   // sur la valeur de la clé, pas sur un hash du body. Deux emails distincts
   // (patient vs thérapeute) partageant la même clé entraîneraient le rejet
   // silencieux du second. Le préfixe `patient:` / `therapist:` les isole.
+  // Issue #68 post-rebase review : les constructeurs vivent dans ./idempotency-keys
+  // (partagés entre webhook et sweep — plus de risque de dérive du format).
   const pi = appointment.stripe_payment_intent_id;
-  const patientIdempotencyKey = pi ? `confirm:patient:${pi}` : undefined;
-  const therapistIdempotencyKey = pi ? `confirm:therapist:${pi}` : undefined;
+  const patientIdempotencyKey = patientConfirmationKey(pi);
+  const therapistIdempotencyKey = therapistConfirmationKey(pi);
 
   // 1. Construire l'événement ICS + les liens calendrier (lift verbatim du webhook ~325-336)
   const apptForIcs = videoLink ? { ...appointment, video_link: videoLink } : appointment;
   const icsEvent = buildICSEvent(apptForIcs);
   const googleCalendarLink = generateGoogleCalendarLink(icsEvent);
   const outlookCalendarLink = generateOutlookCalendarLink(icsEvent);
+  // Le sweep (runtime Node) passe signingSecret=process.env.BETTER_AUTH_SECRET ;
+  // le webhook (runtime Astro) omet le paramètre → createSecureLinkToken lit
+  // import.meta.env.BETTER_AUTH_SECRET. Les deux chemins partagent le même signeur.
   const inviteToken = createSecureLinkToken({
     appointmentId: appointment.id,
     purpose: 'ics-invite',
     expiresInSeconds: 60 * 60 * 24 * 180,
     nonce: appointment.scheduled_at,
+    ...(options.signingSecret ? { secret: options.signingSecret } : {}),
   });
   const appleCalendarLink = generateAppleCalendarInviteLink(baseUrl, appointment.id, inviteToken);
 

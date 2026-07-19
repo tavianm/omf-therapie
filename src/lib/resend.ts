@@ -19,36 +19,44 @@ import { render } from '@react-email/render';
 import { createTransport as createSmtpTransport } from 'nodemailer';
 import type { ReactElement } from 'react';
 import { supabaseAdmin } from './supabase';
+import { isRetryableResendError } from './resend-errors';
 
 // ---------------------------------------------------------------------------
-// Transport selection — resolved once at module init
+// Transport selection — resolved lazily so this module can be imported from
+// runtimes where `import.meta.env` is undefined (Netlify Functions Node.js).
+// The Astro runtime reads import.meta.env at module load; the cron runtime
+// cannot, so transports must initialize on first use, not on import.
+// (Issue #68 post-rebase review : retire la duplication Path B du sweep.)
 // ---------------------------------------------------------------------------
 
-const smtpHost = import.meta.env.SMTP_HOST as string | undefined;
-const smtpPort = Number((import.meta.env.SMTP_PORT as string | undefined) ?? 1025);
+let cachedSmtpTransport: ReturnType<typeof createSmtpTransport> | null | undefined;
+let cachedResendClient: Resend | null | undefined;
 
-/** Nodemailer transport — non-null only when SMTP_HOST is set */
-const smtpTransport = smtpHost
-  ? createSmtpTransport({ host: smtpHost, port: smtpPort, secure: false })
-  : null;
-
-if (smtpTransport) {
-  console.info(`[smtp] Transport SMTP initialisé → ${smtpHost}:${smtpPort}`);
+function getSmtpTransport(): ReturnType<typeof createSmtpTransport> | null {
+  if (cachedSmtpTransport !== undefined) return cachedSmtpTransport;
+  const smtpHost = import.meta.env.SMTP_HOST as string | undefined;
+  const smtpPort = Number((import.meta.env.SMTP_PORT as string | undefined) ?? 1025);
+  cachedSmtpTransport = smtpHost
+    ? createSmtpTransport({ host: smtpHost, port: smtpPort, secure: false })
+    : null;
+  if (cachedSmtpTransport) {
+    console.info(`[smtp] Transport SMTP initialisé → ${smtpHost}:${smtpPort}`);
+  }
+  return cachedSmtpTransport;
 }
 
-// ---------------------------------------------------------------------------
-// Resend client singleton (always constructed, only used when SMTP is absent)
-// ---------------------------------------------------------------------------
-
-const resendApiKey = import.meta.env.RESEND_API_KEY as string | undefined;
-
-if (!smtpTransport && !resendApiKey) {
-  // Avertissement au démarrage — ne bloque pas le build mais log clairement
-  console.warn('[resend] RESEND_API_KEY manquante. Les emails ne seront pas envoyés.');
+function getResendClient(): Resend | null {
+  if (cachedResendClient !== undefined) return cachedResendClient;
+  const resendApiKey = import.meta.env.RESEND_API_KEY as string | undefined;
+  const smtp = getSmtpTransport();
+  if (!smtp && !resendApiKey) {
+    // Avertissement au démarrage — ne bloque pas le build mais log clairement
+    console.warn('[resend] RESEND_API_KEY manquante. Les emails ne seront pas envoyés.');
+  }
+  // Resend client is only used when SMTP is absent (production path)
+  cachedResendClient = resendApiKey ? new Resend(resendApiKey) : null;
+  return cachedResendClient;
 }
-
-// Resend client is only used when SMTP is absent (production path)
-const resendClient = resendApiKey ? new Resend(resendApiKey) : null;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -109,17 +117,6 @@ interface ThreadSendContext {
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function isRetryableResendError(error: ResendApiError | null | undefined): boolean {
-  if (!error) return false;
-  const status = error.statusCode ?? null;
-  if (status === null || status >= 500) return true;
-  // 429 (rate limit) est retryable malgré être un 4xx — la limite est transitoire.
-  // Aligné avec le prédicat miroir dans netlify/functions/reconcile-confirmations.ts
-  // (issue #68 review : les deux chemins webhook + sweep doivent s'accorder).
-  if (status === 429) return true;
-  return error.name === 'application_error';
 }
 
 function toResendMessageId(id: string): string {
@@ -229,7 +226,7 @@ async function sendEmailViaSMTP(
     const normalizedThreadKey = threadKey?.trim();
     const threadContext = await prepareThreadSendContext(normalizedThreadKey, subject);
 
-    const info = await smtpTransport!.sendMail({
+    const info = await getSmtpTransport()!.sendMail({
       from: fromEmail,
       to: Array.isArray(to) ? to.join(', ') : to,
       ...(bcc ? { bcc: Array.isArray(bcc) ? bcc.join(', ') : bcc } : {}),
@@ -270,6 +267,7 @@ async function sendEmailViaResend(
   params: SendEmailParams,
   fromEmail: string,
 ): Promise<SendEmailResult> {
+  const resendClient = getResendClient();
   if (!resendClient) {
     console.error('[resend] Resend client non initialisé — RESEND_API_KEY manquante.');
     return { success: false, error: 'RESEND_API_KEY manquante' };
@@ -378,7 +376,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
       ? { ...params, bcc: [...explicitBccList, adminEmail] }
       : params;
 
-  if (smtpTransport) {
+  if (getSmtpTransport()) {
     return sendEmailViaSMTP(resolvedParams, fromEmail);
   }
 

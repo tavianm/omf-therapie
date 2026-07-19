@@ -270,7 +270,7 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
           .update({ video_link: result.meetLink, google_calendar_event_id: result.eventId })
           .eq('id', updatedAppt.id);
         if (persistMeetErr) {
-          console.error('[stripe-webhook] Échec persistance google_calendar_event_id ( Meet):', persistMeetErr);
+          logger.error('stripe-webhook: échec persistance google_calendar_event_id (Meet)', { appointmentId: updatedAppt.id }, persistMeetErr);
         }
       } else {
         throw new Error('Meet non retourné par Google Calendar');
@@ -306,7 +306,7 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
           .update({ google_calendar_event_id: fallbackResult.eventId })
           .eq('id', updatedAppt.id);
         if (persistFallbackErr) {
-          console.error('[stripe-webhook] Échec persistance google_calendar_event_id (fallback):', persistFallbackErr);
+          logger.error('stripe-webhook: échec persistance google_calendar_event_id (fallback)', { appointmentId: updatedAppt.id }, persistFallbackErr);
         }
       } catch (calendarErr) {
         logger.error('stripe-webhook: fallback calendar event creation failed', { appointmentId: updatedAppt.id }, calendarErr);
@@ -344,7 +344,7 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
         .update({ google_calendar_event_id: eventResult.eventId })
         .eq('id', updatedAppt.id);
       if (persistEventErr) {
-        console.error('[stripe-webhook] Échec persistance google_calendar_event_id (event):', persistEventErr);
+        logger.error('stripe-webhook: échec persistance google_calendar_event_id (event)', { appointmentId: updatedAppt.id }, persistEventErr);
       }
     } catch (calendarErr) {
       logger.error('stripe-webhook: calendar event creation failed (existing video link)', { appointmentId: updatedAppt.id }, calendarErr);
@@ -362,6 +362,9 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
     calendarEventCreated,
     adminEmail: import.meta.env.ADMIN_EMAIL,
     baseUrl: import.meta.env.BETTER_AUTH_URL ?? import.meta.env.SITE_URL,
+    // Le webhook s'exécute dans le runtime Astro : on laisse createSecureLinkToken
+    // lire import.meta.env.BETTER_AUTH_SECRET (pas de secret explicite). Le sweep
+    // Netlify passe son propre secret car import.meta.env y est undefined.
   });
 
   // N3 — Marquer livré (drapeau durable L2). UNIQUEMENT si l'email patient
