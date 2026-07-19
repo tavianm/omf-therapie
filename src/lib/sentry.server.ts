@@ -14,12 +14,17 @@
 import * as Sentry from '@sentry/node';
 import type { APIContext } from 'astro';
 import { scrubPii } from './pii-scrub';
+import { shouldDropEvent } from './sentry-filter';
 
 // Re-export the shared scrubber + its structural type so existing callers
 // (import { scrubPii } from '@/lib/sentry.server') keep working and tests can
 // assert the server path uses the same function reference as the client path.
 export { scrubPii } from './pii-scrub';
 export type { ScrubbableEvent } from './pii-scrub';
+// Re-export the filter so callers (and tests) can reach it via the single
+// server wiring module, mirroring the scrubPii re-export pattern.
+export { shouldDropEvent } from './sentry-filter';
+export type { FilterableEvent } from './sentry-filter';
 
 let initialized = false;
 let canarySent = false;
@@ -39,11 +44,14 @@ export function initSentry(): void {
     dsn,
     environment:
       process.env.CONTEXT === 'production' ? 'production' : 'staging',
-    // scrubPii is generic and preserves the SDK's ErrorEvent type, so no cast
-    // is needed: the beforeSend receives an ErrorEvent and returns one. It
-    // structurally redacts request/extra/breadcrumbs before the event leaves
-    // the process.
-    beforeSend: (event) => scrubPii(event),
+    // beforeSend pipeline: drop → scrub. `shouldDropEvent` runs first because
+    // dropping is cheaper than scrubbing (no object cloning) and because a
+    // dropped event should never see its PII fields touched anyway. Returning
+    // `null` is the Sentry-blessed drop signal — no rate-limit consumption.
+    beforeSend: (event) => {
+      if (shouldDropEvent(event)) return null;
+      return scrubPii(event);
+    },
     // Traces/APM intentionally disabled (frame scope is error tracking + logs).
     // tracesSampleRate governs performance traces only, not error capture.
   });

@@ -5,10 +5,11 @@
  * `import.meta.env` is unavailable. Env vars are read via `process.env`, and
  * this module cannot import from src/lib/** (server-side Astro module graph).
  *
- * TODO: Mirrors src/lib/pii-scrub.ts — keep in sync. Cannot share because the
- * cron bundler doesn't resolve src/lib. (Parity test is a separate medium
- * finding, deferred.) When updating PII_KEYS or the breadcrumb/extra walk,
- * apply the same change to src/lib/pii-scrub.ts.
+ * TODO: Mirrors src/lib/pii-scrub.ts AND src/lib/sentry-filter.ts — keep both
+ * in sync. Cannot share because the cron bundler doesn't resolve src/lib.
+ * (Parity test is a separate medium finding, deferred.) When updating
+ * PII_KEYS, the breadcrumb/extra walk, or the extension/noise filter rules,
+ * apply the same change to BOTH src/lib modules.
  */
 
 import * as Sentry from '@sentry/node';
@@ -111,8 +112,85 @@ export function initSentry(): void {
     dsn,
     environment:
       process.env.CONTEXT === 'production' ? 'production' : 'staging',
-    beforeSend: (event) => scrubPii(event) as Sentry.ErrorEvent,
+    // Drop → scrub pipeline (same order as src/lib/sentry.server.ts).
+    beforeSend: (event) => {
+      if (shouldDropEvent(event)) return null;
+      return scrubPii(event) as Sentry.ErrorEvent;
+    },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Extension / noise filter — MUST mirror src/lib/sentry-filter.ts.
+// Cron functions don't load in a browser so extension frames are unlikely,
+// but a cron-initiated fetch could still surface an exception value that
+// matches a known noise substring. Keeping the parity avoids drift.
+// ---------------------------------------------------------------------------
+
+const EXTENSION_FRAME_PREFIXES = [
+  'chrome-extension://',
+  'moz-extension://',
+  'safari-web-extension://',
+  'webkit-masked-url://',
+  'extensions/',
+] as const;
+
+const NOISE_MESSAGE_SUBSTRINGS = [
+  'cashbackreminder',
+  'resizeobserver loop',
+] as const;
+
+interface FilterableEvent {
+  message?: string;
+  exception?: {
+    values?: Array<{
+      value?: string;
+      stacktrace?: {
+        frames?: Array<{ filename?: string }>;
+      };
+    }>;
+  };
+}
+
+function hasExtensionFrame(event: FilterableEvent): boolean {
+  const values = event.exception?.values;
+  if (!Array.isArray(values)) return false;
+  for (const ex of values) {
+    const frames = ex?.stacktrace?.frames;
+    if (!Array.isArray(frames)) continue;
+    for (const frame of frames) {
+      const filename = frame?.filename;
+      if (typeof filename !== 'string') continue;
+      const lower = filename.toLowerCase();
+      if (
+        EXTENSION_FRAME_PREFIXES.some((prefix) => lower.startsWith(prefix))
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function hasNoiseMessage(event: FilterableEvent): boolean {
+  const candidates: string[] = [];
+  if (typeof event.message === 'string') candidates.push(event.message);
+  const values = event.exception?.values;
+  if (Array.isArray(values)) {
+    for (const ex of values) {
+      if (typeof ex?.value === 'string') candidates.push(ex.value);
+    }
+  }
+  if (candidates.length === 0) return false;
+  const hay = candidates.join('\n').toLowerCase();
+  return NOISE_MESSAGE_SUBSTRINGS.some((sub) => hay.includes(sub));
+}
+
+/** Mirror of src/lib/sentry-filter.ts shouldDropEvent — keep in sync. */
+export function shouldDropEvent<T extends FilterableEvent = FilterableEvent>(
+  event: T,
+): boolean {
+  return hasExtensionFrame(event) || hasNoiseMessage(event);
 }
 
 /**
