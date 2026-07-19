@@ -244,6 +244,30 @@ describe('send-reminders cron handler', () => {
     });
   });
 
+  describe('Sentry.init environment (regression: CONTEXT is build-time only)', () => {
+    it('derives the environment from BUILD_CONTEXT, NOT process.env.CONTEXT', async () => {
+      // Production bug 2026-07-19: every prod cron tagged
+      // `environment: 'staging'` because process.env.CONTEXT is undefined at
+      // function runtime (Netlify exposes it at BUILD time only). The fix
+      // reads BUILD_CONTEXT from a build-time-generated module instead.
+      //
+      // In this test environment:
+      //   - process.env.CONTEXT is undefined (vitest does not set it)
+      //   - netlify/functions/_lib/build-env.ts is the committed stub with
+      //     BUILD_CONTEXT = 'dev'
+      // So Sentry.init must receive `environment: 'staging'` (the dev
+      // fallback). If it received `environment: undefined` or derived from
+      // process.env.CONTEXT, the test would catch the regression.
+      sentry.init.mockClear();
+      await sendRemindersHandler();
+      expect(sentry.init).toHaveBeenCalledWith(
+        expect.objectContaining({
+          environment: 'staging',
+        }),
+      );
+    });
+  });
+
   describe('Sentry.withMonitor wiring', () => {
     it('registers the monitor with the expected slug, crontab schedule and margins', async () => {
       // withMonitor is invoked inside handler() at call time, not at module

@@ -14,6 +14,12 @@
 
 import * as Sentry from '@sentry/node';
 import type { Event } from '@sentry/node';
+// build-env.ts is auto-generated at build time by scripts/generate-build-env.mjs.
+// It snapshots Netlify's build-only CONTEXT/COMMIT_REF so the cron runtime
+// (esbuild-bundled, no Vite, no import.meta.env) can still read them. Netlify
+// does NOT expose these vars at function runtime by default — without this,
+// every prod cron tagged 'environment: staging' (production bug 2026-07-19).
+import { BUILD_CONTEXT } from './build-env';
 
 const PII_KEYS = [
   // Real appointment columns (supabase/migrations/001_init.sql)
@@ -110,8 +116,9 @@ export function initSentry(): void {
 
   Sentry.init({
     dsn,
-    environment:
-      process.env.CONTEXT === 'production' ? 'production' : 'staging',
+    // BUILD_CONTEXT is inlined at build time. process.env.CONTEXT is NOT
+    // exposed at function runtime — production bug 2026-07-19.
+    environment: BUILD_CONTEXT === 'production' ? 'production' : 'staging',
     // Drop → scrub pipeline (same order as src/lib/sentry.server.ts).
     beforeSend: (event) => {
       if (shouldDropEvent(event)) return null;

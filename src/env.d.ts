@@ -49,6 +49,14 @@ interface ImportMetaEnv {
   // client bundle → the browser canary would always emit "deploy: unknown".
   /** Client-visible git SHA (same value as COMMIT_REF). Set by the Netlify build command. */
   readonly PUBLIC_COMMIT_REF?: string;
+
+  // PUBLIC_CONTEXT exposes Netlify's build-only CONTEXT var to the server
+  // and client bundle. Netlify does NOT inject CONTEXT at function runtime,
+  // so without this inlining every server event tags as 'staging' even on
+  // the production deploy (production bug observed 2026-07-19). Same inlining
+  // trick as PUBLIC_COMMIT_REF — see scripts/generate-build-env.mjs.
+  /** Netlify deploy context ('production' | 'deploy-preview' | 'branch-deploy'). Set by the build command. */
+  readonly PUBLIC_CONTEXT?: string;
 }
 
 interface ImportMeta {

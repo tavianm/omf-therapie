@@ -15,6 +15,7 @@ import * as Sentry from '@sentry/node';
 import type { APIContext } from 'astro';
 import { scrubPii } from './pii-scrub';
 import { shouldDropEvent } from './sentry-filter';
+import { BUILD_COMMIT_REF, sentryEnvironment } from './build-env';
 
 // Re-export the shared scrubber + its structural type so existing callers
 // (import { scrubPii } from '@/lib/sentry.server') keep working and tests can
@@ -42,8 +43,10 @@ export function initSentry(): void {
 
   Sentry.init({
     dsn,
-    environment:
-      process.env.CONTEXT === 'production' ? 'production' : 'staging',
+    // Sentry environment derived from the build context (NOT process.env.CONTEXT,
+    // which Netlify does not expose at function runtime — production bug
+    // 2026-07-19: every prod event tagged 'staging'). See src/lib/build-env.ts.
+    environment: sentryEnvironment(),
     // beforeSend pipeline: drop → scrub. `shouldDropEvent` runs first because
     // dropping is cheaper than scrubbing (no object cloning) and because a
     // dropped event should never see its PII fields touched anyway. Returning
@@ -88,7 +91,11 @@ export async function withRequestScope<T>(
 export function emitDeployCanary(): void {
   if (canarySent || !initialized) return;
   canarySent = true;
-  Sentry.captureMessage(`deploy: ${process.env.COMMIT_REF ?? 'unknown'}`);
+  // BUILD_COMMIT_REF is inlined at build time (NOT process.env.COMMIT_REF,
+  // which Netlify does not expose at function runtime — production bug
+  // 2026-07-19: every prod canary emitted 'deploy: unknown'). Empty string
+  // in local dev → 'unknown' fallback, acceptable for local dev.
+  Sentry.captureMessage(`deploy: ${BUILD_COMMIT_REF || 'unknown'}`);
 }
 
 // Re-export the capture primitives so callers depend on this module, not on

@@ -1,10 +1,18 @@
 [build]
-  # PUBLIC_COMMIT_REF surfaces Netlify's auto-injected COMMIT_REF (git SHA) to
-  # the client bundle. Astro only exposes vars prefixed with PUBLIC_ to client
-  # code, so without this the browser canary emits `deploy: unknown` (the SHA
-  # never reaches the SDK). Local dev: COMMIT_REF unset → empty → fallback to
-  # 'unknown' (acceptable — no real SHA in dev).
-  command = "PUBLIC_COMMIT_REF=$COMMIT_REF npm run build"
+  # Pre-build: snapshot Netlify's build-only env vars (CONTEXT, COMMIT_REF)
+  # into runtime-readable modules. Netlify does NOT expose these at function
+  # runtime by default — without this step, every server/cron event tagged
+  # 'staging' in prod and the canary emitted 'deploy: unknown' (production
+  # bug 2026-07-19). See scripts/generate-build-env.mjs.
+  #
+  # Then expose the same vars to the Astro/Vite bundle with the PUBLIC_ prefix
+  # so both server AND client code can read them via import.meta.env.PUBLIC_*.
+  # (Astro only exposes PUBLIC_-prefixed vars — the prefix is required even
+  # for server-side code that goes through Vite.)
+  #
+  # LOCAL DEV (no Netlify): COMMIT_REF/CONTEXT unset → both default to 'dev'
+  # → Sentry environment falls back to 'staging' (no prod pollution).
+  command = "node scripts/generate-build-env.mjs && PUBLIC_COMMIT_REF=$COMMIT_REF PUBLIC_CONTEXT=$CONTEXT npm run build"
   publish = "dist"
 
 [functions]
@@ -56,10 +64,15 @@
   #                                   Production → DSN projet prod
   #                                   Deploy previews → DSN projet staging (voir INFRA.md §7.4)
   #
-  # COMMIT_REF, CONTEXT            — Injectés automatiquement par Netlify (non configurés par l'opérateur).
-  #                                 COMMIT_REF = SHA du commit (utilisé par le canary serveur).
-  #                                 PUBLIC_COMMIT_REF = même SHA, exposé au bundle client (le canary
-  #                                 browser en a besoin — Astro ne expose que les vars préfixées PUBLIC_).
+  # COMMIT_REF, CONTEXT            — Injectés automatiquement par Netlify au BUILD (non configurés
+  #                                 par l'opérateur, NON exposés au runtime des Functions par défaut).
+  #                                 La commande [build] ci-dessus les snapshotte au build via
+  #                                 scripts/generate-build-env.mjs (côté cron) et les expose au bundle
+  #                                 Astro/Vite via PUBLIC_COMMIT_REF / PUBLIC_CONTEXT (côté serveur
+  #                                 + client). Sans cette étape :
+  #                                   - les crons taggent 'environment: staging' même en prod
+  #                                   - le canary serveur émet 'deploy: unknown' même post-deploy
+  #                                 (production bugs observés 2026-07-19, corrigés par ce snapshotting).
   #                                 CONTEXT = "production" | "deploy-preview" | "branch-deploy".
 
 # ---------------------------------------------------------------------------
