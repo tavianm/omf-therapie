@@ -276,18 +276,29 @@ async function runReconcile(): Promise<void> {
   }
 }
 
-// Sentry.withMonitor enveloppe le handler : une exécution manquée (pas de
+// Sentry.withMonitor enveloppe le work : une exécution manquée (pas de
 // check-in dans `checkInMargin` minutes du schedule) lève une alerte Sentry.
 // checkInMargin et maxRuntime sont en minutes.
-export default Sentry.withMonitor(
-  'reconcile-confirmations',
-  runReconcile,
-  {
-    schedule: { type: 'crontab', value: SCHEDULE },
-    checkInMargin: 5,
-    maxRuntime: 10,
-  },
-);
+//
+// CRITIQUE : `withMonitor(slug, callback, opts)` retourne `T` (la valeur de
+// retour du callback), PAS une fonction. L'exporter directement casse le
+// bootstrap Netlify Functions v2 qui appelle `handler(event, context)` —
+// l'erreur résultante `handler is not a function` fait fail silencieusement
+// chaque exécution programmée (bug production #75, fix 046e006).
+// On doit l'envelopper dans une vraie fonction handler que Netlify peut invoquer.
+async function handler(): Promise<void> {
+  return Sentry.withMonitor(
+    'reconcile-confirmations',
+    runReconcile,
+    {
+      schedule: { type: 'crontab', value: SCHEDULE },
+      checkInMargin: 5,
+      maxRuntime: 10,
+    },
+  );
+}
+
+export default handler;
 
 async function reconcile(): Promise<void> {
   const startedAt = Date.now();
