@@ -113,18 +113,28 @@ async function runSendReminders(): Promise<void> {
   }
 }
 
-// Sentry.withMonitor wraps the handler so missed runs (no check-in within
+// Sentry.withMonitor wraps the work so missed runs (no check-in within
 // checkInMargin minutes of the schedule) raise a Sentry alert. checkInMargin
 // and maxRuntime are in minutes.
-export default Sentry.withMonitor(
-  'send-reminders',
-  runSendReminders,
-  {
-    schedule: { type: 'crontab', value: SCHEDULE },
-    checkInMargin: 5,
-    maxRuntime: 10,
-  },
-);
+//
+// CRITICAL: `withMonitor(slug, callback, opts)` returns `T` (the callback's
+// return value), NOT a function. Exporting it directly breaks Netlify's
+// bootstrap, which calls `handler(event, context)` — the resulting
+// `handler is not a function` TypeError silently fails every scheduled run.
+// We must wrap it in a real handler function that Netlify can invoke.
+async function handler(): Promise<void> {
+  return Sentry.withMonitor(
+    'send-reminders',
+    runSendReminders,
+    {
+      schedule: { type: 'crontab', value: SCHEDULE },
+      checkInMargin: 5,
+      maxRuntime: 10,
+    },
+  );
+}
+
+export default handler;
 
 async function sendReminders(): Promise<void> {
   // 1. Initialiser les clients (process.env — runtime Node.js Netlify)

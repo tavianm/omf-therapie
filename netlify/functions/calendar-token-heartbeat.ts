@@ -110,15 +110,25 @@ async function runHeartbeat(): Promise<void> {
   }
 }
 
-export default Sentry.withMonitor(
-  'calendar-token-heartbeat',
-  runHeartbeat,
-  {
-    schedule: { type: 'crontab', value: SCHEDULE },
-    checkInMargin: 5,
-    maxRuntime: 10,
-  },
-);
+// Sentry.withMonitor wraps the work so missed runs raise a Sentry alert.
+//
+// CRITICAL: `withMonitor(slug, callback, opts)` returns `T` (the callback's
+// return value), NOT a function. Exporting it directly breaks Netlify's
+// bootstrap (`handler is not a function` TypeError silently fails every run).
+// Wrap it in a real handler function Netlify can invoke.
+async function handler(): Promise<void> {
+  return Sentry.withMonitor(
+    'calendar-token-heartbeat',
+    runHeartbeat,
+    {
+      schedule: { type: 'crontab', value: SCHEDULE },
+      checkInMargin: 5,
+      maxRuntime: 10,
+    },
+  );
+}
+
+export default handler;
 
 async function heartbeat(): Promise<void> {
   // 1. Read and validate required env vars

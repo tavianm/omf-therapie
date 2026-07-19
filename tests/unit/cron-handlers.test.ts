@@ -32,12 +32,15 @@ const sentry = vi.hoisted(() => ({
   captureMessage: vi.fn(),
   addBreadcrumb: vi.fn(),
   flush: vi.fn(async (_ms?: number) => true),
-  // withMonitor passthrough: return the handler UNCHANGED (do not invoke it)
-  // so the default export of each cron module IS the runnable handler
-  // (`runSendReminders` / `runHeartbeat`). Invoking it at import time would
-  // make the default export a Promise rather than a function.
+  // withMonitor invocation contract (mirrors the real @sentry/node impl):
+  //   - calls `callback()` immediately
+  //   - returns T (the callback's return value), NOT a function
+  //   - captures `in_progress` then `ok`/`error` check-ins
+  // The cron modules wrap withMonitor in a `handler()` function (because
+  // Netlify's bootstrap requires a callable default export), so the mock must
+  // invoke the callback — otherwise the work function never runs.
   withMonitor: vi.fn(
-    <T>(_slug: string, handler: () => T, _opts?: unknown): (() => T) => handler,
+    <T>(_slug: string, callback: () => T, _opts?: unknown): T => callback(),
   ),
 }));
 
@@ -161,9 +164,9 @@ vi.mock('googleapis', () => {
 vi.mock('@react-email/render', () => ({ render: vi.fn(async () => '<html/>') }));
 
 // ---------------------------------------------------------------------------
-// Import the cron modules AFTER the mocks are registered. Because
-// `withMonitor` is a passthrough, the default export of each module is the
-// wrapped handler (`runSendReminders` / `runHeartbeat`).
+// Import the cron modules AFTER the mocks are registered. The default export
+// of each module is a `handler()` function (callable by Netlify's bootstrap)
+// that internally invokes `Sentry.withMonitor(slug, runX, opts)`.
 // ---------------------------------------------------------------------------
 import sendRemindersHandler from '../../netlify/functions/send-reminders';
 import heartbeatHandler from '../../netlify/functions/calendar-token-heartbeat';
@@ -230,12 +233,23 @@ afterEach(() => {
 // ===========================================================================
 
 describe('send-reminders cron handler', () => {
+  describe('default export contract', () => {
+    it('exports a callable handler (regression: withMonitor returns T, not a function)', () => {
+      // Regression guard: `Sentry.withMonitor(slug, callback, opts)` returns
+      // the callback's return value (T), NOT a function. Exporting it
+      // directly breaks Netlify's bootstrap (`handler is not a function`
+      // TypeError silently fails every scheduled run). The default export
+      // MUST be a callable function that Netlify can invoke as handler().
+      expect(typeof sendRemindersHandler).toBe('function');
+    });
+  });
+
   describe('Sentry.withMonitor wiring', () => {
-    it('registers the monitor with the expected slug, crontab schedule and margins', () => {
-      // The default export was produced by `Sentry.withMonitor(slug, fn, opts)`
-      // at module load — captured by the spy on import. Both cron modules
-      // share the spy, so we assert the specific slug rather than the total
-      // call count.
+    it('registers the monitor with the expected slug, crontab schedule and margins', async () => {
+      // withMonitor is invoked inside handler() at call time, not at module
+      // load. Invoke once so the spy captures the wiring call.
+      sentry.withMonitor.mockClear();
+      await sendRemindersHandler();
       expect(sentry.withMonitor).toHaveBeenCalledWith(
         'send-reminders',
         expect.any(Function),
@@ -292,9 +306,26 @@ describe('send-reminders cron handler', () => {
 // ===========================================================================
 
 describe('calendar-token-heartbeat cron handler', () => {
+  describe('default export contract', () => {
+    it('exports a callable handler (regression: withMonitor returns T, not a function)', () => {
+      // Same regression guard as send-reminders — see comment there.
+      expect(typeof heartbeatHandler).toBe('function');
+    });
+  });
+
   describe('Sentry.withMonitor wiring', () => {
-    it('registers the monitor with the expected slug, crontab schedule and margins', () => {
-      // Assert the specific slug — the spy is shared by both cron modules.
+    it('registers the monitor with the expected slug, crontab schedule and margins', async () => {
+      sentry.withMonitor.mockClear();
+      // Seed a token row so heartbeat() resolves without throwing.
+      supabaseQuery.mockResolvedValueOnce({
+        ...EMPTY_RESULT,
+        data: {
+          refresh_token: '1//persisted-rt',
+          access_token: 'ya29.old',
+          expiry_date: Date.now() - 60_000,
+        },
+      });
+      await heartbeatHandler();
       expect(sentry.withMonitor).toHaveBeenCalledWith(
         'calendar-token-heartbeat',
         expect.any(Function),
