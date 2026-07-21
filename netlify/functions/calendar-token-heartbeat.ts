@@ -54,7 +54,13 @@ import { logger } from './_lib/logger';
 const SCHEDULE = '0 0 * * 0' as const;
 
 export const config: Config = {
-  schedule: SCHEDULE,
+  // ⚠️ NE PAS remplacer par la const SCHEDULE ci-dessus — l'extracteur statique
+  // de Netlify (@netlify/zip-it-and-ship-it, parsePrimitive) ne résout QUE les
+  // littéraux (StringLiteral), pas les Identifier. `schedule: SCHEDULE` produit
+  // `schedule: null` côté Netlify → le scheduler ne déclenche plus (regression
+  // #113 introduite par #75). Le littéral DOIT rester inline ici ; le dupliquer
+  // avec SCHEDULE est volontaire (DRY brisée par contrainte du bundler).
+  schedule: '0 0 * * 0',
   // No schedule_timezone → Netlify defaults to UTC (matches Sentry monitor default).
   // Do not add Europe/Paris here — SCHEDULE is calibrated for UTC.
 };
@@ -96,8 +102,36 @@ async function sendInvalidGrantAlert(
 // Handler
 // ---------------------------------------------------------------------------
 
-async function runHeartbeat(): Promise<void> {
+// Sentry.withMonitor wraps the work so missed runs raise a Sentry alert.
+//
+// CRITICAL: `withMonitor(slug, callback, opts)` returns `T` (the callback's
+// return value), NOT a function. Exporting it directly breaks Netlify's
+// bootstrap (`handler is not a function` TypeError silently fails every run).
+// Wrap it in a real handler function Netlify can invoke.
+//
+// CRITICAL #2 (regression #113): `initSentry()` MUST run BEFORE
+// `Sentry.withMonitor()`. `withMonitor` emits an `in_progress` check-in at
+// entry, and THAT check-in is the only one carrying the `monitor_config`
+// (with `checkInMargin`). If the client isn't initialized yet, the envelope
+// is dropped → Sentry never receives the margin → `checkin_margin: null` →
+// missed-run detection uses the (tighter) default. initSentry() is idempotent
+// (guarded by `initialized`) so calling it here makes the call inside
+// runHeartbeat() below a harmless no-op.
+async function handler(): Promise<void> {
   initSentry();
+  return Sentry.withMonitor(
+    'calendar-token-heartbeat',
+    runHeartbeat,
+    {
+      schedule: { type: 'crontab', value: SCHEDULE },
+      checkInMargin: 5,
+      maxRuntime: 10,
+    },
+  );
+}
+
+async function runHeartbeat(): Promise<void> {
+  // initSentry() now runs in handler() BEFORE withMonitor — see comment above.
   try {
     await heartbeat();
   } catch (err) {
@@ -108,24 +142,6 @@ async function runHeartbeat(): Promise<void> {
       await Sentry.flush(2000);
     }
   }
-}
-
-// Sentry.withMonitor wraps the work so missed runs raise a Sentry alert.
-//
-// CRITICAL: `withMonitor(slug, callback, opts)` returns `T` (the callback's
-// return value), NOT a function. Exporting it directly breaks Netlify's
-// bootstrap (`handler is not a function` TypeError silently fails every run).
-// Wrap it in a real handler function Netlify can invoke.
-async function handler(): Promise<void> {
-  return Sentry.withMonitor(
-    'calendar-token-heartbeat',
-    runHeartbeat,
-    {
-      schedule: { type: 'crontab', value: SCHEDULE },
-      checkInMargin: 5,
-      maxRuntime: 10,
-    },
-  );
 }
 
 export default handler;

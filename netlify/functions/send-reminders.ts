@@ -98,7 +98,7 @@ function getParisTomorrowWindow(): { windowStart: Date; windowEnd: Date } {
  * cadence matches Netlify's actual trigger.
  */
 async function runSendReminders(): Promise<void> {
-  initSentry();
+  // initSentry() now runs in handler() BEFORE withMonitor — see comment above.
   try {
     await sendReminders();
   } catch (err) {
@@ -122,7 +122,17 @@ async function runSendReminders(): Promise<void> {
 // bootstrap, which calls `handler(event, context)` — the resulting
 // `handler is not a function` TypeError silently fails every scheduled run.
 // We must wrap it in a real handler function that Netlify can invoke.
+//
+// CRITICAL #2 (regression #113): `initSentry()` MUST run BEFORE
+// `Sentry.withMonitor()`. `withMonitor` emits an `in_progress` check-in at
+// entry, and THAT check-in is the only one carrying the `monitor_config`
+// (with `checkInMargin`). If the client isn't initialized yet, the envelope
+// is dropped → Sentry never receives the margin → `checkin_margin: null` →
+// missed-run detection uses the (tighter) default. initSentry() is idempotent
+// (guarded by `initialized`) so calling it here makes the call inside
+// runSendReminders() below a harmless no-op.
 async function handler(): Promise<void> {
+  initSentry();
   return Sentry.withMonitor(
     'send-reminders',
     runSendReminders,
@@ -303,7 +313,13 @@ async function sendReminders(): Promise<void> {
 
 export const config: Config = {
   /** Chaque jour à 18h00 UTC (= 19h00 hiver / 20h00 été Paris) */
-  schedule: SCHEDULE,
+  // ⚠️ NE PAS remplacer par la const SCHEDULE ci-dessus — l'extracteur statique
+  // de Netlify (@netlify/zip-it-and-ship-it, parsePrimitive) ne résout QUE les
+  // littéraux (StringLiteral), pas les Identifier. `schedule: SCHEDULE` produit
+  // `schedule: null` côté Netlify → le scheduler ne déclenche plus (regression
+  // #113 introduite par #75). Le littéral DOIT rester inline ici ; le dupliquer
+  // avec SCHEDULE est volontaire (DRY brisée par contrainte du bundler).
+  schedule: '0 18 * * *',
   // No schedule_timezone → Netlify defaults to UTC (matches Sentry monitor default).
   // Do not add Europe/Paris here — SCHEDULE is calibrated for UTC.
 };
