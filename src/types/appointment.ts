@@ -67,6 +67,14 @@ export interface Appointment {
   stripe_payment_link_url: string | null;
   stripe_payment_intent_id: string | null;
 
+  /**
+   * Horodatage de la délivrance des emails de confirmation + invitation calendrier.
+   * NULL = en attente (le sweep/webhook retentera).
+   * Drapeau durable d'idempotence L2 (issue #68) : positionné UNIQUEMENT après
+   * succès complet des side-effects (email patient délivré). Jamais reset.
+   */
+  confirmation_sent_at: string | null;
+
   // Google Meet (renseigné manuellement par la thérapeute)
   video_link: string | null;
 

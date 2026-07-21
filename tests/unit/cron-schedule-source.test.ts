@@ -93,6 +93,27 @@ describe('regression #113 — Netlify schedule extraction', () => {
     });
   });
 
+  describe('reconcile-confirmations', () => {
+    // Sweep horaire (#68) — same Netlify static-extraction contract as the
+    // other two crons. This block was added alongside the sweep to lock the
+    // literal-inline + initSentry-before-withMonitor invariants from day one
+    // (the sweep was originally written with `schedule: SCHEDULE` and
+    // initSentry() inside runReconcile, then realigned on main's canonical
+    // pattern from #114 during a post-#114 rebase).
+    const source = readCronSource('netlify/functions/reconcile-confirmations.ts');
+
+    it('exports `config.schedule` as an inline string literal', () => {
+      const config = extractConfigBlock(source);
+      expect(config).toMatch(/schedule:\s*['"]/);
+      expect(config).not.toMatch(/schedule:\s*SCHEDULE\b/);
+    });
+
+    it('declares the expected hourly :05 UTC crontab', () => {
+      const config = extractConfigBlock(source);
+      expect(config).toMatch(/schedule:\s*['"]5 \* \* \* \*['"]/);
+    });
+  });
+
   describe('SCHEDULE const stays in sync with the inline literal', () => {
     // Defense against the DRY break introduced by this fix: the literal in
     // `config.schedule` and the `SCHEDULE` const (consumed by withMonitor)
@@ -109,6 +130,16 @@ describe('regression #113 — Netlify schedule extraction', () => {
 
     it('calendar-token-heartbeat: const SCHEDULE === config.schedule literal', () => {
       const source = readCronSource('netlify/functions/calendar-token-heartbeat.ts');
+      const constMatch = source.match(/const\s+SCHEDULE\s*=\s*['"]([^'"]+)['"]/);
+      const config = extractConfigBlock(source);
+      const literalMatch = config.match(/schedule:\s*['"]([^'"]+)['"]/);
+      expect(constMatch, 'const SCHEDULE declaration not found').not.toBeNull();
+      expect(literalMatch, 'inline schedule literal not found').not.toBeNull();
+      expect(constMatch![1]).toBe(literalMatch![1]);
+    });
+
+    it('reconcile-confirmations: const SCHEDULE === config.schedule literal', () => {
+      const source = readCronSource('netlify/functions/reconcile-confirmations.ts');
       const constMatch = source.match(/const\s+SCHEDULE\s*=\s*['"]([^'"]+)['"]/);
       const config = extractConfigBlock(source);
       const literalMatch = config.match(/schedule:\s*['"]([^'"]+)['"]/);
@@ -154,6 +185,11 @@ describe('regression #113 — Netlify schedule extraction', () => {
     it('calendar-token-heartbeat: initSentry() precedes Sentry.withMonitor() inside handler()', () => {
       const source = readCronSource('netlify/functions/calendar-token-heartbeat.ts');
       assertInitBeforeWithMonitor(source, 'calendar-token-heartbeat');
+    });
+
+    it('reconcile-confirmations: initSentry() precedes Sentry.withMonitor() inside handler()', () => {
+      const source = readCronSource('netlify/functions/reconcile-confirmations.ts');
+      assertInitBeforeWithMonitor(source, 'reconcile-confirmations');
     });
   });
 });

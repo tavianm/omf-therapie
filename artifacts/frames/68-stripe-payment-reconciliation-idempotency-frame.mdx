@@ -1,0 +1,107 @@
+---
+title: "fix(stripe): payment confirmation lost on transient failure — reconciliation sweep + idempotency"
+issue: 68
+status: approved
+tier: F-full
+date: 2026-07-04
+---
+
+## Problem
+
+When a patient pays for an appointment, the Stripe webhook sets `stripe_event_id`
+on the `appointments` row **before** running the post-payment side effects
+(Google Calendar event creation, two confirmation emails via `Promise.allSettled`).
+
+If any side effect fails — email/calendar hiccup, Resend 5xx, or the Netlify
+Function timing out under load (10s wall on hobby tier) — Stripe retries the
+event. But the retry sees `stripe_event_id` already set and returns early
+(idempotent no-op at `stripe-webhook.ts:214-218`). The confirmation email is
+**never sent**.
+
+**Result: a patient pays but silently receives no confirmation.** They don't get
+their calendar invite, their video link, or their receipt — and the therapist
+gets no payment notification either.
+
+This is not a rare edge case. Stripe fires multiple events per payment
+(`payment_intent.succeeded` + `checkout.session.completed`), and Netlify
+Functions time out under load. Every transient email/calendar failure becomes a
+permanently lost confirmation.
+
+## Who
+
+- **Primary:** Patients who prepay teleconsultations — they pay and receive no
+  confirmation, no calendar invite, no video link. They don't know if their
+  appointment is booked.
+- **Secondary:** The therapist (Oriane) — receives no `PaymentReceivedNotification`,
+  so she doesn't know a payment landed and can't prepare the session.
+
+## Constraints
+
+- **No architecture change to the webhook contract.** Stripe expects a 200 within
+  seconds; we cannot make side effects synchronous-and-blocking beyond that window.
+- **Mirror existing patterns.** `reminder_sent_at` (`001_init.sql:41`) already
+  establishes the `*_sent_at + cron reconciliation` idiom — `confirmation_sent_at`
+  follows it. Scheduled functions already exist (`send-reminders.ts`,
+  `calendar-token-heartbeat.ts`) via Netlify `Config = { schedule: ... }`.
+- **No duplicate emails under retry.** Resend `threadKey` is threading-only, not
+  idempotency — re-sends would duplicate. A real idempotency key is required.
+- **Supabase + Postgres.** Migrations are SQL files in `supabase/migrations/`
+  numbered sequentially (current latest: `007_manual_time_slots.sql`).
+- **Side-effect failure must not corrupt payment state.** Payment receipt
+  (`status = 'payment_received'`) is the source of truth; confirmation is a
+  derived side effect that must be retryable independently.
+
+## Out of Scope
+
+- **Rewriting the email threading system.** `threadKey` / `email_threads` stays
+  as-is; we only add an idempotency key alongside it.
+- **Changing Stripe event handling for non-payment events.** Only
+  `payment_intent.succeeded` / `checkout.session.completed` →
+  `handlePaymentSucceeded` is in scope.
+- **Admin-triggered manual resend UI.** The sweep is automatic; no admin panel
+  button in this issue.
+- **Alerting/observability stack.** Sweep logs to console like
+  `send-reminders.ts`; no new monitoring infra.
+- **Refactor of calendar event creation.** `createCalendarEvent` stays; we only
+  gate confirmation on its success/failure signal.
+
+## Premise Validity
+
+**Success in 6 months:** Every patient who pays receives their confirmation
+email + calendar event within the hour, even after transient failures. The
+hourly reconciliation sweep consistently finds zero stale `payment_received`
+rows missing `confirmation_sent_at`, and no patient reports a missing
+confirmation.
+
+**Failure in 6 months:** After 30 days of production traffic, the hourly
+reconciliation sweep is still finding and re-sending confirmations for >2% of
+paid appointments — proving the root-cause fix to side-effect ordering didn't
+hold, and the design needs rethinking. (Falsifiable: a measurable threshold
+against sweep output.)
+
+**Simplest alternative:** Reorder side effects to run *before* setting
+`stripe_event_id`, so a failed side effect lets Stripe retry cleanly.
+
+**Why not simplest:** Not enough on its own. Netlify Function timeouts can kill
+the process mid-side-effect *after* the DB write but before the response leaves
+— in which case Stripe may or may not retry depending on timing, and there's no
+safety net for rows that fall through the cracks. The three-part fix (reorder +
+reconciliation sweep + Resend idempotency key) is required: reorder prevents
+most retries, the sweep catches the rest within an hour, and idempotency prevents
+duplicates when both fire for the same appointment.
+
+## Complexity
+
+**Tier: F-full** — Multi-domain change touching the Stripe webhook (control
+flow + state machine), a Postgres migration (new column + partial unique index),
+the Resend email path (idempotency key), and a new Netlify scheduled function
+(reconciliation sweep). Introduces a new cross-cutting invariant
+(`confirmation_sent_at` lifecycle) that spans all four.
+
+**Signals observed:**
+- `Size: L` label (≤3d, multi-domain) → F-full per tier matrix.
+- 4 distinct touch points: webhook logic, DB schema, email lib, scheduled function.
+- New invariant (`confirmation_sent_at`) with write sites in both the webhook and
+  the sweep — state ownership spans components.
+- Concurrency reasoning required: Stripe dual-event delivery + sweep + retry
+  overlap → idempotency must hold across all three.
