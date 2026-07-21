@@ -37,6 +37,18 @@ CREATE TABLE IF NOT EXISTS _audit_010_dedup AS
     );
 
 -- ---------------------------------------------------------------------------
+-- RLS : enable Row Level Security with NO policies on the audit table.
+-- The audit table contains sensitive references (stripe_payment_intent_id) and
+-- must never be reachable via the anon/authenticated Supabase Data API keys.
+-- `006_explicit_grants.sql` already revoked default privileges for anon/
+-- authenticated, but CTAS creates a bare table without RLS — Supabase Studio
+-- flags this as a foot-gun. Enabling RLS with zero policies is default-deny
+-- (only service_role bypasses RLS). Defensive: survives a future stray
+-- GRANT that would otherwise expose the table.
+-- ---------------------------------------------------------------------------
+ALTER TABLE _audit_010_dedup ENABLE ROW LEVEL SECURITY;
+
+-- ---------------------------------------------------------------------------
 -- DEDUPE : null the duplicates (keep latest by updated_at DESC, id DESC).
 -- The subquery selects exactly one survivor per payment_intent_id.
 -- ---------------------------------------------------------------------------
