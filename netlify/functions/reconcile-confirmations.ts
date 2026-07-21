@@ -109,7 +109,20 @@ const SCHEDULE = '5 * * * *' as const;
 // ---------------------------------------------------------------------------
 
 export const config: Config = {
-  schedule: SCHEDULE,
+  /**
+   * Chaque heure à H:05 (évite la contention du webhook sur le top d'heure).
+   *
+   * ⚠️  NE PAS remplacer par la const SCHEDULE ci-dessus — l'extracteur statique
+   * de Netlify (@netlify/zip-it-and-ship-it, parsePrimitive) ne résout QUE les
+   * littéraux (StringLiteral), pas les Identifier. `schedule: SCHEDULE` produit
+   * `schedule: null` côté Netlify → le scheduler ne déclenche plus (régression
+   * #113 introduite par #75, corrigée par #114). Le littéral DOIT rester inline
+   * ici ; le dupliquer avec SCHEDULE est volontaire (DRY brisée par contrainte
+   * du bundler). La synchronisation SCHEDULE ↔ littéral est verrouillée par
+   * `tests/unit/cron-schedule-source.test.ts`.
+   */
+  schedule: '5 * * * *',
+  // No schedule_timezone → Netlify defaults to UTC (matches Sentry monitor default).
 };
 
 // ---------------------------------------------------------------------------
@@ -261,11 +274,11 @@ async function sendConfirmationEmails(
  * cadence matches Netlify's actual trigger.
  */
 async function runReconcile(): Promise<void> {
-  initSentry();
+  // initSentry() now runs in handler() BEFORE withMonitor — see comment below.
   try {
     await reconcile();
   } catch (err) {
-    // Flush avant le retour : Lambda/Netlify gèle l'environnement d'exécution
+    // Flush avant le retour : Lambda/Netlify gélent l'environnement d'exécution
     // au retour, ce qui abandonnerait tout événement Sentry in-flight.
     await captureAndFlush(err);
     throw err;
@@ -286,7 +299,17 @@ async function runReconcile(): Promise<void> {
 // l'erreur résultante `handler is not a function` fait fail silencieusement
 // chaque exécution programmée (bug production #75, fix 046e006).
 // On doit l'envelopper dans une vraie fonction handler que Netlify peut invoquer.
+//
+// CRITIQUE #2 (régression #113) : `initSentry()` DOIT tourner AVANT
+// `Sentry.withMonitor()`. `withMonitor` émet un check-in `in_progress` à
+// l'entrée, et CE check-in est le seul qui porte le `monitor_config` (avec
+// `checkInMargin`). Si le client n'est pas encore initialisé, l'enveloppe est
+// droppée → Sentry ne reçoit jamais la marge → `checkin_margin: null` → la
+// détection d'exécution manquée utilise la marge (plus serrée) par défaut.
+// `initSentry()` est idempotent (guard `initialized`) — l'appel ici rend
+// l'appel résiduel dans runReconcile() (s'il existe) inoffensif.
 async function handler(): Promise<void> {
+  initSentry();
   return Sentry.withMonitor(
     'reconcile-confirmations',
     runReconcile,
