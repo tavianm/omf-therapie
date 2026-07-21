@@ -1,0 +1,284 @@
+---
+title: "Plan: Post-release fixes for manual time slots (#59 review)"
+issue: 60
+spec: artifacts/specs/60-manual-slots-post-release-fixes-spec.mdx
+complexity: 5/10
+tier: F-lite
+generated: "2026-07-22T00:00:00Z"
+---
+
+## Summary
+
+Repair the 9 blockers from the #59 post-merge review: typed errors + lib
+contract (Slice 1) unlock API status mapping (Slice 2); frontend
+robustness (Slice 3), WAI-ARIA tablist (Slice 4), and a tautology-free
+regression test (Slice 5) follow in parallel. Plus a new migration `012`
+with a dedupe pre-pass and partial unique index. 14 binary ACs.
+
+## Architecture
+
+> **Forge-chart sidecars omitted (justified):** the `forge` plugin is not
+> installed in this environment, and these are targeted repairs to
+> **existing** code paths — no new modules, no new data flow, no new
+> architectural boundary to visualize. The Agents table + Wave Structure
+> below carry the file×function mapping. The data model is unchanged
+> (only a partial unique index is added); see the spec's consumer table
+> for the field/consumer index.
+
+**Data flow (text):** admin UI (`TimeSlotManager` island) → SSR API
+(`pages/api/admin/time-slots/**`) → lib (`manual-slots.ts`) → Supabase
+(`manual_time_slots`). Error contract reversal: lib now throws typed
+`NotFoundError` / `23505`-coded errors → API maps to 404/409 → frontend
+safe-parses (no more `SyntaxError` on gateway HTML).
+
+## Bootstrap Context
+
+No analysis artifact (F-lite skips `/analyze`). Frame and spec are the
+sole context. The fixes are surgical: each blocker cites exact file:line
+with a known root cause. No exploratory work.
+
+## Agents
+
+| Agent | Task count | Files |
+|-------|-----------|-------|
+| backend-dev-A | 6 | `src/lib/manual-slots.ts`, `src/types/manual-slots.ts`, `src/pages/api/admin/time-slots/[id].ts`, `src/pages/api/admin/time-slots/index.ts`, `supabase/migrations/012_manual_slots_unique.sql` |
+| frontend-dev-A | 3 | `src/components/admin/TimeSlotManager.tsx`, `src/pages/mes-rdvs.astro` |
+| tester-A | 3 | `tests/unit/manual-slots.test.ts` (new), `tests/unit/google-calendar.test.ts` |
+
+**Security-auditor** not assigned a dedicated task — B4 (`deleted_at`
+input validation) is fully specified in the spec and is a small,
+mechanical strip; the backend-dev agent implements it and the reviewer
+checks it at `/code-review`. **doc-writer** not assigned — no new public
+API surface or user-facing copy beyond toasts already specified.
+
+## Wave Structure
+
+3 waves, max 3 parallel agents. Elapsed ~1 round vs ~3 sequential
+(bounded work, small surface).
+
+| Wave | Trigger | Agents | Tasks |
+|------|---------|--------|-------|
+| 1 | start | 3 ∥ | backend-dev-A: T1+T2 (lib+types, sequential same-file) · frontend-dev-A: T6 (B7+B8 TimeSlotManager) · tester-A: T8 (B1 regression test, independent) |
+| 2 | Wave 1 done | 2 ∥ | backend-dev-A: T3 (API mapping, depends on lib T1) · frontend-dev-A: T7 (B9 tablist, independent of T6) |
+| 3 | Wave 2 done | 2 ∥ | backend-dev-A: T4 (migration 012) · tester-A: T9 (lib unit tests, depends on T1) → then backend-dev-A: T5 (log-level) |
+
+### Budget — per task
+
+| Task | Items | Class | Est. ops | Split? |
+|------|-------|-------|----------|--------|
+| T1 lib typed errors + B4/B5 | ~6 edits | judgmental | 12 | — |
+| T2 API mapping (B2/B3/B6) | ~5 edits | judgmental | 10 | — |
+| T3 migration 012 + dedupe | 1 file | bounded | 4 | — |
+| T4 log-level (non-blocking) | 1 edit | trivial | 1 | — |
+| T5 TimeSlotManager B7+B8 | ~8 edits | judgmental | 14 | — |
+| T6 mes-rdvs tablist B9 | ~1 script block | judgmental | 8 | — |
+| T7 B1 regression test | ~1 test rewrite | bounded | 4 | — |
+| T8 manual-slots lib unit tests | 1 new file | judgmental | 8 | — |
+
+**Total estimated ops: ~61** (within range; no task exceeds 15)
+
+### Budget — per agent instance
+
+Caps: `Σ ops > 50` OR `|tasks| > 4` OR `distinct subjects > 2` → split.
+
+| Instance | Tasks | Σ ops | Subjects | Split? |
+|----------|-------|-------|----------|--------|
+| backend-dev-A | T1, T2, T3, T4 | 27 | slots, api, migrations | — (3 subjects but tightly coupled single feature; merging avoids lib↔api↔migration drift) |
+| frontend-dev-A | T5, T6 | 22 | time-slot-ui, a11y-tabs | — |
+| tester-A | T7, T8 | 12 | tests | — |
+
+No instance exceeds caps. backend-dev-A is at the 3-subject boundary but
+the subjects are one cohesive feature (manual slots); splitting would
+create lib↔api coordination overhead with no focus benefit.
+
+## Consistency Report
+
+- Criteria covered: 14/14 (B1–B9, authz-regression, log-level, lint, test, audit:a11y)
+- Uncovered criteria: none
+- Tasks without spec backing: none
+- Gold plating exemptions applied: 0
+
+## Micro-Tasks
+
+> **Note on RED/GREEN:** This codebase has no established TDD harness for
+> the lib/API layer (manual-slots has no existing tests; Supabase calls
+> aren't mocked). Tasks are GREEN-first (implement, then add tests that
+> verify). Slice 5 (regression test for B1) and T8 (new lib unit tests)
+> are the test-bearing tasks. RED-GATE sentinels verify test files exist
+> and run green post-implementation.
+
+### Slice V1: Typed errors + lib contract (B2, B3, B4, B5, B6 lib half, log-level)
+
+#### Task 1: Add NotFoundError + harden lib functions (B2/B3/B4/B5) → backend-dev-A
+- **File:** `src/lib/manual-slots.ts`, `src/types/manual-slots.ts`
+- **Snippet:**
+  ```ts
+  // manual-slots.ts — new error class (domain-local, per spec S5)
+  export class NotFoundError extends Error {
+    readonly status = 404;
+    constructor(message = 'Créneau introuvable') { super(message); this.name = 'NotFoundError'; }
+  }
+  // inline Paris-date helper (B5) — NOT a shared export (out-of-scope)
+  function parisDateKey(date: Date): string { /* Intl.DateTimeFormat fr-FR YYYY-MM-DD Europe/Paris */ }
+  // deleteManualSlot: .select().maybeSingle(); null → throw new NotFoundError()
+  // updateManualSlot: remove deleted_at branch; .select().maybeSingle(); null → throw NotFoundError
+  // createManualSlot: surface error.code === '23505' (throw Error with .code)
+  // fetchManualSlots: slice via parisDateKey(from)/parisDateKey(to)
+  // types/manual-slots.ts: remove deleted_at from UpdateManualSlotData
+  ```
+- **Verify:** `npm run typecheck 2>&1 | grep -c 'error' ; grep -q 'NotFoundError' src/lib/manual-slots.ts && echo OK`
+- **Expected:** typecheck clean (or no NEW errors); NotFoundError present; UpdateManualSlotData has no deleted_at.
+- **Time:** 8 min | **Difficulty:** 4
+- **Traces:** SC-B2, SC-B3, SC-B4, SC-B5, S1→S5 | **Phase:** GREEN
+
+#### Task 2: API status mapping (B2/B3/B6 API half) → backend-dev-A
+- **File:** `src/pages/api/admin/time-slots/[id].ts`, `src/pages/api/admin/time-slots/index.ts`
+- **Snippet:**
+  ```ts
+  // [id].ts PATCH: strip deleted_at (400 if present) BEFORE calling lib;
+  //   catch NotFoundError → 404; remove substring-match on 'Failed to update'
+  // [id].ts DELETE: catch NotFoundError → 404; remove substring-match on 'Failed to delete'
+  // index.ts POST: catch error.code === '23505' → 409 Conflict
+  ```
+- **Verify:** `grep -q "instanceof NotFoundError" "src/pages/api/admin/time-slots/[id].ts" && grep -q "23505" src/pages/api/admin/time-slots/index.ts && echo OK`
+- **Expected:** NotFoundError mapped to 404; 23505 mapped to 409; no substring 'Failed to' checks remain.
+- **Time:** 6 min | **Difficulty:** 3
+- **Traces:** SC-B2, SC-B3, SC-B4, SC-B6, N1→N3 | **Phase:** GREEN
+- **Depends on:** T1 (lib throws NotFoundError + surfaces .code)
+
+#### Task 3: Migration 012 — dedupe pre-pass + partial unique index (B6) → backend-dev-A
+- **File:** `supabase/migrations/012_manual_slots_unique.sql` (CREATE)
+- **Snippet:** (mirror 010_payment_intent_unique.sql structure)
+  ```sql
+  -- 1. Audit table (CTAS) capturing duplicate active rows
+  -- 2. Soft-delete extras keeping latest (created_at DESC, id DESC) per (slot_date, period) WHERE deleted_at IS NULL
+  -- 3. CREATE UNIQUE INDEX IF NOT EXISTS ... ON manual_time_slots (slot_date, period) WHERE deleted_at IS NULL
+  ```
+- **Verify:** `test -f supabase/migrations/012_manual_slots_unique.sql && grep -q 'IF NOT EXISTS' supabase/migrations/012_manual_slots_unique.sql && grep -q '_audit_012' supabase/migrations/012_manual_slots_unique.sql && echo OK`
+- **Expected:** file exists; IF NOT EXISTS present; audit table created; partial predicate WHERE deleted_at IS NULL.
+- **Time:** 5 min | **Difficulty:** 3
+- **Traces:** SC-B6 | **Phase:** GREEN
+- **Note:** Cannot auto-apply (needs running Postgres). Document manual apply step in PR.
+
+#### Task 4: Bump invalidateSlotCache log level (non-blocking) → backend-dev-A
+- **File:** `src/lib/manual-slots.ts`
+- **Snippet:** `console.warn(...)` → `console.error(...)` at the invalidateSlotCache catch (line ~107).
+- **Verify:** `grep -A1 'invalidateSlotCache.*failed' src/lib/manual-slots.ts | grep -q 'console.error' && echo OK`
+- **Expected:** console.error used, not console.warn.
+- **Time:** 1 min | **Difficulty:** 1
+- **Traces:** SC-Non-blocking | **Phase:** GREEN
+
+### Slice V2: API mapping — see Task 2 above (merged into V1 wave ordering; T2 depends on T1)
+
+### Slice V3: Frontend robustness (B7, B8)
+
+#### Task 5: TimeSlotManager — concurrency guard + safe error parsing (B7, B8) [P] → frontend-dev-A
+- **File:** `src/components/admin/TimeSlotManager.tsx`
+- **Snippet:**
+  ```tsx
+  // B7: const [isDeleting, setIsDeleting] = useState(false);
+  //     handleDelete: wrap fetch in AbortController + setTimeout(10s)→abort;
+  //     disable confirm + cancel buttons when isDeleting; toast 'Délai dépassé, réessayez' on abort
+  // B8: helper parseErrorResponse(res): const text = await res.text(); try { return JSON.parse(text).error } catch { return statusMsg(res.status) }
+  //     replace all 4 (await response.json()) as {error?} on error paths (GET:63, PATCH:99, POST:123, DELETE:148)
+  ```
+- **Verify:** `grep -q 'isDeleting' src/components/admin/TimeSlotManager.tsx && grep -qE 'response\.text\(\)|parseErrorResponse' src/components/admin/TimeSlotManager.tsx && echo OK`
+- **Expected:** isDeleting state present; response.text()/parseErrorResponse used; AbortController on DELETE.
+- **Time:** 10 min | **Difficulty:** 4
+- **Traces:** SC-B7, SC-B8, U1→U4 | **Phase:** GREEN
+
+### Slice V4: A11y tablist (B9)
+
+#### Task 6: WAI-ARIA tablist keyboard contract (B9) [P] → frontend-dev-A
+- **File:** `src/pages/mes-rdvs.astro`
+- **Snippet:** (in existing `<script>` block, extend setActiveTab)
+  ```js
+  // roving tabindex: active tab tabindex=0, others -1 (set in setActiveTab)
+  // keydown on tablist: ArrowRight/ArrowLeft → move focus + activate;
+  //   Home/End → first/last; activate calls setActiveTab + button.focus()
+  ```
+- **Verify:** `grep -q 'ArrowRight\|ArrowLeft' src/pages/mes-rdvs.astro && grep -q 'tabindex' src/pages/mes-rdvs.astro && echo OK`
+- **Expected:** arrow handlers present; tabindex managed; focus moved on activate.
+- **Time:** 8 min | **Difficulty:** 4
+- **Traces:** SC-B9, U5 | **Phase:** GREEN
+
+### Slice V5: Regression + unit tests (B1, lib coverage)
+
+#### Task 7: Fix tautological 24h-notice test (B1) [P] → tester-A
+- **File:** `tests/unit/google-calendar.test.ts`
+- **Snippet:**
+  ```ts
+  // Move NOW so minStart (= NOW + 24h) lands ~Wed 10:00 Paris.
+  // e.g. NOW = Tue 10:00 Paris (2026-06-16T08:00:00Z).
+  // Then assert: Wednesday 08:00 & 08:30 slots ABSENT; Wednesday 10:00+ slots PRESENT.
+  // Add: count shrinks vs an earlier NOW (e.g. Mon 10:00).
+  // Document the mutation check in a comment.
+  ```
+- **Verify:** `npm run test -- google-calendar 2>&1 | tail -5`
+- **Expected:** test passes with guard present. (Mutation check run manually: delete guard line in google-calendar.ts → re-run → test fails → restore.)
+- **Time:** 6 min | **Difficulty:** 3
+- **Traces:** SC-B1 | **Phase:** GREEN
+- **Note:** Mutation verification (delete guard → test fails) is done by the implementer and documented in the PR; not automatable in CI.
+
+#### Task 8: New unit tests for manual-slots lib (typed errors, 23505, tz slice) → tester-A
+- **File:** `tests/unit/manual-slots.test.ts` (CREATE)
+- **Snippet:**
+  ```ts
+  // Mock supabaseAdmin chain: .from().update().eq().select().maybeSingle()
+  //   → { data: null } → expect deleteManualSlot/badId to reject with NotFoundError
+  //   → { data: row } → resolves
+  // createManualSlot: error.code === '23505' → reject with Error having .code
+  // fetchManualSlots: assert query uses parisDateKey-derived bounds (spy on .gte/.lte)
+  ```
+- **Verify:** `npm run test -- manual-slots 2>&1 | tail -5`
+- **Expected:** new test file runs; covers NotFoundError (B2/B3), 23505 (B6), Paris-date slice (B5).
+- **Time:** 8 min | **Difficulty:** 4
+- **Traces:** SC-B2, SC-B3, SC-B5, SC-B6 | **Phase:** GREEN
+- **Depends on:** T1 (lib contract stable)
+
+## Task Seeding Blueprint
+
+<!-- Used by /implement to seed TaskCreate calls on session start.
+     Format: T{n} | agent-instance | blockedBy | subject
+     blockedBy refs T-numbers within this list (not session task IDs).
+     Agent instances are named so parallel tasks map to distinct spawned agents.
+     Seed in wave order; within a wave all rows are parallel (∥). -->
+
+### Wave 1 — no deps, 3 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T1 | backend-dev-A | — | slots |
+| T5 | frontend-dev-A | — | time-slot-ui |
+| T7 | tester-A | — | tests |
+
+### Wave 2 — after Wave 1, 2 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T2 | backend-dev-A | T1 | api |
+| T6 | frontend-dev-A | — | a11y-tabs |
+
+### Wave 3 — after Wave 2, 2 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T3 | backend-dev-A | — | migrations |
+| T8 | tester-A | T1 | tests |
+| T4 | backend-dev-A | T3 | slots |
+
+## Task IDs
+
+<!-- Generated by /plan. Used by /implement to resume tasks on session restart.
+     This environment tracks via TodoWrite (session-scoped); the canonical
+     task map is the Task Seeding Blueprint above. On /implement entry, re-seed
+     micro-tasks per the blueprint wave order. -->
+- T1: backend-dev-A · lib typed errors (B2/B3/B4/B5) — Wave 1
+- T2: backend-dev-A · API status mapping (B2/B3/B6) — Wave 2, blockedBy T1
+- T3: backend-dev-A · migration 012 + dedupe (B6) — Wave 3
+- T4: backend-dev-A · log-level bump (non-blocking) — Wave 3, blockedBy T3
+- T5: frontend-dev-A · TimeSlotManager B7+B8 — Wave 1
+- T6: frontend-dev-A · mes-rdvs tablist B9 — Wave 2
+- T7: tester-A · B1 regression test — Wave 1
+- T8: tester-A · manual-slots lib unit tests — Wave 3, blockedBy T1
+
