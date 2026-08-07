@@ -7,6 +7,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { calculatePrice } from '../lib/pricing';
 import type { PricingResult } from '../lib/pricing';
+import { APPOINTMENT_ESTIMATED_VALUE, trackEvent } from '../lib/analytics';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -186,6 +187,18 @@ export function useBooking() {
         const data = await response.json() as { error?: string };
         throw new Error(data.error ?? 'Une erreur est survenue lors de l\'envoi.');
       }
+
+      // Conversion — fired exactly once, on successful submit. Marked as a
+      // conversion in the GA4 admin (generate_lead) and imported into Google
+      // Ads via the GA4↔Ads link. Distinct from the contact-form lead via
+      // `method: 'booking_form'`. step transitions to 'submitted' below.
+      trackEvent('generate_lead', {
+        currency: 'EUR',
+        value: APPOINTMENT_ESTIMATED_VALUE[state.appointment_type ?? 'individual'] ?? 65,
+        method: 'booking_form',
+        appointment_type: state.appointment_type ?? undefined,
+        appointment_mode: state.appointment_mode ?? undefined,
+      });
 
       setState(prev => ({ ...prev, step: 'submitted', isSubmitting: false }));
     } catch (err: unknown) {
