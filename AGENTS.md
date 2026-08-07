@@ -14,6 +14,8 @@ npm run lint             # ESLint (eslint.config.js, flat config)
 npm run typecheck        # `astro check` — advisory in CI (see #68 for ~20 residual errors)
 npm run test             # Vitest (tests/unit/**, node env)
 npm run test:watch       # Vitest watch mode
+npm run format           # Prettier — write (singleQuote, arrowParens:avoid)
+npm run format:check     # Prettier — check only (advisory; not in CI gate)
 npm run audit:a11y       # Pa11y WCAG audit (needs dev server running) — REQUIRED before UI PRs
 npm run db:start         # Start Postgres + Mailpit via docker compose
 npm run db:reset         # ⚠️ Drops & re-creates schema, replays ONLY 001_init.sql
@@ -89,6 +91,8 @@ Without it, Astro returns an HTML redirect page instead of JSON → `Unexpected 
 **Imports:** path alias `@/*` → `./src/*` (configured in `tsconfig.json`). Both `@/lib/foo` and relative `../lib/foo` are used; relative imports are more prevalent — match the surrounding file.
 
 **TypeScript:** strict mode, no `any`. Interfaces for objects, types for unions/primitives. Optional chaining + nullish coalescing preferred.
+
+**Formatting:** Prettier config in `.prettierrc.json` — `singleQuote: true`, `arrowParens: "avoid"`, plugin `prettier-plugin-astro` for `.astro` files. VSCode `formatOnSave` is safe (the config pins the style). The repo has NOT been globally reformatted yet (historical style drift) — **do not run `npm run format` on the whole repo** as a standalone change; format only the files you actually touch in your PR. `format:check` is advisory (not in the CI gate). Four `.astro` files with complex `<script is:inline>` are excluded in `.prettierignore` (parser limitation of `prettier-plugin-astro@0.14`).
 
 **Astro islands:** `client:load` (above-fold), `client:idle` (below-fold, preferred), `client:visible` (avoid with `useMotionVariants` — visible snap on mobile).
 
