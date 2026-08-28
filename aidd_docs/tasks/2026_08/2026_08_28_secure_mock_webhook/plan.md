@@ -1,6 +1,6 @@
 ---
 objective: "The Stripe mock webhook GET route is unusable outside Vite development mode and remains type-safe."
-status: in-progress
+status: implemented
 ---
 
 # Plan: Secure the Stripe mock webhook
