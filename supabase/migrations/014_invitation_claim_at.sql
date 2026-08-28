@@ -1,0 +1,41 @@
+-- ===========================================================================
+-- Migration 014 — Durable invitation processing claim (L2 concurrency bail)
+-- Issue #126 (W2): atomic claim between the admin POST waitUntil pipeline
+-- and the reconcile-invitations sweep.
+--
+-- Semantics (CONTRAST with 013's invitation_sent_at — they are NOT alike):
+--   NULL     = no worker currently owns the row's side-effect processing.
+--   non-NULL = a worker claimed the row. This is a LEASE, not a completion
+--              marker: any worker may re-claim once
+--              `invitation_claimed_at < now() - 10 min` (automatic recovery
+--              after a crash, a function timeout kill or a deploy restart).
+--   COMPLETION REMAINS `invitation_sent_at` (013). A claimed row whose
+--   pipeline failed still has invitation_sent_at NULL and is re-swept as
+--   soon as its lease expires.
+--
+-- Rationale: without an atomic claim, the post-response pipeline
+-- (waitUntil in POST /api/admin/appointments/) and the hourly sweep can
+-- start the SAME row concurrently while invitation_sent_at is still NULL —
+-- producing duplicate Google `events.insert` and duplicate Stripe Payment
+-- Links (the final set-once flag guard only deduplicates email/flag, too
+-- late for the external side effects).
+--
+-- No GRANT needed: the `appointments` table is already covered by the
+-- explicit service_role grants of 006_explicit_grants.sql (a column addition
+-- on an existing table inherits the table-level grants).
+--
+-- Idempotent: ADD COLUMN IF NOT EXISTS. No backfill (NULL = unclaimed is the
+-- correct initial state for every existing row), no index (the claim
+-- predicate targets a single row by primary key).
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- COLUMN : invitation_claimed_at — processing lease bail (W2).
+-- Updated atomically via
+--   UPDATE appointments SET invitation_claimed_at = now()
+--   WHERE id = $1
+--     AND (invitation_claimed_at IS NULL OR invitation_claimed_at < now() - interval '10 minutes')
+-- (see claimInvitationProcessing in src/lib/notifications.ts).
+-- ---------------------------------------------------------------------------
+ALTER TABLE appointments
+  ADD COLUMN IF NOT EXISTS invitation_claimed_at TIMESTAMPTZ;

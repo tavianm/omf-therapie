@@ -22,6 +22,10 @@ const h = vi.hoisted(() => {
   /**
    * Factory: chainable supabaseAdmin mock that CAPTURES insert/update payloads.
    * Kept reusable for the V2/V3 test waves (set-once WHERE ... IS NULL guards).
+   *
+   * W2: update-chains (the deferred pipeline's atomic claim + L2 writes) are
+   * thenable and resolve `{ data: claimRows, error: null }`. Mutating
+   * `claimRows` (e.g. `length = 0`) makes the claim fail — see the W2 test.
    */
   const makeSupabaseMock = (appointment: Record<string, unknown> = {}) => {
     const row = {
@@ -39,6 +43,7 @@ const h = vi.hoisted(() => {
     };
     const inserts: Record<string, unknown>[] = [];
     const updates: Record<string, unknown>[] = [];
+    const claimRows: unknown[] = [{ id: 'appt_test_001' }];
     const chain = {
       insert: (payload: Record<string, unknown>) => {
         inserts.push(payload);
@@ -53,10 +58,14 @@ const h = vi.hoisted(() => {
       eq: () => chain,
       in: () => chain,
       is: () => chain,
+      or: () => chain,
       // Terminal calls must resolve like PostgrestBuilder.
       limit: () => Promise.resolve({ data: [], error: null }),
       single: () => Promise.resolve({ data: row, error: null }),
       maybeSingle: () => Promise.resolve({ data: row, error: null }),
+      // Update-chains awaited directly (claim + pipeline L2 writes).
+      then: (resolve: (v: unknown) => void, reject: (e: unknown) => void) =>
+        Promise.resolve({ data: claimRows, error: null }).then(resolve, reject),
     };
     return {
       supabaseAdmin: { from: vi.fn(() => chain) },
@@ -64,6 +73,7 @@ const h = vi.hoisted(() => {
       inserts,
       updates,
       row,
+      claimRows,
     };
   };
 
@@ -369,5 +379,43 @@ describe('POST /api/admin/appointments/ — invitation_sent_at flags (issue #126
     // asserting the deferred pipeline ran (201 was already sent, unblocked).
     await new Promise(r => setImmediate(r));
     expect(h.sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // (W2) Claim failure → the deferred pipeline NEVER runs (atomic bail with
+  // the reconcile-invitations sweep)
+  // -------------------------------------------------------------------------
+  it('never runs the deferred pipeline when the claim returns no row (W2 — already claimed)', async () => {
+    // Arrange — the claim update matches ZERO rows: the sweep (or another
+    // worker) already owns the 10 min lease. Two concurrent pipelines would
+    // create a duplicate Google event + Stripe Payment Link.
+    const request = makeRequest({
+      appointment_mode: 'video',
+      send_email: true,
+    });
+    h.sb.claimRows.length = 0;
+    h.createAppointmentPaymentLink.mockResolvedValue({
+      id: 'pl_mock',
+      url: 'https://pay.example/pl',
+    });
+    const { context, captured } = makeContext(request);
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    // Act
+    const response = await POST(context as never);
+    expect(response.status).toBe(201);
+    await flushSideEffects(captured);
+
+    // Assert — dispatch observable, then ZERO external call / pipeline write.
+    expect(infoSpy).toHaveBeenCalledWith(
+      '[side-effects] dispatch skipped — already claimed',
+      { appointmentId: 'appt_test_001' },
+    );
+    expect(h.createCalendarEvent).not.toHaveBeenCalled();
+    expect(h.createAppointmentPaymentLink).not.toHaveBeenCalled();
+    expect(h.sendEmail).not.toHaveBeenCalled();
+    expect(h.sb.updates.filter(u => 'invitation_sent_at' in u)).toHaveLength(0);
+
+    infoSpy.mockRestore();
   });
 });

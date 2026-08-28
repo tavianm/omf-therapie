@@ -102,3 +102,10 @@ Tests : chaque slice embarque ses tests unitaires (`tests/unit/` — sweep query
 - Env vars cron à documenter dans `netlify.toml` (bloc scheduled functions) pour `reconcile-invitations` : en plus de Supabase/Resend/AUTH — `GOOGLE_CALENDAR_ID`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `GOOGLE_CALENDAR_MOCK`, `STRIPE_SECRET_KEY`, `STRIPE_SUCCESS_URL`.
 - Logs sweep sans PII (ids seulement), miroir `reconcile-confirmations`.
 - Ne pas reintroduire `react-router-dom`/`react-helmet-async` (aliases nullés) ; trailing slash sur tout fetch (`/api/admin/appointments/`).
+
+## Amendements (revue finale 2026-08-28, PR #127 — 4 warnings)
+
+- **§5 fenêtre du sweep : 48 h → 24 h** — bornée au TTL de déduplication Resend (~24 h) : au-delà, un re-jeu de l'email ne serait plus dédupliqué par la clé L1 (warning W3). Un échec d'écriture du flag après livraison email reste donc sans doublon patient.
+- **Sémantique des drapeaux L2 renforcée** : `invitation_sent_at` n'est posé que si TOUTES les étapes post-réponse sont ok/skipped (agenda, Stripe, email). Un échec d'étape — API ou persistance — laisse les flags NULL pour que le sweep complète le RDV (SC3, warning W1). Exception documentée : poison-escape 4xx (échec email permanent = stop global).
+- **Claim atomique (migration 014, `invitation_claimed_at`)** : bail de 10 min posé par le POST et par le sweep AVANT le pipeline — sérialise les démarrages simultanés waitUntil↔sweep (warning W2 : doubles events.insert / Payment Links), récupération automatique après crash. Jamais un marqueur de complétion.
+- **`GOOGLE_CALENDAR_MOCK=true`** : skip agenda SANS persistance d'eventId (fini les faux id `calendar-mock-*` que les passages suivants prenaient pour un événement réel) — warning W4.

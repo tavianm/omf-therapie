@@ -10,7 +10,10 @@ import { hasAppointmentConflict } from '../../../../lib/appointment-conflicts';
 import type { AppointmentType } from '../../../../types/appointment';
 import { invalidateAvailabilityCache } from '../../../../lib/calendar-cache.js';
 import { isCabinetEligibleSlot } from '../../../../lib/appointment-eligibility';
-import { processAppointmentSideEffects } from '../../../../lib/notifications';
+import {
+  claimInvitationProcessing,
+  processAppointmentSideEffects,
+} from '../../../../lib/notifications';
 
 // ---------------------------------------------------------------------------
 // Validation helpers
@@ -22,7 +25,11 @@ const PHONE_RE = /^(?:\+33|0033|0)[1-9](?:[0-9]{8})$/;
 const VALID_TYPES = new Set<string>(['individual', 'couple', 'family']);
 const VALID_MODES = new Set<string>(['in-person', 'video']);
 
-function errorResponse(status: number, message: string, field?: string): Response {
+function errorResponse(
+  status: number,
+  message: string,
+  field?: string,
+): Response {
   return new Response(JSON.stringify({ error: message, field }), {
     status,
     headers: { 'Content-Type': 'application/json' },
@@ -74,16 +81,33 @@ export const POST: APIRoute = async ({ request, locals }) => {
   } = body;
 
   // send_email optionnel (défaut : envoi) — normalisé en booléen strict
-  const shouldSendEmail = rawSendEmail === undefined ? true : rawSendEmail === true;
+  const shouldSendEmail =
+    rawSendEmail === undefined ? true : rawSendEmail === true;
 
   // 3. Validation
-  if (!patient_name || typeof patient_name !== 'string' || patient_name.trim().length < 2)
-    return errorResponse(400, 'Nom requis (2 caractères minimum)', 'patient_name');
+  if (
+    !patient_name ||
+    typeof patient_name !== 'string' ||
+    patient_name.trim().length < 2
+  )
+    return errorResponse(
+      400,
+      'Nom requis (2 caractères minimum)',
+      'patient_name',
+    );
 
-  if (!patient_email || typeof patient_email !== 'string' || !EMAIL_RE.test(patient_email))
+  if (
+    !patient_email ||
+    typeof patient_email !== 'string' ||
+    !EMAIL_RE.test(patient_email)
+  )
     return errorResponse(400, 'Email invalide', 'patient_email');
 
-  if (patient_phone && (typeof patient_phone !== 'string' || !PHONE_RE.test(patient_phone.replace(/\s/g, ''))))
+  if (
+    patient_phone &&
+    (typeof patient_phone !== 'string' ||
+      !PHONE_RE.test(patient_phone.replace(/\s/g, '')))
+  )
     return errorResponse(400, 'Numéro de téléphone invalide', 'patient_phone');
 
   if (!appointment_type || !VALID_TYPES.has(appointment_type as string))
@@ -92,52 +116,99 @@ export const POST: APIRoute = async ({ request, locals }) => {
   if (!appointment_mode || !VALID_MODES.has(appointment_mode as string))
     return errorResponse(400, 'Mode de séance invalide', 'appointment_mode');
 
-  if (!duration || !Number.isInteger(Number(duration)) || Number(duration) < 15 || Number(duration) > 240)
-    return errorResponse(400, 'Durée invalide (entre 15 et 240 minutes)', 'duration');
+  if (
+    !duration ||
+    !Number.isInteger(Number(duration)) ||
+    Number(duration) < 15 ||
+    Number(duration) > 240
+  )
+    return errorResponse(
+      400,
+      'Durée invalide (entre 15 et 240 minutes)',
+      'duration',
+    );
 
   const GRID_DURATIONS = new Set([60, 90]);
   if (!GRID_DURATIONS.has(Number(duration)) && override_price === undefined)
-    return errorResponse(400, 'Durée personnalisée : le tarif manuel est obligatoire', 'override_price');
+    return errorResponse(
+      400,
+      'Durée personnalisée : le tarif manuel est obligatoire',
+      'override_price',
+    );
 
-  if (!scheduled_at || typeof scheduled_at !== 'string' || isNaN(Date.parse(scheduled_at)))
+  if (
+    !scheduled_at ||
+    typeof scheduled_at !== 'string' ||
+    isNaN(Date.parse(scheduled_at))
+  )
     return errorResponse(400, 'Date de séance invalide', 'scheduled_at');
 
   if (appointment_mode === 'video' && video_link) {
-    if (typeof video_link !== 'string') return errorResponse(400, 'Lien vidéo invalide', 'video_link');
+    if (typeof video_link !== 'string')
+      return errorResponse(400, 'Lien vidéo invalide', 'video_link');
     try {
       const parsed = new URL(video_link as string);
       if (parsed.protocol !== 'https:')
-        return errorResponse(400, 'Lien vidéo invalide (HTTPS requis)', 'video_link');
+        return errorResponse(
+          400,
+          'Lien vidéo invalide (HTTPS requis)',
+          'video_link',
+        );
     } catch {
       return errorResponse(400, 'Lien vidéo invalide', 'video_link');
     }
   }
 
-  if (override_price !== undefined && (
-    !Number.isInteger(Number(override_price)) ||
-    Number(override_price) < 0 ||
-    Number(override_price) > 500
-  ))
-    return errorResponse(400, 'Tarif manuel invalide (entre 0 et 500€)', 'override_price');
+  if (
+    override_price !== undefined &&
+    (!Number.isInteger(Number(override_price)) ||
+      Number(override_price) < 0 ||
+      Number(override_price) > 500)
+  )
+    return errorResponse(
+      400,
+      'Tarif manuel invalide (entre 0 et 500€)',
+      'override_price',
+    );
 
   const scheduledDate = new Date(scheduled_at);
   if (scheduledDate.getTime() < Date.now())
-    return errorResponse(400, 'La date de séance doit être dans le futur', 'scheduled_at');
+    return errorResponse(
+      400,
+      'La date de séance doit être dans le futur',
+      'scheduled_at',
+    );
 
-  if (appointment_mode === 'in-person' && !(await isCabinetEligibleSlot(scheduled_at)))
-    return errorResponse(400, 'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.', 'scheduled_at');
+  if (
+    appointment_mode === 'in-person' &&
+    !(await isCabinetEligibleSlot(scheduled_at))
+  )
+    return errorResponse(
+      400,
+      'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.',
+      'scheduled_at',
+    );
 
   try {
-    const slotEnd = new Date(scheduledDate.getTime() + Number(duration) * 60 * 1000);
+    const slotEnd = new Date(
+      scheduledDate.getTime() + Number(duration) * 60 * 1000,
+    );
     const hasConflict = await hasAppointmentConflict({
       slotStartIso: scheduledDate.toISOString(),
       slotEndIso: slotEnd.toISOString(),
     });
     if (hasConflict) {
-      return errorResponse(409, 'Ce créneau n\'est plus disponible. Veuillez sélectionner un autre horaire.', 'scheduled_at');
+      return errorResponse(
+        409,
+        "Ce créneau n'est plus disponible. Veuillez sélectionner un autre horaire.",
+        'scheduled_at',
+      );
     }
   } catch (conflictError) {
-    console.error('[admin/appointments] Erreur vérification doublon:', conflictError);
+    console.error(
+      '[admin/appointments] Erreur vérification doublon:',
+      conflictError,
+    );
     return errorResponse(500, 'Erreur lors de la vérification du créneau');
   }
 
@@ -149,10 +220,12 @@ export const POST: APIRoute = async ({ request, locals }) => {
     .in('status', ['confirmed', 'completed'])
     .limit(1);
 
-  const autoDetectedFirstSession = !existingAppointments || existingAppointments.length === 0;
-  const isFirstSession = typeof override_first_session === 'boolean'
-    ? override_first_session
-    : autoDetectedFirstSession;
+  const autoDetectedFirstSession =
+    !existingAppointments || existingAppointments.length === 0;
+  const isFirstSession =
+    typeof override_first_session === 'boolean'
+      ? override_first_session
+      : autoDetectedFirstSession;
   const pricing = calculatePrice(
     appointment_type as AppointmentType,
     Number(duration),
@@ -167,7 +240,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
   let creditApplied = 0;
 
   if (use_credit === true) {
-    const balance = await getAvailableCredit((patient_email as string).toLowerCase());
+    const balance = await getAvailableCredit(
+      (patient_email as string).toLowerCase(),
+    );
     if (balance > 0) {
       creditApplied = Math.min(balance, finalPriceCents);
     }
@@ -176,7 +251,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
   // 6. Statut initial
   const initialStatus: string = isVideo
-    ? (amountDueCents === 0 ? 'payment_received' : 'payment_pending')
+    ? amountDueCents === 0
+      ? 'payment_received'
+      : 'payment_pending'
     : 'confirmed';
 
   // 7. Insertion en base
@@ -185,7 +262,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
     .insert({
       patient_name: (patient_name as string).trim(),
       patient_email: (patient_email as string).toLowerCase(),
-      patient_phone: patient_phone ? (patient_phone as string).replace(/\s/g, '') : '',
+      patient_phone: patient_phone
+        ? (patient_phone as string).replace(/\s/g, '')
+        : '',
       patient_postal_code: '',
       patient_city: '',
       appointment_type,
@@ -232,9 +311,18 @@ export const POST: APIRoute = async ({ request, locals }) => {
         appointment.id,
       );
     } catch (creditErr) {
-      console.error('[admin/appointments] Erreur consommation avoir:', creditErr);
-      await supabaseAdmin.from('appointments').delete().eq('id', appointment.id);
-      return errorResponse(409, 'Avoir insuffisant ou erreur lors de la consommation de l\'avoir.');
+      console.error(
+        '[admin/appointments] Erreur consommation avoir:',
+        creditErr,
+      );
+      await supabaseAdmin
+        .from('appointments')
+        .delete()
+        .eq('id', appointment.id);
+      return errorResponse(
+        409,
+        "Avoir insuffisant ou erreur lors de la consommation de l'avoir.",
+      );
     }
   }
 
@@ -249,26 +337,53 @@ export const POST: APIRoute = async ({ request, locals }) => {
   // précède son premier await) et ne doit pas s'exécuter avant que la réponse
   // 201 soit construite et retournée. `setImmediate` (runtime Node/Netlify) est
   // FIFO avec les autres immediates ; fallback `setTimeout` ailleurs.
-  const schedule = typeof setImmediate === 'function' ? setImmediate : setTimeout;
+  const schedule =
+    typeof setImmediate === 'function' ? setImmediate : setTimeout;
   // `status` est le statut INSÉRÉ (payment_received/… ) : il pilote le drapeau
   // confirmation_sent_at côté pipeline. Fallback défensif si la ligne retournée
   // ne portait pas la colonne.
-  const apptForSideEffects = { ...appointment, status: appointment.status ?? initialStatus };
-  const sideEffects: Promise<void> = new Promise((resolve) => {
+  const apptForSideEffects = {
+    ...appointment,
+    status: appointment.status ?? initialStatus,
+  };
+  const sideEffects: Promise<void> = new Promise(resolve => {
     schedule(() => {
-      void processAppointmentSideEffects(apptForSideEffects, {
-        sendEmail: shouldSendEmail,
-        amountDueCents,
-        successUrl: import.meta.env.STRIPE_SUCCESS_URL
-          ?? `${new URL(request.url).origin}/rdv/merci/?source=payment-success`,
-        baseUrl: import.meta.env.BETTER_AUTH_URL ?? new URL(request.url).origin,
-      }).then(resolve, resolve);
+      // W2 — bail atomique (lease 10 min) AVANT le pipeline : si le sweep
+      // `reconcile-invitations` (ou un autre worker) traite déjà cette ligne,
+      // on NE démarre PAS — deux pipelines simultanés créeraient un doublon
+      // events.insert Google + Payment Link Stripe. Échec du claim (erreur
+      // DB) = fail-closed : le sweep horaire rattrapera la ligne.
+      void claimInvitationProcessing(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        supabaseAdmin as any,
+        appointment.id,
+      )
+        .then(claimed => {
+          if (!claimed) {
+            console.info('[side-effects] dispatch skipped — already claimed', {
+              appointmentId: appointment.id,
+            });
+            return;
+          }
+          return processAppointmentSideEffects(apptForSideEffects, {
+            sendEmail: shouldSendEmail,
+            amountDueCents,
+            successUrl:
+              import.meta.env.STRIPE_SUCCESS_URL ??
+              `${new URL(request.url).origin}/rdv/merci/?source=payment-success`,
+            baseUrl:
+              import.meta.env.BETTER_AUTH_URL ?? new URL(request.url).origin,
+          });
+        })
+        .then(resolve, resolve);
     });
   });
 
   // waitUntil : promesse capturée par le runtime Netlify, exécutée APRÈS la
   // réponse. `locals` n'est pas typé pour `netlify` — accès optionnel sûr.
-  const netlifyLocals = (locals as { netlify?: { context?: { waitUntil?: unknown } } } | undefined)?.netlify;
+  const netlifyLocals = (
+    locals as { netlify?: { context?: { waitUntil?: unknown } } } | undefined
+  )?.netlify;
   const waitUntil = netlifyLocals?.context?.waitUntil;
   if (typeof waitUntil === 'function') {
     (waitUntil as (p: Promise<unknown>) => void)(sideEffects);

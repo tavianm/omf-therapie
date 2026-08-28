@@ -7,11 +7,14 @@
  * flag (`invitation_sent_at`) is still NULL — i.e. the waitUntil pipeline
  * failed, was killed by the function timeout, or was interrupted by a deploy.
  *
- * Strategy: DELEGATION (not duplication). Each eligible row is re-run through
- * the shared pipeline `src/lib/notifications.ts` with a process.env-injected
- * `sendFn` (poison-escape capture, pattern #98). The pipeline sets the L2
- * flags itself on success; the sweep only intervenes on PERMANENT (non-
- * retryable) Resend errors to escape the retry loop (set-once flag update).
+ * Strategy: DELEGATION (not duplication). Each eligible row is claimed
+ * atomically (W2 — `claimInvitationProcessing`, 10 min lease on
+ * `invitation_claimed_at`, see 014_invitation_claim_at.sql) then re-run
+ * through the shared pipeline `src/lib/notifications.ts` with a
+ * process.env-injected `sendFn` (poison-escape capture, pattern #98). The
+ * pipeline sets the L2 flags itself on success; the sweep only intervenes on
+ * PERMANENT (non-retryable) Resend errors to escape the retry loop (set-once
+ * flag update).
  *
  * Runtime constraint: this cron runs in plain Node (`import.meta.env` is
  * absent). Possible only thanks to the lazy-init refactors of `stripe.ts`
@@ -37,8 +40,12 @@ import { Resend } from 'resend';
 import ws from 'ws';
 import type { Appointment } from '../../src/types/appointment';
 import type { SendEmailParams, SendEmailResult } from '../../src/lib/resend';
-import { isRetryableResendError, type ResendApiError } from '../../src/lib/resend-errors';
 import {
+  isRetryableResendError,
+  type ResendApiError,
+} from '../../src/lib/resend-errors';
+import {
+  claimInvitationProcessing,
   processAppointmentSideEffects,
   type ProcessSideEffectsOptions,
 } from '../../src/lib/notifications';
@@ -62,7 +69,7 @@ function initSentry(): void {
   Sentry.init({
     dsn,
     environment: BUILD_CONTEXT === 'production' ? 'production' : 'staging',
-    beforeSend: (event) => (shouldDropEvent(event) ? null : scrubPii(event)),
+    beforeSend: event => (shouldDropEvent(event) ? null : scrubPii(event)),
   });
 }
 
@@ -73,8 +80,17 @@ function initSentry(): void {
 /** Wall-clock budget per invocation (30s Netlify hard timeout, wide margin). */
 const DEADLINE_MS = 8500;
 
-/** Reconcile scope: appointments created within this window are eligible. */
-const CREATED_WITHIN_HOURS = 48;
+/**
+ * Reconcile scope: appointments created within this window are eligible.
+ *
+ * W3 review fix: bounded to the ~24h TTL of the Resend L1 idempotency key
+ * (`invite:{id}:patient`). Beyond that window a replayed pass would no longer
+ * be deduplicated by Resend and could RE-SEND the invitation (the exact
+ * scenario is: email delivered + flag write failed → row still selectable on
+ * a later pass). Past 24h, either the email was delivered (case covered) or
+ * it is in chronic failure, visible in the logs.
+ */
+const CREATED_WITHIN_HOURS = 24;
 
 /** Max rows processed per invocation (bounds work + respects the deadline). */
 const BATCH_LIMIT = 25;
@@ -108,7 +124,8 @@ export const config: Config = {
 function makeSendFnWithCapture(resend: Resend, fromEmail: string) {
   const state: { lastError: ResendApiError | null } = { lastError: null };
   const sendFn = async (params: SendEmailParams): Promise<SendEmailResult> => {
-    const { to, bcc, subject, react, replyTo, threadKey, idempotencyKey } = params;
+    const { to, bcc, subject, react, replyTo, threadKey, idempotencyKey } =
+      params;
     state.lastError = null;
     const { data, error } = await resend.emails.send(
       {
@@ -124,7 +141,10 @@ function makeSendFnWithCapture(resend: Resend, fromEmail: string) {
     );
     if (error) {
       state.lastError = error as ResendApiError;
-      return { success: false, error: (error as ResendApiError).message ?? 'Erreur Resend' };
+      return {
+        success: false,
+        error: (error as ResendApiError).message ?? 'Erreur Resend',
+      };
     }
     return { success: true, id: data?.id };
   };
@@ -140,16 +160,19 @@ type CalendarFn = NonNullable<ProcessSideEffectsOptions['createCalendarEvent']>;
 /** No-op calendar fn injected when GOOGLE_CALENDAR_MOCK=true (warns once). */
 function makeNoopCalendarEvent(): CalendarFn {
   let warned = false;
-  const fn = (async () => {
+  return async () => {
     if (!warned) {
       warned = true;
       console.warn(
         '[reconcile-invitations] GOOGLE_CALENDAR_MOCK=true — calendar step skipped (no-op)',
       );
     }
-    return { eventId: `calendar-mock-${Date.now()}`, meetLink: undefined };
-  }) as unknown as CalendarFn;
-  return fn;
+    // W4 : AUCUN eventId exploitable — S1 (processAppointmentSideEffects)
+    // traite ce résultat comme un skip SANS persistance. Un faux id
+    // `calendar-mock-*` persisté ferait croire aux passages suivants que
+    // l'événement Google existe déjà et verrouillerait le skip S1 à tort.
+    return { eventId: null, meetLink: undefined };
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -175,15 +198,11 @@ async function runReconcile(): Promise<void> {
 // in_progress porteur du monitor_config).
 async function handler(): Promise<void> {
   initSentry();
-  return Sentry.withMonitor(
-    'reconcile-invitations',
-    runReconcile,
-    {
-      schedule: { type: 'crontab', value: SCHEDULE },
-      checkInMargin: 5,
-      maxRuntime: 10,
-    },
-  );
+  return Sentry.withMonitor('reconcile-invitations', runReconcile, {
+    schedule: { type: 'crontab', value: SCHEDULE },
+    checkInMargin: 5,
+    maxRuntime: 10,
+  });
 }
 
 export default handler;
@@ -202,7 +221,9 @@ async function reconcile(): Promise<void> {
   const authSecret = process.env.BETTER_AUTH_SECRET;
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
-    logger.error('reconcile-invitations: SUPABASE_DATABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing — aborting');
+    logger.error(
+      'reconcile-invitations: SUPABASE_DATABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing — aborting',
+    );
     return;
   }
   if (!resendApiKey) {
@@ -210,7 +231,9 @@ async function reconcile(): Promise<void> {
     return;
   }
   if (!authSecret || authSecret.trim().length < 32) {
-    logger.error('reconcile-invitations: BETTER_AUTH_SECRET missing or too short — aborting');
+    logger.error(
+      'reconcile-invitations: BETTER_AUTH_SECRET missing or too short — aborting',
+    );
     return;
   }
 
@@ -230,7 +253,8 @@ async function reconcile(): Promise<void> {
     : createCalendarEvent;
 
   // Eligibility query (post-answer statuses, L2 flag still NULL, soft-delete
-  // guard, 48h creation window, upcoming only, oldest first, bounded batch).
+  // guard, 24h creation window — W3, bounded to the Resend L1 dedup TTL,
+  // upcoming only, oldest first, bounded batch).
   // NOTE — écart assumé vs spec §5 : `payment_received` est inclus (en plus de
   // 'confirmed' et 'payment_pending') car un RDV payé par avoir (SC3) est
   // inséré directement à payment_received et son email d'invitation peut
@@ -241,21 +265,37 @@ async function reconcile(): Promise<void> {
     .in('status', ['confirmed', 'payment_pending', 'payment_received'])
     .is('invitation_sent_at', null)
     .is('deleted_at', null)
-    .gt('created_at', new Date(Date.now() - CREATED_WITHIN_HOURS * 3_600_000).toISOString())
+    .gt(
+      'created_at',
+      new Date(Date.now() - CREATED_WITHIN_HOURS * 3_600_000).toISOString(),
+    )
     .gt('scheduled_at', new Date().toISOString())
     .order('created_at', { ascending: true })
     .limit(BATCH_LIMIT);
 
   if (fetchError) {
-    logger.error('reconcile-invitations: Supabase query failed', {}, fetchError);
+    logger.error(
+      'reconcile-invitations: Supabase query failed',
+      {},
+      fetchError,
+    );
     return;
   }
 
   const appointments = (rows ?? []) as Appointment[];
-  const counts = { found: appointments.length, reconciled: 0, failed: 0, deadlineHit: false };
+  const counts = {
+    found: appointments.length,
+    reconciled: 0,
+    failed: 0,
+    claimed: 0,
+    deadlineHit: false,
+  };
 
   if (appointments.length === 0) {
-    logger.info('reconcile-invitations: done (empty batch)', { ...counts, msElapsed: Date.now() - startedAt });
+    logger.info('reconcile-invitations: done (empty batch)', {
+      ...counts,
+      msElapsed: Date.now() - startedAt,
+    });
     return;
   }
 
@@ -268,6 +308,20 @@ async function reconcile(): Promise<void> {
 
     // Per-row isolation: a throwing row never blocks the rest of the batch.
     try {
+      // W2 — atomic claim (10 min lease) BEFORE delegating: if the admin POST
+      // waitUntil pipeline (or another worker/pass) already owns this row, do
+      // NOT run the pipeline — two concurrent pipelines would create duplicate
+      // Google events and duplicate Stripe Payment Links. Neither reconciled
+      // nor failed: counted as `claimed` (the owning worker owns the outcome).
+      const claimed = await claimInvitationProcessing(supabase, appt.id);
+      if (!claimed) {
+        logger.info('reconcile-invitations: row already claimed — skipping', {
+          appointmentId: appt.id,
+        });
+        counts.claimed += 1;
+        continue;
+      }
+
       sendBundle.state.lastError = null;
 
       await processAppointmentSideEffects(appt, {
@@ -306,23 +360,37 @@ async function reconcile(): Promise<void> {
           .eq('id', appt.id)
           .is('invitation_sent_at', null);
         if (escapeError) {
-          logger.error('reconcile-invitations: poison-escape UPDATE failed', { appointmentId: appt.id }, escapeError);
+          logger.error(
+            'reconcile-invitations: poison-escape UPDATE failed',
+            { appointmentId: appt.id },
+            escapeError,
+          );
         }
         counts.failed += 1;
       } else if (lastError) {
         // Retryable (5xx, 429, network) → leave the flag NULL; next pass retries.
-        logger.warn('reconcile-invitations: retryable email failure; will retry next sweep', {
-          appointmentId: appt.id,
-        });
+        logger.warn(
+          'reconcile-invitations: retryable email failure; will retry next sweep',
+          {
+            appointmentId: appt.id,
+          },
+        );
         counts.failed += 1;
       } else {
         counts.reconciled += 1;
       }
     } catch (err: unknown) {
-      logger.error('reconcile-invitations: unexpected error for row', { appointmentId: appt.id }, err);
+      logger.error(
+        'reconcile-invitations: unexpected error for row',
+        { appointmentId: appt.id },
+        err,
+      );
       counts.failed += 1;
     }
   }
 
-  logger.info('reconcile-invitations: done', { ...counts, msElapsed: Date.now() - startedAt });
+  logger.info('reconcile-invitations: done', {
+    ...counts,
+    msElapsed: Date.now() - startedAt,
+  });
 }

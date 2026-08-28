@@ -14,7 +14,12 @@
 --          -- directly as payment_received and their invitation email can
 --          -- fail just like any other (required by SC3).
 --   AND invitation_sent_at IS NULL
---   AND created_at > now() - 48h         -- reconciliation window
+--   AND created_at > now() - 24h         -- reconciliation window (W3 review
+--          -- fix: bounded to the ~24h TTL of the Resend L1 idempotency key
+--          -- `invite:{id}:patient` — beyond that window a replayed pass would
+--          -- no longer be deduplicated by Resend and could re-send the
+--          -- invitation. Past that window, either the email was delivered
+--          -- (case covered) or it is in chronic failure, visible in the logs.
 --   AND scheduled_at > now()              -- still upcoming
 --
 -- Canonical predicate: netlify/functions/reconcile-invitations.ts.

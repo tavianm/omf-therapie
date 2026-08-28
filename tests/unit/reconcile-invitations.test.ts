@@ -13,12 +13,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 //   2. Sentry wiring: `initSentry()` BEFORE `Sentry.withMonitor(
 //      'reconcile-invitations', …, { checkInMargin: 5, maxRuntime: 10 })`
 //      (patterns #75/#113).
-//   3. Constants: DEADLINE_MS = 8500, BATCH_LIMIT = 25, 48 h created_at window.
+//   3. Constants: DEADLINE_MS = 8500, BATCH_LIMIT = 25, 24 h created_at window
+//      (W3: bounded to the ~24h TTL of the Resend L1 dedup key).
 //   4. Eligibility query on `appointments` — every filter asserted on the
 //      mock query chain (see the payment_received deviation note below).
-//   5. Per-row DELEGATION to `processAppointmentSideEffects(appt, opts)` with
-//      `sendEmail: true` and `amountDueCents: 0` for payment_received (avoir)
-//      else `final_price` (cents).
+//   5. Per-row ATOMIC CLAIM (W2, claimInvitationProcessing) then DELEGATION
+//      to `processAppointmentSideEffects(appt, opts)` with `sendEmail: true`
+//      and `amountDueCents: 0` for payment_received (avoir) else
+//      `final_price` (cents). A row whose claim returns no line is skipped
+//      (counted as `claimed`, neither reconciled nor failed).
 //   6. GOOGLE_CALENDAR_MOCK=true → injected no-op createCalendarEvent that
 //      console.warns; the real calendar module is never called; the rest of
 //      the per-row reconciliation continues.
@@ -80,6 +83,7 @@ interface RecordedChain {
   inFilters: Array<[string, unknown[]]>;
   isFilters: Array<[string, unknown]>;
   gtFilters: Array<[string, unknown]>;
+  orFilters: string[];
   orders: Array<[string, { ascending: boolean }]>;
   limits: number[];
   updates: RecordedUpdate[];
@@ -91,6 +95,10 @@ const supabaseState = vi.hoisted(() => {
     // Queue of PostgrestResponse payloads handed to SELECT-chain awaits
     // (consumed FIFO by the thenable terminal; default = empty result).
     selectResults: [] as unknown[],
+    // Queue of payloads handed to UPDATE-chain awaits (W2 claims, poison
+    // escapes…). Default = successful claim ({ data: [{ id }] }) so the
+    // per-row claim passes unless a test overrides it.
+    updateResults: [] as unknown[],
   };
   return state;
 });
@@ -102,6 +110,7 @@ const supabaseFrom = vi.fn((table: string) => {
     inFilters: [],
     isFilters: [],
     gtFilters: [],
+    orFilters: [],
     orders: [],
     limits: [],
     updates: [],
@@ -116,7 +125,10 @@ const supabaseFrom = vi.fn((table: string) => {
       reject: (e: unknown) => void,
     ) => {
       const result = isUpdateChain
-        ? { ...EMPTY_RESULT }
+        ? (supabaseState.updateResults.shift() ?? {
+            ...EMPTY_RESULT,
+            data: [{ id: 'claimed' }],
+          })
         : (supabaseState.selectResults.shift() ?? { ...EMPTY_RESULT });
       Promise.resolve(result).then(resolve, reject);
       return chain;
@@ -139,6 +151,11 @@ const supabaseFrom = vi.fn((table: string) => {
     return chain;
   });
   chain.neq = vi.fn(() => chain);
+  chain.or = vi.fn((filter: string) => {
+    // W2: the per-row claim guards its update with `.or('invitation_claimed_at.is.null,…')`.
+    record.orFilters.push(filter);
+    return chain;
+  });
   chain.gt = vi.fn((col: string, value: unknown) => {
     record.gtFilters.push([col, value]);
     return chain;
@@ -290,6 +307,7 @@ function resetMocks(): void {
   supabaseFrom.mockClear();
   supabaseState.chains.length = 0;
   supabaseState.selectResults.length = 0;
+  supabaseState.updateResults.length = 0;
   resendSend.mockClear();
   resendSend.mockResolvedValue({ data: { id: 're_123' }, error: null });
   notifications.processAppointmentSideEffects.mockClear();
@@ -396,16 +414,18 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
       expect(chain!.isFilters).toContainEqual(['invitation_sent_at', null]);
       expect(chain!.isFilters).toContainEqual(['deleted_at', null]);
 
-      // created_at > now − 48 h (tolerance for the awaited call duration).
+      // created_at > now − 24 h (W3: window bounded to the ~24h TTL of the
+      // Resend L1 idempotency key — beyond, a replay would not be deduplicated
+      // and could re-send the invitation). Tolerance for the awaited duration.
       const createdFilter = chain!.gtFilters.find(
         ([col]) => col === 'created_at',
       );
       expect(createdFilter).toBeDefined();
       const createdValue = new Date(createdFilter![1] as string).getTime();
       expect(createdValue).toBeGreaterThanOrEqual(
-        before - 48 * 3_600_000 - 5_000,
+        before - 24 * 3_600_000 - 5_000,
       );
-      expect(createdValue).toBeLessThanOrEqual(after - 48 * 3_600_000 + 5_000);
+      expect(createdValue).toBeLessThanOrEqual(after - 24 * 3_600_000 + 5_000);
 
       // scheduled_at > now (only upcoming appointments).
       const scheduledFilter = chain!.gtFilters.find(
@@ -423,6 +443,32 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
   });
 
   describe('per-row delegation to processAppointmentSideEffects', () => {
+    it('skips a row whose claim returns no line and continues with the batch (W2)', async () => {
+      // W2: the claim update returns ZERO rows for the first appointment
+      // (already claimed by the POST waitUntil pipeline within the 10 min
+      // lease) → NO delegation for that row (a second pipeline would create a
+      // duplicate Google event + Stripe Payment Link), and the batch moves on.
+      const rows = [
+        makeAppt({ id: 'appt-claimed' }),
+        makeAppt({ id: 'appt-free' }),
+      ];
+      supabaseState.selectResults.push({ ...EMPTY_RESULT, data: rows });
+      // Claim results, FIFO per row: row 1 already claimed, row 2 free.
+      supabaseState.updateResults.push(
+        { ...EMPTY_RESULT, data: [] },
+        { ...EMPTY_RESULT, data: [{ id: 'appt-free' }] },
+      );
+
+      await handler();
+
+      expect(notifications.processAppointmentSideEffects).toHaveBeenCalledTimes(
+        1,
+      );
+      expect(
+        notifications.processAppointmentSideEffects.mock.calls[0][0].id,
+      ).toBe('appt-free');
+    });
+
     it('delegates each row with sendEmail:true and amountDueCents = final_price (cents)', async () => {
       const appt = makeAppt({ id: 'appt-unpaid', status: 'payment_pending' });
       supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
@@ -564,6 +610,10 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
         appointmentId: appt.id,
       });
       expect(calResult).toBeDefined();
+      // W4: the no-op produces NO exploitable eventId (the old
+      // `calendar-mock-${Date.now()}` contract is deliberately dropped — a
+      // fake persisted id locked the S1 skip forever).
+      expect(calResult.eventId).toBeNull();
       expect(warnSpy).toHaveBeenCalled();
 
       // …and the REAL calendar module is never called.
@@ -574,6 +624,51 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
       expect(resendSend).toHaveBeenCalled();
 
       warnSpy.mockRestore();
+    });
+
+    it('never persists a calendar event id in mock mode (W4 — no calendar-mock-* payloads)', async () => {
+      // End-to-end regression: delegate to the REAL pipeline so the actual
+      // S1 skip-without-persistence logic runs against the injected no-op.
+      process.env.GOOGLE_CALENDAR_MOCK = 'true';
+      const actual = await vi.importActual<
+        typeof import('../../src/lib/notifications')
+      >('../../src/lib/notifications');
+      notifications.processAppointmentSideEffects.mockImplementationOnce(
+        actual.processAppointmentSideEffects,
+      );
+      const appt = makeAppt();
+      supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await handler();
+
+      // No update payload carries a calendar event id (nor any calendar-mock-*
+      // value) — S1 treated the no-op result as a skip WITHOUT persistence.
+      const allUpdatePayloads = supabaseState.chains.flatMap(c =>
+        c.updates.map(u => u.payload),
+      );
+      expect(allUpdatePayloads.length).toBeGreaterThan(0); // claim + flags ran
+      for (const payload of allUpdatePayloads) {
+        expect(JSON.stringify(payload)).not.toMatch(/calendar-mock-/);
+        expect(payload).not.toHaveProperty('google_calendar_event_id');
+      }
+      // The real pipeline logged the calendar step as `skipped`…
+      const calLog = infoSpy.mock.calls
+        .filter(call => call[0] === '[side-effects]')
+        .map(call => call[1] as { step?: string; status?: string })
+        .find(entry => entry.step === 'calendar');
+      expect(calLog?.status).toBe('skipped');
+      // …and the row was still fully reconciled (email delivered, flags set).
+      expect(resendSend).toHaveBeenCalled();
+      expect(
+        allUpdatePayloads.filter(p => 'invitation_sent_at' in p),
+      ).toHaveLength(1);
+
+      warnSpy.mockRestore();
+      infoSpy.mockRestore();
+      errorSpy.mockRestore();
     });
   });
 

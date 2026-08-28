@@ -9,7 +9,7 @@
  *
  * Contract enforced below (T6 must implement identically):
  *
- *   processAppointmentSideEffects(appt, opts): Promise<void>
+ *   processAppointmentSideEffects(appt, opts): Promise<{ flagsSet: boolean }>
  *
  *   appt (inserted appointment row + execution context):
  *     - id: string
@@ -46,7 +46,17 @@
  *                 `invite:{appt.id}:patient` (Resend L1, ~24h TTL).
  *   flags (L2)  : set-once UPDATE ... .is('invitation_sent_at', null), plus
  *                 confirmation_sent_at in the SAME update when the email was
- *                 the confirmation (status 'payment_received').
+ *                 the confirmation (status 'payment_received'). W1 policy:
+ *                 written ONLY when EVERY step S1/S2/S3 is ok or skipped —
+ *                 ANY step error (API OR persistence) leaves the flags NULL
+ *                 so the sweep retries the row.
+ *   W4          : a calendar result WITHOUT an eventId (e.g. sweep no-op
+ *                 mock) is a calendar skip WITHOUT persistence.
+ *   claim (W2)  : claimInvitationProcessing(supabase, id, {leaseMs?}) —
+ *                 atomic bail: update guarded by `.or('invitation_claimed_at
+ *                 .is.null,invitation_claimed_at.lt.<cutoff ~ now − 10 min>')`
+ *                 returning `.select('id')`; true only when a row matched;
+ *                 fail-closed (false) on error.
  *
  * Per-step observability — exactly one log per step:
  *   console.info('[side-effects]', { step, appointmentId, ms, status })
@@ -60,16 +70,23 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 const h = vi.hoisted(() => {
   /**
    * Supabase-like stub for the L2 flag writes: chainable, CAPTURES update
-   * payloads and the set-once `.is()` guards. Awaitable at the terminal link
-   * (thenable resolving `{ data: null, error: null }`).
+   * payloads and the set-once `.is()` / bail `.or()` guards. Awaitable at the
+   * terminal link (thenable resolving `{ data, error }`).
    *
    * C7: `failOnUpdates` makes the update at the given INDICES resolve with a
    * non-null `error` (persistence failure) — every other update succeeds.
+   *
+   * W2: `updateData` provides per-update-index `data` resolutions (e.g. the
+   * claim SELECT `[{ id }]`); defaults to null.
    */
-  const makeSupabaseLike = (failOnUpdates: number[] = []) => {
+  const makeSupabaseLike = (
+    failOnUpdates: number[] = [],
+    updateData: unknown[] = [],
+  ) => {
     const updates: Record<string, unknown>[] = [];
     const isCalls: { column: string; value: unknown }[] = [];
     const eqCalls: { column: string; value: unknown }[] = [];
+    const orCalls: string[] = [];
     let currentUpdateIndex = -1;
     const chain: Record<string, unknown> = {
       update: (payload: Record<string, unknown>) => {
@@ -86,11 +103,16 @@ const h = vi.hoisted(() => {
         isCalls.push({ column, value });
         return chain;
       },
+      or: (filter: string) => {
+        orCalls.push(filter);
+        return chain;
+      },
       then: (resolve: unknown, reject: unknown) => {
         const error = failOnUpdates.includes(currentUpdateIndex)
           ? { message: `mock update failure at index ${currentUpdateIndex}` }
           : null;
-        Promise.resolve({ data: null, error }).then(
+        const data = error ? null : (updateData[currentUpdateIndex] ?? null);
+        Promise.resolve({ data, error }).then(
           resolve as never,
           reject as never,
         );
@@ -102,18 +124,17 @@ const h = vi.hoisted(() => {
       updates,
       isCalls,
       eqCalls,
+      orCalls,
     };
   };
 
   return {
     makeSupabaseLike,
     sb: makeSupabaseLike(),
-    createCalendarEvent: vi
-      .fn()
-      .mockResolvedValue({
-        eventId: 'gcal_mock',
-        meetLink: 'https://meet.example/x',
-      }),
+    createCalendarEvent: vi.fn().mockResolvedValue({
+      eventId: 'gcal_mock',
+      meetLink: 'https://meet.example/x',
+    }),
     createAppointmentPaymentLink: vi
       .fn()
       .mockResolvedValue({ id: 'pl_mock', url: 'https://pay.example/pl' }),
@@ -148,7 +169,10 @@ vi.mock('@/emails/PaymentReceivedNotification', () => ({
 
 // --- Import the REAL module under test (missing export → RED) ----------------
 
-import { processAppointmentSideEffects } from '@/lib/notifications';
+import {
+  claimInvitationProcessing,
+  processAppointmentSideEffects,
+} from '@/lib/notifications';
 // C2: spied module mock — assert the signingSecret DI seam reaches the HMAC
 // signer (the real createSecureLinkToken throws in pure Node without a secret).
 import { createSecureLinkToken } from '@/lib/secure-links';
@@ -330,27 +354,52 @@ describe('processAppointmentSideEffects (issue #126 / T6)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Step isolation — calendar failure never blocks stripe/email/flags
+  // Step isolation + W1 — a failing step runs the rest of the pipeline but
+  // leaves the L2 flags NULL so the sweep retries the row
   // -------------------------------------------------------------------------
-  it('continues with stripe, email and flags when the calendar step throws', async () => {
-    // Arrange
+  it('leaves L2 flags NULL when the calendar step fails so the sweep retries (W1)', async () => {
+    // Arrange — calendar API error (distinct from a persistence error: no
+    // update is even attempted).
     h.createCalendarEvent.mockRejectedValue(new Error('gcal down'));
 
-    // Act — must not reject.
+    // Act — must not reject; W1 policy flip: stripe + email still run, but
+    // the flags are NEVER written (the old policy — flags set as long as the
+    // email was delivered — left the row permanently un-swept and thus
+    // permanently without a Google event, contradicting SC3).
     await expect(
       processAppointmentSideEffects({ ...baseAppointment }, makeOpts()),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ flagsSet: false });
 
-    // Assert — calendar logged as error, the rest of the pipeline ran anyway.
+    // Assert — calendar logged as error, the rest of the pipeline ran anyway…
     const logs = sideEffectLogs();
     expect(logs.find(l => l.step === 'calendar')?.status).toBe('error');
     expect(logs.find(l => l.step === 'stripe')?.status).toBe('ok');
     expect(logs.find(l => l.step === 'email')?.status).toBe('ok');
     expect(h.createAppointmentPaymentLink).toHaveBeenCalledTimes(1);
     expect(h.sendEmail).toHaveBeenCalledTimes(1);
-    // The cron sweep relies on the set-once flag being written.
-    const flagged = h.sb.updates.filter(u => !!u.invitation_sent_at);
-    expect(flagged.length).toBeGreaterThan(0);
+    // …but NO flag update is issued — the sweep must complete the calendar.
+    expect(logs.find(l => l.step === 'flags')?.status).toBe('skipped');
+    expect(h.sb.updates.filter(u => 'invitation_sent_at' in u)).toHaveLength(0);
+  });
+
+  it('leaves L2 flags NULL when the stripe step fails so the sweep retries (W1)', async () => {
+    // Arrange — Stripe API error: no paymentLinkUrl → the PaymentRequest
+    // email cannot leave either (video RDV with a balance due).
+    h.createAppointmentPaymentLink.mockRejectedValue(new Error('stripe down'));
+
+    // Act — must not reject.
+    await expect(
+      processAppointmentSideEffects({ ...baseAppointment }, makeOpts()),
+    ).resolves.toEqual({ flagsSet: false });
+
+    // Assert — stripe error cascades to the email (link unavailable), and the
+    // flags stay NULL for the sweep.
+    const logs = sideEffectLogs();
+    expect(logs.find(l => l.step === 'calendar')?.status).toBe('ok');
+    expect(logs.find(l => l.step === 'stripe')?.status).toBe('error');
+    expect(logs.find(l => l.step === 'email')?.status).toBe('error');
+    expect(logs.find(l => l.step === 'flags')?.status).toBe('skipped');
+    expect(h.sb.updates.filter(u => 'invitation_sent_at' in u)).toHaveLength(0);
   });
 
   // -------------------------------------------------------------------------
@@ -451,7 +500,7 @@ describe('processAppointmentSideEffects (issue #126 / T6)', () => {
     // Act — must resolve (runStep isolates the throw).
     await expect(
       processAppointmentSideEffects({ ...baseAppointment }, makeOpts()),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ flagsSet: false });
 
     // Assert — calendar logs error, the pipeline continues (stripe + email
     // still run)…
@@ -462,9 +511,7 @@ describe('processAppointmentSideEffects (issue #126 / T6)', () => {
     // …but NO flag update is issued afterwards — the cron sweep must retry
     // the row (otherwise the event id would be lost forever).
     expect(logs.find(l => l.step === 'flags')?.status).toBe('skipped');
-    expect(
-      h.sb.updates.filter(u => 'invitation_sent_at' in u),
-    ).toHaveLength(0);
+    expect(h.sb.updates.filter(u => 'invitation_sent_at' in u)).toHaveLength(0);
   });
 
   it('logs the stripe step as error and leaves L2 flags NULL when the S2 persistence update fails (C7)', async () => {
@@ -474,7 +521,7 @@ describe('processAppointmentSideEffects (issue #126 / T6)', () => {
     // Act — must resolve.
     await expect(
       processAppointmentSideEffects({ ...baseAppointment }, makeOpts()),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ flagsSet: false });
 
     // Assert — stripe persistence failed → no paymentLinkUrl → the
     // PaymentRequest email cannot leave → email error → flags skipped.
@@ -482,8 +529,127 @@ describe('processAppointmentSideEffects (issue #126 / T6)', () => {
     expect(logs.find(l => l.step === 'stripe')?.status).toBe('error');
     expect(logs.find(l => l.step === 'email')?.status).toBe('error');
     expect(logs.find(l => l.step === 'flags')?.status).toBe('skipped');
+    expect(h.sb.updates.filter(u => 'invitation_sent_at' in u)).toHaveLength(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // W3 — email SUCCESS but the flag WRITE fails: the write error is logged,
+  // invitation_sent_at stays NULL (the 24h sweep window re-runs the row; the
+  // replayed email is deduplicated by the Resend L1 key invite:{id}:patient)
+  // -------------------------------------------------------------------------
+  it('keeps invitation_sent_at NULL (flags step error) when the flag write fails after a delivered email (W3)', async () => {
+    // Arrange — update #0 = S1 persistence, #1 = S2 persistence, #2 = flags.
+    h.sb = h.makeSupabaseLike([2]);
+
+    // Act — must resolve; the failing flag write is isolated like any step.
+    await expect(
+      processAppointmentSideEffects({ ...baseAppointment }, makeOpts()),
+    ).resolves.toEqual({ flagsSet: false });
+
+    // Assert — email delivered, flags update ATTEMPTED (payload emitted) but
+    // errored: in the database invitation_sent_at remains NULL and the
+    // observable contract is the `flags: 'error'` step status.
+    const logs = sideEffectLogs();
+    expect(logs.find(l => l.step === 'email')?.status).toBe('ok');
+    expect(logs.find(l => l.step === 'flags')?.status).toBe('error');
+    expect(h.sb.updates.filter(u => 'invitation_sent_at' in u)).toHaveLength(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // W4 — calendar result WITHOUT eventId = skip without persistence
+  // -------------------------------------------------------------------------
+  it('treats a calendar result without eventId as a skip without persistence (W4)', async () => {
+    // Arrange — e.g. the sweep's GOOGLE_CALENDAR_MOCK no-op fn.
+    h.createCalendarEvent.mockResolvedValue({
+      eventId: null,
+      meetLink: undefined,
+    });
+
+    // Act
+    await expect(
+      processAppointmentSideEffects({ ...baseAppointment }, makeOpts()),
+    ).resolves.toEqual({ flagsSet: true });
+
+    // Assert — calendar step logged as skipped…
+    const logs = sideEffectLogs();
+    expect(logs.find(l => l.step === 'calendar')?.status).toBe('skipped');
+    // …NO update carries a google_calendar_event_id (nothing exploitable to
+    // persist — a fake persisted id would lock the S1 skip forever)…
     expect(
-      h.sb.updates.filter(u => 'invitation_sent_at' in u),
+      h.sb.updates.filter(u => 'google_calendar_event_id' in u),
     ).toHaveLength(0);
+    // …and the rest of the pipeline is normal (stripe, email, flags set).
+    expect(logs.find(l => l.step === 'stripe')?.status).toBe('ok');
+    expect(logs.find(l => l.step === 'email')?.status).toBe('ok');
+    expect(logs.find(l => l.step === 'flags')?.status).toBe('ok');
+    expect(h.sendEmail).toHaveBeenCalledTimes(1);
+    expect(
+      h.sb.updates.filter(u => !!u.invitation_sent_at).length,
+    ).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// W2 — claimInvitationProcessing: atomic bail (waitUntil ↔ sweep)
+// ---------------------------------------------------------------------------
+describe('claimInvitationProcessing (W2 — atomic bail)', () => {
+  it('claims via an update guarded by invitation_claimed_at.is.null OR a ~10 min lease cutoff', async () => {
+    // Arrange — the claim update returns one claimed row.
+    h.sb = h.makeSupabaseLike([], [[{ id: 'appt_side_001' }]]);
+    const before = Date.now();
+
+    // Act
+    const claimed = await claimInvitationProcessing(h.sb, 'appt_side_001');
+
+    // Assert — one row matched → claim granted.
+    const after = Date.now();
+    expect(claimed).toBe(true);
+    expect(h.sb.updates[0]).toMatchObject({
+      invitation_claimed_at: expect.any(String),
+    });
+    expect(h.sb.eqCalls).toContainEqual({
+      column: 'id',
+      value: 'appt_side_001',
+    });
+    // The `.or` guard: free bail (NULL) OR expired bail (cutoff now − 10 min).
+    expect(h.sb.orCalls).toHaveLength(1);
+    const orFilter = h.sb.orCalls[0];
+    expect(orFilter).toContain('invitation_claimed_at.is.null');
+    expect(orFilter).toContain('invitation_claimed_at.lt.');
+    const cutoff = new Date(
+      orFilter.split('invitation_claimed_at.lt.')[1],
+    ).getTime();
+    expect(cutoff).toBeGreaterThanOrEqual(before - 10 * 60_000 - 5_000);
+    expect(cutoff).toBeLessThanOrEqual(after - 10 * 60_000 + 5_000);
+  });
+
+  it('returns false when no row matched (row already claimed within the lease)', async () => {
+    h.sb = h.makeSupabaseLike([], [[]]);
+
+    await expect(
+      claimInvitationProcessing(h.sb, 'appt_side_001'),
+    ).resolves.toBe(false);
+  });
+
+  it('returns false (fail-closed) when the claim update errors', async () => {
+    h.sb = h.makeSupabaseLike([0]);
+
+    await expect(
+      claimInvitationProcessing(h.sb, 'appt_side_001'),
+    ).resolves.toBe(false);
+  });
+
+  it('honours opts.leaseMs when computing the cutoff', async () => {
+    h.sb = h.makeSupabaseLike([], [[{ id: 'appt_side_001' }]]);
+    const before = Date.now();
+
+    await claimInvitationProcessing(h.sb, 'appt_side_001', { leaseMs: 60_000 });
+
+    const cutoff = new Date(
+      h.sb.orCalls[0].split('invitation_claimed_at.lt.')[1],
+    ).getTime();
+    const after = Date.now();
+    expect(cutoff).toBeGreaterThanOrEqual(before - 60_000 - 5_000);
+    expect(cutoff).toBeLessThanOrEqual(after - 60_000 + 5_000);
   });
 });
