@@ -37,6 +37,30 @@ function errorResponse(status: number, message: string, field?: string): Respons
 }
 
 // ---------------------------------------------------------------------------
+// L2 flag helpers (issue #126) — set-once, never reset, non-fatal
+// ---------------------------------------------------------------------------
+
+/**
+ * Mark the invitation email as delivered. `WHERE invitation_sent_at IS NULL`
+ * keeps the write set-once (a future cron sweep relies on NULL = "to retry").
+ * Failure is logged and swallowed: a flag write must never fail a creation.
+ */
+async function markInvitationSent(appointmentId: string, extra?: Record<string, string>): Promise<void> {
+  try {
+    const { error } = await supabaseAdmin
+      .from('appointments')
+      .update({ invitation_sent_at: new Date().toISOString(), ...extra })
+      .eq('id', appointmentId)
+      .is('invitation_sent_at', null);
+    if (error) {
+      console.error('[admin/appointments] invitation_sent_at write failed:', error);
+    }
+  } catch (flagErr) {
+    console.error('[admin/appointments] invitation_sent_at write failed:', flagErr);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // POST — création manuelle d'un rendez-vous par l'admin
 // ---------------------------------------------------------------------------
 
@@ -209,6 +233,9 @@ export const POST: APIRoute = async ({ request }) => {
       final_price: finalPriceCents,
       credit_applied: creditApplied,
       video_link: isVideo ? (video_link ?? null) : null,
+      // send_email:false → aucun email ne partira jamais : on pose le flag L2
+      // dès l'insert pour que le futur sweep ne tente pas d'envoi de rattrapage.
+      ...(shouldSendEmail ? {} : { invitation_sent_at: new Date().toISOString() }),
     })
     .select()
     .single();
@@ -313,6 +340,10 @@ export const POST: APIRoute = async ({ request }) => {
         });
         if (!emailResult.success) {
           console.error('[admin/appointments] email PaymentRequest error:', emailResult.error);
+        } else {
+          // L2: invitation délivrée (set-once) — pas de flag si l'envoi échoue,
+          // le futur sweep rattrapera.
+          await markInvitationSent(appointment.id);
         }
       } catch (e) {
         console.error('[admin/appointments] Stripe error (non-bloquant):', e);
@@ -344,7 +375,7 @@ export const POST: APIRoute = async ({ request }) => {
         });
         const appleLink = generateAppleCalendarInviteLink(baseUrl, appointment.id, inviteToken);
 
-        await sendEmail({
+        const emailResult = await sendEmail({
           to: appointment.patient_email,
           threadKey: `appointment:${appointment.id}:patient`,
           subject: buildAppointmentConversationSubject(
@@ -364,6 +395,11 @@ export const POST: APIRoute = async ({ request }) => {
             outlookCalendarLink: outlookLink,
           }),
         });
+        if (emailResult.success) {
+          // L2: séance réglée par avoir → l'invitation EST la confirmation.
+          // Un seul update pose les deux drapeaux (set-once).
+          await markInvitationSent(appointment.id, { confirmation_sent_at: new Date().toISOString() });
+        }
       } catch (e) {
         console.error('[admin/appointments] email confirmation (avoir) error (non-bloquant):', e);
       }
@@ -415,6 +451,9 @@ export const POST: APIRoute = async ({ request }) => {
       });
       if (!emailResult.success) {
         console.error('[admin/appointments] email AppointmentConfirmed error:', emailResult.error);
+      } else {
+        // L2: invitation (confirmation présentiel) délivrée — set-once.
+        await markInvitationSent(appointment.id);
       }
     }
   }
