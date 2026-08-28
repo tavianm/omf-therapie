@@ -53,7 +53,7 @@ vi.mock('@/lib/pricing', () => ({
 }));
 
 // Mock stripe (imported at module level but not used by handlePaymentSucceeded).
-vi.mock('@/lib/stripe', () => ({ stripe: {} }));
+vi.mock('@/lib/stripe', () => ({ getStripe: () => null }));
 
 // --- Import after mocks -----------------------------------------------------
 

@@ -60,6 +60,10 @@ const DURATIONS: { value: AppointmentDuration | 'custom'; label: string }[] = [
   { value: 'custom' as const, label: 'Personnalisée…' },
 ];
 
+// 5xx ou erreur réseau : le traitement serveur a peut-être abouti malgré l'échec apparent.
+const UNCERTAIN_RESULT_MESSAGE =
+  "La création a peut-être abouti — vérifiez la liste des rendez-vous avant de retenter.";
+
 const INITIAL_STATE: FormState = {
   patient_name: "",
   patient_email: "",
@@ -309,6 +313,9 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
       });
 
       if (!res.ok) {
+        // 5xx (504/502…) : le traitement serveur peut continuer en arrière-plan —
+        // la ligne est peut-être créée. On invite à vérifier avant de retenter.
+        if (res.status >= 500) throw new Error(UNCERTAIN_RESULT_MESSAGE);
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? `Erreur ${res.status}`);
       }
@@ -316,7 +323,12 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
       // Succès : recharger la page pour afficher le nouveau RDV
       window.location.reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Une erreur est survenue");
+      // Erreur réseau (fetch rejeté) : même incertitude — la requête a peut-être abouti.
+      setError(
+        err instanceof TypeError ? UNCERTAIN_RESULT_MESSAGE
+          : err instanceof Error ? err.message
+          : "Une erreur est survenue",
+      );
     } finally {
       setLoading(false);
     }

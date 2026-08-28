@@ -75,6 +75,14 @@ export interface Appointment {
    */
   confirmation_sent_at: string | null;
 
+  /**
+   * Horodatage de l'envoi de l'email d'invitation (rattrapage auto).
+   * NULL = en attente (reconcile-invitations retentera).
+   * Drapeau durable d'idempotence L2 (issue #126) : positionné UNIQUEMENT après
+   * succès complet de l'envoi. Jamais reset.
+   */
+  invitation_sent_at: string | null;
+
   // Google Meet (renseigné manuellement par la thérapeute)
   video_link: string | null;
 

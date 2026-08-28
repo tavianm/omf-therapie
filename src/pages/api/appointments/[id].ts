@@ -10,7 +10,7 @@ import { sendEmail, buildAppointmentConversationSubject } from '../../../lib/res
 import { generateGoogleCalendarLink, generateOutlookCalendarLink, generateAppleCalendarInviteLink, CABINET_ADDRESS } from '../../../lib/ics';
 import { createSecureLinkToken, verifySecureLinkToken } from '../../../lib/secure-links';
 import { getTypeLabel, getModeLabel, calculatePrice } from '../../../lib/pricing';
-import { stripe, createAppointmentPaymentLink } from '../../../lib/stripe';
+import { createAppointmentPaymentLink, getStripe } from '../../../lib/stripe';
 import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from '../../../lib/google-calendar';
 import { hasAppointmentConflict } from '../../../lib/appointment-conflicts';
 import { isCabinetEligibleSlot } from '../../../lib/appointment-eligibility';
@@ -662,7 +662,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // Expire l'ancien Payment Link Stripe s'il existe (évite le double-paiement)
     if (appointment.stripe_payment_link_id) {
       try {
-        await stripe.paymentLinks.update(appointment.stripe_payment_link_id, { active: false });
+        await getStripe()?.paymentLinks.update(appointment.stripe_payment_link_id, { active: false });
       } catch (stripeErr) {
         logger.error('appointments/patch: Stripe Payment Link expiry failed (reschedule)', { appointmentId: id, stripePaymentLinkId: appointment.stripe_payment_link_id }, stripeErr);
         // Non-bloquant : on continue, le lien expiré est préférable à bloquer le report

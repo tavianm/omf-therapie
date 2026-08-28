@@ -2,7 +2,7 @@ export const prerender = false;
 
 import type { APIRoute } from 'astro';
 import type Stripe from 'stripe';
-import { stripe } from '../../lib/stripe';
+import { getStripe } from '../../lib/stripe';
 import { supabaseAdmin } from '../../lib/supabase';
 import { logger } from '../../lib/logger';
 import { getTypeLabel, getModeLabel } from '../../lib/pricing';
@@ -21,8 +21,8 @@ async function resolveAppointmentIdFromCheckoutSession(session: Stripe.Checkout.
 
   if (paymentIntentId) {
     try {
-      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-      const fromPaymentIntent = paymentIntent.metadata?.appointment_id;
+      const paymentIntent = await getStripe()?.paymentIntents.retrieve(paymentIntentId);
+      const fromPaymentIntent = paymentIntent?.metadata?.appointment_id;
       if (fromPaymentIntent) return fromPaymentIntent;
     } catch (err) {
       logger.error('stripe-webhook: failed to retrieve PaymentIntent to resolve appointment_id', { paymentIntentId }, err);
@@ -73,9 +73,14 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   // 2. Vérifier la signature
+  const stripeClient = getStripe();
+  if (!stripeClient) {
+    logger.error('stripe-webhook: STRIPE_SECRET_KEY missing — webhooks disabled');
+    return new Response('Configuration Stripe manquante', { status: 500 });
+  }
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(
+    event = stripeClient.webhooks.constructEvent(
       rawBody,
       signature,
       webhookSecret,
