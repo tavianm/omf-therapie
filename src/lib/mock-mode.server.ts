@@ -10,6 +10,15 @@ function readEnv(key: string): string | boolean | undefined {
   return fromMeta ?? process.env[key];
 }
 
+const MIN_MOCK_WEBHOOK_TOKEN_LENGTH = 32;
+const MOCK_WEBHOOK_TOKEN_SENTINELS = new Set([
+  'remplacer-par-un-token-aleatoire-local',
+  'replace-with-a-random-local-token',
+  'change-me',
+  'changeme',
+  'placeholder',
+]);
+
 /**
  * Calendar and payment mocks are local development capabilities only.
  */
@@ -32,8 +41,17 @@ export function isLoopbackHostname(hostname: string): boolean {
 }
 
 export function getMockWebhookToken(): string | null {
-  const token = readEnv('MOCK_WEBHOOK_TOKEN');
-  return token && token.trim().length > 0 ? token : null;
+  const configuredToken = readEnv('MOCK_WEBHOOK_TOKEN');
+  const token =
+    typeof configuredToken === 'string' ? configuredToken.trim() : '';
+  if (
+    token.length < MIN_MOCK_WEBHOOK_TOKEN_LENGTH ||
+    MOCK_WEBHOOK_TOKEN_SENTINELS.has(token.toLowerCase())
+  ) {
+    return null;
+  }
+
+  return token;
 }
 
 function digestToken(token: string): Buffer {

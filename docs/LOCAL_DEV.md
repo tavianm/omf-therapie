@@ -137,8 +137,9 @@ STRIPE_SECRET_KEY=sk_test_placeholder
 STRIPE_PUBLISHABLE_KEY=pk_test_placeholder
 STRIPE_WEBHOOK_SECRET=whsec_placeholder
 STRIPE_SUCCESS_URL=http://localhost:4321/rdv/merci
-# Générer avec : openssl rand -hex 32 (local uniquement, ne pas configurer sur Netlify)
-MOCK_WEBHOOK_TOKEN=remplacer-par-un-token-aleatoire-local
+# Obligatoire pour le paiement mock : exécuter `openssl rand -hex 32`, puis coller le résultat.
+# Laisser vide désactive le callback mock. Variable locale uniquement, absente de Netlify.
+MOCK_WEBHOOK_TOKEN=
 
 # ── Google Calendar (mode mock) ──────────────────────────────────
 # true = créneaux fictifs les mercredis, aucun appel API Google
@@ -298,9 +299,10 @@ Vérifier `GOOGLE_CALENDAR_MOCK=true` dans `.env`. En mode mock, seuls les **mer
 ### Stripe — paiements non fonctionnels
 
 Avec `STRIPE_SECRET_KEY=sk_test_placeholder` (valeur par défaut), le mode **Stripe mock** est actif :
-- Générer une capacité locale avec `openssl rand -hex 32`, puis la renseigner dans
-  `MOCK_WEBHOOK_TOKEN`. Cette variable autorise uniquement le callback mock sur une
-  adresse de boucle locale en mode développement ; ne pas la configurer sur Netlify.
+- Avant tout paiement simulé, exécuter `openssl rand -hex 32` et coller le résultat
+  dans `MOCK_WEBHOOK_TOKEN`. La valeur vide fournie dans l'exemple désactive le
+  callback mock. Cette variable autorise uniquement une adresse de boucle locale en
+  mode développement ; ne pas la configurer sur Netlify.
 - La confirmation d'une téléconsultation passe en statut `payment_pending` et envoie un email de demande de paiement avec un **lien fictif** (pas de vrai appel Stripe).
 - Une fois « payé », le RDV passe en `payment_received` (statut unifié « réglé » — Stripe ou avoir, depuis #63/#66).
 - Aucune erreur 500 — le bypass est intentionnel pour le développement local.

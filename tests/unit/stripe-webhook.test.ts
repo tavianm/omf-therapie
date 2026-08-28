@@ -16,6 +16,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MOCK_WEBHOOK_TOKEN_HEADER } from '@/lib/mock-mode.server';
 
+const STRONG_MOCK_WEBHOOK_TOKEN =
+  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
 // --- Mocks must be hoisted before imports -----------------------------------
 
 // Mock supabaseAdmin with a chainable builder so .from().update().eq()... works.
@@ -122,7 +125,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv('DEV', true);
   vi.stubEnv('GOOGLE_CALENDAR_MOCK', 'true');
-  vi.stubEnv('MOCK_WEBHOOK_TOKEN', 'test-mock-webhook-token');
+  vi.stubEnv('MOCK_WEBHOOK_TOKEN', STRONG_MOCK_WEBHOOK_TOKEN);
   // Default: the mark-delivered UPDATE succeeds.
   mockSupabaseChain.update.mockReturnThis();
   mockSupabaseChain.eq.mockReturnThis();
@@ -147,7 +150,7 @@ describe('GET — development mock gate', () => {
   async function callMockGet({
     hostname = 'localhost',
     query = 'mock=1&appointment_id=appt_001',
-    token = 'test-mock-webhook-token',
+    token = STRONG_MOCK_WEBHOOK_TOKEN,
   }: {
     hostname?: string;
     query?: string;

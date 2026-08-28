@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  getMockWebhookToken,
   hasValidMockWebhookToken,
   isAuthorizedLocalMockRequest,
   isCalendarMockEnabled,
@@ -7,10 +8,13 @@ import {
   MOCK_WEBHOOK_TOKEN_QUERY_PARAM,
 } from '@/lib/mock-mode.server';
 
+const STRONG_MOCK_WEBHOOK_TOKEN =
+  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
 beforeEach(() => {
   vi.stubEnv('DEV', true);
   vi.stubEnv('GOOGLE_CALENDAR_MOCK', 'true');
-  vi.stubEnv('MOCK_WEBHOOK_TOKEN', 'test-mock-webhook-token');
+  vi.stubEnv('MOCK_WEBHOOK_TOKEN', STRONG_MOCK_WEBHOOK_TOKEN);
   vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_placeholder');
 });
 
@@ -40,18 +44,26 @@ describe('local mock mode', () => {
   });
 
   it('accepts only the configured capability token', () => {
-    expect(hasValidMockWebhookToken('test-mock-webhook-token')).toBe(true);
+    expect(hasValidMockWebhookToken(STRONG_MOCK_WEBHOOK_TOKEN)).toBe(true);
     expect(hasValidMockWebhookToken('wrong-token')).toBe(false);
     expect(hasValidMockWebhookToken(null)).toBe(false);
   });
 
-  it('rejects authorization when the configured token is missing', () => {
-    vi.stubEnv('MOCK_WEBHOOK_TOKEN', '');
+  it.each([
+    { label: 'empty', token: '' },
+    { label: 'short', token: 'short-token' },
+    {
+      label: 'sentinel',
+      token: 'remplacer-par-un-token-aleatoire-local',
+    },
+  ])('rejects a configured $label token', ({ token }) => {
+    vi.stubEnv('MOCK_WEBHOOK_TOKEN', token);
 
+    expect(getMockWebhookToken()).toBeNull();
     expect(
       isAuthorizedLocalMockRequest(
         new URL('http://localhost/api/stripe-webhook/'),
-        'test-mock-webhook-token',
+        token,
       ),
     ).toBe(false);
   });
@@ -60,7 +72,7 @@ describe('local mock mode', () => {
     expect(
       isAuthorizedLocalMockRequest(
         new URL('https://omf-therapie.fr/api/stripe-webhook/'),
-        'test-mock-webhook-token',
+        STRONG_MOCK_WEBHOOK_TOKEN,
       ),
     ).toBe(false);
   });
@@ -82,7 +94,7 @@ describe('local mock mode', () => {
     expect(redirect.searchParams.get('mock')).toBe('1');
     expect(redirect.searchParams.get('appointment_id')).toBe('appt_001');
     expect(redirect.searchParams.get(MOCK_WEBHOOK_TOKEN_QUERY_PARAM)).toBe(
-      'test-mock-webhook-token',
+      STRONG_MOCK_WEBHOOK_TOKEN,
     );
   });
 });
