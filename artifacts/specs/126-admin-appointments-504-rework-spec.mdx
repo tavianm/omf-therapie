@@ -1,0 +1,104 @@
+---
+title: "Création RDV admin : traitement post-INSERT + rattrapage automatique des invitations"
+issue: 126
+status: approved
+tier: F-lite
+date: 2026-08-28
+---
+
+## Context
+
+Promu depuis le frame [126-admin-appointments-504-rework](../frames/126-admin-appointments-504-rework-frame.mdx) (approuvé). Incident déclencheur : production 2026-08-28 — `POST /api/admin/appointments/` tué en cours par le timeout Netlify (~10 s fonction synchrone), laissant un RDV `confirmed` sans événement Google Calendar ni email patient (`1fd4e5f1-…`), puis une seconde tentative sans rien en base. Le sweep `reconcile-confirmations` (#98) ne couvre que `payment_received` : les invitations n'ont aucun filet.
+
+Faits techniques vérifiés (worktree, adapter `@astrojs/netlify` 6.6.5, revue experte) :
+- Le runtime expose `locals.netlify.context.waitUntil(promise)` aux routes API (`dist/index.js:256`) — noop en dev, réel en prod. C'est le mécanisme du post-réponse fiable.
+- Les fonctions programmées Netlify ont un délai de **30 s** (pas 10) ; le sweep existant budgete 8,5 s (`DEADLINE_MS`).
+- **`src/lib/stripe.ts` et `src/lib/google-calendar.ts` lisent `import.meta.env` à la portée module** (clé Stripe au scope + constructeur qui throw à clé vide ; `GOOGLE_CALENDAR_MOCK` au scope, OAuth/Calendar ID en lecture directe). Ils **plantent au chargement** dans le runtime cron Node — le patron lazy-init/DI de `resend.ts` (précédent #98) doit leur être appliqué avant tout import par une fonction programmée.
+- Précédent d'accesseur env-agnostique : `src/lib/supabase.ts` lit `import.meta.env` avec fallback `process.env`.
+
+## Goal
+
+La création admin d'un RDV répond 201 dès l'INSERT commité, les side-effects externes (agenda Google, lien Stripe, email) s'exécutent en post-réponse avec logs par étape, et tout échec est rattrapé automatiquement ≤ 1 h par un sweep horaire dédié aux invitations. Tradeoff explicite : en cas d'échec du post-réponse, la praticienne voit un succès et l'email patient peut arriver avec ≤ 1 h de retard (aucun indicateur UI dans ce scope — badge « futur »).
+
+## Users
+
+- **Primaire** : la praticienne — crée des RDV via la modal « Nouveau rendez-vous » ; ne doit plus voir de 504 ni créer d'orphelins.
+- **Secondaire** : les patients (reçoivent systématiquement invitation/lien de paiement) ; l'équipe technique (identifie l'étape fautive dans les logs Netlify).
+
+## Expected Behavior
+
+1. **Chemin critique (synchrone, dans la request)** : garde admin → validation → éligibilité cabinet → conflits → tarification → solde d'avoir → `INSERT appointments` → `consume_credits` si avoir (échec → DELETE + 409, inchangé) → invalidation cache dispo → **201 avec le RDV**. Aucun appel d'API externe dans cette fenêtre.
+2. **Post-réponse (`waitUntil`)**, séquentiel par RDV : (a) événement Google Calendar — pas de génération Meet si `video_link` déjà fourni — → persister `google_calendar_event_id`/`video_link` ; (b) lien Stripe si vidéo et solde dû > 0 → persister `stripe_payment_link_*` ; (c) si `send_email` ≠ false : email patient — `PaymentRequest` (vidéo + solde dû) ou `AppointmentConfirmed` (présentiel, ou vidéo couverte par avoir) — avec **clé d'idempotence L1 déterministe `invite:{appointmentId}:patient`** (même clé produite par le sweep → aucun doublon Resend si les deux chemins s'exécutent) ; (d) poser `invitation_sent_at`, et `confirmation_sent_at` aussi si statut `payment_received` (évite le double envoi par le sweep de #98). Chaque étape logge `step`, `appointmentId`, durée ms, statut ok/error — idiome `console.*` actuel (#108 hors scope).
+3. **Échec post-réponse** (erreur ou fonction gelée) : les flags restent NULL — c'est le signal de rattrapage. Aucune erreur ne remonte à la praticienne : le RDV est créé. L'email peut alors arriver avec ≤ 1 h de retard (sweep).
+4. **`send_email = false`** : le post-réponse fait quand même agenda + lien Stripe (ce sont des invariants du RDV), mais **aucun email** ; `invitation_sent_at` est posé à `now()` dès la création (sémantique set-once « rien à envoyer ») → le sweep n'enverra jamais d'email non sollicité.
+5. **Sweep dédié** — NOUVELLE fonction programmée `netlify/functions/reconcile-invitations.ts` (fonction séparée de `reconcile-confirmations` : budget, cold start et monitor indépendants), schedule `'20 * * * *'` (décalé de `5 * * * *`), propre `Sentry.withMonitor` (`reconcile-invitations`). Rows : `status IN ('confirmed','payment_pending')` ∧ `invitation_sent_at IS NULL` ∧ `deleted_at IS NULL` ∧ `created_at > now() − 48 h` ∧ `scheduled_at > now()`, plus ancien d'abord, `LIMIT` borné. Par row : garantir agenda → garantir lien Stripe → envoyer l'email (même clé L1) → poser les flags (garde `WHERE invitation_sent_at IS NULL`). Budget deadline propre (8,5 s), poison-escape et isolation par row réutilisés. Clients Google/Stripe instanciés depuis `process.env` après les refactors lazy-init. `GOOGLE_CALENDAR_MOCK` : le cron lit `process.env.GOOGLE_CALENDAR_MOCK` (fallback `'false'`) ; si mock → **skip de la création d'agenda** avec log warn (les créneaux fictifs du mock sont dev-only), le reste du rattrapage continue.
+6. **Modal résiliente** : sur échec réseau ou statut ≥ 500, remplacer l'erreur brute par « La création a peut-être abouti — vérifiez la liste des rendez-vous avant de retenter. » Le rechargement sur succès est inchangé.
+7. **Statut `payment_received` créé par avoir** : traité par l'étape 2(d) — les deux flags posés ensemble ; le sweep #98 (inchangé) l'ignore donc.
+
+## Data Model & Consumers
+
+**Structure de données :** [Modèle — invitations RDV admin](../visuals/126-admin-appointments-504-rework-data-model.html)
+**Carte des consommateurs :** [Consommateurs — invitation_sent_at](../visuals/126-admin-appointments-504-rework-consumers.html)
+
+*(Sidecars rédigés à la main — skill forge-chart non disponible dans cette session ; à régénérer via forge si souhaité.)*
+
+| Champ | Mutation | Écrit par | Lu par | Quand |
+|---|---|---|---|---|
+| `appointments.invitation_sent_at` (NOUVEAU, TIMESTAMPTZ NULL) | set-once après email livré **ou dès la création si `send_email=false`**, jamais reset | POST post-réponse ; sweep invitations | sweep invitations (filtre) ; (futur, pointillé : badge UI admin) | création + sweep horaire |
+| `appointments.confirmation_sent_at` (existant, 011) | idem, pour statuts `payment_received` | POST post-réponse (cas avoir) ; webhook ; sweep #98 | sweep #98 | paiement |
+| `appointments.google_calendar_event_id` / `video_link` | upsert post-réponse | POST ; sweep invitations | email (lien visio) ; agenda praticienne | création |
+| `appointments.stripe_payment_link_id/url` | upsert post-réponse (vidéo + solde dû) | POST ; sweep invitations | email PaymentRequest | création |
+| `email_threads` (inchangé) | racine/upsert via `sendEmail` (thread `appointment:{id}:patient`) | POST (web) ; sweep = header `X-Thread-Key` seul (parité #98) | — | envoi |
+| `credits`/`credit_usages` | inchangé (chemin critique synchrone) | `consume_credits` RPC | — | création |
+
+**Migrations** (les deux idempotentes, applicables manuellement — convention 002+) :
+- `supabase/migrations/012_credits_grants.sql` — hotfix prod du 2026-08-28 (GRANT service_role sur `credits`/`credit_usages`, déjà appliqué en prod via SQL editor) : **versionné dans cette branche** pour pérenniser le fix.
+- `supabase/migrations/013_invitation_sent_at.sql` — `ADD COLUMN IF NOT EXISTS invitation_sent_at TIMESTAMPTZ` ; backfill `invitation_sent_at = now()` pour **tous** les RDV existants, **sans filtre `created_at`** (ferme aussi la fenêtre déploiement→migration) ; index partiel `WHERE invitation_sent_at IS NULL AND deleted_at IS NULL` sur `created_at` (miroir de `idx_appointments_confirmation_pending`).
+
+## Breadboard
+
+| ID | Élément | Handler → | Données |
+|---|---|---|---|
+| U1 | Bouton « Créer » (modal `AdminCreateButton`) | `handleSubmit` → N1 | payload inchangé (+ `send_email`) |
+| U2 | Zone d'erreur modal | message ≥500/réseau dédié | — |
+| N1 | `POST /api/admin/appointments/` — chemin critique | INSERT → dispatch N2 via `locals.netlify.context.waitUntil` (fallback : exécution inline best-effort si absent) → 201 | D1–D4 |
+| N2 | Processeur post-réponse (nouveau, `src/lib/notifications.ts` : `processAppointmentSideEffects`) | S1 → S2 → S3 (si `send_email`) → flags | D1–D4 |
+| S1 | `createCalendarEvent` (google-calendar, refactoré env-agnostique) | upsert D3 | — |
+| S2 | `createAppointmentPaymentLink` (stripe, refactoré lazy-init) | upsert D4 | — |
+| S3 | `sendEmail` (resend) + clé L1 `invite:{id}:patient` | S4 + D1 (+D2 si avoir) | — |
+| S4 | `email_threads` persist (inchangé) | via S3 (racine thread) | — |
+| S5 | Sweep `reconcile-invitations` (nouvelle fonction) | requête flags NULL → S1→S2→S3 → set-once flags | D1–D4 |
+| D1 | `appointments.invitation_sent_at` (nouveau) | set-once N2/S5 | migration 013 |
+| D2 | `appointments.confirmation_sent_at` (existant) | posé par N2 si `payment_received` (avoir) | sweep #98 |
+| D3 | `appointments.google_calendar_event_id` / `video_link` | upsert S1 | agenda praticienne + email visio |
+| D4 | `appointments.stripe_payment_link_id/url` | upsert S2 | email PaymentRequest |
+
+## Slices
+
+| # | Slice | Contenu | Demo indépendante |
+|---|---|---|---|
+| 1 | Contrat L2 + migrations | 012 (credits grants, versionné) + 013 (+backfill non filtré + index), type `Appointment.invitation_sent_at`, POST pose les flags après envoi (structure encore synchrone), 2(d) double-flag avoir, `send_email=false` → flag posé à la création sans email | Créer un RDV → flags non-NULL en base ; `send_email=false` → pas d'email, flag posé ; re-run migrations = no-op |
+| 2 | Découplage post-réponse | N2 extrait (S3+S4 inchangés), POST 201 après INSERT, wiring `waitUntil` + fallback, logs par étape, message modal U2 | Simuler un Google lent → réponse < 1 s, side-effects aboutissent, logs Netlify lisibles |
+| 3 | Backstop sweep + refactors runtime | Lazy-init `stripe.ts` + accesseur env-agnostique `google-calendar.ts` (précédent `supabase.ts`/`resend.ts`), nouvelle fonction `reconcile-invitations` (requête 48 h/futur, DI process.env, budget 8,5 s, poison-escape, L1 `invite:{id}:patient`, mock-skip agenda), doc env vars cron dans `netlify.toml`, tests concurrency | Tuer N2 (simu) → passage sweep → RDV complet (agenda+lien+email) sans doublon |
+
+Tests : chaque slice embarque ses tests unitaires (`tests/unit/` — sweep query eligibility, processeur (mocks S1–S3), fallback waitUntil, clé L1 déterministe) ; `npm run lint && npm run test` au vert avant PR.
+
+**Séquencement explicite (revue architecte)** : la fonction sweep n'importe N2/S1/S2 **qu'après** les refactors lazy-init du slice 3 — sinon le chargement module du runtime cron crashe. Entre le déploiement des slices 1–2 et celui du slice 3, un timeout laisse `invitation_sent_at NULL` **sans filet** — fenêtre acceptée (site mono-praticienne), notée au runbook.
+
+## Success Criteria
+
+- [ ] `POST /api/admin/appointments/` renvoie 201 après l'INSERT sans aucun appel d'API externe dans la fenêtre synchrone (prouvé par test : aucun mock externe sollicité avant la réponse).
+- [ ] Happy path : le patient reçoit l'email attendu (`PaymentRequest` ou `AppointmentConfirmed`) et `google_calendar_event_id` est non-NULL après le post-réponse.
+- [ ] Si le post-réponse échoue intégralement, un passage du sweep dédié rend le RDV complet (agenda + lien Stripe le cas échéant + email) et `invitation_sent_at` non-NULL — sans double envoi (clé L1 déterministe `invite:{appointmentId}:patient` partagée POST/sweep + garde `WHERE … IS NULL`).
+- [ ] Après un passage du sweep terminé sans erreur : aucun RDV à venir (créé < 48 h, `scheduled_at > now()`) ne reste `invitation_sent_at IS NULL` — y compris les créations `send_email=false` (flag posé à la création, aucun email jamais envoyé pour elles).
+- [ ] Migrations 012 et 013 idempotentes ; backfill 013 **sans filtre** couvrant tous les RDV existants et la fenêtre déploiement→migration ; applicables manuellement (convention 002+).
+- [ ] Chaque étape post-réponse produit un log identifiable (`step`, `appointmentId`, durée, statut) ; `reconcile-invitations` est une fonction programmée séparée avec son propre monitor Sentry (slug distinct) et son budget deadline propre.
+- [ ] Sur échec réseau/≥500, la modal affiche « La création a peut-être abouti — vérifiez la liste des rendez-vous avant de retenter. »
+- [ ] Aucun email de rattrapage aux RDV existants après déploiement (backfill testé sur données seedées) ; les écritures de flag en échec (colonne absente pré-migration) sont non fatales — runbook : déployer puis migrer est sûr, ne jamais reset les flags.
+
+## Notes d'implémentation (non normatives)
+
+- `waitUntil` : accès `locals.netlify.context.waitUntil` (adapter 6.6.5, `dist/index.js:256`) ; noop en dev (processus longévive — les promesses tournent quand même). Fallback prod si absent : exécution inline best-effort non awaitée + le sweep rattrape.
+- Env vars cron à documenter dans `netlify.toml` (bloc scheduled functions) pour `reconcile-invitations` : en plus de Supabase/Resend/AUTH — `GOOGLE_CALENDAR_ID`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `GOOGLE_CALENDAR_MOCK`, `STRIPE_SECRET_KEY`, `STRIPE_SUCCESS_URL`.
+- Logs sweep sans PII (ids seulement), miroir `reconcile-confirmations`.
+- Ne pas reintroduire `react-router-dom`/`react-helmet-async` (aliases nullés) ; trailing slash sur tout fetch (`/api/admin/appointments/`).
