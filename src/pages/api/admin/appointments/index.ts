@@ -67,11 +67,14 @@ export const POST: APIRoute = async ({ request, locals }) => {
     patient_reason,
     override_first_session,
     is_solidarity,
-    send_email: shouldSendEmail = true,
+    send_email: rawSendEmail,
     video_link,
     override_price,
     use_credit,
   } = body;
+
+  // send_email optionnel (défaut : envoi) — normalisé en booléen strict
+  const shouldSendEmail = rawSendEmail === undefined ? true : rawSendEmail === true;
 
   // 3. Validation
   if (!patient_name || typeof patient_name !== 'string' || patient_name.trim().length < 2)
