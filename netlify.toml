@@ -103,6 +103,21 @@
 #              ADMIN_EMAIL (optionnel — sinon notification thérapeute ignorée),
 #              BETTER_AUTH_SECRET (signature du jeton .ics),
 #              BETTER_AUTH_URL ou SITE_URL (URL de base pour les liens)
+#
+# netlify/functions/reconcile-invitations.ts — sweep des invitations #126 (horaire :20)
+#   Backstop du pipeline post-réponse (waitUntil) : rejoue le pipeline partagé
+#   (`processAppointmentSideEffects`) pour les rendez-vous post-réponse
+#   (`confirmed`/`payment_pending`/`payment_received`) avec
+#   `invitation_sent_at IS NULL` (créés < 48h, à venir).
+#   Requiert : SUPABASE_DATABASE_URL, SUPABASE_SERVICE_ROLE_KEY (écriture
+#              invitation_sent_at), RESEND_API_KEY, RESEND_FROM_EMAIL,
+#              STRIPE_SECRET_KEY (étape lien de paiement du pipeline délégué —
+#              RDV vidéo avec solde dû),
+#              STRIPE_SUCCESS_URL (URL de succès du Payment Link — NON lue dans
+#              ce runtime : le sweep ne passe pas successUrl au pipeline, qui
+#              retombe sur https://omf-therapie.fr/rdv/merci/),
+#              GOOGLE_CALENDAR_MOCK (optionnel — 'true' = no-op agenda),
+#              PUBLIC_SENTRY_DSN (optionnel — instrumentation Sentry)
 
 # ---------------------------------------------------------------------------
 # Contextes de déploiement — variables non-sensibles par contexte

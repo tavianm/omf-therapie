@@ -114,6 +114,25 @@ describe('regression #113 — Netlify schedule extraction', () => {
     });
   });
 
+  describe('reconcile-invitations', () => {
+    // Sweep horaire des invitations (#126) — same Netlify static-extraction
+    // contract as the other crons: the `schedule:` literal must stay inline
+    // (zisi's parsePrimitive does not resolve Identifiers) and in phase with
+    // the SCHEDULE const consumed by Sentry.withMonitor.
+    const source = readCronSource('netlify/functions/reconcile-invitations.ts');
+
+    it('exports `config.schedule` as an inline string literal', () => {
+      const config = extractConfigBlock(source);
+      expect(config).toMatch(/schedule:\s*['"]/);
+      expect(config).not.toMatch(/schedule:\s*SCHEDULE\b/);
+    });
+
+    it('declares the expected hourly :20 UTC crontab', () => {
+      const config = extractConfigBlock(source);
+      expect(config).toMatch(/schedule:\s*['"]20 \* \* \* \*['"]/);
+    });
+  });
+
   describe('SCHEDULE const stays in sync with the inline literal', () => {
     // Defense against the DRY break introduced by this fix: the literal in
     // `config.schedule` and the `SCHEDULE` const (consumed by withMonitor)
@@ -140,6 +159,16 @@ describe('regression #113 — Netlify schedule extraction', () => {
 
     it('reconcile-confirmations: const SCHEDULE === config.schedule literal', () => {
       const source = readCronSource('netlify/functions/reconcile-confirmations.ts');
+      const constMatch = source.match(/const\s+SCHEDULE\s*=\s*['"]([^'"]+)['"]/);
+      const config = extractConfigBlock(source);
+      const literalMatch = config.match(/schedule:\s*['"]([^'"]+)['"]/);
+      expect(constMatch, 'const SCHEDULE declaration not found').not.toBeNull();
+      expect(literalMatch, 'inline schedule literal not found').not.toBeNull();
+      expect(constMatch![1]).toBe(literalMatch![1]);
+    });
+
+    it('reconcile-invitations: const SCHEDULE === config.schedule literal', () => {
+      const source = readCronSource('netlify/functions/reconcile-invitations.ts');
       const constMatch = source.match(/const\s+SCHEDULE\s*=\s*['"]([^'"]+)['"]/);
       const config = extractConfigBlock(source);
       const literalMatch = config.match(/schedule:\s*['"]([^'"]+)['"]/);
