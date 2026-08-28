@@ -1,6 +1,6 @@
 ---
 objective: "The local mock-payment journey requires an explicit request capability, remains usable in development, and has complete route coverage."
-status: implemented
+status: reviewed
 ---
 
 # Plan: Address PR 128 security review
