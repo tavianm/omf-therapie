@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Carte fichiers × fonctions — #126</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; padding:32px; background:#0d1117; color:#e6edf3; font:14px/1.5 -apple-system,"Segoe UI",sans-serif; }
+  h1 { font-size:18px; color:#7ee787; margin:0 0 4px; }
+  p.sub { color:#8b949e; margin:0 0 24px; font-size:13px; }
+  .grid { display:flex; flex-wrap:wrap; gap:16px; }
+  .file { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:12px 14px; width:300px; }
+  .file.new { border-color:#7ee787; }
+  .file.mod { border-color:#388bfd; }
+  .file h3 { margin:0 0 6px; font-size:12px; font-family:ui-monospace,monospace; word-break:break-all; }
+  .file .fn { font-size:11px; color:#c9d1d9; font-family:ui-monospace,monospace; padding:1px 0; }
+  .file .fn em { color:#8b949e; font-style:normal; }
+  .tag { float:right; font-size:10px; padding:1px 7px; border-radius:99px; margin-left:6px; }
+  .tag.new { background:#1f4d2a; color:#7ee787; }
+  .tag.mod { background:#0c2d5e; color:#79c0ff; }
+  .tag.test { background:#3d2d00; color:#d29922; }
+  .edge { font-size:11px; color:#8b949e; border-top:1px dashed #30363d; margin-top:6px; padding-top:5px; font-family:ui-monospace,monospace; }
+</style>
+</head>
+<body>
+<h1>Fichiers × fonctions — #126</h1>
+<p class="sub"><span class="tag new">nouveau</span> <span class="tag mod">modifié</span> <span class="tag test">test</span> — arêtes d'appel en pied de carte.</p>
+<div class="grid">
+  <div class="file new"><h3>supabase/migrations/012_credits_grants.sql <span class="tag new">new</span></h3><div class="fn">GRANT credits/credit_usages → service_role <em>(hotfix prod, versionné)</em></div></div>
+  <div class="file new"><h3>supabase/migrations/013_invitation_sent_at.sql <span class="tag new">new</span></h3><div class="fn">ADD COLUMN IF NOT EXISTS · backfill non filtré · index partiel IF NOT EXISTS</div></div>
+  <div class="file mod"><h3>src/types/appointment.ts <span class="tag mod">mod</span></h3><div class="fn">+ invitation_sent_at: string | null</div></div>
+  <div class="file mod"><h3>src/pages/api/admin/appointments/index.ts <span class="tag mod">mod</span></h3><div class="fn">POST — chemin critique seul · dispatch waitUntil · 201 précoce</div><div class="edge">→ notifications.processAppointmentSideEffects · locals.netlify.context.waitUntil</div></div>
+  <div class="file mod"><h3>src/lib/notifications.ts <span class="tag mod">mod</span></h3><div class="fn">+ processAppointmentSideEffects (N2) · clé L1 invite:{id}:patient · logs par étape · DI clients</div><div class="edge">→ google-calendar · stripe · resend</div></div>
+  <div class="file mod"><h3>src/lib/stripe.ts <span class="tag mod">mod</span></h3><div class="fn">lazy-init client (miroir resend.ts) · fallback process.env</div></div>
+  <div class="file mod"><h3>src/lib/google-calendar.ts <span class="tag mod">mod</span></h3><div class="fn">accesseurs env-agnostiques (précédent supabase.ts) · seam DI pour cron</div></div>
+  <div class="file new"><h3>netlify/functions/reconcile-invitations.ts <span class="tag new">new</span></h3><div class="fn">schedule '20 * * * *' (littéral) · Sentry.withMonitor('reconcile-invitations') · DEADLINE 8,5 s · poison-escape</div><div class="edge">→ notifications N2 · S1/S2/S3 via DI process.env</div></div>
+  <div class="file mod"><h3>netlify.toml <span class="tag mod">mod</span></h3><div class="fn">doc env vars cron : GOOGLE_*, STRIPE_*, GOOGLE_CALENDAR_MOCK</div></div>
+  <div class="file mod"><h3>src/components/admin/AdminCreateButton.tsx <span class="tag mod">mod</span></h3><div class="fn">U2 : message ≥500/réseau « la création a peut-être abouti… »</div></div>
+  <div class="file new"><h3>tests/unit/admin-appointment-side-effects.test.ts <span class="tag test">new</span></h3><div class="fn">N2 : ordre S1→S2→S3, send_email=false, flags set-once, clé L1</div></div>
+  <div class="file new"><h3>tests/unit/admin-appointments-post.test.ts <span class="tag test">new</span></h3><div class="fn">201 sans appel externe synchrone · fallback waitUntil</div></div>
+  <div class="file new"><h3>tests/unit/reconcile-invitations.test.ts <span class="tag test">new</span></h3><div class="fn">éligibilité requête · rattrapage · poison · mock-skip · garde IS NULL</div></div>
+  <div class="file mod"><h3>tests/unit/cron-schedule-source.test.ts <span class="tag test">mod</span></h3><div class="fn">+ verrou littéral schedule reconcile-invitations</div></div>
+</div>
+</body>
+</html>

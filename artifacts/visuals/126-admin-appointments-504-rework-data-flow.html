@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Flux de données — #126</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; padding:32px; background:#0d1117; color:#e6edf3; font:14px/1.5 -apple-system,"Segoe UI",sans-serif; }
+  h1 { font-size:18px; color:#7ee787; margin:0 0 4px; }
+  p.sub { color:#8b949e; margin:0 0 24px; font-size:13px; }
+  .zone { border:1px dashed #30363d; border-radius:12px; padding:16px 18px; margin-bottom:18px; }
+  .zone > h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:#8b949e; margin:0 0 10px; }
+  .flow { display:flex; align-items:stretch; gap:10px; flex-wrap:wrap; }
+  .stage { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:10px 14px; min-width:170px; }
+  .stage.crit { border-color:#7ee787; }
+  .stage.post { border-color:#388bfd; }
+  .stage.sweep { border-color:#d29922; }
+  .stage b { display:block; font-size:12px; margin-bottom:4px; }
+  .stage span { font-size:11px; color:#8b949e; font-family:ui-monospace,monospace; }
+  .arr { align-self:center; color:#388bfd; font-size:18px; }
+  .legend span { margin-right:16px; font-size:11px; color:#8b949e; }
+  .sw { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:middle; }
+</style>
+</head>
+<body>
+<h1>Flux — création RDV admin #126</h1>
+<p class="sub">Trois zones : chemin critique (synchrone) · post-réponse (waitUntil) · backstop (cron dédié).</p>
+<p class="legend"><span><span class="sw" style="background:#7ee787"></span>synchrone &lt; 1 s</span><span><span class="sw" style="background:#388bfd"></span>post-réponse</span><span><span class="sw" style="background:#d29922"></span>sweep '20 * * * *'</span></p>
+
+<div class="zone">
+  <h2>Zone 1 — chemin critique (dans la request)</h2>
+  <div class="flow">
+    <div class="stage crit"><b>Modal U1</b><span>AdminCreateButton.tsx</span></div>
+    <div class="arr">→</div>
+    <div class="stage crit"><b>POST /api/admin/appointments/</b><span>auth · validation · conflits</span></div>
+    <div class="arr">→</div>
+    <div class="stage crit"><b>consume_credits</b><span>RPC FIFO (si avoir)</span></div>
+    <div class="arr">→</div>
+    <div class="stage crit"><b>INSERT appointments</b><span>+ invitation_sent_at si send_email=false</span></div>
+    <div class="arr">→</div>
+    <div class="stage crit"><b>201 JSON</b><span>réponse immédiate</span></div>
+  </div>
+</div>
+
+<div class="zone">
+  <h2>Zone 2 — post-réponse (locals.netlify.context.waitUntil · fallback inline)</h2>
+  <div class="flow">
+    <div class="stage post"><b>N2 dispatch</b><span>notifications.ts</span></div>
+    <div class="arr">→</div>
+    <div class="stage post"><b>S1 Google Calendar</b><span>google-calendar.ts (env-agnostique)</span></div>
+    <div class="arr">→</div>
+    <div class="stage post"><b>S2 Stripe link</b><span>stripe.ts (lazy-init) · si vidéo+solde dû</span></div>
+    <div class="arr">→</div>
+    <div class="stage post"><b>S3 Resend</b><span>L1 invite:{id}:patient · si send_email</span></div>
+    <div class="arr">→</div>
+    <div class="stage post"><b>Flags D1/D2</b><span>set-once · WHERE IS NULL</span></div>
+  </div>
+  <p style="font-size:11px;color:#8b949e;margin:8px 0 0">Chaque étape : log step/appointmentId/ms/statut. Échec → flags NULL → zone 3 rattrape.</p>
+</div>
+
+<div class="zone">
+  <h2>Zone 3 — backstop (netlify/functions/reconcile-invitations.ts · Sentry monitor)</h2>
+  <div class="flow">
+    <div class="stage sweep"><b>Sélection</b><span>confirmed|payment_pending · flag NULL · &lt;48h · futur</span></div>
+    <div class="arr">→</div>
+    <div class="stage sweep"><b>S1 → S2 → S3</b><span>mêmes libs refactorées · DI process.env</span></div>
+    <div class="arr">→</div>
+    <div class="stage sweep"><b>set-once D1</b><span>garde write-race · poison-escape</span></div>
+  </div>
+  <p style="font-size:11px;color:#8b949e;margin:8px 0 0">Budget 8,5 s propre · GOOGLE_CALENDAR_MOCK → skip agenda (warn) · parallèle au sweep #98 ('5 * * * *') sans budget partagé.</p>
+</div>
+</body>
+</html>
