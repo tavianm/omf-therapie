@@ -116,7 +116,8 @@
 #              STRIPE_SECRET_KEY (étape lien de paiement du pipeline délégué —
 #              RDV vidéo avec solde dû),
 #              GOOGLE_CALENDAR_ID + GOOGLE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN
-#              (étape agenda via le seam DI — cf. bloc Google ci-dessus),
+#              (étape agenda via le seam DI — vars OAuth du dashboard Netlify,
+#              lues via process.env au runtime, hors [build.environment]),
 #              GOOGLE_CALENDAR_MOCK (optionnel — 'true' = no-op agenda),
 #              PUBLIC_SENTRY_DSN (optionnel — instrumentation Sentry).
 #   Note : STRIPE_SUCCESS_URL n'est PAS lue dans ce runtime — le pipeline

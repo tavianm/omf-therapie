@@ -473,12 +473,27 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
 
       await handler();
 
-      expect(notifications.processAppointmentSideEffects).toHaveBeenCalledTimes(
-        1,
-      );
+      const [, partialOpts] =
+        notifications.processAppointmentSideEffects.mock.calls[0];
+      expect(partialOpts.amountDueCents).toBe(4000);
+    });
+
+    it('clamps amountDueCents to 0 when credit_applied exceeds final_price (C3 — Math.max guard)', async () => {
+      // Guards the clamp: without Math.max(0, …) a sur-covered RDV would be
+      // delegated with a negative amount due (−2000).
+      const appt = makeAppt({
+        id: 'appt-surcovered-credit',
+        status: 'payment_pending',
+        final_price: 6000,
+        credit_applied: 8000,
+      });
+      supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
+
+      await handler();
+
       const [, calledOpts] =
         notifications.processAppointmentSideEffects.mock.calls[0];
-      expect(calledOpts.amountDueCents).toBe(4000);
+      expect(calledOpts.amountDueCents).toBe(0);
     });
 
     it('injects signingSecret (process.env.BETTER_AUTH_SECRET) into the delegation (C2)', async () => {
@@ -507,7 +522,23 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
 
       await handler();
 
-      expect(notifications.processAppointmentSideEffects).not.toHaveBeenCalled();
+      expect(
+        notifications.processAppointmentSideEffects,
+      ).not.toHaveBeenCalled();
+      errorSpy.mockRestore();
+    });
+
+    it('aborts as well when BETTER_AUTH_SECRET is present but shorter than 32 chars (C2)', async () => {
+      vi.stubEnv('BETTER_AUTH_SECRET', 'too-short');
+      const appt = makeAppt();
+      supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await handler();
+
+      expect(
+        notifications.processAppointmentSideEffects,
+      ).not.toHaveBeenCalled();
       errorSpy.mockRestore();
     });
   });
