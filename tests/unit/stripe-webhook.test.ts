@@ -57,7 +57,9 @@ vi.mock('@/lib/stripe', () => ({ getStripe: () => null }));
 
 // --- Import after mocks -----------------------------------------------------
 
-import { handlePaymentSucceeded } from '@/pages/api/stripe-webhook';
+import { GET, handlePaymentSucceeded } from '@/pages/api/stripe-webhook';
+import { supabaseAdmin } from '@/lib/supabase';
+import { createCalendarEvent } from '@/lib/google-calendar';
 
 // --- Helpers ----------------------------------------------------------------
 
@@ -108,6 +110,8 @@ function mockRetryReRead(apptOverrides: Partial<Record<string, unknown>> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv('DEV', true);
+  vi.stubEnv('GOOGLE_CALENDAR_MOCK', 'false');
   // Default: the mark-delivered UPDATE succeeds.
   mockSupabaseChain.update.mockReturnThis();
   mockSupabaseChain.eq.mockReturnThis();
@@ -115,6 +119,46 @@ beforeEach(() => {
   mockSupabaseChain.select.mockReturnThis();
   // Default email result: success.
   mockBuildAndSend.mockResolvedValue({ patientEmailSent: true, therapistEmailSent: true });
+});
+
+// ---------------------------------------------------------------------------
+// Mock GET route — available only in explicit local development mode
+// ---------------------------------------------------------------------------
+
+describe('GET — development mock gate', () => {
+  async function callMockGet(): Promise<Response> {
+    return GET({
+      url: new URL(
+        'http://localhost/api/stripe-webhook/?mock=1&appointment_id=appt_001',
+      ),
+    } as Parameters<typeof GET>[0]);
+  }
+
+  function expectNoPaymentSideEffects(): void {
+    expect(supabaseAdmin.from).not.toHaveBeenCalled();
+    expect(mockBuildAndSend).not.toHaveBeenCalled();
+    expect(createCalendarEvent).not.toHaveBeenCalled();
+  }
+
+  it('returns 403 outside development even when calendar mock mode is enabled', async () => {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('GOOGLE_CALENDAR_MOCK', 'true');
+
+    const response = await callMockGet();
+
+    expect(response.status).toBe(403);
+    expectNoPaymentSideEffects();
+  });
+
+  it('returns 403 in development when calendar mock mode is disabled', async () => {
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('GOOGLE_CALENDAR_MOCK', 'false');
+
+    const response = await callMockGet();
+
+    expect(response.status).toBe(403);
+    expectNoPaymentSideEffects();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -131,7 +175,7 @@ describe('handlePaymentSucceeded — L2 gate (confirmation_sent_at)', () => {
 
     // Assert — NO email sent, NO calendar event created, NO mark-delivered UPDATE.
     expect(mockBuildAndSend).not.toHaveBeenCalled();
-    expect(vi.mocked(await import('@/lib/google-calendar')).createCalendarEvent).not.toHaveBeenCalled();
+    expect(createCalendarEvent).not.toHaveBeenCalled();
     // The only UPDATEs should be the N1 (which failed) — no mark-delivered.
     // We check that .update was not called with confirmation_sent_at by verifying
     // buildAndSend was never called (the side effect that precedes the mark).

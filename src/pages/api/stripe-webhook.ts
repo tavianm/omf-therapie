@@ -141,7 +141,8 @@ export const POST: APIRoute = async ({ request }) => {
 };
 
 export const GET: APIRoute = async ({ url }) => {
-  const isMockMode = import.meta.env.GOOGLE_CALENDAR_MOCK === 'true';
+  const isMockMode =
+    import.meta.env.DEV && import.meta.env.GOOGLE_CALENDAR_MOCK === 'true';
   if (!isMockMode) {
     return new Response('Mode mock non activé', { status: 403 });
   }
