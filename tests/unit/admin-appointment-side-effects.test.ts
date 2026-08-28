@@ -82,16 +82,32 @@ const h = vi.hoisted(() => {
         return chain;
       },
       then: (resolve: unknown, reject: unknown) =>
-        Promise.resolve({ data: null, error: null }).then(resolve as never, reject as never),
+        Promise.resolve({ data: null, error: null }).then(
+          resolve as never,
+          reject as never,
+        ),
     };
-    return { from: (_table: string) => chain, chain, updates, isCalls, eqCalls };
+    return {
+      from: (_table: string) => chain,
+      chain,
+      updates,
+      isCalls,
+      eqCalls,
+    };
   };
 
   return {
     makeSupabaseLike,
     sb: makeSupabaseLike(),
-    createCalendarEvent: vi.fn().mockResolvedValue({ eventId: 'gcal_mock', meetLink: 'https://meet.example/x' }),
-    createAppointmentPaymentLink: vi.fn().mockResolvedValue({ id: 'pl_mock', url: 'https://pay.example/pl' }),
+    createCalendarEvent: vi
+      .fn()
+      .mockResolvedValue({
+        eventId: 'gcal_mock',
+        meetLink: 'https://meet.example/x',
+      }),
+    createAppointmentPaymentLink: vi
+      .fn()
+      .mockResolvedValue({ id: 'pl_mock', url: 'https://pay.example/pl' }),
     sendEmail: vi.fn().mockResolvedValue({ success: true }),
   };
 });
@@ -102,7 +118,8 @@ vi.mock('@/lib/google-calendar', () => ({
   createCalendarEvent: (...a: unknown[]) => h.createCalendarEvent(...a),
 }));
 vi.mock('@/lib/stripe', () => ({
-  createAppointmentPaymentLink: (...a: unknown[]) => h.createAppointmentPaymentLink(...a),
+  createAppointmentPaymentLink: (...a: unknown[]) =>
+    h.createAppointmentPaymentLink(...a),
 }));
 vi.mock('@/lib/resend', () => ({
   sendEmail: (...a: unknown[]) => h.sendEmail(...a),
@@ -111,10 +128,14 @@ vi.mock('@/lib/resend', () => ({
 vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: { from: (table: string) => h.sb.from(table) },
 }));
-vi.mock('@/lib/secure-links', () => ({ createSecureLinkToken: vi.fn(() => 'tok_mock') }));
+vi.mock('@/lib/secure-links', () => ({
+  createSecureLinkToken: vi.fn(() => 'tok_mock'),
+}));
 vi.mock('@/emails/AppointmentConfirmed', () => ({ default: () => null }));
 vi.mock('@/emails/PaymentRequest', () => ({ default: () => null }));
-vi.mock('@/emails/PaymentReceivedNotification', () => ({ default: () => null }));
+vi.mock('@/emails/PaymentReceivedNotification', () => ({
+  default: () => null,
+}));
 
 // --- Import the REAL module under test (missing export → RED) ----------------
 
@@ -136,7 +157,9 @@ const baseAppointment = {
   google_calendar_event_id: null,
 };
 
-function makeOpts(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function makeOpts(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
     sendEmail: true,
     amountDueCents: 6000,
@@ -152,8 +175,14 @@ let infoSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   vi.clearAllMocks();
   h.sb = h.makeSupabaseLike();
-  h.createCalendarEvent.mockResolvedValue({ eventId: 'gcal_mock', meetLink: 'https://meet.example/x' });
-  h.createAppointmentPaymentLink.mockResolvedValue({ id: 'pl_mock', url: 'https://pay.example/pl' });
+  h.createCalendarEvent.mockResolvedValue({
+    eventId: 'gcal_mock',
+    meetLink: 'https://meet.example/x',
+  });
+  h.createAppointmentPaymentLink.mockResolvedValue({
+    id: 'pl_mock',
+    url: 'https://pay.example/pl',
+  });
   h.sendEmail.mockResolvedValue({ success: true });
   infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -164,10 +193,23 @@ afterEach(() => {
 });
 
 /** Side-effect logs only: console.info('[side-effects]', {...}). */
-function sideEffectLogs(): { step: string; appointmentId: string; ms: number; status: string }[] {
+function sideEffectLogs(): {
+  step: string;
+  appointmentId: string;
+  ms: number;
+  status: string;
+}[] {
   return infoSpy.mock.calls
-    .filter((call) => call[0] === '[side-effects]')
-    .map((call) => call[1] as { step: string; appointmentId: string; ms: number; status: string });
+    .filter(call => call[0] === '[side-effects]')
+    .map(
+      call =>
+        call[1] as {
+          step: string;
+          appointmentId: string;
+          ms: number;
+          status: string;
+        },
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -199,13 +241,18 @@ describe('processAppointmentSideEffects (issue #126 / T6)', () => {
     // One structured log per step + the flags step, in order, with the
     // documented fields ({ step, appointmentId, ms, status }).
     const logs = sideEffectLogs();
-    expect(logs.map((l) => l.step)).toEqual(['calendar', 'stripe', 'email', 'flags']);
+    expect(logs.map(l => l.step)).toEqual([
+      'calendar',
+      'stripe',
+      'email',
+      'flags',
+    ]);
     for (const log of logs) {
       expect(log.appointmentId).toBe('appt_side_001');
       expect(typeof log.ms).toBe('number');
       expect(['ok', 'skipped', 'error']).toContain(log.status);
     }
-    expect(logs.map((l) => l.status)).toEqual(['ok', 'ok', 'ok', 'ok']);
+    expect(logs.map(l => l.status)).toEqual(['ok', 'ok', 'ok', 'ok']);
   });
 
   // -------------------------------------------------------------------------
@@ -225,13 +272,16 @@ describe('processAppointmentSideEffects (issue #126 / T6)', () => {
     expect(h.sendEmail).not.toHaveBeenCalled();
     // …email logged as skipped, other steps ok…
     const logs = sideEffectLogs();
-    expect(logs.find((l) => l.step === 'email')?.status).toBe('skipped');
-    expect(logs.find((l) => l.step === 'calendar')?.status).toBe('ok');
-    expect(logs.find((l) => l.step === 'stripe')?.status).toBe('ok');
+    expect(logs.find(l => l.step === 'email')?.status).toBe('skipped');
+    expect(logs.find(l => l.step === 'calendar')?.status).toBe('ok');
+    expect(logs.find(l => l.step === 'stripe')?.status).toBe('ok');
     // …and the L2 flag is still written set-once (invitation_sent_at IS NULL).
-    const flagged = h.sb.updates.filter((u) => !!u.invitation_sent_at);
+    const flagged = h.sb.updates.filter(u => !!u.invitation_sent_at);
     expect(flagged.length).toBeGreaterThan(0);
-    expect(h.sb.isCalls).toContainEqual({ column: 'invitation_sent_at', value: null });
+    expect(h.sb.isCalls).toContainEqual({
+      column: 'invitation_sent_at',
+      value: null,
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -253,13 +303,18 @@ describe('processAppointmentSideEffects (issue #126 / T6)', () => {
   it('still creates a standard calendar event without Meet when video_link is already set', async () => {
     // Act
     await processAppointmentSideEffects(
-      { ...baseAppointment, video_link: 'https://meet.google.com/pre-existing' },
+      {
+        ...baseAppointment,
+        video_link: 'https://meet.google.com/pre-existing',
+      },
       makeOpts(),
     );
 
     // Assert — S1 runs, but withMeet:false (no second Meet link).
     expect(h.createCalendarEvent).toHaveBeenCalledTimes(1);
-    expect(h.createCalendarEvent.mock.calls[0][0]).toMatchObject({ withMeet: false });
+    expect(h.createCalendarEvent.mock.calls[0][0]).toMatchObject({
+      withMeet: false,
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -276,13 +331,13 @@ describe('processAppointmentSideEffects (issue #126 / T6)', () => {
 
     // Assert — calendar logged as error, the rest of the pipeline ran anyway.
     const logs = sideEffectLogs();
-    expect(logs.find((l) => l.step === 'calendar')?.status).toBe('error');
-    expect(logs.find((l) => l.step === 'stripe')?.status).toBe('ok');
-    expect(logs.find((l) => l.step === 'email')?.status).toBe('ok');
+    expect(logs.find(l => l.step === 'calendar')?.status).toBe('error');
+    expect(logs.find(l => l.step === 'stripe')?.status).toBe('ok');
+    expect(logs.find(l => l.step === 'email')?.status).toBe('ok');
     expect(h.createAppointmentPaymentLink).toHaveBeenCalledTimes(1);
     expect(h.sendEmail).toHaveBeenCalledTimes(1);
     // The cron sweep relies on the set-once flag being written.
-    const flagged = h.sb.updates.filter((u) => !!u.invitation_sent_at);
+    const flagged = h.sb.updates.filter(u => !!u.invitation_sent_at);
     expect(flagged.length).toBeGreaterThan(0);
   });
 
@@ -304,9 +359,12 @@ describe('processAppointmentSideEffects (issue #126 / T6)', () => {
     expect(h.createAppointmentPaymentLink).not.toHaveBeenCalled();
     expect(h.sendEmail).toHaveBeenCalledTimes(1);
     const flagged = h.sb.updates.filter(
-      (u) => !!u.invitation_sent_at && !!u.confirmation_sent_at,
+      u => !!u.invitation_sent_at && !!u.confirmation_sent_at,
     );
     expect(flagged.length).toBeGreaterThan(0);
-    expect(h.sb.isCalls).toContainEqual({ column: 'invitation_sent_at', value: null });
+    expect(h.sb.isCalls).toContainEqual({
+      column: 'invitation_sent_at',
+      value: null,
+    });
   });
 });

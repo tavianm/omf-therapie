@@ -155,12 +155,10 @@ const supabaseFrom = vi.fn((table: string) => {
     record.updates[record.updates.length - 1]?.iss.push([col, value]);
     return chain;
   });
-  chain.order = vi.fn(
-    (col: string, opts: { ascending: boolean }) => {
-      record.orders.push([col, opts]);
-      return chain;
-    },
-  );
+  chain.order = vi.fn((col: string, opts: { ascending: boolean }) => {
+    record.orders.push([col, opts]);
+    return chain;
+  });
   chain.limit = vi.fn((n: number) => {
     record.limits.push(n);
     return chain;
@@ -226,10 +224,13 @@ const notifications = vi.hoisted(() => ({
     },
   ),
 }));
-vi.mock('../../src/lib/notifications', async (importOriginal) => {
+vi.mock('../../src/lib/notifications', async importOriginal => {
   const actual =
     await importOriginal<typeof import('../../src/lib/notifications')>();
-  return { ...actual, processAppointmentSideEffects: notifications.processAppointmentSideEffects };
+  return {
+    ...actual,
+    processAppointmentSideEffects: notifications.processAppointmentSideEffects,
+  };
 });
 
 // --- google-calendar mock — must NEVER be called (the sweep injects its own
@@ -375,7 +376,7 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
       const after = Date.now();
 
       const chain = supabaseState.chains.find(
-        (c) => c.select.length > 0 && c.updates.length === 0,
+        c => c.select.length > 0 && c.updates.length === 0,
       );
       expect(chain).toBeDefined();
       expect(chain!.table).toBe('appointments');
@@ -401,7 +402,9 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
       );
       expect(createdFilter).toBeDefined();
       const createdValue = new Date(createdFilter![1] as string).getTime();
-      expect(createdValue).toBeGreaterThanOrEqual(before - 48 * 3_600_000 - 5_000);
+      expect(createdValue).toBeGreaterThanOrEqual(
+        before - 48 * 3_600_000 - 5_000,
+      );
       expect(createdValue).toBeLessThanOrEqual(after - 48 * 3_600_000 + 5_000);
 
       // scheduled_at > now (only upcoming appointments).
@@ -414,10 +417,7 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
       expect(scheduledValue).toBeLessThanOrEqual(after + 5_000);
 
       // Oldest first + bounded batch.
-      expect(chain!.orders).toContainEqual([
-        'created_at',
-        { ascending: true },
-      ]);
+      expect(chain!.orders).toContainEqual(['created_at', { ascending: true }]);
       expect(chain!.limits).toContainEqual(25);
     });
   });
@@ -442,7 +442,7 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
       expect(calledOpts.amountDueCents).toBe(6000);
     });
 
-    it("delegates payment_received (avoir) rows with amountDueCents: 0 — no re-charge", async () => {
+    it('delegates payment_received (avoir) rows with amountDueCents: 0 — no re-charge', async () => {
       const appt = makeAppt({ id: 'appt-avoir', status: 'payment_received' });
       supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
 
@@ -469,9 +469,9 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
 
       await handler();
 
-      expect(
-        notifications.processAppointmentSideEffects,
-      ).toHaveBeenCalledTimes(1);
+      expect(notifications.processAppointmentSideEffects).toHaveBeenCalledTimes(
+        1,
+      );
       const [, opts] =
         notifications.processAppointmentSideEffects.mock.calls[0];
       expect(typeof opts.createCalendarEvent).toBe('function');
@@ -514,7 +514,7 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
       await handler();
 
       const flagUpdate = supabaseState.chains
-        .flatMap((c) => c.updates.map((u) => ({ chain: c, update: u })))
+        .flatMap(c => c.updates.map(u => ({ chain: c, update: u })))
         .find(({ update }) => 'invitation_sent_at' in update.payload);
       expect(flagUpdate).toBeDefined();
       expect(flagUpdate!.update.eqs).toContainEqual(['id', appt.id]);
@@ -540,18 +540,15 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
       await handler();
 
       const flagUpdate = supabaseState.chains
-        .flatMap((c) => c.updates.map((u) => u.payload))
-        .find((payload) => 'invitation_sent_at' in payload);
+        .flatMap(c => c.updates.map(u => u.payload))
+        .find(payload => 'invitation_sent_at' in payload);
       expect(flagUpdate).toBeUndefined();
     });
   });
 
   describe('deadline (DEADLINE_MS = 8500)', () => {
     it('stops the loop at the deadline — remaining rows deferred to the next pass', async () => {
-      const rows = [
-        makeAppt({ id: 'appt-a' }),
-        makeAppt({ id: 'appt-b' }),
-      ];
+      const rows = [makeAppt({ id: 'appt-a' }), makeAppt({ id: 'appt-b' })];
       supabaseState.selectResults.push({ ...EMPTY_RESULT, data: rows });
 
       // Fake the wall clock: while processing the FIRST row, time jumps past
@@ -606,9 +603,7 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
           message: 'Invalid "to" address',
         },
       });
-      const errorSpy = vi
-        .spyOn(console, 'error')
-        .mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       await handler();
 

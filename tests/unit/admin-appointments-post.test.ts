@@ -76,7 +76,9 @@ const h = vi.hoisted(() => {
     getAvailableCredit: vi.fn().mockResolvedValue(0),
     consumeCredits: vi.fn().mockResolvedValue(undefined),
     createAppointmentPaymentLink: vi.fn(),
-    createCalendarEvent: vi.fn().mockResolvedValue({ eventId: 'gcal_mock', meetLink: null }),
+    createCalendarEvent: vi
+      .fn()
+      .mockResolvedValue({ eventId: 'gcal_mock', meetLink: null }),
     hasAppointmentConflict: vi.fn().mockResolvedValue(false),
     isCabinetEligibleSlot: vi.fn().mockResolvedValue(true),
     invalidateAvailabilityCache: vi.fn().mockResolvedValue(undefined),
@@ -107,7 +109,8 @@ vi.mock('@/lib/resend', () => ({
   buildAppointmentConversationSubject: vi.fn((base: string) => base),
 }));
 vi.mock('@/lib/stripe', () => ({
-  createAppointmentPaymentLink: (...a: unknown[]) => h.createAppointmentPaymentLink(...a),
+  createAppointmentPaymentLink: (...a: unknown[]) =>
+    h.createAppointmentPaymentLink(...a),
 }));
 vi.mock('@/lib/google-calendar', () => ({
   createCalendarEvent: (...a: unknown[]) => h.createCalendarEvent(...a),
@@ -120,12 +123,16 @@ vi.mock('@/lib/appointment-eligibility', () => ({
 }));
 // The source imports with an explicit `.js` extension — mock BOTH specifiers.
 vi.mock('@/lib/calendar-cache', () => ({
-  invalidateAvailabilityCache: (...a: unknown[]) => h.invalidateAvailabilityCache(...a),
+  invalidateAvailabilityCache: (...a: unknown[]) =>
+    h.invalidateAvailabilityCache(...a),
 }));
 vi.mock('@/lib/calendar-cache.js', () => ({
-  invalidateAvailabilityCache: (...a: unknown[]) => h.invalidateAvailabilityCache(...a),
+  invalidateAvailabilityCache: (...a: unknown[]) =>
+    h.invalidateAvailabilityCache(...a),
 }));
-vi.mock('@/lib/secure-links', () => ({ createSecureLinkToken: vi.fn(() => 'tok_mock') }));
+vi.mock('@/lib/secure-links', () => ({
+  createSecureLinkToken: vi.fn(() => 'tok_mock'),
+}));
 vi.mock('@/lib/ics', () => ({
   generateGoogleCalendarLink: vi.fn(() => 'https://cal.example/g'),
   generateOutlookCalendarLink: vi.fn(() => 'https://cal.example/o'),
@@ -195,7 +202,9 @@ function makeRequest(payload: Record<string, unknown>): Request {
 beforeEach(() => {
   vi.clearAllMocks();
   h.sb = h.makeSupabaseMock();
-  h.getSession.mockResolvedValue({ user: { id: 'admin_001', email: 'pro@omf-therapie.fr' } });
+  h.getSession.mockResolvedValue({
+    user: { id: 'admin_001', email: 'pro@omf-therapie.fr' },
+  });
   h.isAdminSession.mockReturnValue(true);
   h.sendEmail.mockResolvedValue({ success: true });
   h.getAvailableCredit.mockResolvedValue(0);
@@ -217,7 +226,7 @@ describe('POST /api/admin/appointments/ — invitation_sent_at flags (issue #126
     await flushSideEffects(captured);
     // invitation_sent_at (mark-delivered after the successful send).
     expect(h.sendEmail).toHaveBeenCalledTimes(1);
-    const flagged = h.sb.updates.filter((u) => !!u.invitation_sent_at);
+    const flagged = h.sb.updates.filter(u => !!u.invitation_sent_at);
     expect(flagged.length).toBeGreaterThan(0);
     expect(typeof flagged[0].invitation_sent_at).toBe('string');
   });
@@ -245,7 +254,7 @@ describe('POST /api/admin/appointments/ — invitation_sent_at flags (issue #126
 
     // Assert — one UPDATE sets BOTH L2 flags (séance réglée par avoir).
     const flagged = h.sb.updates.filter(
-      (u) => !!u.invitation_sent_at && !!u.confirmation_sent_at,
+      u => !!u.invitation_sent_at && !!u.confirmation_sent_at,
     );
     expect(flagged.length).toBeGreaterThan(0);
     expect(typeof flagged[0].invitation_sent_at).toBe('string');
@@ -278,9 +287,15 @@ describe('POST /api/admin/appointments/ — invitation_sent_at flags (issue #126
   // -------------------------------------------------------------------------
   it('responds 201 without touching calendar/stripe/email, then runs the pipeline via waitUntil (issue #126 V2)', async () => {
     // Arrange — video RDV with a balance due (Stripe path), email requested.
-    const request = makeRequest({ appointment_mode: 'video', send_email: true });
+    const request = makeRequest({
+      appointment_mode: 'video',
+      send_email: true,
+    });
     const { context, captured } = makeContext(request);
-    h.createAppointmentPaymentLink.mockResolvedValue({ id: 'pl_mock', url: 'https://pay.example/pl' });
+    h.createAppointmentPaymentLink.mockResolvedValue({
+      id: 'pl_mock',
+      url: 'https://pay.example/pl',
+    });
 
     // Act — the critical path must only INSERT and respond.
     const response = await POST(context as never);
@@ -296,7 +311,7 @@ describe('POST /api/admin/appointments/ — invitation_sent_at flags (issue #126
     expect(captured.length).toBeGreaterThan(0);
     await flushSideEffects(captured);
     expect(h.sendEmail).toHaveBeenCalledTimes(1);
-    const flagged = h.sb.updates.filter((u) => !!u.invitation_sent_at);
+    const flagged = h.sb.updates.filter(u => !!u.invitation_sent_at);
     expect(flagged.length).toBeGreaterThan(0);
   });
 
@@ -306,15 +321,21 @@ describe('POST /api/admin/appointments/ — invitation_sent_at flags (issue #126
   // -------------------------------------------------------------------------
   it('still responds 201 without throwing when locals.netlify is absent (inline fallback)', async () => {
     // Arrange — bare context, no Netlify decorator at all.
-    const request = makeRequest({ appointment_mode: 'video', send_email: true });
-    h.createAppointmentPaymentLink.mockResolvedValue({ id: 'pl_mock', url: 'https://pay.example/pl' });
+    const request = makeRequest({
+      appointment_mode: 'video',
+      send_email: true,
+    });
+    h.createAppointmentPaymentLink.mockResolvedValue({
+      id: 'pl_mock',
+      url: 'https://pay.example/pl',
+    });
 
     // Act / Assert — the handler must not throw and must answer 201.
     const response = await POST({ request, url: request.url } as never);
     expect(response.status).toBe(201);
     // The inline fallback is fire-and-forget: flush the microtask queue before
     // asserting the deferred pipeline ran (201 was already sent, unblocked).
-    await new Promise((r) => setImmediate(r));
+    await new Promise(r => setImmediate(r));
     expect(h.sendEmail).toHaveBeenCalledTimes(1);
   });
 });
