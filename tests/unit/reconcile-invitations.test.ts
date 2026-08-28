@@ -294,7 +294,6 @@ function resetMocks(): void {
   notifications.processAppointmentSideEffects.mockClear();
   // Keep the default delegation implementation unless a test overrides it.
   notifications.processAppointmentSideEffects.mockImplementation(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     notifications.processAppointmentSideEffects.getMockImplementation()!,
   );
   googleCalendar.createCalendarEvent.mockClear();
