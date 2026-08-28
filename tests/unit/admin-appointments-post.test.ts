@@ -282,6 +282,38 @@ describe('POST /api/admin/appointments/ — invitation_sent_at flags (issue #126
   });
 
   // -------------------------------------------------------------------------
+  // (c-bis / C6) send_email: false + avoir couvrant → BOTH L2 flags at INSERT
+  // -------------------------------------------------------------------------
+  it('sets both invitation_sent_at and confirmation_sent_at in the INSERT when a credit fully covers and send_email is false (C6)', async () => {
+    // Arrange — video RDV, credit covers the full price → initial status
+    // payment_received, but send_email:false means the pipeline's set-once
+    // flags update can never fire (guarded `.is('invitation_sent_at', null)`,
+    // already set at INSERT). Without confirmation_sent_at in the INSERT too,
+    // the #98 sweep would send the confirmation email to a patient who opted
+    // out of emails.
+    const request = makeRequest({
+      appointment_mode: 'video',
+      send_email: false,
+      use_credit: true,
+    });
+    h.getAvailableCredit.mockResolvedValue(6000);
+    h.consumeCredits.mockResolvedValue({ consumed: 6000 });
+    const { context, captured } = makeContext(request);
+
+    // Act
+    const response = await POST(context as never);
+    expect(response.status).toBe(201);
+    await flushSideEffects(captured);
+
+    // Assert — the INSERT carries BOTH flags (séance réglée par avoir, aucun
+    // email jamais envoyé) and the email provider is never contacted.
+    expect(h.sb.inserts[0].status).toBe('payment_received');
+    expect(typeof h.sb.inserts[0].invitation_sent_at).toBe('string');
+    expect(typeof h.sb.inserts[0].confirmation_sent_at).toBe('string');
+    expect(h.sendEmail).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
   // (a) [RED until T7] 201 must leave BEFORE any external call — the pipeline
   // (calendar → Stripe → email) is deferred via locals.netlify.context.waitUntil
   // -------------------------------------------------------------------------

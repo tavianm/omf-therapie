@@ -15,8 +15,12 @@ import Stripe from 'stripe';
 // ---------------------------------------------------------------------------
 
 function getStripeKey(): string {
+  // Guarded access (mirror of `readEnv` in google-calendar.ts): the optional
+  // chaining keeps this importable in runtimes where `import.meta.env` is
+  // undefined (Netlify scheduled functions — plain Node bundle, cf. #98/#126).
   return (
-    (import.meta.env.STRIPE_SECRET_KEY as string | undefined) ??
+    (import.meta as { env?: Record<string, string | undefined> }).env
+      ?.STRIPE_SECRET_KEY ??
     process.env.STRIPE_SECRET_KEY ??
     ''
   );

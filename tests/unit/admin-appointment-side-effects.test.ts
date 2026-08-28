@@ -62,13 +62,18 @@ const h = vi.hoisted(() => {
    * Supabase-like stub for the L2 flag writes: chainable, CAPTURES update
    * payloads and the set-once `.is()` guards. Awaitable at the terminal link
    * (thenable resolving `{ data: null, error: null }`).
+   *
+   * C7: `failOnUpdates` makes the update at the given INDICES resolve with a
+   * non-null `error` (persistence failure) — every other update succeeds.
    */
-  const makeSupabaseLike = () => {
+  const makeSupabaseLike = (failOnUpdates: number[] = []) => {
     const updates: Record<string, unknown>[] = [];
     const isCalls: { column: string; value: unknown }[] = [];
     const eqCalls: { column: string; value: unknown }[] = [];
+    let currentUpdateIndex = -1;
     const chain: Record<string, unknown> = {
       update: (payload: Record<string, unknown>) => {
+        currentUpdateIndex = updates.length;
         updates.push(payload);
         return chain;
       },
@@ -81,11 +86,15 @@ const h = vi.hoisted(() => {
         isCalls.push({ column, value });
         return chain;
       },
-      then: (resolve: unknown, reject: unknown) =>
-        Promise.resolve({ data: null, error: null }).then(
+      then: (resolve: unknown, reject: unknown) => {
+        const error = failOnUpdates.includes(currentUpdateIndex)
+          ? { message: `mock update failure at index ${currentUpdateIndex}` }
+          : null;
+        Promise.resolve({ data: null, error }).then(
           resolve as never,
           reject as never,
-        ),
+        );
+      },
     };
     return {
       from: (_table: string) => chain,
@@ -140,6 +149,9 @@ vi.mock('@/emails/PaymentReceivedNotification', () => ({
 // --- Import the REAL module under test (missing export → RED) ----------------
 
 import { processAppointmentSideEffects } from '@/lib/notifications';
+// C2: spied module mock — assert the signingSecret DI seam reaches the HMAC
+// signer (the real createSecureLinkToken throws in pure Node without a secret).
+import { createSecureLinkToken } from '@/lib/secure-links';
 
 // --- Fixtures ----------------------------------------------------------------
 
@@ -366,5 +378,112 @@ describe('processAppointmentSideEffects (issue #126 / T6)', () => {
       column: 'invitation_sent_at',
       value: null,
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // C2 — signingSecret DI seam reaches the .ics HMAC signer (cron runtime)
+  // -------------------------------------------------------------------------
+  it('forwards opts.signingSecret to createSecureLinkToken for the .ics invite (C2)', async () => {
+    const secret = 'x'.repeat(44);
+    await processAppointmentSideEffects(
+      { ...baseAppointment, status: 'payment_received' },
+      makeOpts({ sendEmail: true, amountDueCents: 0, signingSecret: secret }),
+    );
+
+    // The AppointmentConfirmed branch signs an .ics invite token. Without the
+    // seam, createSecureLinkToken reads import.meta.env (absent in the cron
+    // runtime) and THROWS — killing the email step of every swept row.
+    expect(h.sendEmail).toHaveBeenCalledTimes(1);
+    const callArg = vi.mocked(createSecureLinkToken).mock.calls[0][0];
+    expect(callArg.secret).toBe(secret);
+  });
+
+  it('omits the secret key entirely when signingSecret is not provided (Astro runtime)', async () => {
+    await processAppointmentSideEffects(
+      { ...baseAppointment, status: 'payment_received' },
+      makeOpts({ sendEmail: true, amountDueCents: 0 }),
+    );
+
+    const callArg = vi.mocked(createSecureLinkToken).mock.calls[0][0];
+    expect('secret' in callArg).toBe(false);
+  });
+
+  // -------------------------------------------------------------------------
+  // C4 — S2 idempotency: an existing stripe_payment_link_url is REUSED
+  // -------------------------------------------------------------------------
+  it('never creates a second payment link when stripe_payment_link_url already exists (C4)', async () => {
+    // Act — video RDV with a balance due BUT an existing payment link.
+    await processAppointmentSideEffects(
+      {
+        ...baseAppointment,
+        stripe_payment_link_id: 'pl_existing',
+        stripe_payment_link_url: 'https://pay.example/existing',
+      },
+      makeOpts(),
+    );
+
+    // Assert — no second Stripe link (cascade), step logged as skipped…
+    expect(h.createAppointmentPaymentLink).not.toHaveBeenCalled();
+    expect(sideEffectLogs().find(l => l.step === 'stripe')?.status).toBe(
+      'skipped',
+    );
+    // …the email leaves with the EXISTING URL…
+    expect(h.sendEmail).toHaveBeenCalledTimes(1);
+    const params = h.sendEmail.mock.calls[0][0] as {
+      react?: { props?: { stripePaymentUrl?: string } };
+    };
+    expect(params.react?.props?.stripePaymentUrl).toBe(
+      'https://pay.example/existing',
+    );
+    // …and the L2 flags are still written (email delivered).
+    expect(
+      h.sb.updates.filter(u => !!u.invitation_sent_at).length,
+    ).toBeGreaterThan(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // C7 — S1/S2 persistence failures: step error observable, flags stay NULL
+  // -------------------------------------------------------------------------
+  it('logs the calendar step as error and leaves L2 flags NULL when the S1 persistence update fails (C7)', async () => {
+    // Arrange — update #0 is the S1 google_calendar_event_id persistence write.
+    h.sb = h.makeSupabaseLike([0]);
+
+    // Act — must resolve (runStep isolates the throw).
+    await expect(
+      processAppointmentSideEffects({ ...baseAppointment }, makeOpts()),
+    ).resolves.toBeUndefined();
+
+    // Assert — calendar logs error, the pipeline continues (stripe + email
+    // still run)…
+    const logs = sideEffectLogs();
+    expect(logs.find(l => l.step === 'calendar')?.status).toBe('error');
+    expect(logs.find(l => l.step === 'stripe')?.status).toBe('ok');
+    expect(logs.find(l => l.step === 'email')?.status).toBe('ok');
+    // …but NO flag update is issued afterwards — the cron sweep must retry
+    // the row (otherwise the event id would be lost forever).
+    expect(logs.find(l => l.step === 'flags')?.status).toBe('skipped');
+    expect(
+      h.sb.updates.filter(u => 'invitation_sent_at' in u),
+    ).toHaveLength(0);
+  });
+
+  it('logs the stripe step as error and leaves L2 flags NULL when the S2 persistence update fails (C7)', async () => {
+    // Arrange — update #1 is the S2 stripe_payment_link_{id,url} write.
+    h.sb = h.makeSupabaseLike([1]);
+
+    // Act — must resolve.
+    await expect(
+      processAppointmentSideEffects({ ...baseAppointment }, makeOpts()),
+    ).resolves.toBeUndefined();
+
+    // Assert — stripe persistence failed → no paymentLinkUrl → the
+    // PaymentRequest email cannot leave → email error → flags skipped.
+    const logs = sideEffectLogs();
+    expect(logs.find(l => l.step === 'stripe')?.status).toBe('error');
+    expect(logs.find(l => l.step === 'email')?.status).toBe('error');
+    expect(logs.find(l => l.step === 'flags')?.status).toBe('skipped');
+    expect(
+      h.sb.updates.filter(u => 'invitation_sent_at' in u),
+    ).toHaveLength(0);
   });
 });

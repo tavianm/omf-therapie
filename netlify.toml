@@ -111,13 +111,17 @@
 #   `invitation_sent_at IS NULL` (créés < 48h, à venir).
 #   Requiert : SUPABASE_DATABASE_URL, SUPABASE_SERVICE_ROLE_KEY (écriture
 #              invitation_sent_at), RESEND_API_KEY, RESEND_FROM_EMAIL,
+#              BETTER_AUTH_SECRET (signature des liens .ics de l'email —
+#              validée au démarrage, abort si absente),
 #              STRIPE_SECRET_KEY (étape lien de paiement du pipeline délégué —
 #              RDV vidéo avec solde dû),
-#              STRIPE_SUCCESS_URL (URL de succès du Payment Link — NON lue dans
-#              ce runtime : le sweep ne passe pas successUrl au pipeline, qui
-#              retombe sur https://omf-therapie.fr/rdv/merci/),
+#              GOOGLE_CALENDAR_ID + GOOGLE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN
+#              (étape agenda via le seam DI — cf. bloc Google ci-dessus),
 #              GOOGLE_CALENDAR_MOCK (optionnel — 'true' = no-op agenda),
-#              PUBLIC_SENTRY_DSN (optionnel — instrumentation Sentry)
+#              PUBLIC_SENTRY_DSN (optionnel — instrumentation Sentry).
+#   Note : STRIPE_SUCCESS_URL n'est PAS lue dans ce runtime — le pipeline
+#   délégué retombe sur l'URL de succès codée en dur
+#   (https://omf-therapie.fr/rdv/merci/).
 
 # ---------------------------------------------------------------------------
 # Contextes de déploiement — variables non-sensibles par contexte

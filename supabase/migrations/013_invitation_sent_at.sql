@@ -8,11 +8,16 @@
 --   non-NULL = invitation sent; stop retrying.
 --   Set ONLY after full side-effect success. NEVER reset to NULL.
 --
--- The upcoming reconcile-invitations sweep scans appointments that are
---   status IN ('confirmed', 'payment_pending')
+-- The reconcile-invitations sweep scans appointments that are
+--   status IN ('confirmed', 'payment_pending', 'payment_received')
+--          -- approved deviation from spec §5: avoir-paid rows are inserted
+--          -- directly as payment_received and their invitation email can
+--          -- fail just like any other (required by SC3).
 --   AND invitation_sent_at IS NULL
---   AND created_at < now() - 48h          -- grace period
+--   AND created_at > now() - 48h         -- reconciliation window
 --   AND scheduled_at > now()              -- still upcoming
+--
+-- Canonical predicate: netlify/functions/reconcile-invitations.ts.
 --
 -- Backfill: ALL existing rows are set to invitation_sent_at = now() with NO
 -- filter — deliberately. Historical appointments must NEVER be swept by

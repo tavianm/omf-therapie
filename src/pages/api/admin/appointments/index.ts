@@ -200,9 +200,20 @@ export const POST: APIRoute = async ({ request, locals }) => {
       final_price: finalPriceCents,
       credit_applied: creditApplied,
       video_link: isVideo ? (video_link ?? null) : null,
-      // send_email:false → aucun email ne partira jamais : on pose le flag L2
-      // dès l'insert pour que le futur sweep ne tente pas d'envoi de rattrapage.
-      ...(shouldSendEmail ? {} : { invitation_sent_at: new Date().toISOString() }),
+      // send_email:false → aucun email ne partira jamais : on pose le(s) flag(s)
+      // L2 dès l'insert pour que les sweeps (#126/#98) ne tentent pas d'envoi de
+      // rattrapage. Statut initial payment_received (avoir couvrant tout) :
+      // l'invitation EST la confirmation — le pipeline aval ne repassera pas
+      // (son set-once est gardé `.is('invitation_sent_at', null)`, déjà posé),
+      // donc les DEUX drapeaux partent dans le payload INSERT (C6).
+      ...(shouldSendEmail
+        ? {}
+        : initialStatus === 'payment_received'
+          ? {
+              invitation_sent_at: new Date().toISOString(),
+              confirmation_sent_at: new Date().toISOString(),
+            }
+          : { invitation_sent_at: new Date().toISOString() }),
     })
     .select()
     .single();

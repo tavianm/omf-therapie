@@ -458,6 +458,58 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
       expect(calledOpts.amountDueCents).toBe(0);
       expect(calledOpts.sendEmail).toBe(true);
     });
+
+    it('subtracts credit_applied from final_price on payment_pending rows (C3 — no over-billing)', async () => {
+      // Regression: a partially-covered RDV re-swept after a failed email was
+      // delegated with amountDueCents = final_price (6000) — re-charging the
+      // patient for the 2000 cents already covered by the avoir.
+      const appt = makeAppt({
+        id: 'appt-partial-credit',
+        status: 'payment_pending',
+        final_price: 6000,
+        credit_applied: 2000,
+      });
+      supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
+
+      await handler();
+
+      expect(notifications.processAppointmentSideEffects).toHaveBeenCalledTimes(
+        1,
+      );
+      const [, calledOpts] =
+        notifications.processAppointmentSideEffects.mock.calls[0];
+      expect(calledOpts.amountDueCents).toBe(4000);
+    });
+
+    it('injects signingSecret (process.env.BETTER_AUTH_SECRET) into the delegation (C2)', async () => {
+      // The pipeline's S3 signs an .ics invite token; in this pure-Node runtime
+      // createSecureLinkToken cannot fall back to import.meta.env — the sweep
+      // MUST hand over the secret or the email step throws for every row.
+      const appt = makeAppt();
+      supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
+
+      await handler();
+
+      const [, calledOpts] =
+        notifications.processAppointmentSideEffects.mock.calls[0];
+      expect(calledOpts.signingSecret).toBe(
+        'test-secret-that-is-long-enough-32-chars-min',
+      );
+    });
+
+    it('aborts without delegating when BETTER_AUTH_SECRET is missing or too short (C2)', async () => {
+      // Parity with reconcile-confirmations.ts: fail fast with a clear log
+      // rather than signing every swept row with a broken secret.
+      vi.stubEnv('BETTER_AUTH_SECRET', '');
+      const appt = makeAppt();
+      supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await handler();
+
+      expect(notifications.processAppointmentSideEffects).not.toHaveBeenCalled();
+      errorSpy.mockRestore();
+    });
   });
 
   describe('GOOGLE_CALENDAR_MOCK=true (dev-only calendar skip)', () => {

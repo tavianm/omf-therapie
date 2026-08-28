@@ -180,5 +180,19 @@ describe('handlePaymentSucceeded — mark delivered on success', () => {
     // The last .is() call should be the confirmation_sent_at IS NULL guard.
     const isCalls = mockSupabaseChain.is.mock.calls;
     expect(isCalls.some((call) => call[0] === 'confirmation_sent_at')).toBe(true);
+
+    // C5 (issue #126): the mark-delivered update carries BOTH flags in the
+    // SAME payload — the post-payment confirmation email doubles as the
+    // invitation, so invitation_sent_at must be set together with
+    // confirmation_sent_at or the reconcile-invitations sweep would re-mail
+    // the patient.
+    const flagPayloads = mockSupabaseChain.update.mock.calls
+      .map((call) => call[0] as Record<string, unknown>)
+      .filter((payload) => 'confirmation_sent_at' in payload);
+    expect(flagPayloads).toHaveLength(1);
+    expect(typeof flagPayloads[0]!.invitation_sent_at).toBe('string');
+    expect(flagPayloads[0]!.invitation_sent_at).toBe(
+      flagPayloads[0]!.confirmation_sent_at,
+    );
   });
 });

@@ -234,8 +234,13 @@ export interface SideEffectsAppointment {
   patient_name: string;
   patient_email: string;
   final_price: number;
+  /** Avoir déjà consommé sur ce RDV (centimes) — l'appelant déduit le solde dû. */
+  credit_applied?: number | null;
   video_link?: string | null;
   google_calendar_event_id?: string | null;
+  /** Lien Stripe déjà existant (idempotence S2 — jamais de second lien). */
+  stripe_payment_link_id?: string | null;
+  stripe_payment_link_url?: string | null;
 }
 
 /** Chaîne d'update Supabase minimale (DI test-friendly, set-once via `.is`). */
@@ -260,6 +265,14 @@ export interface ProcessSideEffectsOptions {
   baseUrl?: string;
   /** Email admin (réservé — le POST actuel n'envoie pas de notification thérapeute ici). */
   adminEmail?: string;
+  /**
+   * Secret HMAC pour signer le jeton d'invitation .ics (DI — parité exacte
+   * avec `BuildAndSendOptions.signingSecret`). Le sweep Netlify (runtime Node,
+   * `import.meta.env` absent) DOIT passer `process.env.BETTER_AUTH_SECRET`
+   * explicitement, sans quoi `createSecureLinkToken` lève en purgeant l'étape
+   * email S3 de chaque ligne.
+   */
+  signingSecret?: string;
   /** DI — défaut : module app. */
   createCalendarEvent?: typeof createCalendarEvent;
   createAppointmentPaymentLink?: typeof createAppointmentPaymentLink;
@@ -304,12 +317,16 @@ function logSkipped(step: StepName, appointmentId: string): void {
  *
  * - S1 calendar : événement standard TOUJOURS créé (`withMeet:false` si un
  *   `video_link` existe déjà) ; persistance de l'event id (+ meet link).
- * - S2 stripe   : uniquement `mode vidéo && amountDueCents > 0`.
+ * - S2 stripe   : uniquement `mode vidéo && amountDueCents > 0` ; idempotent —
+ *   un `stripe_payment_link_url` déjà présent est réutilisé (skip), jamais de
+ *   second lien.
  * - S3 email    : uniquement `opts.sendEmail` ; clé d'idempotence Resend L1
  *   `invite:{id}:patient`. Réutilise la composition d'emails du POST.
  * - flags L2    : un SEUL update set-once `.is('invitation_sent_at', null)` ;
  *   `confirmation_sent_at` posé dans le MÊME update quand
- *   `status === 'payment_received'`.
+ *   `status === 'payment_received'`. SKIPPÉ si l'email a échoué OU si une
+ *   écriture de persistance S1/S2 a échoué (C7) — drapeaux laissés NULL pour
+ *   que le cron de rattrapage repasse.
  *
  * Chaque étape est isolée : une erreur est loguée (`status:'error'`) et le
  * pipeline CONTINUE. Ne jette jamais.
@@ -327,6 +344,10 @@ export async function processAppointmentSideEffects(
 
   // --- S1 : événement agenda (standard ; pas de Meet si video_link déjà fourni)
   let resolvedVideoLink: string | undefined = appt.video_link ?? undefined;
+  // C7 : un échec de PERSISTANCE (update event id / lien Stripe) doit laisser
+  // les drapeaux L2 à NULL — le cron de rattrapage repassera. Distinct d'un
+  // échec d'API (calendarFn/paymentLinkFn) où l'email prime sur les flags.
+  let persistFailed = false;
 
   if (appt.google_calendar_event_id) {
     logSkipped('calendar', appt.id);
@@ -353,9 +374,18 @@ export async function processAppointmentSideEffects(
         colorId: isVideo ? '11' : '2',
       });
       // Persistance technique (update simple, distinct du set-once final).
+      // C7 : une erreur d'update est THROWN → statut `error` observable pour
+      // l'étape (sinon l'event id était perdu silencieusement et les flags
+      // finissaient posés — le RDV ne serait jamais rattrapé).
       const calendarUpdate: Record<string, string> = { google_calendar_event_id: calResult.eventId };
       if (isVideo && calResult.meetLink) calendarUpdate.video_link = calResult.meetLink;
-      await db.from('appointments').update(calendarUpdate).eq('id', appt.id);
+      const { error: calendarUpdateError } = await db.from('appointments')
+        .update(calendarUpdate)
+        .eq('id', appt.id);
+      if (calendarUpdateError) {
+        persistFailed = true;
+        throw calendarUpdateError;
+      }
       return calResult;
     });
     if (cal.status === 'ok' && cal.value && isVideo && cal.value.meetLink) {
@@ -365,7 +395,13 @@ export async function processAppointmentSideEffects(
 
   // --- S2 : lien de paiement Stripe (solde dû, vidéo uniquement)
   let paymentLinkUrl: string | undefined;
-  if (!(isVideo && opts.amountDueCents > 0)) {
+  if (appt.stripe_payment_link_url) {
+    // Idempotence (miroir exact de la garde S1 sur google_calendar_event_id) :
+    // un lien déjà présent est RÉUTILISÉ pour l'email S3 — jamais de second
+    // lien (cascade Stripe + sur-facturation du patient).
+    paymentLinkUrl = appt.stripe_payment_link_url;
+    logSkipped('stripe', appt.id);
+  } else if (!(isVideo && opts.amountDueCents > 0)) {
     logSkipped('stripe', appt.id);
   } else {
     const stripe = await runStep('stripe', appt.id, async () => {
@@ -377,9 +413,15 @@ export async function processAppointmentSideEffects(
         description: `Séance de thérapie — ${new Date(appt.scheduled_at).toLocaleDateString('fr-FR')}`,
         successUrl: opts.successUrl ?? `${baseUrl}/rdv/merci/`,
       });
-      await db.from('appointments')
+      // C7 : idem S1 — l'erreur de persistance est observable, le sweep
+      // rattrape (le lien Stripe orphelin reste payable mais non référencé).
+      const { error: stripeUpdateError } = await db.from('appointments')
         .update({ stripe_payment_link_id: paymentLink.id, stripe_payment_link_url: paymentLink.url })
         .eq('id', appt.id);
+      if (stripeUpdateError) {
+        persistFailed = true;
+        throw stripeUpdateError;
+      }
       return paymentLink;
     });
     if (stripe.status === 'ok' && stripe.value) paymentLinkUrl = stripe.value.url;
@@ -435,6 +477,10 @@ export async function processAppointmentSideEffects(
           purpose: 'ics-invite',
           expiresInSeconds: 60 * 60 * 24 * 180,
           nonce: appt.scheduled_at,
+          // C2 : DI du secret (parité buildAndSendConfirmationEmails). Sans
+          // cette seam, createSecureLinkToken lève en runtime Node pur
+          // (import.meta.env absent) et purge l'étape email de chaque ligne.
+          ...(opts.signingSecret ? { secret: opts.signingSecret } : {}),
         });
         const appleCalendarLink = generateAppleCalendarInviteLink(baseUrl, appt.id, inviteToken);
         params = {
@@ -467,8 +513,9 @@ export async function processAppointmentSideEffects(
   }
 
   // --- L2 : drapeaux set-once (un seul update)
-  if (!emailDelivered) {
-    // Échec d'envoi : on laisse invitation_sent_at NULL — le cron rattrapera.
+  if (!emailDelivered || persistFailed) {
+    // Échec d'envoi OU de persistance (C7) : on laisse invitation_sent_at
+    // NULL — le cron rattrapera.
     logSkipped('flags', appt.id);
     return;
   }

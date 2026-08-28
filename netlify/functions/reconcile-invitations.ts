@@ -196,6 +196,10 @@ async function reconcile(): Promise<void> {
   const resendApiKey = process.env.RESEND_API_KEY;
   const fromEmail =
     process.env.RESEND_FROM_EMAIL ?? 'OMF Thérapie <contact@omf-therapie.fr>';
+  // C2 : le jeton d'invitation .ics (email S3 des RDV confirmés/payés par
+  // avoir) est signé HMAC — `import.meta.env` est absent ici, le secret DOIT
+  // venir de process.env (parité reconcile-confirmations.ts).
+  const authSecret = process.env.BETTER_AUTH_SECRET;
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
     logger.error('reconcile-invitations: SUPABASE_DATABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing — aborting');
@@ -203,6 +207,10 @@ async function reconcile(): Promise<void> {
   }
   if (!resendApiKey) {
     logger.error('reconcile-invitations: RESEND_API_KEY missing — aborting');
+    return;
+  }
+  if (!authSecret || authSecret.trim().length < 32) {
+    logger.error('reconcile-invitations: BETTER_AUTH_SECRET missing or too short — aborting');
     return;
   }
 
@@ -264,9 +272,19 @@ async function reconcile(): Promise<void> {
 
       await processAppointmentSideEffects(appt, {
         sendEmail: true,
-        amountDueCents: appt.status === 'payment_received' ? 0 : appt.final_price,
+        // C3 : solde dû = prix final − avoir déjà consommé. Sans cette
+        // déduction, un RDV payment_pending partiellement couvert par un
+        // avoir était re-facturé à plein tarif par le sweep (surfacturation).
+        // payment_received est déjà réglé → 0 (aucune re-facturation).
+        amountDueCents:
+          appt.status === 'payment_received'
+            ? 0
+            : Math.max(0, (appt.final_price ?? 0) - (appt.credit_applied ?? 0)),
         createCalendarEvent: calendarFn,
         sendFn: sendBundle.sendFn,
+        // C2 : secret HMAC explicite — createSecureLinkToken ne peut pas lire
+        // import.meta.env dans ce runtime Node.
+        signingSecret: authSecret,
         // The pipeline sets the L2 flags itself on success (set-once guard).
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         supabase: supabase as any,

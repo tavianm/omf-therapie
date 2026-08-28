@@ -385,9 +385,14 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
     throw new Error(`Échec envoi email patient pour ${appointmentId}`);
   }
 
+  const now = new Date().toISOString();
   const { error: confirmUpdateErr } = await supabaseAdmin
     .from('appointments')
-    .update({ confirmation_sent_at: new Date().toISOString() })
+    // C5 (issue #126) : l'email de confirmation post-paiement vaut AUSSI
+    // invitation — les DEUX drapeaux partent dans le MÊME update (set-once).
+    // Sans invitation_sent_at, le sweep `reconcile-invitations` verrait la
+    // ligne invitation_sent_at IS NULL et re-mailerait le patient.
+    .update({ confirmation_sent_at: now, invitation_sent_at: now })
     .eq('id', appointmentId)
     .is('confirmation_sent_at', null);
 
