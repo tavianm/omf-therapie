@@ -375,7 +375,12 @@ export const POST: APIRoute = async ({ request, locals }) => {
               import.meta.env.BETTER_AUTH_URL ?? new URL(request.url).origin,
           });
         })
-        .then(resolve, resolve);
+        // La valeur de chaîne ({ flagsSet } | undefined) est ignorée : le
+        // contrat externe reste Promise<void>, résolu quoi qu'il arrive.
+        .then(
+          () => resolve(),
+          () => resolve(),
+        );
     });
   });
 
