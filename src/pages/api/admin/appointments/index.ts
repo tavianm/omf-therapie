@@ -1,23 +1,16 @@
 export const prerender = false;
 
 import type { APIRoute } from 'astro';
-import { createElement } from 'react';
 import { auth } from '../../../../lib/auth';
 import { isAdminSession } from '../../../../lib/authz';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import { calculatePrice } from '../../../../lib/pricing';
 import { getAvailableCredit, consumeCredits } from '../../../../lib/credits';
-import { sendEmail, buildAppointmentConversationSubject } from '../../../../lib/resend';
-import { createAppointmentPaymentLink } from '../../../../lib/stripe';
-import { generateGoogleCalendarLink, generateOutlookCalendarLink, generateAppleCalendarInviteLink, CABINET_ADDRESS } from '../../../../lib/ics';
-import { createSecureLinkToken } from '../../../../lib/secure-links';
-import { createCalendarEvent } from '../../../../lib/google-calendar';
 import { hasAppointmentConflict } from '../../../../lib/appointment-conflicts';
-import AppointmentConfirmed from '../../../../emails/AppointmentConfirmed';
-import PaymentRequest from '../../../../emails/PaymentRequest';
 import type { AppointmentType } from '../../../../types/appointment';
 import { invalidateAvailabilityCache } from '../../../../lib/calendar-cache.js';
 import { isCabinetEligibleSlot } from '../../../../lib/appointment-eligibility';
+import { processAppointmentSideEffects } from '../../../../lib/notifications';
 
 // ---------------------------------------------------------------------------
 // Validation helpers
@@ -37,34 +30,15 @@ function errorResponse(status: number, message: string, field?: string): Respons
 }
 
 // ---------------------------------------------------------------------------
-// L2 flag helpers (issue #126) — set-once, never reset, non-fatal
-// ---------------------------------------------------------------------------
-
-/**
- * Mark the invitation email as delivered. `WHERE invitation_sent_at IS NULL`
- * keeps the write set-once (a future cron sweep relies on NULL = "to retry").
- * Failure is logged and swallowed: a flag write must never fail a creation.
- */
-async function markInvitationSent(appointmentId: string, extra?: Record<string, string>): Promise<void> {
-  try {
-    const { error } = await supabaseAdmin
-      .from('appointments')
-      .update({ invitation_sent_at: new Date().toISOString(), ...extra })
-      .eq('id', appointmentId)
-      .is('invitation_sent_at', null);
-    if (error) {
-      console.error('[admin/appointments] invitation_sent_at write failed:', error);
-    }
-  } catch (flagErr) {
-    console.error('[admin/appointments] invitation_sent_at write failed:', flagErr);
-  }
-}
-
-// ---------------------------------------------------------------------------
 // POST — création manuelle d'un rendez-vous par l'admin
 // ---------------------------------------------------------------------------
 
-export const POST: APIRoute = async ({ request }) => {
+// Issue #126 : les fonctions synchrones Netlify sont tuées à ~10s (504).
+// Le chemin critique ne fait AUCUN appel réseau externe (Google/Stripe/Resend) :
+// agenda, lien de paiement et email partent post-réponse via
+// `locals.netlify.context.waitUntil` (adaptateur @astrojs/netlify), avec un
+// repli inline best-effort (non attendu) hors runtime Netlify.
+export const POST: APIRoute = async ({ request, locals }) => {
   // 1. Auth guard — admin seulement
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user) {
@@ -165,8 +139,6 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   // 4. Calcul tarifaire
-  // Pour une création manuelle, on calcule toujours la remise nouveau client si applicable.
-  // L'admin peut activer le tarif solidaire via is_solidarity.
   const { data: existingAppointments } = await supabaseAdmin
     .from('appointments')
     .select('id')
@@ -175,7 +147,6 @@ export const POST: APIRoute = async ({ request }) => {
     .limit(1);
 
   const autoDetectedFirstSession = !existingAppointments || existingAppointments.length === 0;
-  // override_first_session allows admin to manually force/disable first-session discount
   const isFirstSession = typeof override_first_session === 'boolean'
     ? override_first_session
     : autoDetectedFirstSession;
@@ -187,12 +158,7 @@ export const POST: APIRoute = async ({ request }) => {
     override_price !== undefined ? Number(override_price) : undefined,
   );
 
-  // 5. Avoir (avoir interne) — déduction admin-only
-  // ----------------------------------------------------------------
-  // Si l'admin coche « utiliser l'avoir » et qu'un avoir est disponible pour
-  // cet email, on consomme en FIFO le montant plafonné à final_price.
-  // montant dû = final_price - credit_applied. Si 0 → pas de paiement Stripe,
-  // statut payment_received (video) / confirmed (in-person).
+  // 5. Avoir (avoir interne) — montant dû = final_price − crédit consommé
   const isVideo = appointment_mode === 'video';
   const finalPriceCents = pricing.finalPrice * 100;
   let creditApplied = 0;
@@ -206,8 +172,6 @@ export const POST: APIRoute = async ({ request }) => {
   const amountDueCents = Math.max(0, finalPriceCents - creditApplied);
 
   // 6. Statut initial
-  // in-person → confirmed directement (jamais de paiement en ligne)
-  // video → payment_pending (lien Stripe) SAUF si montant dû = 0 → payment_received
   const initialStatus: string = isVideo
     ? (amountDueCents === 0 ? 'payment_received' : 'payment_pending')
     : 'confirmed';
@@ -245,7 +209,7 @@ export const POST: APIRoute = async ({ request }) => {
     return errorResponse(500, 'Erreur lors de la création du rendez-vous');
   }
 
-  // 8. Consommer l'avoir (atomique, FIFO) — après l'insert (besoin de l'id).
+  // 8. Consommer l'avoir (atomique, FIFO) — échec → rollback INSERT + 409.
   if (creditApplied > 0) {
     try {
       await consumeCredits(
@@ -254,7 +218,6 @@ export const POST: APIRoute = async ({ request }) => {
         appointment.id,
       );
     } catch (creditErr) {
-      // Échec consommation : on annule le RDV (cohérence — pas de credit_applied sans usage).
       console.error('[admin/appointments] Erreur consommation avoir:', creditErr);
       await supabaseAdmin.from('appointments').delete().eq('id', appointment.id);
       return errorResponse(409, 'Avoir insuffisant ou erreur lors de la consommation de l\'avoir.');
@@ -263,209 +226,46 @@ export const POST: APIRoute = async ({ request }) => {
 
   await invalidateAvailabilityCache().catch(console.error);
 
-  let resolvedVideoLink: string | undefined = appointment.video_link ?? undefined;
+  // 9. Side-effects post-réponse (issue #126) : agenda → Stripe → email +
+  // drapeaux L2. Le pipeline ne jette jamais ; chaque étape est isolée et
+  // observable (`[side-effects]` logs), le cron de rattrapage repasse sur les
+  // flags NULL.
+  // Le démarrage du pipeline est différé d'un macrotask : le préfixe de
+  // `processAppointmentSideEffects` est synchrone (l'appel à createCalendarEvent
+  // précède son premier await) et ne doit pas s'exécuter avant que la réponse
+  // 201 soit construite et retournée. `setImmediate` (runtime Node/Netlify) est
+  // FIFO avec les autres immediates ; fallback `setTimeout` ailleurs.
+  const schedule = typeof setImmediate === 'function' ? setImmediate : setTimeout;
+  // `status` est le statut INSÉRÉ (payment_received/… ) : il pilote le drapeau
+  // confirmation_sent_at côté pipeline. Fallback défensif si la ligne retournée
+  // ne portait pas la colonne.
+  const apptForSideEffects = { ...appointment, status: appointment.status ?? initialStatus };
+  const sideEffects: Promise<void> = new Promise((resolve) => {
+    schedule(() => {
+      void processAppointmentSideEffects(apptForSideEffects, {
+        sendEmail: shouldSendEmail,
+        amountDueCents,
+        successUrl: import.meta.env.STRIPE_SUCCESS_URL
+          ?? `${new URL(request.url).origin}/rdv/merci/?source=payment-success`,
+        baseUrl: import.meta.env.BETTER_AUTH_URL ?? new URL(request.url).origin,
+      }).then(resolve, resolve);
+    });
+  });
 
-  if (!appointment.google_calendar_event_id) {
-    try {
-      const start = new Date(appointment.scheduled_at);
-      const end = new Date(start.getTime() + appointment.duration * 60 * 1000);
-      const modeLabel = isVideo ? 'Téléconsultation' : 'Présentiel';
-      const calResult = await createCalendarEvent({
-        title: `${isVideo ? '🎥 ' : ''}${appointment.patient_name} — séance ${modeLabel.toLowerCase()} (${appointment.duration} min)`,
-        start: start.toISOString(),
-        end: end.toISOString(),
-        description: [
-          `Patient: ${appointment.patient_name}`,
-          `Email: ${appointment.patient_email}`,
-          `Mode: ${modeLabel}`,
-          `Durée: ${appointment.duration} min`,
-          ...(resolvedVideoLink ? [`Lien visio: ${resolvedVideoLink}`] : []),
-        ].join('\n'),
-        location: isVideo ? 'Téléconsultation' : CABINET_ADDRESS,
-        attendeeEmail: appointment.patient_email,
-        withMeet: isVideo && !resolvedVideoLink,
-        appointmentId: `${appointment.id}-admin-${isVideo ? 'video' : 'inperson'}`,
-        colorId: isVideo ? '11' : '2',
-      });
-      const calendarUpdate: Record<string, string> = { google_calendar_event_id: calResult.eventId };
-      if (isVideo && calResult.meetLink) calendarUpdate.video_link = calResult.meetLink;
-      await supabaseAdmin.from('appointments').update(calendarUpdate).eq('id', appointment.id);
-      if (isVideo && calResult.meetLink) resolvedVideoLink = calResult.meetLink;
-    } catch (calendarErr) {
-      console.error('[admin/appointments] Erreur création événement agenda:', calendarErr);
-    }
+  // waitUntil : promesse capturée par le runtime Netlify, exécutée APRÈS la
+  // réponse. `locals` n'est pas typé pour `netlify` — accès optionnel sûr.
+  const netlifyLocals = (locals as { netlify?: { context?: { waitUntil?: unknown } } } | undefined)?.netlify;
+  const waitUntil = netlifyLocals?.context?.waitUntil;
+  if (typeof waitUntil === 'function') {
+    (waitUntil as (p: Promise<unknown>) => void)(sideEffects);
+  } else {
+    // Repli inline best-effort (dev / hors Netlify) — NON attendu avant 201.
+    void sideEffects;
   }
 
-  // 9. Paiement Stripe + envoi email
-  // ----------------------------------------------------------------
-  // Video + montant dû > 0  → lien Stripe pour le SOLDE (final_price - credit_applied).
-  // Video + montant dû = 0  → aucun Stripe (avoir couvre tout), confirmation directe.
-  // In-person               → confirmation directe (jamais de paiement en ligne).
-  if (shouldSendEmail) {
-    const origin = new URL(request.url).origin;
-    const successUrl = import.meta.env.STRIPE_SUCCESS_URL ?? `${origin}/rdv/merci/?source=payment-success`;
-
-    if (isVideo && amountDueCents > 0) {
-      // Créer le lien Stripe (pour le solde dû) et envoyer une demande de paiement
-      try {
-        const paymentLink = await createAppointmentPaymentLink({
-          appointmentId: appointment.id,
-          patientEmail: appointment.patient_email,
-          patientName: appointment.patient_name,
-          amount: amountDueCents,
-          description: `Séance de thérapie — ${new Date(appointment.scheduled_at).toLocaleDateString('fr-FR')}`,
-          successUrl,
-        });
-
-        await supabaseAdmin
-          .from('appointments')
-          .update({ stripe_payment_link_id: paymentLink.id, stripe_payment_link_url: paymentLink.url })
-          .eq('id', appointment.id);
-
-        const emailResult = await sendEmail({
-          to: appointment.patient_email,
-          threadKey: `appointment:${appointment.id}:patient`,
-          subject: buildAppointmentConversationSubject(
-            `Prépaiement de votre séance — ${new Date(appointment.scheduled_at).toLocaleDateString('fr-FR')}`,
-            appointment.id,
-          ),
-          react: createElement(PaymentRequest, {
-            patientName: appointment.patient_name,
-            scheduledAt: appointment.scheduled_at,
-            appointmentType: appointment.appointment_type,
-            duration: appointment.duration,
-            finalPrice: amountDueCents,
-            stripePaymentUrl: paymentLink.url,
-          }),
-        });
-        if (!emailResult.success) {
-          console.error('[admin/appointments] email PaymentRequest error:', emailResult.error);
-        } else {
-          // L2: invitation délivrée (set-once) — pas de flag si l'envoi échoue,
-          // le futur sweep rattrapera.
-          await markInvitationSent(appointment.id);
-        }
-      } catch (e) {
-        console.error('[admin/appointments] Stripe error (non-bloquant):', e);
-      }
-    } else if (isVideo && amountDueCents === 0) {
-      // Avoir couvre l'intégralité : envoyer une confirmation (séance réglée par avoir).
-      try {
-        const start = new Date(appointment.scheduled_at);
-        const end = new Date(start.getTime() + appointment.duration * 60 * 1000);
-        const calendarEvent = {
-          uid: appointment.id,
-          summary: 'Séance de thérapie — OMF Therapie',
-          description: `Patient: ${appointment.patient_name}\nMode: Téléconsultation`,
-          location: resolvedVideoLink ?? undefined,
-          url: resolvedVideoLink ?? undefined,
-          start,
-          end,
-          organizerName: 'Oriane Montabonnet — OMF Thérapie',
-          organizerEmail: import.meta.env.RESEND_FROM_EMAIL ?? 'contact@omf-therapie.fr',
-        };
-        const gcalLink = generateGoogleCalendarLink(calendarEvent);
-        const outlookLink = generateOutlookCalendarLink(calendarEvent);
-        const baseUrl = import.meta.env.BETTER_AUTH_URL ?? new URL(request.url).origin;
-        const inviteToken = createSecureLinkToken({
-          appointmentId: appointment.id,
-          purpose: 'ics-invite',
-          expiresInSeconds: 60 * 60 * 24 * 180,
-          nonce: appointment.scheduled_at,
-        });
-        const appleLink = generateAppleCalendarInviteLink(baseUrl, appointment.id, inviteToken);
-
-        const emailResult = await sendEmail({
-          to: appointment.patient_email,
-          threadKey: `appointment:${appointment.id}:patient`,
-          subject: buildAppointmentConversationSubject(
-            `Votre rendez-vous est confirmé — ${new Date(appointment.scheduled_at).toLocaleDateString('fr-FR')}`,
-            appointment.id,
-          ),
-          react: createElement(AppointmentConfirmed, {
-            patientName: appointment.patient_name,
-            appointmentType: appointment.appointment_type,
-            appointmentMode: appointment.appointment_mode,
-            scheduledAt: appointment.scheduled_at,
-            duration: appointment.duration,
-            finalPrice: appointment.final_price,
-            videoLink: resolvedVideoLink,
-            googleCalendarLink: gcalLink,
-            appleCalendarLink: appleLink,
-            outlookCalendarLink: outlookLink,
-          }),
-        });
-        if (emailResult.success) {
-          // L2: séance réglée par avoir → l'invitation EST la confirmation.
-          // Un seul update pose les deux drapeaux (set-once).
-          await markInvitationSent(appointment.id, { confirmation_sent_at: new Date().toISOString() });
-        }
-      } catch (e) {
-        console.error('[admin/appointments] email confirmation (avoir) error (non-bloquant):', e);
-      }
-    } else {
-      // In-person : confirmer directement et envoyer l'email de confirmation
-      const start = new Date(appointment.scheduled_at);
-      const end = new Date(start.getTime() + appointment.duration * 60 * 1000);
-      const calendarEvent = {
-        uid: appointment.id,
-        summary: 'Séance de thérapie — OMF Therapie',
-        description: `Patient: ${appointment.patient_name}\nMode: ${appointment.appointment_mode === 'video' ? 'Téléconsultation' : 'Présentiel'}`,
-        location: appointment.appointment_mode === 'in-person' ? CABINET_ADDRESS : (resolvedVideoLink ?? undefined),
-        url: resolvedVideoLink ?? undefined,
-        start,
-        end,
-        organizerName: 'Oriane Montabonnet — OMF Thérapie',
-        organizerEmail: import.meta.env.RESEND_FROM_EMAIL ?? 'contact@omf-therapie.fr',
-      };
-      const gcalLink = generateGoogleCalendarLink(calendarEvent);
-      const outlookCalendarLink = generateOutlookCalendarLink(calendarEvent);
-      const baseUrl = import.meta.env.BETTER_AUTH_URL ?? new URL(request.url).origin;
-      const inviteToken = createSecureLinkToken({
-        appointmentId: appointment.id,
-        purpose: 'ics-invite',
-        expiresInSeconds: 60 * 60 * 24 * 180,
-        nonce: appointment.scheduled_at,
-      });
-      const appleCalendarLink = generateAppleCalendarInviteLink(baseUrl, appointment.id, inviteToken);
-
-      const emailResult = await sendEmail({
-        to: appointment.patient_email,
-        threadKey: `appointment:${appointment.id}:patient`,
-        subject: buildAppointmentConversationSubject(
-          `Votre rendez-vous est confirmé — ${new Date(appointment.scheduled_at).toLocaleDateString('fr-FR')}`,
-          appointment.id,
-        ),
-        react: createElement(AppointmentConfirmed, {
-          patientName: appointment.patient_name,
-          appointmentType: appointment.appointment_type,
-          appointmentMode: appointment.appointment_mode,
-          scheduledAt: appointment.scheduled_at,
-          duration: appointment.duration,
-          finalPrice: appointment.final_price,
-          googleCalendarLink: gcalLink,
-          appleCalendarLink,
-          outlookCalendarLink,
-          cabinetAddress: CABINET_ADDRESS,
-        }),
-      });
-      if (!emailResult.success) {
-        console.error('[admin/appointments] email AppointmentConfirmed error:', emailResult.error);
-      } else {
-        // L2: invitation (confirmation présentiel) délivrée — set-once.
-        await markInvitationSent(appointment.id);
-      }
-    }
-  }
-
-  // Refetch to include any calendar event ID set after the initial insert
-  const { data: finalAppointment } = await supabaseAdmin
-    .from('appointments')
-    .select('*')
-    .eq('id', appointment.id)
-    .single();
-
-  return new Response(JSON.stringify({ appointment: finalAppointment ?? appointment }), {
+  // 10. 201 immédiat — ligne insérée telle quelle (pas de re-fetch : les champs
+  // agenda/Stripe ne sont pas encore produits ; le client admin recharge la page).
+  return new Response(JSON.stringify({ appointment }), {
     status: 201,
     headers: { 'Content-Type': 'application/json' },
   });

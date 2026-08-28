@@ -39,9 +39,13 @@ import {
   therapistConfirmationKey,
 } from './idempotency-keys';
 import { getTypeLabel, getModeLabel } from './pricing';
+import { createCalendarEvent } from './google-calendar';
+import { createAppointmentPaymentLink } from './stripe';
+import { supabaseAdmin } from './supabase';
 import AppointmentConfirmed from '../emails/AppointmentConfirmed';
 import PaymentReceivedNotification from '../emails/PaymentReceivedNotification';
-import type { Appointment } from '../types/appointment';
+import PaymentRequest from '../emails/PaymentRequest';
+import type { Appointment, AppointmentType } from '../types/appointment';
 
 export interface SendConfirmationsResult {
   patientEmailSent: boolean;
@@ -209,4 +213,273 @@ export async function buildAndSendConfirmationEmails(
     : false;
 
   return { patientEmailSent, therapistEmailSent };
+}
+
+// ---------------------------------------------------------------------------
+// Issue #126 / T6 — pipeline de side-effects post-réponse
+// ---------------------------------------------------------------------------
+
+/**
+ * Rendez-vous inséré (ligne `appointments` + contexte d'exécution) tel que
+ * renvoyé par le POST /api/admin/appointments/.
+ * Structurellement compatible avec `Appointment` (champs utilisés seulement).
+ */
+export interface SideEffectsAppointment {
+  id: string;
+  status: string;
+  appointment_type: string;
+  appointment_mode: 'video' | 'in-person';
+  duration: number;
+  scheduled_at: string;
+  patient_name: string;
+  patient_email: string;
+  final_price: number;
+  video_link?: string | null;
+  google_calendar_event_id?: string | null;
+}
+
+/** Chaîne d'update Supabase minimale (DI test-friendly, set-once via `.is`). */
+interface SupabaseUpdateChain extends PromiseLike<{ data: unknown; error: unknown }> {
+  eq: (column: string, value: unknown) => SupabaseUpdateChain;
+  is: (column: string, value: unknown) => SupabaseUpdateChain;
+}
+
+/** Client Supabase minimal requis pour les écritures L2. */
+type SupabaseLike = {
+  from: (table: string) => { update: (payload: Record<string, unknown>) => SupabaseUpdateChain };
+};
+
+export interface ProcessSideEffectsOptions {
+  /** S3 : envoyer l'email patient (condition `send_email` du POST). */
+  sendEmail: boolean;
+  /** S2 : solde dû en centimes (final_price - credit_applied). */
+  amountDueCents: number;
+  /** URL de succès Stripe (S2). */
+  successUrl?: string;
+  /** Base des liens sécurisés .ics (DI, comme BuildAndSendOptions). */
+  baseUrl?: string;
+  /** Email admin (réservé — le POST actuel n'envoie pas de notification thérapeute ici). */
+  adminEmail?: string;
+  /** DI — défaut : module app. */
+  createCalendarEvent?: typeof createCalendarEvent;
+  createAppointmentPaymentLink?: typeof createAppointmentPaymentLink;
+  sendFn?: typeof sendEmail;
+  /** Client Supabase pour les écritures L2 — défaut : `supabaseAdmin`. */
+  supabase?: SupabaseLike;
+}
+
+type StepName = 'calendar' | 'stripe' | 'email' | 'flags';
+type StepStatus = 'ok' | 'skipped' | 'error';
+
+/**
+ * Exécute une étape du pipeline avec isolation + observabilité :
+ * durée mesurée, log structuré unique `[side-effects]`, erreur avalée
+ * (le pipeline continue — le cron de rattrapage repasse sur les flags NULL).
+ */
+async function runStep<T>(
+  step: StepName,
+  appointmentId: string,
+  fn: () => Promise<T>,
+): Promise<{ status: StepStatus; value?: T }> {
+  const start = Date.now();
+  try {
+    const value = await fn();
+    console.info('[side-effects]', { step, appointmentId, ms: Date.now() - start, status: 'ok' });
+    return { status: 'ok', value };
+  } catch (err) {
+    console.error('[side-effects] step failed:', step, appointmentId, err);
+    console.info('[side-effects]', { step, appointmentId, ms: Date.now() - start, status: 'error' });
+    return { status: 'error' };
+  }
+}
+
+function logSkipped(step: StepName, appointmentId: string): void {
+  console.info('[side-effects]', { step, appointmentId, ms: 0, status: 'skipped' });
+}
+
+/**
+ * Pipeline agenda → Stripe → email + drapeaux L2, extrait du
+ * POST /api/admin/appointments/ (issue #126). Conçu pour être exécuté
+ * POST-RÉPONSE via `waitUntil` (T7) ET par le futur cron de rattrapage :
+ *
+ * - S1 calendar : événement standard TOUJOURS créé (`withMeet:false` si un
+ *   `video_link` existe déjà) ; persistance de l'event id (+ meet link).
+ * - S2 stripe   : uniquement `mode vidéo && amountDueCents > 0`.
+ * - S3 email    : uniquement `opts.sendEmail` ; clé d'idempotence Resend L1
+ *   `invite:{id}:patient`. Réutilise la composition d'emails du POST.
+ * - flags L2    : un SEUL update set-once `.is('invitation_sent_at', null)` ;
+ *   `confirmation_sent_at` posé dans le MÊME update quand
+ *   `status === 'payment_received'`.
+ *
+ * Chaque étape est isolée : une erreur est loguée (`status:'error'`) et le
+ * pipeline CONTINUE. Ne jette jamais.
+ */
+export async function processAppointmentSideEffects(
+  appt: SideEffectsAppointment,
+  opts: ProcessSideEffectsOptions,
+): Promise<void> {
+  const db = opts.supabase ?? (supabaseAdmin as unknown as SupabaseLike);
+  const calendarFn = opts.createCalendarEvent ?? createCalendarEvent;
+  const paymentLinkFn = opts.createAppointmentPaymentLink ?? createAppointmentPaymentLink;
+  const send = opts.sendFn ?? sendEmail;
+  const isVideo = appt.appointment_mode === 'video';
+  const baseUrl = opts.baseUrl ?? 'https://omf-therapie.fr';
+
+  // --- S1 : événement agenda (standard ; pas de Meet si video_link déjà fourni)
+  let resolvedVideoLink: string | undefined = appt.video_link ?? undefined;
+
+  if (appt.google_calendar_event_id) {
+    logSkipped('calendar', appt.id);
+  } else {
+    const cal = await runStep('calendar', appt.id, async () => {
+      const start = new Date(appt.scheduled_at);
+      const end = new Date(start.getTime() + appt.duration * 60 * 1000);
+      const modeLabel = isVideo ? 'Téléconsultation' : 'Présentiel';
+      const calResult = await calendarFn({
+        title: `${isVideo ? '🎥 ' : ''}${appt.patient_name} — séance ${modeLabel.toLowerCase()} (${appt.duration} min)`,
+        start: start.toISOString(),
+        end: end.toISOString(),
+        description: [
+          `Patient: ${appt.patient_name}`,
+          `Email: ${appt.patient_email}`,
+          `Mode: ${modeLabel}`,
+          `Durée: ${appt.duration} min`,
+          ...(resolvedVideoLink ? [`Lien visio: ${resolvedVideoLink}`] : []),
+        ].join('\n'),
+        location: isVideo ? 'Téléconsultation' : CABINET_ADDRESS,
+        attendeeEmail: appt.patient_email,
+        withMeet: isVideo && !resolvedVideoLink,
+        appointmentId: `${appt.id}-admin-${isVideo ? 'video' : 'inperson'}`,
+        colorId: isVideo ? '11' : '2',
+      });
+      // Persistance technique (update simple, distinct du set-once final).
+      const calendarUpdate: Record<string, string> = { google_calendar_event_id: calResult.eventId };
+      if (isVideo && calResult.meetLink) calendarUpdate.video_link = calResult.meetLink;
+      await db.from('appointments').update(calendarUpdate).eq('id', appt.id);
+      return calResult;
+    });
+    if (cal.status === 'ok' && cal.value && isVideo && cal.value.meetLink) {
+      resolvedVideoLink = cal.value.meetLink;
+    }
+  }
+
+  // --- S2 : lien de paiement Stripe (solde dû, vidéo uniquement)
+  let paymentLinkUrl: string | undefined;
+  if (!(isVideo && opts.amountDueCents > 0)) {
+    logSkipped('stripe', appt.id);
+  } else {
+    const stripe = await runStep('stripe', appt.id, async () => {
+      const paymentLink = await paymentLinkFn({
+        appointmentId: appt.id,
+        patientEmail: appt.patient_email,
+        patientName: appt.patient_name,
+        amount: opts.amountDueCents,
+        description: `Séance de thérapie — ${new Date(appt.scheduled_at).toLocaleDateString('fr-FR')}`,
+        successUrl: opts.successUrl ?? `${baseUrl}/rdv/merci/`,
+      });
+      await db.from('appointments')
+        .update({ stripe_payment_link_id: paymentLink.id, stripe_payment_link_url: paymentLink.url })
+        .eq('id', appt.id);
+      return paymentLink;
+    });
+    if (stripe.status === 'ok' && stripe.value) paymentLinkUrl = stripe.value.url;
+  }
+
+  // --- S3 : email patient (demande de prépaiement OU confirmation)
+  let emailDelivered = true; // sendEmail:false → flags quand même posés
+  if (!opts.sendEmail) {
+    emailDelivered = true;
+    logSkipped('email', appt.id);
+  } else {
+    const email = await runStep('email', appt.id, async () => {
+      const threadKey = `appointment:${appt.id}:patient`;
+      const idempotencyKey = `invite:${appt.id}:patient`;
+      const dateFr = new Date(appt.scheduled_at).toLocaleDateString('fr-FR');
+
+      let params: SendEmailParams;
+      if (isVideo && opts.amountDueCents > 0) {
+        if (!paymentLinkUrl) throw new Error('stripe payment link unavailable for PaymentRequest email');
+        params = {
+          to: appt.patient_email,
+          threadKey,
+          subject: buildAppointmentConversationSubject(`Prépaiement de votre séance — ${dateFr}`, appt.id),
+          react: createElement(PaymentRequest, {
+            patientName: appt.patient_name,
+            scheduledAt: appt.scheduled_at,
+            appointmentType: appt.appointment_type as AppointmentType,
+            duration: appt.duration,
+            finalPrice: opts.amountDueCents,
+            stripePaymentUrl: paymentLinkUrl,
+          }),
+          idempotencyKey,
+        };
+      } else {
+        // Avoir couvrant tout (payment_received) OU présentiel (confirmed).
+        const start = new Date(appt.scheduled_at);
+        const end = new Date(start.getTime() + appt.duration * 60 * 1000);
+        const calendarEvent = {
+          uid: appt.id,
+          summary: 'Séance de thérapie — OMF Therapie',
+          description: `Patient: ${appt.patient_name}\nMode: ${isVideo ? 'Téléconsultation' : 'Présentiel'}`,
+          location: appt.appointment_mode === 'in-person' ? CABINET_ADDRESS : (resolvedVideoLink ?? undefined),
+          url: resolvedVideoLink ?? undefined,
+          start,
+          end,
+          organizerName: 'Oriane Montabonnet — OMF Thérapie',
+          organizerEmail: 'contact@omf-therapie.fr',
+        };
+        const googleCalendarLink = generateGoogleCalendarLink(calendarEvent);
+        const outlookCalendarLink = generateOutlookCalendarLink(calendarEvent);
+        const inviteToken = createSecureLinkToken({
+          appointmentId: appt.id,
+          purpose: 'ics-invite',
+          expiresInSeconds: 60 * 60 * 24 * 180,
+          nonce: appt.scheduled_at,
+        });
+        const appleCalendarLink = generateAppleCalendarInviteLink(baseUrl, appt.id, inviteToken);
+        params = {
+          to: appt.patient_email,
+          threadKey,
+          subject: buildAppointmentConversationSubject(`Votre rendez-vous est confirmé — ${dateFr}`, appt.id),
+          react: createElement(AppointmentConfirmed, {
+            patientName: appt.patient_name,
+            appointmentType: appt.appointment_type as AppointmentType,
+            appointmentMode: appt.appointment_mode,
+            scheduledAt: appt.scheduled_at,
+            duration: appt.duration,
+            finalPrice: appt.final_price,
+            ...(isVideo ? { videoLink: resolvedVideoLink } : { cabinetAddress: CABINET_ADDRESS }),
+            googleCalendarLink,
+            appleCalendarLink,
+            outlookCalendarLink,
+          }),
+          idempotencyKey,
+        };
+      }
+
+      const emailResult = await send(params);
+      if (!emailResult.success) {
+        throw new Error(`email send failed: ${JSON.stringify(emailResult.error)}`);
+      }
+      return emailResult;
+    });
+    emailDelivered = email.status === 'ok';
+  }
+
+  // --- L2 : drapeaux set-once (un seul update)
+  if (!emailDelivered) {
+    // Échec d'envoi : on laisse invitation_sent_at NULL — le cron rattrapera.
+    logSkipped('flags', appt.id);
+    return;
+  }
+  await runStep('flags', appt.id, async () => {
+    const now = new Date().toISOString();
+    const payload: Record<string, string> = { invitation_sent_at: now };
+    if (appt.status === 'payment_received') payload.confirmation_sent_at = now;
+    const { error } = await db.from('appointments')
+      .update(payload)
+      .eq('id', appt.id)
+      .is('invitation_sent_at', null);
+    if (error) throw error;
+  });
 }

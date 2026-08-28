@@ -141,6 +141,39 @@ import { POST } from '@/pages/api/admin/appointments';
 
 // --- Helpers -----------------------------------------------------------------
 
+/**
+ * Builds an APIRoute-like context whose `locals.netlify.context.waitUntil`
+ * CAPTURES the promises handed to it (post-response background work, issue
+ * #126 V2) instead of awaiting them. `flushSideEffects` then drains them so
+ * tests can assert on the deferred pipeline (calendar → Stripe → email → L2
+ * flags) exactly like the Netlify runtime would after the response is sent.
+ */
+function makeContext(request: Request): {
+  context: Record<string, unknown>;
+  captured: Promise<unknown>[];
+} {
+  const captured: Promise<unknown>[] = [];
+  const context = {
+    request,
+    url: request.url,
+    locals: {
+      netlify: {
+        context: {
+          waitUntil: (promise: Promise<unknown>) => {
+            captured.push(promise);
+          },
+        },
+      },
+    },
+  };
+  return { context, captured };
+}
+
+/** Drains the promises captured by waitUntil (no-op until T7 wires them). */
+async function flushSideEffects(captured: Promise<unknown>[]): Promise<void> {
+  await Promise.all(captured);
+}
+
 function makeRequest(payload: Record<string, unknown>): Request {
   return new Request('http://localhost/api/admin/appointments/', {
     method: 'POST',
@@ -176,12 +209,12 @@ describe('POST /api/admin/appointments/ — invitation_sent_at flags (issue #126
   it('sets invitation_sent_at via an UPDATE after sendEmail succeeds when send_email is true', async () => {
     // Arrange
     const request = makeRequest({ send_email: true });
+    const { context, captured } = makeContext(request);
 
     // Act
-    const response = await POST({ request, url: request.url } as never);
+    const response = await POST(context as never);
     expect(response.status).toBe(201);
-
-    // Assert — the email was sent AND an UPDATE carried a non-null
+    await flushSideEffects(captured);
     // invitation_sent_at (mark-delivered after the successful send).
     expect(h.sendEmail).toHaveBeenCalledTimes(1);
     const flagged = h.sb.updates.filter((u) => !!u.invitation_sent_at);
@@ -202,11 +235,13 @@ describe('POST /api/admin/appointments/ — invitation_sent_at flags (issue #126
     });
     h.getAvailableCredit.mockResolvedValue(6000);
     h.consumeCredits.mockResolvedValue({ consumed: 6000 });
+    const { context, captured } = makeContext(request);
 
     // Act
-    const response = await POST({ request, url: request.url } as never);
+    const response = await POST(context as never);
     expect(response.status).toBe(201);
     expect(h.sb.inserts[0].status).toBe('payment_received');
+    await flushSideEffects(captured);
 
     // Assert — one UPDATE sets BOTH L2 flags (séance réglée par avoir).
     const flagged = h.sb.updates.filter(
@@ -223,15 +258,63 @@ describe('POST /api/admin/appointments/ — invitation_sent_at flags (issue #126
   it('sets invitation_sent_at in the INSERT payload and never calls sendEmail when send_email is false', async () => {
     // Arrange
     const request = makeRequest({ send_email: false });
+    const { context, captured } = makeContext(request);
 
     // Act
-    const response = await POST({ request, url: request.url } as never);
+    const response = await POST(context as never);
     expect(response.status).toBe(201);
+    await flushSideEffects(captured);
 
     // Assert — the flag is carried by the INSERT (no email will ever be sent)
     // and the email provider is never contacted.
     expect(h.sb.inserts.length).toBeGreaterThan(0);
     expect(typeof h.sb.inserts[0].invitation_sent_at).toBe('string');
     expect(h.sendEmail).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // (a) [RED until T7] 201 must leave BEFORE any external call — the pipeline
+  // (calendar → Stripe → email) is deferred via locals.netlify.context.waitUntil
+  // -------------------------------------------------------------------------
+  it('responds 201 without touching calendar/stripe/email, then runs the pipeline via waitUntil (issue #126 V2)', async () => {
+    // Arrange — video RDV with a balance due (Stripe path), email requested.
+    const request = makeRequest({ appointment_mode: 'video', send_email: true });
+    const { context, captured } = makeContext(request);
+    h.createAppointmentPaymentLink.mockResolvedValue({ id: 'pl_mock', url: 'https://pay.example/pl' });
+
+    // Act — the critical path must only INSERT and respond.
+    const response = await POST(context as never);
+
+    // Assert — 201 immediate, ZERO external call at response time.
+    expect(response.status).toBe(201);
+    expect(h.createCalendarEvent).not.toHaveBeenCalled();
+    expect(h.createAppointmentPaymentLink).not.toHaveBeenCalled();
+    expect(h.sendEmail).not.toHaveBeenCalled();
+
+    // The deferred pipeline was handed to waitUntil, and draining it runs the
+    // full chain: payment link → patient email → L2 flag.
+    expect(captured.length).toBeGreaterThan(0);
+    await flushSideEffects(captured);
+    expect(h.sendEmail).toHaveBeenCalledTimes(1);
+    const flagged = h.sb.updates.filter((u) => !!u.invitation_sent_at);
+    expect(flagged.length).toBeGreaterThan(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // (e) [RED until T7] No locals.netlify in the context → inline non-blocking
+  // fallback: still 201, never throws
+  // -------------------------------------------------------------------------
+  it('still responds 201 without throwing when locals.netlify is absent (inline fallback)', async () => {
+    // Arrange — bare context, no Netlify decorator at all.
+    const request = makeRequest({ appointment_mode: 'video', send_email: true });
+    h.createAppointmentPaymentLink.mockResolvedValue({ id: 'pl_mock', url: 'https://pay.example/pl' });
+
+    // Act / Assert — the handler must not throw and must answer 201.
+    const response = await POST({ request, url: request.url } as never);
+    expect(response.status).toBe(201);
+    // The inline fallback is fire-and-forget: flush the microtask queue before
+    // asserting the deferred pipeline ran (201 was already sent, unblocked).
+    await new Promise((r) => setImmediate(r));
+    expect(h.sendEmail).toHaveBeenCalledTimes(1);
   });
 });
