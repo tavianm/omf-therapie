@@ -16,6 +16,7 @@ import {
   cabinetEligibility,
   type DayHalf,
 } from './appointment-eligibility.js';
+import { isCalendarMockEnabled } from './mock-mode.server.js';
 
 // ---------------------------------------------------------------------------
 // Erreur typée
@@ -126,11 +127,6 @@ function readEnv(key: string): string | undefined {
 // ---------------------------------------------------------------------------
 // Mock mode
 // ---------------------------------------------------------------------------
-
-/** Mock flag read lazily — identical behavior, just no module-scope env read. */
-function isMockMode(): boolean {
-  return readEnv('GOOGLE_CALENDAR_MOCK') === 'true';
-}
 
 // ---------------------------------------------------------------------------
 // DI seam (issue #126 / T12)
@@ -546,7 +542,7 @@ export async function getAvailableSlots(
   dbBusyPeriods: Array<{ start: string; end: string }> = [],
   options: CalendarClientOptions = {},
 ): Promise<TimeSlot[]> {
-  if (isMockMode()) {
+  if (isCalendarMockEnabled()) {
     console.log('[calendar-mock] getAvailableSlots called — generating slots via shared algorithm');
 
     // Mock = pas de Google Calendar : on réutilise le même moteur de génération
@@ -727,7 +723,7 @@ export async function updateCalendarEvent(
   patch: { start?: Date; end?: Date; summary?: string },
   options: CalendarClientOptions = {},
 ): Promise<void> {
-  if (isMockMode()) {
+  if (isCalendarMockEnabled()) {
     console.log(`[calendar-mock] Updating event ${eventId}:`, patch);
     return;
   }
@@ -756,7 +752,7 @@ export async function deleteCalendarEvent(
   eventId: string,
   options: CalendarClientOptions = {},
 ): Promise<void> {
-  if (isMockMode()) {
+  if (isCalendarMockEnabled()) {
     console.log(`[calendar-mock] Deleting event ${eventId}`);
     return;
   }
@@ -781,7 +777,7 @@ export async function createCalendarEvent(
   params: CreateEventParams,
   options: CalendarClientOptions = {},
 ): Promise<CreateEventResult> {
-  if (isMockMode()) {
+  if (isCalendarMockEnabled()) {
     console.log(`[calendar-mock] Creating event: ${params.title} at ${params.start}`);
     const { withMeet, appointmentId } = params;
     const eventId = `mock-event-${Date.now()}`;

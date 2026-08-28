@@ -19,6 +19,11 @@ import Layout from '../../layouts/Layout.astro';
 import Navbar from '../../components/islands/Navbar';
 import type { AppointmentType, AppointmentMode } from '../../types/appointment';
 import { getTypeLabel, getModeLabel } from '../../lib/pricing';
+import {
+  isAuthorizedLocalMockRequest,
+  MOCK_WEBHOOK_TOKEN_HEADER,
+  MOCK_WEBHOOK_TOKEN_QUERY_PARAM,
+} from '../../lib/mock-mode.server';
 
 // ── Lecture des paramètres URL ───────────────────────────────────────────────
 const url = Astro.url;
@@ -31,6 +36,7 @@ const legacyPaiement = url.searchParams.get('paiement');
 const hasStripeSessionId = url.searchParams.has('session_id');
 const isMockPayment = url.searchParams.get('mock') === '1';
 const mockAppointmentId = url.searchParams.get('appointment_id');
+const mockWebhookToken = url.searchParams.get(MOCK_WEBHOOK_TOKEN_QUERY_PARAM);
 
 const VALID_TYPES  = new Set(['individual', 'couple', 'family']);
 const VALID_MODES  = new Set(['in-person', 'video']);
@@ -61,21 +67,43 @@ type MerciVariant =
   | 'payment-pending'
   | 'payment-success';
 
-const variant: MerciVariant =
-  sourceParam === 'payment-success' || hasStripeSessionId || isMockPayment ? 'payment-success'
-  : sourceParam === 'payment-pending' || legacyPaiement === 'en-attente' ? 'payment-pending'
-  : 'request-confirmed';
-
-if (isMockPayment && mockAppointmentId) {
+let mockPaymentSucceeded = false;
+if (
+  isMockPayment &&
+  mockAppointmentId &&
+  mockWebhookToken &&
+  isAuthorizedLocalMockRequest(url, mockWebhookToken)
+) {
   try {
     const webhookMockUrl = new URL('/api/stripe-webhook/', url);
     webhookMockUrl.searchParams.set('mock', '1');
     webhookMockUrl.searchParams.set('appointment_id', mockAppointmentId);
-    await fetch(webhookMockUrl, { method: 'GET' });
+    const response = await fetch(webhookMockUrl, {
+      method: 'GET',
+      headers: { [MOCK_WEBHOOK_TOKEN_HEADER]: mockWebhookToken },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) {
+      console.error(
+        `[rdv/merci] Webhook mock refusé ou en échec (${response.status}).`,
+      );
+    } else {
+      mockPaymentSucceeded = true;
+    }
   } catch (err) {
     console.error('[rdv/merci] Erreur déclenchement webhook mock:', err);
   }
 }
+
+const variant: MerciVariant = isMockPayment
+  ? mockPaymentSucceeded
+    ? 'payment-success'
+    : 'payment-pending'
+  : sourceParam === 'payment-success' || hasStripeSessionId
+    ? 'payment-success'
+    : sourceParam === 'payment-pending' || legacyPaiement === 'en-attente'
+      ? 'payment-pending'
+      : 'request-confirmed';
 
 const pageTitle = variant === 'payment-success'
   ? 'Paiement reçu — OMF Thérapie'

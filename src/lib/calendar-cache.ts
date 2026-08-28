@@ -9,8 +9,8 @@
  */
 
 import type { TimeSlot } from './google-calendar.js';
+import { isCalendarMockEnabled } from './mock-mode.server.js';
 
-const MOCK_MODE = import.meta.env.GOOGLE_CALENDAR_MOCK === 'true';
 const STORE_NAME = 'calendar-availability';
 const DEFAULT_TTL_SECONDS = 600; // 10 minutes
 
@@ -18,13 +18,14 @@ const DEFAULT_TTL_SECONDS = 600; // 10 minutes
 // Singleton store promise — initialised once, reused across requests
 // ---------------------------------------------------------------------------
 
-let _storePromise: Promise<ReturnType<typeof import('@netlify/blobs')['getStore']> | null> | null =
-  null;
+let _storePromise: Promise<ReturnType<
+  (typeof import('@netlify/blobs'))['getStore']
+> | null> | null = null;
 
 async function getAvailabilityStore(): Promise<ReturnType<
-  typeof import('@netlify/blobs')['getStore']
+  (typeof import('@netlify/blobs'))['getStore']
 > | null> {
-  if (MOCK_MODE) return null;
+  if (isCalendarMockEnabled()) return null;
   if (_storePromise) return _storePromise;
   _storePromise = import('@netlify/blobs')
     .then(({ getStore }) => getStore(STORE_NAME))
@@ -45,7 +46,9 @@ interface CacheEntry {
 // Public API
 // ---------------------------------------------------------------------------
 
-export async function getCachedAvailability(key: string): Promise<TimeSlot[] | null> {
+export async function getCachedAvailability(
+  key: string,
+): Promise<TimeSlot[] | null> {
   const store = await getAvailabilityStore();
   if (!store) return null;
   try {
@@ -69,7 +72,10 @@ export async function setCachedAvailability(
   const store = await getAvailabilityStore();
   if (!store) return;
   try {
-    const entry: CacheEntry = { slots, expiresAt: Date.now() + ttlSeconds * 1000 };
+    const entry: CacheEntry = {
+      slots,
+      expiresAt: Date.now() + ttlSeconds * 1000,
+    };
     await store.setJSON(key, entry);
   } catch {
     // Cache write failure is non-fatal
@@ -81,7 +87,9 @@ export async function invalidateAvailabilityCache(): Promise<void> {
   if (!store) return;
   try {
     const { blobs } = await store.list();
-    await Promise.allSettled(blobs.map((b: { key: string }) => store.delete(b.key)));
+    await Promise.allSettled(
+      blobs.map((b: { key: string }) => store.delete(b.key)),
+    );
   } catch {
     // Non-fatal — worst case: stale data served until TTL expires
   }

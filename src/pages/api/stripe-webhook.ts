@@ -3,6 +3,10 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import type Stripe from 'stripe';
 import { getStripe } from '../../lib/stripe';
+import {
+  isAuthorizedLocalMockRequest,
+  MOCK_WEBHOOK_TOKEN_HEADER,
+} from '../../lib/mock-mode.server';
 import { supabaseAdmin } from '../../lib/supabase';
 import { logger } from '../../lib/logger';
 import { getTypeLabel, getModeLabel } from '../../lib/pricing';
@@ -140,11 +144,10 @@ export const POST: APIRoute = async ({ request }) => {
   });
 };
 
-export const GET: APIRoute = async ({ url }) => {
-  const isMockMode =
-    import.meta.env.DEV && import.meta.env.GOOGLE_CALENDAR_MOCK === 'true';
-  if (!isMockMode) {
-    return new Response('Mode mock non activé', { status: 403 });
+export const GET: APIRoute = async ({ request, url }) => {
+  const capability = request.headers.get(MOCK_WEBHOOK_TOKEN_HEADER);
+  if (!isAuthorizedLocalMockRequest(url, capability)) {
+    return new Response('Accès mock refusé', { status: 403 });
   }
 
   const mockEnabled = url.searchParams.get('mock') === '1';
@@ -162,10 +165,19 @@ export const GET: APIRoute = async ({ url }) => {
     const eventId = `evt_mock_${appointmentId.replace(/[^a-z0-9]/gi, '').slice(0, 20)}`;
     await handlePaymentSucceeded(appointmentId, paymentIntentId, eventId);
 
-    return new Response(JSON.stringify({ ok: true, mocked: true, appointmentId }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        mocked: true,
+        appointmentId,
+        paymentIntentId,
+        eventId,
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
   } catch (err) {
     logger.error('stripe-webhook: mock GET handler failed', { appointmentId }, err);
     return new Response(JSON.stringify({ ok: false, error: 'Erreur interne mock' }), {

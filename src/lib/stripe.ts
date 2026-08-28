@@ -6,6 +6,11 @@
  */
 
 import Stripe from 'stripe';
+import {
+  getMockWebhookToken,
+  isCalendarMockEnabled,
+  MOCK_WEBHOOK_TOKEN_QUERY_PARAM,
+} from './mock-mode.server.js';
 
 // ---------------------------------------------------------------------------
 // Lazy initialization — this module must be importable from runtimes where
@@ -120,13 +125,23 @@ export async function createAppointmentPaymentLink(
   const { appointmentId, amount, description, successUrl } = params;
   const redirectUrl = buildStripeSuccessUrl(successUrl);
 
-  // Dev/test bypass: return a mock payment link when Stripe key is placeholder
-  if (isStripeMock()) {
+  // Local development bypass: never activate from a deployed build.
+  if (isStripeMock() && isCalendarMockEnabled()) {
+    const mockWebhookToken = getMockWebhookToken();
+    if (!mockWebhookToken) {
+      throw new Error(
+        'MOCK_WEBHOOK_TOKEN doit être configuré pour utiliser le paiement simulé local.',
+      );
+    }
     console.warn('[stripe] 🔧 Mode dev — lien de paiement simulé (clé Stripe placeholder)');
     const mockUrl = withQueryParam(
-      withQueryParam(redirectUrl, 'mock', '1'),
-      'appointment_id',
-      appointmentId,
+      withQueryParam(
+        withQueryParam(redirectUrl, 'mock', '1'),
+        'appointment_id',
+        appointmentId,
+      ),
+      MOCK_WEBHOOK_TOKEN_QUERY_PARAM,
+      mockWebhookToken,
     );
     return {
       id: `mock_pl_${appointmentId}`,
