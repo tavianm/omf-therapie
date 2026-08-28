@@ -1,0 +1,52 @@
+---
+title: "fix(admin): création RDV 504 — traitement post-INSERT + rattrapage automatique des invitations"
+issue: 126
+status: approved
+tier: F-lite
+date: 2026-08-28
+---
+
+## Problem
+
+Le `POST /api/admin/appointments/` enchaîne séquentiellement des étapes en base (session, validation, éligibilité, conflits, INSERT) puis des appels d'API externes (Google Calendar, Stripe pour la vidéo, Resend avec jusqu'à 3 tentatives, re-lecture finale) — le tout dans une seule fonction Netlify soumise au délai d'exécution (~10 s). Quand un service externe traîne, la passerelle renvoie un **504 à la modal admin** et tue la fonction en cours, à un point imprévisible de la chaîne.
+
+Incident production du 2026-08-28 : tentative 1 tuée *après* l'INSERT (RDV `confirmed` présentiel créé sans événement Google Calendar ni email patient — orphelin `1fd4e5f1-…`), tentative 2 tuée *avant* l'INSERT (rien en base). Le sweep `reconcile-confirmations` (#98) ne rattrape que les `payment_received` (`confirmation_sent_at IS NULL`) : les invitations (`confirmed` présentiel, `payment_pending` vidéo) n'ont **aucun filet** — un envoi perdu l'est définitivement.
+
+Impact observable : patient sans confirmation ni lien de paiement possible, créneau absent de l'agenda de la praticienne (risque de double réservation), praticienne tentée de retenter à l'aveugle.
+
+## Who
+
+- **Primaire :** la praticienne (admin) — crée des RDV manuels via la modal « Nouveau rendez-vous » ; subit les 504 et leurs effets partiels.
+- **Secondaire :** les patients — reçoivent (ou pas) invitation/lien de paiement ; l'équipe technique — doit identifier l'étape fautive dans les logs.
+
+## Constraints
+
+- Runtime : fonction Netlify synchrone (~10 s de budget) ; les étapes externes ne peuvent pas rester dans la request critique.
+- Patron d'idempotence L2 existant (`confirmation_sent_at`, migration 011) à étendre, pas réinventer ; le sweep `reconcile-confirmations` tourne déjà horairement.
+- Migration à appliquer manuellement (convention 002+), idempotente, avec backfill des RDV existants (sinon le sweep étendu re-spammerait l'historique).
+- Fire-and-forget **structuré** : pas de floating promise silencieuse — chaque étape loggée début/fin/durée/échec, rattrapable par le sweep.
+- Site en production pour une practicienne seule : pas de file d'attente externe (pas d'infra nouvelle — QLess/SQS hors scope).
+
+## Out of Scope
+
+- Refonte générale des helpers HTTP / validation zod (#84) et migration logger.* (#108) — ce frame n'aligne que les logs du endpoint concerné.
+- Le flux de réservation patient (`/api/appointments/`, `/rendez-vous`) — seul le parcours admin est touché.
+- Paiements/confirmation post-Stripe (webhook + sweep existant restent tels quels).
+- Augmentation du délai d'exécution Netlify (palliatif écarté, voir Alternative).
+
+## Premise Validity
+
+*(Valeurs par défaut — questions restées sans réponse à l'interview, révisables à l'approbation.)*
+
+**Success in 6 months :** zéro 504 sur `POST /api/admin/appointments/` dans les logs Netlify ; et aucun RDV à venir (créé < 48 h) ne reste `invitation_sent_at IS NULL` plus d'une heure après sa création (passage du sweep horaire). Vérifiable par requête SQL + logs.
+
+**Failure in 6 months :** l'incident du 28 août se reproduit à l'identique — un timeout laisse un RDV en base sans email ni agenda ET non rattrapé dans l'heure (une occurrence de `invitation_sent_at NULL > 48 h` sur un RDV à venir suffit à invalider la prémisse).
+
+**Simplest alternative :** lever le timeout de la fonction Netlify (+ fire-and-forget naïf sans sweep).
+**Why not simplest :** ça ne fait que repousser la limite — les étapes externes restent dans la fenêtre de la request, et tout échec d'envoi reste perdu à jamais puisqu'il n'existe aucun rattrapage des invitations. C'est exactement la défaillance observée.
+
+## Complexity
+
+**Tier: F-lite** — Scope clair, un seul domaine (flux de création admin) mais ~6 fichiers : endpoint API, migration SQL, extension du sweep cron, lib notifications, UI de la modal, tests. Pas de pattern inconnu : le patron L2 + sweep existe déjà (#98) et est réutilisé.
+
+Signals observés : un domaine métier unique ; patron existant à étendre ; pas d'architecture nouvelle ; périmètre fichier > 3 (exclut S) ; pas d'inconnues multi-domaines (exclut F-full).
