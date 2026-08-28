@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:low": "node scripts/generate-build-env.mjs && vitest run --pool=threads --maxWorkers=1 --no-file-parallelism",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "astro check",
