@@ -3,7 +3,12 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { auth } from '../../../../lib/auth';
 import { isAdminSession } from '../../../../lib/authz';
-import { updateManualSlot, deleteManualSlot, invalidateSlotCache } from '../../../../lib/manual-slots';
+import {
+  updateManualSlot,
+  deleteManualSlot,
+  invalidateSlotCache,
+  NotFoundError,
+} from '../../../../lib/manual-slots';
 import type { UpdateManualSlotData } from '@/types/manual-slots';
 
 function errorResponse(status: number, message: string): Response {
@@ -31,11 +36,18 @@ export const PATCH: APIRoute = async ({ params, request }) => {
   try {
     const data = await request.json();
 
+    if (Object.prototype.hasOwnProperty.call(data, 'deleted_at')) {
+      return errorResponse(400, 'Le champ deleted_at ne peut pas être modifié');
+    }
+
     // Validate period if provided
     if (data.period !== undefined) {
       const validPeriods = ['morning', 'afternoon', 'all_day'];
       if (!validPeriods.includes(data.period)) {
-        return errorResponse(400, 'Period invalide (valeurs acceptées: morning, afternoon, all_day)');
+        return errorResponse(
+          400,
+          'Period invalide (valeurs acceptées: morning, afternoon, all_day)',
+        );
       }
     }
 
@@ -44,10 +56,6 @@ export const PATCH: APIRoute = async ({ params, request }) => {
 
     if (data.period !== undefined) {
       updateData.period = data.period;
-    }
-
-    if (data.deleted_at !== undefined) {
-      updateData.deleted_at = data.deleted_at;
     }
 
     // Update the manual slot
@@ -61,14 +69,18 @@ export const PATCH: APIRoute = async ({ params, request }) => {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    console.error('[admin/time-slots/[id]] Erreur lors de la mise à jour du créneau:', error);
-
-    // Check if it's a "not found" error from the database
-    if (error instanceof Error && error.message.includes('Failed to update manual slot')) {
+    if (error instanceof NotFoundError) {
       return errorResponse(404, 'Créneau introuvable');
     }
 
-    return errorResponse(500, 'Erreur lors de la mise à jour du créneau horaire');
+    console.error(
+      '[admin/time-slots/[id]] Erreur lors de la mise à jour du créneau:',
+      error,
+    );
+    return errorResponse(
+      500,
+      'Erreur lors de la mise à jour du créneau horaire',
+    );
   }
 };
 
@@ -96,13 +108,17 @@ export const DELETE: APIRoute = async ({ params, request }) => {
 
     return new Response(null, { status: 204 });
   } catch (error) {
-    console.error('[admin/time-slots/[id]] Erreur lors de la suppression du créneau:', error);
-
-    // Check if it's a "not found" error from the database
-    if (error instanceof Error && error.message.includes('Failed to delete manual slot')) {
+    if (error instanceof NotFoundError) {
       return errorResponse(404, 'Créneau introuvable');
     }
 
-    return errorResponse(500, 'Erreur lors de la suppression du créneau horaire');
+    console.error(
+      '[admin/time-slots/[id]] Erreur lors de la suppression du créneau:',
+      error,
+    );
+    return errorResponse(
+      500,
+      'Erreur lors de la suppression du créneau horaire',
+    );
   }
 };
