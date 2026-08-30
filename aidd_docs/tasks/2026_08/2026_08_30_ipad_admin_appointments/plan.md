@@ -1,6 +1,6 @@
 ---
 objective: "L’administration des rendez-vous reste pleinement utilisable sur iPad lors d’une création et la liste des patients dispose d’une recherche instantanée équivalente à celle des rendez-vous."
-status: implemented
+status: reviewed
 ---
 
 # Plan: Corriger l’administration des rendez-vous sur iPad
