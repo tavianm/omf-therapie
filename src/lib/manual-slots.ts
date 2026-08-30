@@ -101,6 +101,7 @@ export async function updateManualSlot(
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
+    .is('deleted_at', null)
     .select()
     .maybeSingle();
 
@@ -127,6 +128,7 @@ export async function deleteManualSlot(id: string): Promise<ManualTimeSlot> {
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
+    .is('deleted_at', null)
     .select()
     .maybeSingle();
 

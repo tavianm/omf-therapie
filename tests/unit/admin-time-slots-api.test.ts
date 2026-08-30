@@ -129,6 +129,27 @@ describe('PATCH /api/admin/time-slots/[id]/', () => {
 });
 
 describe('DELETE /api/admin/time-slots/[id]/', () => {
+  it('returns 204 once, then 404 when the same slot is already deleted', async () => {
+    h.deleteManualSlot
+      .mockResolvedValueOnce({ id: 'slot-1' })
+      .mockRejectedValueOnce(new NotFoundError());
+
+    const firstResponse = await DELETE({
+      params: { id: 'slot-1' },
+      request: request('DELETE'),
+    } as never);
+    const secondResponse = await DELETE({
+      params: { id: 'slot-1' },
+      request: request('DELETE'),
+    } as never);
+
+    expect(firstResponse.status).toBe(204);
+    expect(secondResponse.status).toBe(404);
+    await expect(secondResponse.json()).resolves.toEqual({
+      error: 'Créneau introuvable',
+    });
+  });
+
   it('maps NotFoundError to 404', async () => {
     h.deleteManualSlot.mockRejectedValue(new NotFoundError());
 
