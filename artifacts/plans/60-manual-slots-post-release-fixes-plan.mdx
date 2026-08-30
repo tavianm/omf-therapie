@@ -13,7 +13,7 @@ generated: "2026-07-22T00:00:00Z"
 Repair the 9 blockers from the #59 post-merge review: typed errors + lib
 contract (Slice 1) unlock API status mapping (Slice 2); frontend
 robustness (Slice 3), WAI-ARIA tablist (Slice 4), and a tautology-free
-regression test (Slice 5) follow in parallel. Plus a new migration `012`
+regression test (Slice 5) follow in parallel. Plus a new migration `015`
 with a dedupe pre-pass and partial unique index. 14 binary ACs.
 
 ## Architecture
@@ -42,7 +42,7 @@ with a known root cause. No exploratory work.
 
 | Agent | Task count | Files |
 |-------|-----------|-------|
-| backend-dev-A | 6 | `src/lib/manual-slots.ts`, `src/types/manual-slots.ts`, `src/pages/api/admin/time-slots/[id].ts`, `src/pages/api/admin/time-slots/index.ts`, `supabase/migrations/012_manual_slots_unique.sql` |
+| backend-dev-A | 6 | `src/lib/manual-slots.ts`, `src/types/manual-slots.ts`, `src/pages/api/admin/time-slots/[id].ts`, `src/pages/api/admin/time-slots/index.ts`, `supabase/migrations/015_manual_slots_unique.sql` |
 | frontend-dev-A | 3 | `src/components/admin/TimeSlotManager.tsx`, `src/pages/mes-rdvs.astro` |
 | tester-A | 3 | `tests/unit/manual-slots.test.ts` (new), `tests/unit/google-calendar.test.ts` |
 
@@ -61,7 +61,7 @@ API surface or user-facing copy beyond toasts already specified.
 |------|---------|--------|-------|
 | 1 | start | 3 ∥ | backend-dev-A: T1+T2 (lib+types, sequential same-file) · frontend-dev-A: T6 (B7+B8 TimeSlotManager) · tester-A: T8 (B1 regression test, independent) |
 | 2 | Wave 1 done | 2 ∥ | backend-dev-A: T3 (API mapping, depends on lib T1) · frontend-dev-A: T7 (B9 tablist, independent of T6) |
-| 3 | Wave 2 done | 2 ∥ | backend-dev-A: T4 (migration 012) · tester-A: T9 (lib unit tests, depends on T1) → then backend-dev-A: T5 (log-level) |
+| 3 | Wave 2 done | 2 ∥ | backend-dev-A: T4 (migration 015) · tester-A: T9 (lib unit tests, depends on T1) → then backend-dev-A: T5 (log-level) |
 
 ### Budget — per task
 
@@ -69,7 +69,7 @@ API surface or user-facing copy beyond toasts already specified.
 |------|-------|-------|----------|--------|
 | T1 lib typed errors + B4/B5 | ~6 edits | judgmental | 12 | — |
 | T2 API mapping (B2/B3/B6) | ~5 edits | judgmental | 10 | — |
-| T3 migration 012 + dedupe | 1 file | bounded | 4 | — |
+| T3 migration 015 + dedupe | 1 file | bounded | 4 | — |
 | T4 log-level (non-blocking) | 1 edit | trivial | 1 | — |
 | T5 TimeSlotManager B7+B8 | ~8 edits | judgmental | 14 | — |
 | T6 mes-rdvs tablist B9 | ~1 script block | judgmental | 8 | — |
@@ -94,7 +94,8 @@ create lib↔api coordination overhead with no focus benefit.
 
 ## Consistency Report
 
-- Criteria covered: 14/14 (B1–B9, authz-regression, log-level, lint, test, audit:a11y)
+- Criteria covered: 14/14 (B1–B9, authz-regression, log-level, lint, test,
+  targeted B9 Playwright journey, informational global audit baseline)
 - Uncovered criteria: none
 - Tasks without spec backing: none
 - Gold plating exemptions applied: 0
@@ -121,14 +122,16 @@ create lib↔api coordination overhead with no focus benefit.
   }
   // inline Paris-date helper (B5) — NOT a shared export (out-of-scope)
   function parisDateKey(date: Date): string { /* Intl.DateTimeFormat fr-FR YYYY-MM-DD Europe/Paris */ }
-  // deleteManualSlot: .select().maybeSingle(); null → throw new NotFoundError()
-  // updateManualSlot: remove deleted_at branch; .select().maybeSingle(); null → throw NotFoundError
+  // deleteManualSlot: filter deleted_at IS NULL; .select().maybeSingle(); null → NotFoundError
+  // updateManualSlot: remove deleted_at branch; filter active rows; null → NotFoundError
   // createManualSlot: surface error.code === '23505' (throw Error with .code)
   // fetchManualSlots: slice via parisDateKey(from)/parisDateKey(to)
   // types/manual-slots.ts: remove deleted_at from UpdateManualSlotData
   ```
 - **Verify:** `npm run typecheck 2>&1 | grep -c 'error' ; grep -q 'NotFoundError' src/lib/manual-slots.ts && echo OK`
-- **Expected:** typecheck clean (or no NEW errors); NotFoundError present; UpdateManualSlotData has no deleted_at.
+- **Expected:** typecheck clean (or no NEW errors); NotFoundError present;
+  UpdateManualSlotData has no deleted_at; deleted rows cannot be updated or
+  deleted a second time.
 - **Time:** 8 min | **Difficulty:** 4
 - **Traces:** SC-B2, SC-B3, SC-B4, SC-B5, S1→S5 | **Phase:** GREEN
 
@@ -147,15 +150,15 @@ create lib↔api coordination overhead with no focus benefit.
 - **Traces:** SC-B2, SC-B3, SC-B4, SC-B6, N1→N3 | **Phase:** GREEN
 - **Depends on:** T1 (lib throws NotFoundError + surfaces .code)
 
-#### Task 3: Migration 012 — dedupe pre-pass + partial unique index (B6) → backend-dev-A
-- **File:** `supabase/migrations/012_manual_slots_unique.sql` (CREATE)
+#### Task 3: Migration 015 — dedupe pre-pass + partial unique index (B6) → backend-dev-A
+- **File:** `supabase/migrations/015_manual_slots_unique.sql` (CREATE)
 - **Snippet:** (mirror 010_payment_intent_unique.sql structure)
   ```sql
   -- 1. Audit table (CTAS) capturing duplicate active rows
   -- 2. Soft-delete extras keeping latest (created_at DESC, id DESC) per (slot_date, period) WHERE deleted_at IS NULL
   -- 3. CREATE UNIQUE INDEX IF NOT EXISTS ... ON manual_time_slots (slot_date, period) WHERE deleted_at IS NULL
   ```
-- **Verify:** `test -f supabase/migrations/012_manual_slots_unique.sql && grep -q 'IF NOT EXISTS' supabase/migrations/012_manual_slots_unique.sql && grep -q '_audit_012' supabase/migrations/012_manual_slots_unique.sql && echo OK`
+- **Verify:** `test -f supabase/migrations/015_manual_slots_unique.sql && grep -q 'IF NOT EXISTS' supabase/migrations/015_manual_slots_unique.sql && grep -q '_audit_015_manual_slots_dedup' supabase/migrations/015_manual_slots_unique.sql && echo OK`
 - **Expected:** file exists; IF NOT EXISTS present; audit table created; partial predicate WHERE deleted_at IS NULL.
 - **Time:** 5 min | **Difficulty:** 3
 - **Traces:** SC-B6 | **Phase:** GREEN
@@ -198,8 +201,9 @@ create lib↔api coordination overhead with no focus benefit.
   // keydown on tablist: ArrowRight/ArrowLeft → move focus + activate;
   //   Home/End → first/last; activate calls setActiveTab + button.focus()
   ```
-- **Verify:** `grep -q 'ArrowRight\|ArrowLeft' src/pages/mes-rdvs.astro && grep -q 'tabindex' src/pages/mes-rdvs.astro && echo OK`
-- **Expected:** arrow handlers present; tabindex managed; focus moved on activate.
+- **Verify:** `npx playwright test e2e/manual-slots.spec.ts --grep "Dashboard tablist" --project=chromium`
+- **Expected:** the real dashboard script passes the blocking keyboard journey;
+  arrow handlers are present, tabindex is managed, and focus moves on activate.
 - **Time:** 8 min | **Difficulty:** 4
 - **Traces:** SC-B9, U5 | **Phase:** GREEN
 
@@ -232,10 +236,22 @@ create lib↔api coordination overhead with no focus benefit.
   // fetchManualSlots: assert query uses parisDateKey-derived bounds (spy on .gte/.lte)
   ```
 - **Verify:** `npm run test -- manual-slots 2>&1 | tail -5`
-- **Expected:** new test file runs; covers NotFoundError (B2/B3), 23505 (B6), Paris-date slice (B5).
+- **Expected:** new test file runs; covers NotFoundError for missing and
+  already-deleted rows (B2/B3), 23505 (B6), Paris-date slice (B5).
 - **Time:** 8 min | **Difficulty:** 4
 - **Traces:** SC-B2, SC-B3, SC-B5, SC-B6 | **Phase:** GREEN
 - **Depends on:** T1 (lib contract stable)
+
+## Validation Contract
+
+- Blocking for issue #60: targeted unit/API regressions, the full project
+  test/lint/typecheck/build gates, and the real-script Playwright B9 keyboard
+  journey.
+- Informational for issue #60: `npm run audit:a11y` against the public site.
+  Its pre-existing baseline is 51 contrast errors and 598 warnings, so a zero
+  process exit must not be described as a green WCAG audit.
+- WCAG 2.1 AA remains a project requirement. Repairing unrelated global
+  contrast findings or changing the audit infrastructure is outside #60.
 
 ## Task Seeding Blueprint
 
@@ -276,7 +292,7 @@ create lib↔api coordination overhead with no focus benefit.
      micro-tasks per the blueprint wave order. -->
 - T1: backend-dev-A · lib typed errors (B2/B3/B4/B5) — Wave 1
 - T2: backend-dev-A · API status mapping (B2/B3/B6) — Wave 2, blockedBy T1
-- T3: backend-dev-A · migration 012 + dedupe (B6) — Wave 3
+- T3: backend-dev-A · migration 015 + dedupe (B6) — Wave 3
 - T4: backend-dev-A · log-level bump (non-blocking) — Wave 3, blockedBy T3
 - T5: frontend-dev-A · TimeSlotManager B7+B8 — Wave 1
 - T6: frontend-dev-A · mes-rdvs tablist B9 — Wave 2
