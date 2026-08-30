@@ -111,6 +111,8 @@
 #   `invitation_sent_at IS NULL` (créés < 48h, à venir).
 #   Requiert : SUPABASE_DATABASE_URL, SUPABASE_SERVICE_ROLE_KEY (écriture
 #              invitation_sent_at), RESEND_API_KEY, RESEND_FROM_EMAIL,
+#              ADMIN_EMAIL (copie thérapeute en BCC des emails de
+#              rattrapage — parité avec sendEmail),
 #              BETTER_AUTH_SECRET (signature des liens .ics de l'email —
 #              validée au démarrage, abort si absente),
 #              STRIPE_SECRET_KEY (étape lien de paiement du pipeline délégué —

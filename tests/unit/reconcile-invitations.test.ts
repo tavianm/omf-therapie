@@ -589,6 +589,47 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
     });
   });
 
+  describe('admin BCC parity (makeSendFnWithCapture vs sendEmail)', () => {
+    // Recette 2026-08-30 : les emails de rattrapage partaient sans la copie
+    // thérapeute — le BCC ADMIN_EMAIL est un invariant de transport de
+    // sendEmail (resend.ts) que le wrapper DI doit répliquer.
+    it('BCCs ADMIN_EMAIL on rattrapage emails (parity with sendEmail)', async () => {
+      vi.stubEnv('ADMIN_EMAIL', 'therapeute@omf-therapie.fr');
+      const appt = makeAppt({ patient_email: 'patient@example.com' });
+      supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
+
+      await handler();
+
+      expect(resendSend).toHaveBeenCalledTimes(1);
+      const payload = resendSend.mock.calls[0][0];
+      expect(payload.to).toEqual(['patient@example.com']);
+      expect(payload.bcc).toEqual(['therapeute@omf-therapie.fr']);
+    });
+
+    it('adds no bcc when ADMIN_EMAIL is empty', async () => {
+      vi.stubEnv('ADMIN_EMAIL', '');
+      const appt = makeAppt({ patient_email: 'patient@example.com' });
+      supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
+
+      await handler();
+
+      const payload = resendSend.mock.calls[0][0];
+      expect(payload.bcc).toBeUndefined();
+    });
+
+    it('does not duplicate the admin when they are already the recipient', async () => {
+      vi.stubEnv('ADMIN_EMAIL', 'therapeute@omf-therapie.fr');
+      const appt = makeAppt({ patient_email: 'Therapeute@OMF-Therapie.fr' });
+      supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
+
+      await handler();
+
+      const payload = resendSend.mock.calls[0][0];
+      expect(payload.to).toEqual(['therapeute@omf-therapie.fr']);
+      expect(payload.bcc).toBeUndefined();
+    });
+  });
+
   describe('GOOGLE_CALENDAR_MOCK=true (dev-only calendar skip)', () => {
     it('injects a console.warn-ing no-op calendar fn, never touches the real module, and still reconciles the row', async () => {
       process.env.GOOGLE_CALENDAR_MOCK = 'true';

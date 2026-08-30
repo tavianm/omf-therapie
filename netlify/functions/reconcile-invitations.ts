@@ -120,18 +120,36 @@ export const config: Config = {
  * capture récupérant la dernière erreur brute Resend. Le pipeline avalle les
  * erreurs email (runStep) — le sweep lit `state.lastError` pour classifier
  * poison (4xx permanent → échappatoire) vs retryable (5xx/429 → passage suivant).
+ *
+ * Parité transport avec `sendEmail` (src/lib/resend.ts) : ADMIN_EMAIL est
+ * ajouté en BCC de chaque email patient sauf s'il est déjà destinataire —
+ * le flux POST obtient ce BCC via sendEmail ; sans cette réplication, la
+ * thérapeute perdrait sa copie sur les emails de rattrapage.
  */
 function makeSendFnWithCapture(resend: Resend, fromEmail: string) {
   const state: { lastError: ResendApiError | null } = { lastError: null };
+  const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const sendFn = async (params: SendEmailParams): Promise<SendEmailResult> => {
     const { to, bcc, subject, react, replyTo, threadKey, idempotencyKey } =
       params;
     state.lastError = null;
+    const toList = (Array.isArray(to) ? to : [to]).map(email =>
+      email.trim().toLowerCase(),
+    );
+    const bccList = (bcc ? (Array.isArray(bcc) ? bcc : [bcc]) : []).map(email =>
+      email.trim(),
+    );
+    const adminAlreadyTargeted =
+      !!adminEmail &&
+      (toList.includes(adminEmail) ||
+        bccList.some(email => email.toLowerCase() === adminEmail));
+    const resolvedBcc =
+      adminEmail && !adminAlreadyTargeted ? [...bccList, adminEmail] : bccList;
     const { data, error } = await resend.emails.send(
       {
         from: fromEmail,
-        to: Array.isArray(to) ? to : [to],
-        ...(bcc ? { bcc: Array.isArray(bcc) ? bcc : [bcc] } : {}),
+        to: toList,
+        ...(resolvedBcc.length > 0 ? { bcc: resolvedBcc } : {}),
         subject,
         react,
         ...(replyTo ? { replyTo } : {}),
