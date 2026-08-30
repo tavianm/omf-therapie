@@ -10,7 +10,7 @@ import { sendEmail, buildAppointmentConversationSubject } from '../../../lib/res
 import { generateGoogleCalendarLink, generateOutlookCalendarLink, generateAppleCalendarInviteLink, CABINET_ADDRESS } from '../../../lib/ics';
 import { createSecureLinkToken, verifySecureLinkToken } from '../../../lib/secure-links';
 import { getTypeLabel, getModeLabel, calculatePrice } from '../../../lib/pricing';
-import { stripe, createAppointmentPaymentLink } from '../../../lib/stripe';
+import { createAppointmentPaymentLink, getStripe } from '../../../lib/stripe';
 import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from '../../../lib/google-calendar';
 import { hasAppointmentConflict } from '../../../lib/appointment-conflicts';
 import { isCabinetEligibleSlot } from '../../../lib/appointment-eligibility';
@@ -46,6 +46,29 @@ function jsonResponse(data: unknown, status = 200): Response {
  */
 function onCacheInvalidateError(err: unknown): void {
   logger.error('appointments/patch: availability cache invalidation failed', {}, err);
+}
+
+/**
+ * Pose le drapeau L2 `invitation_sent_at` (set-once, issue #126) après un
+ * envoi d'email patient réussi par cette voie (confirm / accept_reschedule).
+ * Sans lui, le sweep `reconcile-invitations` verrait la ligne
+ * `invitation_sent_at IS NULL` et re-mailerait le patient (email dupliqué +
+ * clé d'idempotence L1 différente).
+ * Non fatal : si l'update échoue, on loggue et on continue — la réponse HTTP
+ * prime, le cron de rattrapage reprend le relais (même patron que le POST admin).
+ */
+async function markInvitationSent(appointmentId: string, emailSent: boolean): Promise<void> {
+  if (!emailSent) return;
+  try {
+    const { error } = await supabaseAdmin
+      .from('appointments')
+      .update({ invitation_sent_at: new Date().toISOString() })
+      .eq('id', appointmentId)
+      .is('invitation_sent_at', null);
+    if (error) throw error;
+  } catch (err) {
+    logger.error('appointments/patch: invitation_sent_at set-once update failed', { appointmentId }, err);
+  }
 }
 
 /** Construit l'événement ICS pour un rendez-vous confirmé */
@@ -288,7 +311,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     // Envoyer email de demande de paiement si payment_pending (séance vidéo)
     if (newStatus === 'payment_pending' && updatedAppt.stripe_payment_link_url) {
-      await sendEmail({
+      const emailResult = await sendEmail({
         to: updatedAppt.patient_email,
         threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
@@ -306,6 +329,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           stripePaymentUrl: updatedAppt.stripe_payment_link_url,
         }),
       });
+      // C5 : invitation partie par cette voie — drapeau L2 set-once (non fatal).
+      await markInvitationSent(id, emailResult.success === true);
     }
 
     // Envoyer confirmation seulement si status final = confirmed (pas payment_pending)
@@ -321,7 +346,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       });
       const appleCalendarLink = generateAppleCalendarInviteLink(baseUrl, updatedAppt.id, inviteToken);
 
-      await sendEmail({
+      const emailResult = await sendEmail({
         to: updatedAppt.patient_email,
         threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
@@ -344,6 +369,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           cabinetAddress: updatedAppt.appointment_mode === 'in-person' ? CABINET_ADDRESS : undefined,
         }),
       });
+      // C5 : invitation partie par cette voie — drapeau L2 set-once (non fatal).
+      await markInvitationSent(id, emailResult.success === true);
     }
 
     return jsonResponse({ appointment: updatedAppt, message: newStatus === 'confirmed' ? 'Rendez-vous confirmé.' : 'Lien de paiement à envoyer au patient.' });
@@ -662,7 +689,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // Expire l'ancien Payment Link Stripe s'il existe (évite le double-paiement)
     if (appointment.stripe_payment_link_id) {
       try {
-        await stripe.paymentLinks.update(appointment.stripe_payment_link_id, { active: false });
+        await getStripe()?.paymentLinks.update(appointment.stripe_payment_link_id, { active: false });
       } catch (stripeErr) {
         logger.error('appointments/patch: Stripe Payment Link expiry failed (reschedule)', { appointmentId: id, stripePaymentLinkId: appointment.stripe_payment_link_id }, stripeErr);
         // Non-bloquant : on continue, le lien expiré est préférable à bloquer le report
@@ -907,7 +934,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     // Email : demande de paiement pour les séances vidéo
     if (newStatus === 'payment_pending' && updatedAppt.stripe_payment_link_url) {
-      await sendEmail({
+      const emailResult = await sendEmail({
         to: updatedAppt.patient_email,
         threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
@@ -925,6 +952,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           stripePaymentUrl: updatedAppt.stripe_payment_link_url,
         }),
       });
+      // C5 : invitation partie par cette voie — drapeau L2 set-once (non fatal).
+      await markInvitationSent(id, emailResult.success === true);
     }
 
     // Email : confirmation pour les séances en présentiel
@@ -940,7 +969,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       });
       const appleCalendarLink = generateAppleCalendarInviteLink(baseUrl, updatedAppt.id, inviteToken);
 
-      await sendEmail({
+      const emailResult = await sendEmail({
         to: updatedAppt.patient_email,
         threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
@@ -963,6 +992,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           cabinetAddress: updatedAppt.appointment_mode === 'in-person' ? CABINET_ADDRESS : undefined,
         }),
       });
+      // C5 : invitation partie par cette voie — drapeau L2 set-once (non fatal).
+      await markInvitationSent(id, emailResult.success === true);
     }
 
     return jsonResponse({

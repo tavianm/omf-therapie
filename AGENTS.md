@@ -14,10 +14,15 @@ npm run lint             # ESLint (eslint.config.js, flat config)
 npm run typecheck        # `astro check` — advisory in CI (see #68 for ~20 residual errors)
 npm run test             # Vitest (tests/unit/**, node env)
 npm run test:watch       # Vitest watch mode
+npm run test:low         # Vitest capped to 1 worker — use for local full-suite runs in WSL (see guard below)
+npm run format           # Prettier — write (singleQuote, arrowParens:avoid)
+npm run format:check     # Prettier — check only (advisory; not in CI gate)
 npm run audit:a11y       # Pa11y WCAG audit (needs dev server running) — REQUIRED before UI PRs
 npm run db:start         # Start Postgres + Mailpit via docker compose
 npm run db:reset         # ⚠️ Drops & re-creates schema, replays ONLY 001_init.sql
 ```
+
+> **WSL memory guard (2026-08-28 incident):** the dev VM has ~16 GB RAM; Vitest's default pool spawns a worker per core and `astro build` adds ~2 GB on top. Two concurrent full suites (e.g., parallel agents each running `npm run test`) OOM the VM and **crash WSL mid-task**. Rules — (1) subagents/parallel contexts run ONLY targeted test files: `npx vitest run tests/unit/<file>.test.ts --maxWorkers=1`; never the full suite, `build`, or `audit:*` inside an agent when others may run concurrently. (2) The lead runs full gates once, sequentially: `npm run test:low` → `lint` → `typecheck` → `build`. (3) Check `free -m` if a run dies unexpectedly — an OOM kill is an environment failure, not a code diagnostic. CI (GitHub runners) is unaffected.
 
 **Run `npm run audit:a11y` before any UI/visual PR** — accessibility (WCAG 2.1 AA) is a hard requirement, not a nice-to-have.
 
@@ -89,6 +94,8 @@ Without it, Astro returns an HTML redirect page instead of JSON → `Unexpected 
 **Imports:** path alias `@/*` → `./src/*` (configured in `tsconfig.json`). Both `@/lib/foo` and relative `../lib/foo` are used; relative imports are more prevalent — match the surrounding file.
 
 **TypeScript:** strict mode, no `any`. Interfaces for objects, types for unions/primitives. Optional chaining + nullish coalescing preferred.
+
+**Formatting:** Prettier config in `.prettierrc.json` — `singleQuote: true`, `arrowParens: "avoid"`, plugin `prettier-plugin-astro` for `.astro` files. VSCode `formatOnSave` is safe (the config pins the style). The repo has NOT been globally reformatted yet (historical style drift) — **do not run `npm run format` on the whole repo** as a standalone change; format only the files you actually touch in your PR. `format:check` is advisory (not in the CI gate). Four `.astro` files with complex `<script is:inline>` are excluded in `.prettierignore` (parser limitation of `prettier-plugin-astro@0.14`).
 
 **Astro islands:** `client:load` (above-fold), `client:idle` (below-fold, preferred), `client:visible` (avoid with `useMotionVariants` — visible snap on mobile).
 

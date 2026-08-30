@@ -1,0 +1,38 @@
+# Mirroir de .gitignore pour les artefacts générés — Prettier ne doit ni
+# formater ni réécrire ces chemins.
+dist/
+dist-ssr/
+.astro/
+.netlify/
+node_modules/
+build-env.ts
+netlify/functions/_lib/build-env.ts
+
+# Artefacts d'audit et de test.
+audit-screenshots/
+audit-results.json
+test-results/
+e2e/.pr*.json
+.playwright-mcp/
+
+# Documents (pas du code source) — contiennent des blocs de code exemplatifs
+# qui ne doivent pas être reformatés.
+artifacts/
+*.md
+*.mdx
+CLAUDE.md
+AGENTS.md
+
+# prettier-plugin-astro 0.14.x ne parse pas les fichiers .astro contenant
+# des <script> (is:inline ou non) avec du JS complexe (déclarations de
+# function, IIFE, etc.). Ces 4 fichiers portent des scripts stables qu'on
+# ne veut pas reformater. À réévaluer quand le plugin montera en version
+# ou quand ces blocs seront refactorés.
+src/layouts/Layout.astro
+src/pages/rdv/merci.astro
+src/pages/rdv/accepter-report.astro
+src/components/layout/Footer.astro
+
+# Les locks et configs build ne sont pas du code source.
+package-lock.json
+*.lock

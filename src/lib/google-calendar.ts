@@ -16,6 +16,7 @@ import {
   cabinetEligibility,
   type DayHalf,
 } from './appointment-eligibility.js';
+import { isCalendarMockEnabled } from './mock-mode.server.js';
 
 // ---------------------------------------------------------------------------
 // Erreur typée
@@ -108,10 +109,51 @@ export type AppointmentMode = 'in-person' | 'video';
 export type AppointmentDuration = 60 | 90;
 
 // ---------------------------------------------------------------------------
+// Env access — lazy & runtime-agnostic (issue #126 / T12)
+// ---------------------------------------------------------------------------
+
+/**
+ * Reads an env var at FIRST USE (never at module load) with an Astro → Node
+ * fallback. Netlify scheduled functions (pure Node runtime) have no Vite env
+ * object — a module-scope read would crash at import time, so every
+ * env access in this file must go through this helper (or an explicit DI value).
+ */
+function readEnv(key: string): string | undefined {
+  const fromMeta = (import.meta as { env?: Record<string, string | undefined> }).env?.[key];
+  if (fromMeta !== undefined) return fromMeta;
+  return process.env[key];
+}
+
+// ---------------------------------------------------------------------------
 // Mock mode
 // ---------------------------------------------------------------------------
 
-const MOCK_MODE = import.meta.env.GOOGLE_CALENDAR_MOCK === 'true';
+// ---------------------------------------------------------------------------
+// DI seam (issue #126 / T12)
+// ---------------------------------------------------------------------------
+
+/**
+ * Dependency-injection seam for the future `reconcile-invitations` cron
+ * (Netlify scheduled function, pure Node runtime). The cron builds its own
+ * calendar client from `process.env` and passes it here; all existing callers
+ * keep the previous behavior (client built from env on first use).
+ */
+export interface CalendarClientOptions {
+  /** Explicit googleapis calendar client — defaults to building one from env. */
+  calendar?: calendar_v3.Calendar;
+  /** Explicit calendar id — defaults to GOOGLE_CALENDAR_ID from env. */
+  calendarId?: string;
+}
+
+async function resolveCalendarId(explicit?: string): Promise<string> {
+  const calendarId = explicit ?? readEnv('GOOGLE_CALENDAR_ID');
+  if (!calendarId) {
+    throw new GoogleCalendarError(
+      'Configuration manquante : GOOGLE_CALENDAR_ID non défini.',
+    );
+  }
+  return calendarId;
+}
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -133,11 +175,11 @@ const MIN_NOTICE_MS = 24 * 60 * 60 * 1000;
  * Falls back to bootstrapping from env vars on first run.
  */
 async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | null> {
-  const clientId = import.meta.env.GOOGLE_OAUTH_CLIENT_ID;
-  const clientSecret = import.meta.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  const clientId = readEnv('GOOGLE_OAUTH_CLIENT_ID');
+  const clientSecret = readEnv('GOOGLE_OAUTH_CLIENT_SECRET');
   if (!clientId || !clientSecret) return null;
 
-  const redirectUri = import.meta.env.GOOGLE_OAUTH_REDIRECT_URI ?? 'https://developers.google.com/oauthplayground';
+  const redirectUri = readEnv('GOOGLE_OAUTH_REDIRECT_URI') ?? 'https://developers.google.com/oauthplayground';
   const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 
   // 1. Load persisted tokens from DB
@@ -149,7 +191,7 @@ async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | null> {
 
   if (!tokens) {
     // 2. Bootstrap from env vars on first run
-    const refreshToken = import.meta.env.GOOGLE_OAUTH_REFRESH_TOKEN;
+    const refreshToken = readEnv('GOOGLE_OAUTH_REFRESH_TOKEN');
     if (!refreshToken) return null;
 
     tokens = {
@@ -185,8 +227,8 @@ async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | null> {
       const errData = (err as { response?: { data?: { error?: string } } })?.response?.data;
       if (errData?.error === 'invalid_grant') {
         // AC-3: alert admin — fire and forget (don't block the throw)
-        const adminEmail = import.meta.env.ADMIN_EMAIL as string | undefined;
-        const siteUrl = import.meta.env.SITE_URL ?? 'https://omf-therapie.fr';
+        const adminEmail = readEnv('ADMIN_EMAIL');
+        const siteUrl = readEnv('SITE_URL') ?? 'https://omf-therapie.fr';
         if (adminEmail) {
           const { createElement } = await import('react');
           const { default: CalendarAuthAlert } = await import('../emails/CalendarAuthAlert');
@@ -498,8 +540,9 @@ export async function getAvailableSlots(
   duration: AppointmentDuration,
   mode: AppointmentMode,
   dbBusyPeriods: Array<{ start: string; end: string }> = [],
+  options: CalendarClientOptions = {},
 ): Promise<TimeSlot[]> {
-  if (MOCK_MODE) {
+  if (isCalendarMockEnabled()) {
     console.log('[calendar-mock] getAvailableSlots called — generating slots via shared algorithm');
 
     // Mock = pas de Google Calendar : on réutilise le même moteur de génération
@@ -528,10 +571,7 @@ export async function getAvailableSlots(
     });
   }
 
-  const calendarId = import.meta.env.GOOGLE_CALENDAR_ID;
-  if (!calendarId) {
-    throw new Error('Configuration manquante : GOOGLE_CALENDAR_ID non défini.');
-  }
+  const calendarId = await resolveCalendarId(options.calendarId);
 
   const candidates = await generateCandidateSlots(startDate, endDate, duration, mode);
 
@@ -539,8 +579,7 @@ export async function getAvailableSlots(
     return [];
   }
 
-  const auth = await resolveCalendarAuth();
-  const calendar = google.calendar({ version: 'v3', auth });
+  const calendar = options.calendar ?? google.calendar({ version: 'v3', auth: await resolveCalendarAuth() });
 
   // Une seule requête Freebusy pour toute la plage
   let busyPeriods: Array<{ start: string; end: string }> = [];
@@ -682,18 +721,17 @@ async function pollMeetLink(
 export async function updateCalendarEvent(
   eventId: string,
   patch: { start?: Date; end?: Date; summary?: string },
+  options: CalendarClientOptions = {},
 ): Promise<void> {
-  if (MOCK_MODE) {
+  if (isCalendarMockEnabled()) {
     console.log(`[calendar-mock] Updating event ${eventId}:`, patch);
     return;
   }
 
-  const calendarId = import.meta.env.GOOGLE_CALENDAR_ID;
-  if (!calendarId) throw new GoogleCalendarError('GOOGLE_CALENDAR_ID non défini.');
+  const calendarId = await resolveCalendarId(options.calendarId);
 
   await withCalendarRetry(async () => {
-    const auth = await resolveCalendarAuth();
-    const calendar = google.calendar({ version: 'v3', auth });
+    const calendar = options.calendar ?? google.calendar({ version: 'v3', auth: await resolveCalendarAuth() });
     const body: calendar_v3.Schema$Event = {};
     if (patch.start) body.start = { dateTime: patch.start.toISOString(), timeZone: TIMEZONE };
     if (patch.end) body.end = { dateTime: patch.end.toISOString(), timeZone: TIMEZONE };
@@ -710,18 +748,19 @@ export async function updateCalendarEvent(
 /**
  * Deletes a Google Calendar event (e.g., on decline or cancellation).
  */
-export async function deleteCalendarEvent(eventId: string): Promise<void> {
-  if (MOCK_MODE) {
+export async function deleteCalendarEvent(
+  eventId: string,
+  options: CalendarClientOptions = {},
+): Promise<void> {
+  if (isCalendarMockEnabled()) {
     console.log(`[calendar-mock] Deleting event ${eventId}`);
     return;
   }
 
-  const calendarId = import.meta.env.GOOGLE_CALENDAR_ID;
-  if (!calendarId) throw new GoogleCalendarError('GOOGLE_CALENDAR_ID non défini.');
+  const calendarId = await resolveCalendarId(options.calendarId);
 
   await withCalendarRetry(async () => {
-    const auth = await resolveCalendarAuth();
-    const calendar = google.calendar({ version: 'v3', auth });
+    const calendar = options.calendar ?? google.calendar({ version: 'v3', auth: await resolveCalendarAuth() });
     await calendar.events.delete({
       calendarId,
       eventId,
@@ -736,8 +775,9 @@ export async function deleteCalendarEvent(eventId: string): Promise<void> {
  */
 export async function createCalendarEvent(
   params: CreateEventParams,
+  options: CalendarClientOptions = {},
 ): Promise<CreateEventResult> {
-  if (MOCK_MODE) {
+  if (isCalendarMockEnabled()) {
     console.log(`[calendar-mock] Creating event: ${params.title} at ${params.start}`);
     const { withMeet, appointmentId } = params;
     const eventId = `mock-event-${Date.now()}`;
@@ -749,10 +789,7 @@ export async function createCalendarEvent(
     };
   }
 
-  const calendarId = import.meta.env.GOOGLE_CALENDAR_ID;
-  if (!calendarId) {
-    throw new Error('Configuration manquante : GOOGLE_CALENDAR_ID non défini.');
-  }
+  const calendarId = await resolveCalendarId(options.calendarId);
 
   const attendees = params.attendeeEmail
     ? [{ email: params.attendeeEmail }]
@@ -813,14 +850,15 @@ export async function createCalendarEvent(
   };
 
   // Use OAuth for all event types (Meet and in-person).
-  const oauthAuth = await getPersistedOAuthClient();
-  if (!oauthAuth) {
-    throw new GoogleCalendarError(
-      'OAuth non configuré : impossible de créer le rendez-vous dans l\'agenda.',
-    );
-  }
-
-  const oauthCalendar = google.calendar({ version: 'v3', auth: oauthAuth });
+  const oauthCalendar = options.calendar ?? await (async () => {
+    const oauthAuth = await getPersistedOAuthClient();
+    if (!oauthAuth) {
+      throw new GoogleCalendarError(
+        'OAuth non configuré : impossible de créer le rendez-vous dans l\'agenda.',
+      );
+    }
+    return google.calendar({ version: 'v3', auth: oauthAuth });
+  })();
   try {
     return await upsertEvent(
       oauthCalendar,

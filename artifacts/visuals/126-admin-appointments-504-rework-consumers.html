@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Consommateurs — invitation_sent_at (#126)</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; padding:32px; background:#0d1117; color:#e6edf3; font:14px/1.5 -apple-system,"Segoe UI",sans-serif; }
+  h1 { font-size:18px; color:#7ee787; margin:0 0 4px; }
+  p.sub { color:#8b949e; margin:0 0 28px; font-size:13px; }
+  .hub { display:flex; align-items:center; justify-content:center; gap:0; flex-wrap:wrap; }
+  .hubcore { background:#0c2d5e; border:1px solid #388bfd; border-radius:14px; padding:18px 22px; text-align:center; box-shadow:0 0 22px rgba(56,139,253,.25); margin:0 8px; }
+  .hubcore h2 { margin:0; font-size:15px; color:#79c0ff; font-family:ui-monospace,monospace; }
+  .hubcore small { color:#8b949e; }
+  .arrow { color:#388bfd; font-size:20px; padding:0 4px; }
+  .cols { display:flex; gap:22px; justify-content:center; flex-wrap:wrap; margin-top:26px; }
+  .col h3 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:#8b949e; margin:0 0 10px; text-align:center; }
+  .consumer { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:12px 14px; width:270px; margin-bottom:12px; }
+  .consumer.futur { border-style:dashed; opacity:.75; }
+  .consumer b { font-size:13px; display:block; margin-bottom:4px; }
+  .consumer .f { font-family:ui-monospace,monospace; font-size:11px; color:#c9d1d9; }
+  .consumer .when { font-size:11px; color:#8b949e; margin-top:4px; }
+  .pill { float:right; font-size:10px; padding:1px 7px; border-radius:99px; background:#1f4d2a; color:#7ee787; }
+  .pill.f { background:#3d2d00; color:#d29922; }
+</style>
+</head>
+<body>
+<h1>Carte des consommateurs — appointments.invitation_sent_at</h1>
+<p class="sub">Hub central = le flag L2. Plein = ce changement · pointillé = futur.</p>
+
+<div class="hub">
+  <div class="hubcore"><h2>invitation_sent_at</h2><small>set-once · NULL = à rattraper</small></div>
+</div>
+
+<div class="cols">
+  <div class="col">
+    <h3>Écrivains</h3>
+    <div class="consumer">
+      <b>POST /api/admin/appointments/ <span class="pill">#126</span></b>
+      <span class="f">post-réponse (waitUntil) après email patient livré</span>
+      <div class="when">à la création (≤ qqs s après le 201)</div>
+    </div>
+    <div class="consumer">
+      <b>Sweep phase 2 — invitations <span class="pill">#126</span></b>
+      <span class="f">UPDATE … WHERE invitation_sent_at IS NULL (garde write-race)</span>
+      <div class="when">horaire H:05 · fenêtre 48 h · RDV à venir</div>
+    </div>
+    <div class="consumer">
+      <b>POST — cas avoir (payment_received) <span class="pill">#126</span></b>
+      <span class="f">pose AUSSI confirmation_sent_at (évite doublon phase 1)</span>
+      <div class="when">à la création</div>
+    </div>
+  </div>
+  <div class="col">
+    <h3>Lecteurs</h3>
+    <div class="consumer">
+      <b>Sweep phase 2 — sélection <span class="pill">#126</span></b>
+      <span class="f">filtre invitation_sent_at IS NULL + index partiel 013</span>
+      <div class="when">chaque passage horaire</div>
+    </div>
+    <div class="consumer">
+      <b>Sweep phase 1 — confirmations <span class="pill">#98</span></b>
+      <span class="f">lit confirmation_sent_at (inchangé) ; ignore confirmed/payment_pending</span>
+      <div class="when">chaque passage horaire</div>
+    </div>
+    <div class="consumer futur">
+      <b>UI admin /mes-rdvs <span class="pill f">futur</span></b>
+      <span class="f">badge « invitation en attente » si NULL &gt; 1 h</span>
+      <div class="when">pointillé — hors scope #126</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
