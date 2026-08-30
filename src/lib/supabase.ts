@@ -14,15 +14,17 @@
  * `import.meta.env.*` ne se font plus au module-load mais au 1er accès — permet
  * au sweep Netlify (runtime Node) d'importer `notifications.ts` → `resend.ts`
  * → `supabase.ts` sans crash, car `import.meta.env` est undefined côté cron.
- * Le sweep instancie ses propres clients depuis `process.env` et n'utilise PAS
- * `supabaseAdmin` (il ne fait qu'importer le module pour les types). Le webhook
- * Astro utilise `supabaseAdmin` normalement (import.meta.env y est défini).
+ * #129 : le sweep instancie bien ses propres clients Supabase depuis
+ * `process.env`, MAIS `sendEmail` (persistance des threads email) rejoint
+ * `supabaseAdmin` de façon transitive (~2 allers-retours par email) — le client
+ * lazy-init est donc bel et bien utilisé côté cron (fallback process.env).
  */
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import ws from 'ws';
 
-const realtimeTransport = typeof globalThis.WebSocket === 'undefined' ? ws : undefined;
+const realtimeTransport =
+  typeof globalThis.WebSocket === 'undefined' ? ws : undefined;
 
 // ---------------------------------------------------------------------------
 // Lazy-init — les variables d'env sont lues au 1er accès client, pas au module-load
@@ -37,7 +39,8 @@ function readEnv(key: string): string | undefined {
   // Lit import.meta.env (runtime Astro/Vite) avec fallback process.env (cron Node).
   // Au module-load dans Astro, import.meta.env est défini ; dans le runtime cron,
   // il est undefined — d'où le fallback process.env.
-  const fromMeta = (import.meta as { env?: Record<string, string | undefined> }).env?.[key];
+  const fromMeta = (import.meta as { env?: Record<string, string | undefined> })
+    .env?.[key];
   if (fromMeta !== undefined) return fromMeta;
   return process.env[key];
 }
@@ -56,26 +59,36 @@ function readEnv(key: string): string | undefined {
 // On utilise `any` pour la base de données tant que les types générés
 // ne sont pas disponibles (voir supabase gen types typescript).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const supabase: SupabaseClient<any> = new Proxy({} as SupabaseClient<any>, {
-  get(_target, prop) {
-    if (!cachedSupabase) {
-      const url = readEnv('SUPABASE_DATABASE_URL');
-      const anonKey = readEnv('SUPABASE_ANON_KEY');
-      if (!url) {
-        console.warn('[supabase] ⚠️  SUPABASE_DATABASE_URL est absent. Les appels Supabase échoueront.');
+export const supabase: SupabaseClient<any> = new Proxy(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  {} as SupabaseClient<any>,
+  {
+    get(_target, prop) {
+      if (!cachedSupabase) {
+        const url = readEnv('SUPABASE_DATABASE_URL');
+        const anonKey = readEnv('SUPABASE_ANON_KEY');
+        if (!url) {
+          console.warn(
+            '[supabase] ⚠️  SUPABASE_DATABASE_URL est absent. Les appels Supabase échoueront.',
+          );
+        }
+        if (!anonKey) {
+          console.warn(
+            '[supabase] ⚠️  SUPABASE_ANON_KEY est absent. Le client public ne fonctionnera pas.',
+          );
+        }
+        cachedSupabase = createClient(url ?? '', anonKey ?? '', {
+          // Type skew: @types/ws `WebSocket` (address: string|URL) vs @supabase/realtime-js
+          // `WebSocketLikeConstructor` (address: null). Runtime-compatible — bridge at boundary.
+          ...(realtimeTransport
+            ? { realtime: { transport: realtimeTransport as unknown as never } }
+            : {}),
+        });
       }
-      if (!anonKey) {
-        console.warn('[supabase] ⚠️  SUPABASE_ANON_KEY est absent. Le client public ne fonctionnera pas.');
-      }
-      cachedSupabase = createClient(url ?? '', anonKey ?? '', {
-        // Type skew: @types/ws `WebSocket` (address: string|URL) vs @supabase/realtime-js
-        // `WebSocketLikeConstructor` (address: null). Runtime-compatible — bridge at boundary.
-        ...(realtimeTransport ? { realtime: { transport: realtimeTransport as unknown as never } } : {}),
-      });
-    }
-    return Reflect.get(cachedSupabase, prop);
+      return Reflect.get(cachedSupabase, prop);
+    },
   },
-});
+);
 
 // ---------------------------------------------------------------------------
 // Client admin (service_role) — contourne RLS
@@ -92,26 +105,36 @@ export const supabase: SupabaseClient<any> = new Proxy({} as SupabaseClient<any>
  * Lazy-init : la 1re lecture déclenche la lecture d'env + le `createClient`.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const supabaseAdmin: SupabaseClient<any> = new Proxy({} as SupabaseClient<any>, {
-  get(_target, prop) {
-    if (!cachedSupabaseAdmin) {
-      const url = readEnv('SUPABASE_DATABASE_URL');
-      const serviceKey = readEnv('SUPABASE_SERVICE_ROLE_KEY');
-      if (!url) {
-        console.warn('[supabase] ⚠️  SUPABASE_DATABASE_URL est absent. Les appels Supabase échoueront.');
+export const supabaseAdmin: SupabaseClient<any> = new Proxy(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  {} as SupabaseClient<any>,
+  {
+    get(_target, prop) {
+      if (!cachedSupabaseAdmin) {
+        const url = readEnv('SUPABASE_DATABASE_URL');
+        const serviceKey = readEnv('SUPABASE_SERVICE_ROLE_KEY');
+        if (!url) {
+          console.warn(
+            '[supabase] ⚠️  SUPABASE_DATABASE_URL est absent. Les appels Supabase échoueront.',
+          );
+        }
+        if (!serviceKey) {
+          console.warn(
+            '[supabase] ⚠️  SUPABASE_SERVICE_ROLE_KEY est absent. Le client admin ne fonctionnera pas.',
+          );
+        }
+        cachedSupabaseAdmin = createClient(url ?? '', serviceKey ?? '', {
+          auth: {
+            // Désactive la persistance de session — inutile côté serveur
+            persistSession: false,
+            autoRefreshToken: false,
+          },
+          ...(realtimeTransport
+            ? { realtime: { transport: realtimeTransport as unknown as never } }
+            : {}),
+        });
       }
-      if (!serviceKey) {
-        console.warn('[supabase] ⚠️  SUPABASE_SERVICE_ROLE_KEY est absent. Le client admin ne fonctionnera pas.');
-      }
-      cachedSupabaseAdmin = createClient(url ?? '', serviceKey ?? '', {
-        auth: {
-          // Désactive la persistance de session — inutile côté serveur
-          persistSession: false,
-          autoRefreshToken: false,
-        },
-        ...(realtimeTransport ? { realtime: { transport: realtimeTransport as unknown as never } } : {}),
-      });
-    }
-    return Reflect.get(cachedSupabaseAdmin, prop);
+      return Reflect.get(cachedSupabaseAdmin, prop);
+    },
   },
-});
+);

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Modèle — transport emails rawError (#129)</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; padding:32px; background:#0d1117; color:#e6edf3; font:14px/1.5 -apple-system,"Segoe UI",sans-serif; }
+  h1 { font-size:18px; color:#7ee787; margin:0 0 4px; }
+  p.sub { color:#8b949e; margin:0 0 28px; font-size:13px; }
+  .layer { margin-bottom:28px; }
+  .layer > h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:#8b949e; border-left:3px solid #388bfd; padding-left:8px; margin:0 0 12px; }
+  .layer.side > h2 { border-color:#d29922; }
+  .layer.out > h2 { border-color:#7ee787; }
+  .node { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:14px 16px; display:inline-block; vertical-align:top; margin:0 14px 14px 0; min-width:280px; }
+  .node.core { border-color:#388bfd; box-shadow:0 0 14px rgba(56,139,253,.15); }
+  .node.new { border-color:#7ee787; }
+  .node h3 { margin:0 0 8px; font-size:14px; }
+  .node .tag { float:right; font-size:10px; padding:1px 7px; border-radius:99px; margin-left:6px; }
+  .tag.new { background:#1f4d2a; color:#7ee787; }
+  .tag.frozen { background:#3d2d00; color:#d29922; }
+  .tag.mutable { background:#0c2d5e; color:#79c0ff; }
+  .field { font-family:ui-monospace,monospace; font-size:12px; padding:2px 0; color:#c9d1d9; }
+  .field em { color:#8b949e; font-style:normal; }
+  .field.new { color:#7ee787; }
+  .rel { font-family:ui-monospace,monospace; font-size:11px; color:#8b949e; margin-top:8px; border-top:1px dashed #30363d; padding-top:6px; }
+  .legend { margin-top:8px; font-size:11px; color:#8b949e; }
+  .legend span { margin-right:14px; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; vertical-align:middle; }
+</style>
+</head>
+<body>
+<h1>Modèle de données — seam transport emails (#129)</h1>
+<p class="sub">Layered : cœur (le seam modifié) ↓ états consommés ↓ sorties externes. <span class="dot" style="background:#7ee787"></span>nouveau · <span class="dot" style="background:#79c0ff"></span>mutable · <span class="dot" style="background:#d29922"></span>gelé (contrainte)</p>
+
+<div class="layer">
+  <h2>Cœur — le seam src/lib/resend.ts</h2>
+  <div class="node core">
+    <h3>SendEmailResult <span class="tag mutable">mutable</span></h3>
+    <div class="field">success: boolean</div>
+    <div class="field">id?: string <em>(id Resend)</em></div>
+    <div class="field">error?: string <em>(message lisible, inchangé)</em></div>
+    <div class="field new">rawError?: ResendApiError <em>← NOUVEAU — {name, statusCode, message} brut pour isRetryableResendError()</em></div>
+    <div class="rel">contrat additif — les consommateurs existants (error?: string) inchangés</div>
+  </div>
+  <div class="node core">
+    <h3>sendEmail(params, opts?) <span class="tag mutable">mutable</span></h3>
+    <div class="field new">opts.maxAttempts?: number <em>← NOUVEAU — défaut 3 (statu quo POST/patient), sweeps passent 1 ; clamp min 1</em></div>
+    <div class="field new">lecture env: import.meta.env?.X ?? process.env.X <em>← env-agnostique (RESEND_API_KEY, RESEND_FROM_EMAIL, ADMIN_EMAIL, SMTP_HOST/PORT) — précondition runtime cron</em></div>
+    <div class="field">auto-BCC ADMIN_EMAIL <em>(gelé — invariant existant)</em></div>
+    <div class="field">thread: load/persist email_threads + In-Reply-To/References <em>(gelé)</em></div>
+    <div class="field">idempotencyKey → en-tête Idempotency-Key <em>(gelé)</em></div>
+  </div>
+  <div class="node new">
+    <h3>netlify/functions/_lib/send-fn.ts <span class="tag new">NOUVEAU</span></h3>
+    <div class="field">makeSendFnWithCapture(opts) → { sendFn, state } <em>(nom conservé, demeure unique)</em></div>
+    <div class="field">sendFn = (p) =&gt; sendEmail(p, { maxAttempts: opts?.maxAttempts ?? 1 })</div>
+    <div class="field">state.lastError ← result.rawError ?? null</div>
+    <div class="field">state.lastTo ← destinataires du dernier appel <em>(heuristique patient-vs-thérapeute, #98)</em></div>
+    <div class="rel">adaptateur mince — zéro protocole réimplémenté ; remplace les 2 copies divergentes</div>
+  </div>
+</div>
+
+<div class="layer side">
+  <h2>États consommés (inchangés)</h2>
+  <div class="node">
+    <h3>email_threads <span class="tag frozen">table</span></h3>
+    <div class="field">thread_key, root_message_id, last_message_id, thread_references</div>
+    <div class="rel">désormais racine par TOUT chemin d'envoi (POST ∨ sweep, load-then-insert/update) — la racine existe quel que soit le premier émetteur</div>
+  </div>
+  <div class="node">
+    <h3>ResendApiError / isRetryableResendError <span class="tag frozen">src/lib/resend-errors.ts</span></h3>
+    <div class="field">classification poison (4xx) vs retryable (429/5xx/réseau)</div>
+    <div class="rel">consommée via result.rawError — la capture wrapper ne touche plus le client Resend</div>
+  </div>
+  <div class="node">
+    <h3>appointments.*_sent_at <span class="tag frozen">flags L2 (011/013)</span></h3>
+    <div class="field">invitation_sent_at / confirmation_sent_at — set-once, jamais reset</div>
+    <div class="rel">inchangés par ce lot (poison-escape et garde write-race conservés)</div>
+  </div>
+  <div class="node">
+    <h3>En-tête X-Thread-Key <span class="tag new">SUPPRIMÉ</span></h3>
+    <div class="field">posé par les 2 wrappers actuels — zéro consommateur dans le repo</div>
+    <div class="rel">remplacé par le modèle email_threads (In-Reply-To/References)</div>
+  </div>
+</div>
+
+<div class="layer out">
+  <h2>Sorties externes (gelées)</h2>
+  <div class="node">
+    <h3>Resend API <span class="tag frozen">externe</span></h3>
+    <div class="field">Idempotency-Key: invite:{id}:patient · confirm:{patient|therapist}:{payment_intent}</div>
+    <div class="rel">clés L1 produites en amont (notifications.ts) — inchangées par ce lot</div>
+  </div>
+  <div class="node">
+    <h3>SMTP Mailpit <span class="tag frozen">dev</span></h3>
+    <div class="field">SMTP_HOST activé → les sweeps envoient via Mailpit en dev (delta voulu, parité POST)</div>
+  </div>
+</div>
+</body>
+</html>

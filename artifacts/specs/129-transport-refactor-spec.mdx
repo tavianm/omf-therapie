@@ -1,0 +1,117 @@
+---
+title: "Refactor transport emails — rawError + adaptateurs minces sweeps"
+issue: 129
+status: approved
+tier: F-lite
+date: 2026-08-30
+---
+
+## Context
+
+Promu depuis le frame [129-transport-refactor](../frames/129-transport-refactor-frame.mdx) (approuvé). Lot 1 de l'issue de suivi #129 — les autres advisories (timeout/row, Sentry, `readEnv`, déplacement pipeline, `organizerEmail`, `x-cron-secret`, bornes de tests) restent dans leurs lots.
+
+Faits techniques vérifiés (worktree `feat/129-transport-refactor`, base c0e07dc, revue experte 3 agents) :
+
+- L'envoi d'emails side-effects est **quintuplié** : le vrai transport `sendEmail` (`src/lib/resend.ts`) ; deux wrappers `makeSendFnWithCapture` (`reconcile-confirmations.ts:179`, `reconcile-invitations.ts:129`) ; des envois bruts `resendClient.emails.send` inline dans `send-reminders.ts` (l.235, 277) et `calendar-token-heartbeat.ts` (l.85). Ce lot traite les **deux wrappers** (pattern « capture poison ») ; les deux envois bruts (fire-and-forget, pattern différent) = lot suivant trivial une fois le seam posé.
+- **Racine du duplicatat** : `SendEmailResult` n'expose que `error?: string` (`resend.ts:88-92`) — l'objet erreur Resend brut (avec `statusCode`/`name`) est avalé par `sendEmailViaResend` (l.321), donc les sweeps ne peuvent pas passer par `sendEmail` tout en classifiant poison (4xx permanent) vs retryable (429/5xx/réseau) via `isRetryableResendError`.
+- **Précondition runtime cron** : `sendEmail()` lit `import.meta.env.RESEND_FROM_EMAIL`/`ADMIN_EMAIL` à l'appel (l.363-365) et `getSmtpTransport`/`getResendClient` lisent `import.meta.env.SMTP_*`/`RESEND_API_KEY` (l.37-50) — accès non gardés qui **planteraient** dans le runtime cron Node (`import.meta.env` undefined). Le patron d'accès gardé existe : `(import.meta as { env?: … }).env?.X ?? process.env.X` (`stripe.ts` post-#127, `supabase.ts`).
+- **Divergences constatées entre les copies** : `lastTo` capturé seulement côté confirmations (heuristique patient-vs-thérapeute, l.180-186) ; BCC `ADMIN_EMAIL` répliqué à la main côté invitations seulement (8a84a22) ; retries/backoff et `persistThreadState` absents des deux copies ; commentaire de doc dupliqué à l'identique deux fois dans confirmations (l.132-152, 153-178). Par ailleurs `resend.ts:98-102` redéfinit localement l'interface `ResendApiError` déjà exportée par `resend-errors.ts` — le seam la dédoublonne.
+- `netlify/functions/_lib/` **existe déjà** (`sentry.ts`, `logger.ts`, plus `build-env.ts` généré au build) — convention établie, ignorée par la découverte de fonctions Netlify (préfixe `_`).
+- L'en-tête `X-Thread-Key` envoyé par les deux wrappers n'a **aucun consommateur** dans le repo (grep : zéro lecture hors wrappers). Le vrai modèle de threading (`email_threads` + `In-Reply-To`/`References`) est celui de `sendEmail`.
+- **Couverture de tests asymétrique** : `tests/unit/reconcile-invitations.test.ts` couvre poison-escape et BCC (24 tests) ; `reconcile-confirmations` n'a **aucune suite dédiée** (seules références indirectes dans `cron-schedule-source.test.ts` et `resend-errors.test.ts`) — les tests poison côté confirmations sont **à créer** dans ce lot.
+
+## Goal
+
+Un seul chemin d'envoi d'emails : `sendEmail` expose l'erreur brute (`rawError`) et devient lisible en runtime cron, et les deux sweeps réduisent leurs wrappers en un adaptateur mince partagé (`_lib/send-fn.ts`) qui délègue au vrai transport — héritant de ses invariants (BCC admin, tentatives explicites, threading) au lieu de les réimplémenter. Les 4 flux concernés : **POST post-réponse** (admin), **sweep invitations** (cron 20 h), **sweep confirmations** (#98, cron 5 h), **flux patient/webhook** (déjà sur `sendEmail`, contracts inchangés).
+
+## Users
+
+- **Primaire** : les développeurs/mainteneurs — tout invariant transport futur se déclare une fois dans `sendEmail` et s'applique aux 4 flux.
+- **Secondaire** : la thérapeute (copies BCC fiables sur les flux de rattrapage) et les patientes (threading correct des conversations email quel que soit le chemin d'émission).
+
+## Expected Behavior
+
+1. **Seam `SendEmailResult.rawError`** — champ optionnel typé `ResendApiError` **importé depuis `src/lib/resend-errors.ts`** (supprime la redéfinition locale `resend.ts:98-102`), rempli sur tout échec API Resend (4xx/429/5xx et exception réseau : `{ name: 'network_error', message }`). Contrat **additif** : les consommateurs existants (`error?: string`) sont inchangés. Le chemin SMTP (dev) laisse `rawError` undefined (erreur nodemailer, hors classification Resend). *(Amendement 12, itération fix #1 : deux synths supplémentaires pour l'uniformité « toute erreur Resend-path porte un rawError » — `missing_api_key` à la sortie client-absent, `unexpected_error` au catch externe (render/thread-context) ; toutes deux sans `statusCode` → retryable → même issue L2.)*
+2. **Seam `sendEmail(params, opts?)`** — option `maxAttempts?: number` (sémantique : **nombre total d'essais** ; défaut **3** = statu quo POST/flux patient, cf. `maxAttempts` interne `resend.ts:292`). `maxAttempts: 1` = un seul essai, aucun backoff. Les sweeps passent `1` : sémantique actuelle préservée (pas d'intra-row retry, la cadence horaire ré-essaie). L'option ne s'applique qu'au chemin Resend (`sendEmailViaSMTP` n'a pas de boucle). *(Amendement 12 : clamp à l'entrée — `Number.isFinite` sinon défaut 3, `Math.max(1, Math.floor(…))` ; `0`/négatif → 1 essai, jamais zéro envoi silencieux.)*
+3. **Env-agnostique** — toutes les lectures env de `resend.ts` passent en accès gardé `import.meta.env?.X ?? process.env.X` (RESEND_API_KEY, RESEND_FROM_EMAIL, ADMIN_EMAIL, SMTP_HOST, SMTP_PORT). Aucun crash d'import/appel en runtime Node pur.
+4. **Adaptateur partagé `netlify/functions/_lib/send-fn.ts`** — exporte `makeSendFnWithCapture(opts?: { maxAttempts?: number })` (nom conservé, demeure unique) → `{ sendFn, state }`. *(Amendement 13, itération fix #1 — remplace l'assignation-avant-délégution de l'amendement C5 : **capture-à-l'échec**. `notifications.ts` envoie patient + thérapeute via `Promise.allSettled` (concurrence réelle, pas séquentiel) : sous assignation-avant-délégation, le préfixe du thérapeute écrase `lastTo` et son succès annule `lastError` → l'échappatoire poison confirmations était morte en config prod (ADMIN_EMAIL défini). Désormais `sendFn` écrit `state.lastTo`/`state.lastError` **uniquement quand `result.rawError` est présent** : `lastTo` nomme le destinataire **en échec**, un succès concurrent ne masque plus rien. Résidu assumé : deux échecs concurrents → dernier complété gagne (best-effort, jamais de poison sur échec thérapeute seul) ; échec sans `rawError` (chemin SMTP) → état intact → row re-essayé.)* `sendFn` délègue à `sendEmail(params, { maxAttempts: opts.maxAttempts ?? 1 })`. Transmission de **tous** les params à l'identique (`to`, `bcc`, `subject`, `react`, `replyTo`, `threadKey`, `idempotencyKey`). Zéro protocole réimplémenté : plus de client Resend local, plus de résolution `fromEmail` locale, plus de BCC répliqué.
+5. **Migration des deux sweeps** — `reconcile-invitations.ts` et `reconcile-confirmations.ts` suppriment leur wrapper local (et le bloc BCC manuel 8a84a22 côté invitations) et importent `makeSendFnWithCapture` depuis `./_lib/send-fn`. La classification poison (`isRetryableResendError(state.lastError)`), les échappatoires (flag set-once), les clés L1, les schedules, deadlines, monitors et requêtes d'éligibilité sont **inchangés**. La validation startup (clés requises) reste.
+6. **Deltas voulus** (conséquences de l'unification, assumés) : (a) *threading unifié* — les sweeps créent/mettent à jour la racine `email_threads` et envoient `In-Reply-To`/`References` comme le POST : la racine existe quel que soit le premier émetteur (l'en-tête mort `X-Thread-Key` disparaît) ; (b) *BCC admin hérité* — côté confirmations, l'email patient du sweep BCC désormais `ADMIN_EMAIL` via `sendEmail` (parité avec le POST, achève la correction 8a84a22, dédup admin déjà gérée) ; (c) *SMTP dev* — avec `SMTP_HOST` défini, les sweeps envoient via Mailpit comme le reste du site (la validation startup `RESEND_API_KEY` reste requise — une clé placeholder suffit en dev) ; (d) *`to` verbatim* — la normalisation casse/trim du wrapper invitations disparaît, `sendEmail` gère la casse pour son dédoublonnage interne uniquement (amendement 14, itération fix #1).
+7. **Non-deltas** — `SendEmailParams` inchangé ; aucune requête SQL, schedule, migration ou variable d'environnement nouvelle (`RESEND_FROM_EMAIL`/`ADMIN_EMAIL` figurent déjà en commentaires dashboard dans `netlify.toml`, aucune var à ajouter) ; `send-reminders.ts` et `calendar-token-heartbeat.ts` non touchés (lot suivant). **Note de latence** : le threading unifié ajoute ~2 allers-retours Supabase par email (`loadThreadState` + persist) dans la boucle bornée à 8,5 s — `deadlineHit` surviendra un peu plus tôt sur les gros batchs, le guard `DEADLINE_MS` (inchangé) garantit la correction ; les rows différés passent au sweep suivant.
+
+**Edge cases & stratégies :**
+
+| Cas | Stratégie |
+|---|---|
+| Erreur de rendu `react` (hors API Resend) | *(amendement 12)* synthèse `rawError: { name: 'unexpected_error', message }` — sans `statusCode` → retryable → row re-essayé passage suivant (même issue L2 que le comportement pré-PR ; le discriminateur `name` permet de filtrer les erreurs non-API) |
+| `statusCode` absent de l'erreur Resend | `isRetryableResendError` classe en retryable (`resend-errors.ts:33-40`) → passage suivant |
+| Racine thread déjà créée par le POST concurrent | `persistThreadState` fait load-then-insert/update (pas d'upsert SQL) : en séquentiel, `loadThreadState` lit la racine commise → update ; en concurrence vraie, le second INSERT viole la PK `thread_key` (migration 002) → erreur loggée non fatale, pas de doublon, email couvert par la dédup L1 |
+| Throw résiduel dans `sendEmail` (hors try/catch internes) | *(amendement 13)* capture-à-l'échec : un throw ne touche pas l'état (aucun résultat) → l'exception remonte à la boucle sweep (isolation par row) ; l'état ne contient jamais un échec d'un appel précédent |
+| `SMTP_HOST` défini en prod cron (misconfig) | Comportement identique au runtime web (même cause racine) — pas de garde spécifique dans ce lot (avis différé #129) |
+| `RESEND_API_KEY` absente au runtime | *(amendement 12)* résultat failure + `rawError: { name: 'missing_api_key' }` (retryable) + log existant — l'early-abort startup des sweeps reste la première ligne de défense |
+| Patient + thérapeute échouent en concurrence (confirmations) | *(amendement 13)* deux écritures capture-à-l'échec → dernier complété gagne ; échec thérapeute-seul jamais poison (best-effort) |
+
+## Data Model & Consumers
+
+**Structure de données :** [Modèle — seam transport emails](../visuals/129-transport-refactor-data-model.html)
+**Carte des consommateurs :** [Consommateurs — sendEmail unifié](../visuals/129-transport-refactor-consumers.html)
+
+*(Sidecars rédigés à la main — skill forge-chart non disponible dans cette session ; à régénérer via forge si souhaité.)*
+
+| Élément | Mutation | Écrit par | Lu par | Quand |
+|---|---|---|---|---|
+| `SendEmailResult.rawError` (NOUVEAU, optionnel) | rempli sur échec API Resend | `sendEmail` | `_lib/send-fn` (state.lastError) → classification poison des 2 sweeps | chaque envoi sweep |
+| `sendEmail(params, opts?)` — `maxAttempts` (NOUVEAU) | défaut 3 ; sweeps passent 1 | tous les flux | — | chaque envoi |
+| Lectures env `resend.ts` (accès gardé) | `import.meta.env?.X ?? process.env.X` | — | runtime cron ∨ Astro | init lazy |
+| `email_threads` (table, inchangée) | racine/update désormais par TOUT chemin d'envoi (load-then-insert/update, PK `thread_key`) | `sendEmail` (persistThreadState) | loadThreadState (In-Reply-To/References) | envoi avec threadKey |
+| `appointments.*_sent_at` (flags L2) | **inchangés** (set-once sweeps/POST) | inchangé | sweeps | inchangé |
+| En-tête `X-Thread-Key` | **SUPPRIMÉ** (aucun consommateur) | — | — | — |
+
+## Breadboard
+
+| ID | Élément | Handler → | Données |
+|---|---|---|---|
+| N1 | `sendEmail(params, opts?)` — seam `rawError` + `maxAttempts` + env gardé | dispatch SMTP/Resend inchangé | D2 (idempotencyKey), email_threads |
+| N2 | `makeSendFnWithCapture(opts)` (NOUVEAU, `netlify/functions/_lib/send-fn.ts`, nom conservé) | state assigné avant délégation ; `sendFn = (p) => sendEmail(p, { maxAttempts: opts?.maxAttempts ?? 1 })` ; `state.lastError ← rawError` | N1 |
+| S1 | Sweep `reconcile-invitations` (modifié) | remplace wrapper local par N2 ; classification poison inchangée via state.lastError | D1 (flags set-once) |
+| S2 | Sweep `reconcile-confirmations` (modifié) | idem S1 ; heuristique `state.lastTo` conservée via N2 | D1 |
+| D1 | Flags L2 `invitation_sent_at` / `confirmation_sent_at` | inchangés (set-once, poison-escape) | migrations 013/011 |
+| D2 | Clés L1 Resend (`invite:{id}:patient`, `confirm:{patient|therapist}:{payment_intent}`) | produites en amont (notifications.ts), transmises à l'identique par N2 → N1 | — |
+
+*(Pas d'élément UI — lot backend pur.)*
+
+## Slices
+
+| # | Slice | Contenu | Demo indépendable |
+|---|---|---|---|
+| 1 | Seam transport | `resend.ts` : `rawError` sur SendEmailResult (type importé de `resend-errors.ts`, doublon local supprimé) + `opts.maxAttempts` + accès env gardés (5 lectures) ; tests : rawError 4xx/5xx/network, maxAttempts défaut 3 vs 1 (compteur d'appels), accès gardés vérifiés par assertion source (pattern `cron-schedule-source.test.ts` — `import.meta.env` existe toujours sous Vitest, on vérifie le texte gardé) | `npm run test -- resend` : nouveaux tests verts, existants verts sans modification |
+| 2 | Adaptateur + migration | `_lib/send-fn.ts` (makeSendFnWithCapture) ; les 2 sweeps suppriment wrapper local + BCC manuel + client Resend local ; tests : forwarding intégral des params, lastTo (assigné avant délégation), poison via rawError (4xx → flag posé ; 429 → NULL) ; **création** de la suite `reconcile-confirmations.test.ts` (poison, lastTo, BCC hérité — inexistante aujourd'hui) + adaptation des mocks de la suite invitations existante (client Resend → sendEmail) | `grep -rl makeSendFnWithCapture` → 1 fichier ; suites sweeps vertes ; `npm run test && npm run lint && npm run build` |
+
+## Success Criteria
+
+- [x] SC1 — `SendEmailResult.rawError` : une erreur API Resend mockée (4xx, puis 5xx) remonte `rawError` avec `statusCode`/`name` d'origine **et** `error: string` lisible (contrat additif ; test unitaire).
+- [x] SC2 — `opts.maxAttempts` : défaut → exactement 3 appels API sur erreur retryable ; `maxAttempts: 1` → exactement 1 appel, aucun backoff (tests compteurs).
+- [x] SC3 — env-agnostique : les 5 lectures env de `resend.ts` sont des accès gardés `import.meta.env?.X ?? process.env.X`, vérifiés par **assertion source** (pattern `cron-schedule-source.test.ts`) — `import.meta.env` existe toujours sous Vitest, l'absence de crash en runtime Node pur découle du texte gardé.
+- [x] SC4 — copie unique, surface bornée : `grep -rln "function makeSendFnWithCapture" src/ netlify/` retourne exactement `netlify/functions/_lib/send-fn.ts` (grep **délimité à la définition** — amendement 11 : les 2 sweeps importent l'adaptateur par son nom, donc matchent aussi le grep brut ; la unicité visée est celle de la copie implémentée, pas des imports consommateurs) ; `grep -rln "emails.send" netlify/functions/ --include='*.ts'` (hors `_lib/`) retourne exactement `send-reminders.ts` + `calendar-token-heartbeat.ts` (surface gelée du lot suivant).
+- [x] SC5 — sweeps dégrossis : les 2 fichiers sweep n'instancient plus `new Resend(...)` côté envoi patient et n'importent plus le BCC manuel — l'adaptateur `_lib/send-fn` délègue à `sendEmail` (grep + test d'héritage : BCC admin ajouté par `sendEmail` vu dans les params reçus côté confirmations).
+- [x] SC6 — poison vérifié des deux côtés : suite invitations existante adaptée et verte (4xx → flag posé via poison-escape ; 429/5xx → flag NULL, re-essai passage suivant) **et** nouvelle suite `reconcile-confirmations.test.ts` couvrant les mêmes classifications + l'heuristique `lastTo`.
+- [x] SC7 — forwarding intégral : l'adaptateur transmet `to`, `bcc`, `subject`, `react`, `replyTo`, `threadKey`, `idempotencyKey` à l'identique (test param-par-param) — threading unifié et clés L1 inchangées découlent du forwarding.
+- [x] SC8 — rétrocompatibilité : aucun appelant de `sendEmail` hors les 2 sweeps n'est modifié (diff borné à `resend.ts`, `_lib/send-fn.ts`, les 2 sweeps, tests — plus le dédoublonnage `ResendApiError` interne à `resend.ts`) ; suites existantes (resend, notifications, POST admin, webhook) vertes sans adaptation.
+
+## Amendements
+
+*(revue experte 2026-08-30, 3 agents — architect/doc-writer/product-lead, verdicts « good »)*
+- Nom de l'adaptateur conservé (`makeSendFnWithCapture`) — SC4 grep cohérent avec le corps (architect C1).
+- `retries` renommé `maxAttempts` (sémantique « total d'essais », lecture non piégée ; limité au chemin Resend) (architect C4, product-lead).
+- « upsert » reformulé : load-then-insert/update, PK `thread_key` en garde anti-doublon, erreur concurrente avalée (architect C2, product-lead).
+- SC6/Slice 2 : suite `reconcile-confirmations.test.ts` **à créer** (aucune suite dédiée n'existe — les 3 relecteurs) ; SC6 exige création + adaptation.
+- SC4 étendu à la surface brute résiduelle (`emails.send` borné aux 2 fichiers du lot suivant) — verrouille la prémisse 6 mois (product-lead C1).
+- SC3 : mécanisme d'assertion source nommé (Vitest ne peut pas retirer `import.meta.env`) (architect C7).
+- Hygiène d'état adaptateur : `lastTo`/reset assignés avant délégation (architect C5).
+- Note de latence threading (+~2 round-trips Supabase/email, deadlineHit plus tôt, guard inchangé) (architect C6, product-lead).
+- EB1 : `ResendApiError` importé de `resend-errors.ts`, doublon local `resend.ts:98-102` supprimé (architect/doc-writer).
+- 4 flux énumérés au Goal ; réf. ligne wrapper invitations corrigée 124→129 (product-lead, doc-writer).
+- SC4 : grep affiné à la forme délimitée à la définition (`function makeSendFnWithCapture`) — les imports nommés des 2 sweeps matchent le grep brut, la métrique « copie unique » vise l'implémentation (implémentation T5, constat lead).
+- **Amendement 12 (itération fix #1, revue PR #131)** : EB1/EB2 — synths `missing_api_key` + `unexpected_error` pour l'uniformité du contrat Resend-path ; clamp `maxAttempts` (`Number.isFinite` sinon 3, min 1). Convergence backend-dev 88 % + security-auditor 85 % + architect 88 %.
+- **Amendement 13 (itération fix #1)** : EB4/edge-table — **capture-à-l'échec** remplace l'assignation-avant-délégation (C5) : `notifications.ts:219` envoie patient+thérapeute via `Promise.allSettled`, l'heuristique poison confirmations était déterministement neutralisée en config prod (4 agents 88-96 %, reproduit 200/200 essais). Comportement pré-PR identiquement défaillant — le défaut est antérieur, la correction non.
+- **Amendement 14 (itération fix #1)** : EB6 delta (d) `to` verbatim (product-lead 80 %).

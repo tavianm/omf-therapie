@@ -32,15 +32,12 @@
  * + `resend-errors` (primitives partagées entre webhook et sweep — plus de risque
  * de dérive sur le format des clés, la classification d'erreur, ou le signeur HMAC).
  *
- * La fonction `sendEmail` publique reste couplée à `import.meta.env` (pour
- * `RESEND_FROM_EMAIL`, `ADMIN_EMAIL`, et l'auto-BCC admin). Le sweep l'évite en
- * injectant son propre `sendFn` via `BuildAndSendOptions` — ce `sendFn` utilise
- * un client Resend instancié depuis `process.env` et transmet la clé d'idempotence
- * au header Resend. Le threadKey est honoré au niveau contrat (le header
- * `X-Thread-Key` est posé) mais la persistance `email_threads` est webhook-only —
- * le sweep ne crée pas de racine de thread, il s'appuie sur le thread existant
- * créé par le webhook (ou aucun thread si la 1re notification vient du sweep,
- * ce qui est rare car le webhook réussit dans >99% des cas).
+ * #129 (transport refactor) : l'envoi passe par l'adaptateur partagé
+ * `_lib/send-fn`, qui délègue à `sendEmail` (lectures env gardées — cron-safe).
+ * Le sweep hérite donc de tout le contrat transport : BCC auto-admin,
+ * clé d'idempotence Resend, en-têtes de fil + persistance `email_threads`
+ * (le sweep peut désormais créer la racine du thread si le webhook a échoué),
+ * et `rawError` pour la classification poison.
  *
  * ---------------------------------------------------------------------------
  * Observability — Sentry.withMonitor + structured logger (pattern #99).
@@ -69,14 +66,16 @@
 import type { Config } from '@netlify/functions';
 import * as Sentry from '@sentry/node';
 import { createClient } from '@supabase/supabase-js';
-import { Resend } from 'resend';
 import ws from 'ws';
 import type { Appointment } from '../../src/types/appointment';
-import type { SendEmailParams, SendEmailResult } from '../../src/lib/resend';
-import { isRetryableResendError, type ResendApiError } from '../../src/lib/resend-errors';
+import {
+  isRetryableResendError,
+  type ResendApiError,
+} from '../../src/lib/resend-errors';
 import { buildAndSendConfirmationEmails } from '../../src/lib/notifications';
 import { initSentry, captureAndFlush } from './_lib/sentry';
 import { logger } from './_lib/logger';
+import { makeSendFnWithCapture } from './_lib/send-fn';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -126,89 +125,6 @@ export const config: Config = {
 };
 
 // ---------------------------------------------------------------------------
-// Local sendFn — process.env-instantiated Resend client honoring idempotencyKey
-// ---------------------------------------------------------------------------
-
-/**
- * Crée un `sendFn` injecté dans `buildAndSendConfirmationEmails`.
- *
- * Pourquoi ne pas utiliser `sendEmail` de `src/lib/resend.ts` ?
- *  - `sendEmail` lit `import.meta.env.RESEND_FROM_EMAIL` et `ADMIN_EMAIL` (BCC
- *    auto-admin) au runtime — `import.meta.env` est undefined dans le runtime
- *    cron, donc l'appel planterait.
- *  - Le sweep instancie son propre client Resend depuis `process.env` et applique
- *    une politique de retry simplifiée (pas de retry intra-row : le sweep s'appuie
- *    sur sa propre cadence horaire pour ré-essayer les rows échoués).
- *
- * Le threadKey est reçu via `params.threadKey` et transmis comme en-tête
- * `X-Thread-Key` à Resend (parité de contrat avec le webhook). La persistance
- * `email_threads` (supabase) reste webhook-only : le sweep ne crée pas de
- * racine de thread — il s'appuie sur le thread existant créé par le webhook
- * (cas normal) ou émet l'email sans fil (cas rare d'un sweep avant webhook).
- *
- * `idempotencyKey` est transmis via l'en-tête Resend `Idempotency-Key` : deux
- * tentatives concurrentes (webhook + sweep) avec la même clé ne produisent
- * qu'un seul email côté Resend (dedup serveur, ~24h TTL).
- */
-/**
- * Crée un `sendFn` injecté dans `buildAndSendConfirmationEmails` + un accesseur
- * pour récupérer la dernière erreur brute Resend (pour classification poison).
- *
- * Pourquoi ne pas utiliser `sendEmail` de `src/lib/resend.ts` ?
- *  - `sendEmail` lit `import.meta.env.RESEND_FROM_EMAIL` et `ADMIN_EMAIL` (BCC
- *    auto-admin) au runtime — `import.meta.env` est undefined dans le runtime
- *    cron, donc l'appel planterait.
- *  - Le sweep instancie son propre client Resend depuis `process.env` et applique
- *    une politique de retry simplifiée (pas de retry intra-row : le sweep s'appuie
- *    sur sa propre cadence horaire pour ré-essayer les rows échoués).
- *
- * Le threadKey est reçu via `params.threadKey` et transmis comme en-tête
- * `X-Thread-Key` à Resend (parité de contrat avec le webhook). La persistance
- * `email_threads` (supabase) reste webhook-only : le sweep ne crée pas de
- * racine de thread — il s'appuie sur le thread existant créé par le webhook
- * (cas normal) ou émet l'email sans fil (cas rare d'un sweep avant webhook).
- *
- * `idempotencyKey` est transmis via l'en-tête Resend `Idempotency-Key` : deux
- * tentatives concurrentes (webhook + sweep) avec la même clé ne produisent
- * qu'un seul email côté Resend (dedup serveur, ~24h TTL).
- *
- * Retourne `{ sendFn, lastError }` : `lastError` est mis à jour à chaque appel
- * sendFn (récupère l'objet error brut de Resend avec statusCode/name pour la
- * classification poison vs retryable).
- */
-function makeSendFnWithCapture(resend: Resend, fromEmail: string) {
-  const state: { lastError: ResendApiError | null; lastTo: string[] } = {
-    lastError: null,
-    lastTo: [],
-  };
-  const sendFn = async (params: SendEmailParams): Promise<SendEmailResult> => {
-    const { to, bcc, subject, react, replyTo, threadKey, idempotencyKey } = params;
-    state.lastTo = Array.isArray(to) ? to : [to];
-    state.lastError = null;
-    // `react` est un ReactElement (React Email) — Resend l'accepte directement
-    // via son SDK (il appelle @react-email/render en interne).
-    const { data, error } = await resend.emails.send(
-      {
-        from: fromEmail,
-        to: state.lastTo,
-        ...(bcc ? { bcc: Array.isArray(bcc) ? bcc : [bcc] } : {}),
-        subject,
-        react,
-        ...(replyTo ? { replyTo } : {}),
-        ...(threadKey ? { headers: { 'X-Thread-Key': threadKey } } : {}),
-      },
-      idempotencyKey ? { idempotencyKey } : undefined,
-    );
-    if (error) {
-      state.lastError = error as ResendApiError;
-      return { success: false, error: (error as ResendApiError).message ?? 'Erreur Resend' };
-    }
-    return { success: true, id: data?.id };
-  };
-  return { sendFn, state };
-}
-
-// ---------------------------------------------------------------------------
 // Per-row processing
 // ---------------------------------------------------------------------------
 
@@ -220,7 +136,8 @@ interface SendOutcome {
 
 /**
  * Envoie les emails de confirmation (patient + thérapeute) pour un RDV via le
- * module partagé `notifications.ts`. Le client Resend est injecté via `sendFn`.
+ * module partagé `notifications.ts`. L'envoi est injecté via le `sendFn` de
+ * l'adaptateur partagé `_lib/send-fn` (délègue à `sendEmail`).
  *
  * Retourne `{ patientEmailSent }` + l'erreur classifiée en cas d'échec permanent
  * (poison message) pour que l'appelant applique l'échappatoire.
@@ -231,11 +148,12 @@ interface SendOutcome {
  * validation), on récupère l'erreur brute Resend via `state.lastError` et on la
  * classifie via `isRetryableResendError` (partagé avec `src/lib/resend.ts`).
  *
- * Heuristique pour distinguer patient vs thérapeute : `state.lastTo` contient le
- * destinataire du dernier sendFn appelé en échec. `notifications.ts` appelle le
- * patient en 1er, puis le thérapeute — donc si lastTo contient appt.patient_email,
- * l'échec est sur le patient. Si lastTo contient adminEmail, c'est le thérapeute
- * (qui est best-effort, donc ignoré par la classification poison).
+ * Heuristique pour distinguer patient vs thérapeute : les envois sont CONCURRENTS
+ * (`Promise.allSettled` dans `notifications.ts`) et l'adaptateur capture à
+ * L'ÉCHEC (voir `_lib/send-fn.ts`) — `state.lastTo` désigne donc le destinataire
+ * du dernier envoi ÉCHOUÉ. `lastToWasPatient` est vrai exactement lorsque l'envoi
+ * capturé ciblait le patient. Un échec thérapeute seul capture `lastTo=[adminEmail]`
+ * → best-effort, aucune classification poison.
  */
 async function sendConfirmationEmails(
   appt: Appointment,
@@ -255,7 +173,9 @@ async function sendConfirmationEmails(
 
   if (!result.patientEmailSent) {
     const lastError = ctx.sendBundle.state.lastError;
-    const lastToWasPatient = ctx.sendBundle.state.lastTo.includes(appt.patient_email);
+    const lastToWasPatient = ctx.sendBundle.state.lastTo.includes(
+      appt.patient_email,
+    );
     if (lastError && lastToWasPatient && !isRetryableResendError(lastError)) {
       return { patientEmailSent: false, permanentError: lastError };
     }
@@ -310,15 +230,11 @@ async function runReconcile(): Promise<void> {
 // l'appel résiduel dans runReconcile() (s'il existe) inoffensif.
 async function handler(): Promise<void> {
   initSentry();
-  return Sentry.withMonitor(
-    'reconcile-confirmations',
-    runReconcile,
-    {
-      schedule: { type: 'crontab', value: SCHEDULE },
-      checkInMargin: 5,
-      maxRuntime: 10,
-    },
-  );
+  return Sentry.withMonitor('reconcile-confirmations', runReconcile, {
+    schedule: { type: 'crontab', value: SCHEDULE },
+    checkInMargin: 5,
+    maxRuntime: 10,
+  });
 }
 
 export default handler;
@@ -330,14 +246,17 @@ async function reconcile(): Promise<void> {
   const supabaseUrl = process.env.SUPABASE_DATABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const resendApiKey = process.env.RESEND_API_KEY;
-  const fromEmail =
-    process.env.RESEND_FROM_EMAIL ?? 'OMF Thérapie <contact@omf-therapie.fr>';
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase() || undefined;
-  const baseUrl = process.env.BETTER_AUTH_URL ?? process.env.SITE_URL ?? 'https://omf-therapie.fr';
+  const baseUrl =
+    process.env.BETTER_AUTH_URL ??
+    process.env.SITE_URL ??
+    'https://omf-therapie.fr';
   const authSecret = process.env.BETTER_AUTH_SECRET;
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
-    logger.error('reconcile: SUPABASE_DATABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing — aborting');
+    logger.error(
+      'reconcile: SUPABASE_DATABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing — aborting',
+    );
     return;
   }
   if (!resendApiKey) {
@@ -345,19 +264,22 @@ async function reconcile(): Promise<void> {
     return;
   }
   if (!authSecret || authSecret.trim().length < 32) {
-    logger.error('reconcile: BETTER_AUTH_SECRET missing or too short — aborting');
+    logger.error(
+      'reconcile: BETTER_AUTH_SECRET missing or too short — aborting',
+    );
     return;
   }
 
   // 2. Instantiate clients from process.env (NOT import.meta.env).
   //    Service-role key is required: the sweep writes confirmation_sent_at.
+  //    Email sending goes through `_lib/send-fn` → `sendEmail` (env-guarded
+  //    seam — RESEND_FROM_EMAIL/ADMIN_EMAIL are read by the seam itself).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createClient<any>(supabaseUrl, supabaseServiceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
     realtime: { transport: ws },
   });
-  const resend = new Resend(resendApiKey);
-  const sendBundle = makeSendFnWithCapture(resend, fromEmail);
+  const sendBundle = makeSendFnWithCapture();
 
   // 3. Query stale rows — payment_received, confirmation pending, within the
   //    14-day window, soonest-first. LIMIT bounds the batch.
@@ -369,7 +291,10 @@ async function reconcile(): Promise<void> {
     .eq('status', 'payment_received')
     .is('confirmation_sent_at', null)
     .is('deleted_at', null)
-    .gt('created_at', new Date(Date.now() - CREATED_WITHIN_DAYS * 86_400_000).toISOString())
+    .gt(
+      'created_at',
+      new Date(Date.now() - CREATED_WITHIN_DAYS * 86_400_000).toISOString(),
+    )
     .order('scheduled_at', { ascending: true })
     .limit(BATCH_LIMIT);
 
@@ -387,7 +312,7 @@ async function reconcile(): Promise<void> {
   // confirmation_sent_at=NULL et seront rattrapées au prochain sweep une fois
   // le video_link persisté par le webhook.
   const skippedNoVideo: string[] = [];
-  const appointments = allRows.filter((appt) => {
+  const appointments = allRows.filter(appt => {
     if (appt.appointment_mode === 'video' && !appt.video_link) {
       skippedNoVideo.push(appt.id);
       return false;
@@ -410,7 +335,10 @@ async function reconcile(): Promise<void> {
         appointmentIds: skippedNoVideo,
       });
     }
-    logger.info('reconcile: done (empty batch)', { ...counts, msElapsed: Date.now() - startedAt });
+    logger.info('reconcile: done (empty batch)', {
+      ...counts,
+      msElapsed: Date.now() - startedAt,
+    });
     return;
   }
 
@@ -422,6 +350,10 @@ async function reconcile(): Promise<void> {
     }
 
     try {
+      // Hygiène par-row (miroir reconcile-invitations) : la capture-à-l'échec
+      // n'écrit qu'en cas d'échec — purge le résidu d'un row précédent avant
+      // de consulter l'heuristique.
+      sendBundle.state.lastError = null;
       const outcome = await sendConfirmationEmails(appt, {
         sendBundle,
         adminEmail,
@@ -441,7 +373,11 @@ async function reconcile(): Promise<void> {
         if (updateError) {
           // Email envoyé mais drapeau non persisté → le prochain sweep renverra
           // (L1 dédup côté Resend absorbera le doublon si dans les 24h).
-          logger.error('reconcile: failed to mark delivered (email was sent)', { appointmentId: appt.id }, updateError);
+          logger.error(
+            'reconcile: failed to mark delivered (email was sent)',
+            { appointmentId: appt.id },
+            updateError,
+          );
         }
         counts.sent += 1;
       } else if (outcome.permanentError) {
@@ -449,10 +385,22 @@ async function reconcile(): Promise<void> {
         // Mark delivered to stop retrying; log at error so it surfaces in Sentry.
         // PII: on ne log PAS patient_email (scrub Sentry le retirerait de toute
         // façon, mais on garde aussi le drain Netlify propre).
+        // Diagnostics explicites : `logger` stringifie un non-Error en
+        // "[object Object]" — on passe la classification en fields + le message
+        // Message synthétisé des seuls champs de classification : le message
+        // Resend brut peut citer l'adresse destinataire (RGPD) — il ne doit
+        // atteindre ni le drain JSON ni Sentry (scrubPii ne couvre pas
+        // exception.values[].value).
         logger.error(
           'reconcile: poison row — permanent Resend error, escaping retry loop',
-          { appointmentId: appt.id },
-          outcome.permanentError,
+          {
+            appointmentId: appt.id,
+            resendName: outcome.permanentError.name,
+            resendStatus: outcome.permanentError.statusCode,
+          },
+          new Error(
+            `resend ${outcome.permanentError.name ?? 'unknown'} ${outcome.permanentError.statusCode ?? 'no-status'}`,
+          ),
         );
         const { error: escapeError } = await supabase
           .from('appointments')
@@ -460,22 +408,35 @@ async function reconcile(): Promise<void> {
           .eq('id', appt.id)
           .is('confirmation_sent_at', null);
         if (escapeError) {
-          logger.error('reconcile: poison-escape UPDATE failed', { appointmentId: appt.id }, escapeError);
+          logger.error(
+            'reconcile: poison-escape UPDATE failed',
+            { appointmentId: appt.id },
+            escapeError,
+          );
         }
         counts.failed += 1;
       } else {
         // Retryable failure (5xx, 429, network) → leave confirmation_sent_at NULL;
         // the next hourly sweep retries. L1 dedupes any partial send.
-        logger.warn('reconcile: retryable failure; will retry next sweep', { appointmentId: appt.id });
+        logger.warn('reconcile: retryable failure; will retry next sweep', {
+          appointmentId: appt.id,
+        });
         counts.failed += 1;
       }
     } catch (err: unknown) {
       // Unexpected exception — isolate to this row, continue the batch.
-      logger.error('reconcile: unexpected error for row', { appointmentId: appt.id }, err);
+      logger.error(
+        'reconcile: unexpected error for row',
+        { appointmentId: appt.id },
+        err,
+      );
       counts.failed += 1;
     }
   }
 
   // 5. Structured summary for Netlify's log drain + Sentry breadcrumb.
-  logger.info('reconcile: done', { ...counts, msElapsed: Date.now() - startedAt });
+  logger.info('reconcile: done', {
+    ...counts,
+    msElapsed: Date.now() - startedAt,
+  });
 }

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Fichiers × fonctions — transport unifié (#129)</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; padding:32px; background:#0d1117; color:#e6edf3; font:14px/1.5 -apple-system,"Segoe UI",sans-serif; }
+  h1 { font-size:18px; color:#7ee787; margin:0 0 4px; }
+  p.sub { color:#8b949e; margin:0 0 28px; font-size:13px; }
+  .file { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:12px 14px; margin-bottom:14px; }
+  .file.mod { border-color:#388bfd; } .file.new { border-color:#7ee787; } .file.test { border-color:#8957e5; border-style:dashed; } .file.frozen { opacity:.75; }
+  .file h2 { margin:0 0 8px; font-size:13px; }
+  .file h2 .tag { float:right; font-size:10px; padding:1px 7px; border-radius:99px; }
+  .tag.new { background:#1f4d2a; color:#7ee787; } .tag.mod { background:#0c2d5e; color:#79c0ff; } .tag.test { background:#2a1f4d; color:#d2a8ff; } .tag.frozen { background:#3d2d00; color:#d29922; }
+  .fn { font-family:ui-monospace,monospace; font-size:12px; color:#c9d1d9; padding:2px 0; }
+  .fn b { color:#e6edf3; } .fn em { color:#8b949e; font-style:normal; }
+  .edges { font-family:ui-monospace,monospace; font-size:11px; color:#8b949e; margin-top:8px; border-top:1px dashed #30363d; padding-top:6px; }
+  .cols { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
+  .col { flex:1; min-width:340px; }
+</style>
+</head>
+<body>
+<h1>Carte fichiers × fonctions — lot transport (#129)</h1>
+<p class="sub">Fonctions par fichier, arêtes d'appel ; tests en consommateurs (violet pointillé). <span style="color:#7ee787">vert = nouveau</span> · <span style="color:#79c0ff">bleu = modifié</span> · <span style="color:#d29922">ambre = gelé</span></p>
+
+<div class="cols">
+<div class="col">
+
+  <div class="file mod">
+    <h2>src/lib/resend.ts <span class="tag mod">modifié (T2)</span></h2>
+    <div class="fn"><b>sendEmail</b>(params, opts?: { maxAttempts? }) <em>— +opts, env gardé (5 lectures)</em></div>
+    <div class="fn"><b>sendEmailViaResend</b> <em>— boucle maxAttempts paramétrée ; rawError rempli aux 3 sorties d'échec</em></div>
+    <div class="fn">sendEmailViaSMTP <em>— inchangé (rawError undefined, pas de boucle)</em></div>
+    <div class="fn">getResendClient / getSmtpTransport <em>— accès gardés</em></div>
+    <div class="fn">persistThreadState / loadThreadState / prepareThreadSendContext <em>— gelés</em></div>
+    <div class="fn">~~interface locale ResendApiError~~ <em>— supprimée (import de resend-errors)</em></div>
+    <div class="edges">→ resend-errors.isRetryableResendError · → supabase.email_threads</div>
+  </div>
+
+  <div class="file frozen">
+    <h2>src/lib/resend-errors.ts <span class="tag frozen">gelé</span></h2>
+    <div class="fn"><b>ResendApiError</b> (type, export unique) · <b>isRetryableResendError</b>(err)</div>
+    <div class="edges">consommé par resend.ts (nouvel import) + _lib/send-fn (via rawError) + 2 sweeps</div>
+  </div>
+
+  <div class="file new">
+    <h2>netlify/functions/_lib/send-fn.ts <span class="tag new">NOUVEAU (T5)</span></h2>
+    <div class="fn"><b>makeSendFnWithCapture</b>(opts?: { maxAttempts? }) → { sendFn, state }</div>
+    <div class="fn">&nbsp;&nbsp;state.lastTo assigné + lastError reset <em>avant</em> délégation</div>
+    <div class="fn">&nbsp;&nbsp;sendFn → sendEmail(params, { maxAttempts: opts?.maxAttempts ?? 1 })</div>
+    <div class="fn">&nbsp;&nbsp;state.lastError ← result.rawError ?? null</div>
+    <div class="edges">→ src/lib/resend.sendEmail · ← S1/S2 (les 2 sweeps)</div>
+  </div>
+
+</div>
+<div class="col">
+
+  <div class="file mod">
+    <h2>netlify/functions/reconcile-invitations.ts <span class="tag mod">migré (T5)</span></h2>
+    <div class="fn">handler + runReconcile <em>— gelés (schedule, monitor, deadline, éligibilité)</em></div>
+    <div class="fn">~~makeSendFnWithCapture local + bloc BCC manuel~~ <em>— supprimés</em></div>
+    <div class="fn">import <b>makeSendFnWithCapture</b> from './_lib/send-fn'</div>
+    <div class="edges">→ _lib/send-fn · → notifications.processAppointmentSideEffects (sendFn injecté)</div>
+  </div>
+
+  <div class="file mod">
+    <h2>netlify/functions/reconcile-confirmations.ts <span class="tag mod">migré (T5)</span></h2>
+    <div class="fn">handler + sendConfirmationEmails <em>— gelés (poison-escape, lastTo)</em></div>
+    <div class="fn">~~makeSendFnWithCapture local (JSDoc dupliqué ×2)~~ <em>— supprimé</em></div>
+    <div class="fn">import <b>makeSendFnWithCapture</b> from './_lib/send-fn'</div>
+    <div class="edges">→ _lib/send-fn · → notifications.buildAndSendConfirmationEmails (sendFn injecté)</div>
+  </div>
+
+  <div class="file test">
+    <h2>tests/unit/resend.test.ts <span class="tag test">NOUVEAU (T1)</span></h2>
+    <div class="fn">rawError 4xx/5xx/network · maxAttempts 3 vs 1 (compteurs) · auto-BCC · assertion source des 5 accès gardés</div>
+    <div class="edges">consomme src/lib/resend.ts (SC1 SC2 SC3)</div>
+  </div>
+
+  <div class="file test">
+    <h2>tests/unit/reconcile-confirmations.test.ts <span class="tag test">NOUVEAU (T4)</span></h2>
+    <div class="fn">poison 4xx → flag / 429 → NULL · heuristique lastTo · forwarding</div>
+    <div class="edges">consomme reconcile-confirmations + _lib/send-fn (SC6 SC7)</div>
+  </div>
+
+  <div class="file test">
+    <h2>tests/unit/reconcile-invitations.test.ts <span class="tag test">adapté (T4)</span></h2>
+    <div class="fn">mocks 'resend' → mock sendEmail ; poison/BCC/claim conservés</div>
+    <div class="edges">consomme reconcile-invitations + _lib/send-fn (SC5 SC6)</div>
+  </div>
+
+</div>
+</div>
+</body>
+</html>
