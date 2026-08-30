@@ -305,10 +305,17 @@ async function reconcile(): Promise<void> {
         // Poison-escape: permanent 4xx on the patient email → the sweep itself
         // sets invitation_sent_at (set-once) to stop the hourly retry loop.
         // Log sans PII : appointment ID seulement, jamais patient_email.
+        // Diagnostics explicites : `logger` stringifie un non-Error en
+        // "[object Object]" — on passe la classification en fields + le message
+        // wrappé en Error (jamais l'adresse).
         logger.error(
           'reconcile-invitations: poison row — permanent Resend error, escaping retry loop',
-          { appointmentId: appt.id },
-          lastError,
+          {
+            appointmentId: appt.id,
+            resendName: lastError.name,
+            resendStatus: lastError.statusCode,
+          },
+          new Error(lastError.message),
         );
         const { error: escapeError } = await supabase
           .from('appointments')

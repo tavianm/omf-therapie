@@ -19,9 +19,21 @@
  * passage suivant qui ré-essaie la row (la clé L1 dédup côté Resend absorbe
  * les doublons dans la fenêtre de 24h).
  *
- * Hygiène d'état (revue architect C5) : `lastTo` est assigné et `lastError`
- * reset AVANT la délégation — l'heuristique poison du sweep lit ces champs
- * après un échec. Le résultat de `sendEmail` est retourné tel quel.
+ * Hygiène d'état (revue PR #131) : capture À L'ÉCHEC, plus à l'entrée de
+ * l'appel. `notifications.ts` envoie patient + thérapeute en CONCURRENT
+ * (`Promise.allSettled`) — assigner `lastTo`/`lastError` avant la délégation
+ * laissait un SUCCÈS concurrent masquer un ÉCHEC antérieur : quand ADMIN_EMAIL
+ * est défini, l'échec patient 4xx n'échappait jamais au retry loop. Désormais
+ * un envoi ne touche l'état QUE s'il résout avec `rawError` — un succès
+ * concurrent ne peut plus masquer un échec, et `lastTo` désigne le
+ * destinataire QUI A ÉCHOUÉ (pas le dernier appel).
+ *
+ * Résidus assumés (best-effort — on préfère re-réessayer que faux-poisoner) :
+ *  - deux échecs concurrents se course : le dernier complété gagne ;
+ *  - les échecs du chemin SMTP ne portent pas de `rawError` (contrat #129) →
+ *    non capturés → la row reste NULL et sera ré-essayée au passage suivant.
+ *
+ * Le résultat de `sendEmail` est retourné tel quel (jamais reconstruit).
  */
 
 import {
@@ -33,9 +45,9 @@ import type { ResendApiError } from '../../../src/lib/resend-errors';
 
 /** État de capture lu par le sweep après chaque envoi (classification poison). */
 export interface SendFnCaptureState {
-  /** Dernière erreur Resend brute (`result.rawError`), null en succès. */
+  /** Dernière erreur Resend brute capturée (`result.rawError` d'un envoi échoué). */
   lastError: ResendApiError | null;
-  /** Destinataires du dernier envoi, verbatim — heuristique patient vs thérapeute. */
+  /** Destinataires du dernier envoi ÉCHOUÉ, verbatim — heuristique patient vs thérapeute. */
   lastTo: string[];
 }
 
@@ -55,12 +67,16 @@ export function makeSendFnWithCapture(opts?: SendFnCaptureOpts): {
 } {
   const state: SendFnCaptureState = { lastError: null, lastTo: [] };
   const sendFn = async (params: SendEmailParams): Promise<SendEmailResult> => {
-    state.lastTo = Array.isArray(params.to) ? params.to : [params.to];
-    state.lastError = null;
+    const toList = Array.isArray(params.to) ? params.to : [params.to];
     const result = await sendEmail(params, {
       maxAttempts: opts?.maxAttempts ?? 1,
     });
-    state.lastError = result.rawError ?? null;
+    // Capture UNIQUEMENT à l'échec (sémantique #131 — voir JSDoc fichier) :
+    // un succès concurrent ne doit jamais masquer un échec antérieur.
+    if (result.rawError) {
+      state.lastTo = toList;
+      state.lastError = result.rawError;
+    }
     return result;
   };
   return { sendFn, state };

@@ -304,7 +304,17 @@ async function sendEmailViaResend(
     console.error(
       '[resend] Resend client non initialisé — RESEND_API_KEY manquante.',
     );
-    return { success: false, error: 'RESEND_API_KEY manquante' };
+    // Sans statusCode, `isRetryableResendError` classe cette erreur retryable —
+    // cohérent : la row reste NULL et le prochain sweep ré-essaie (la clé peut
+    // avoir été configurée entre-temps).
+    return {
+      success: false,
+      error: 'RESEND_API_KEY manquante',
+      rawError: {
+        name: 'missing_api_key',
+        message: 'RESEND_API_KEY manquante',
+      },
+    };
   }
 
   const { to, bcc, subject, react, replyTo, threadKey, idempotencyKey } =
@@ -355,7 +365,13 @@ async function sendEmailViaResend(
 
         lastError = error as ResendApiError;
         if (!isRetryableResendError(lastError) || attempt === maxAttempts) {
-          console.error('[resend] Erreur API Resend :', lastError);
+          // RGPD : le message brut Resend cite souvent l'adresse destinataire —
+          // on ne log QUE les champs de classification (name + statusCode).
+          console.error(
+            '[resend] Erreur API Resend :',
+            lastError.name,
+            lastError.statusCode,
+          );
           // rawError = l'erreur originale (statusCode/name intacts), pas une copie.
           return {
             success: false,
@@ -373,9 +389,13 @@ async function sendEmailViaResend(
           console.error('[resend] Exception réseau non récupérable :', message);
           return { success: false, error: message, rawError: lastError };
         }
+        // Chaque branche log exactement UNE fois — pas de fall-through vers le
+        // warn transitoire commun (sinon double log à chaque retry réseau).
         console.warn(
           `[resend] Exception réseau (tentative ${attempt}/${maxAttempts}), retry...`,
         );
+        await sleep(attempt * 300);
+        continue;
       }
 
       console.warn(
@@ -465,5 +485,14 @@ export async function sendEmail(
     return sendEmailViaSMTP(resolvedParams, fromEmail);
   }
 
-  return sendEmailViaResend(resolvedParams, fromEmail, opts?.maxAttempts);
+  // Clamp du budget (#129) : non-fini (undefined/NaN/Infinity) → défaut 3
+  // (budget historique) ; <1 → 1 — un budget nul retournerait sans aucun appel
+  // SDK et ferait passer un échec transport pour un succès silencieux.
+  const requestedAttempts = opts?.maxAttempts;
+  const maxAttempts =
+    typeof requestedAttempts === 'number' && Number.isFinite(requestedAttempts)
+      ? Math.max(1, Math.floor(requestedAttempts))
+      : 3;
+
+  return sendEmailViaResend(resolvedParams, fromEmail, maxAttempts);
 }

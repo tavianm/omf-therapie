@@ -148,11 +148,12 @@ interface SendOutcome {
  * validation), on récupère l'erreur brute Resend via `state.lastError` et on la
  * classifie via `isRetryableResendError` (partagé avec `src/lib/resend.ts`).
  *
- * Heuristique pour distinguer patient vs thérapeute : `state.lastTo` contient le
- * destinataire du dernier sendFn appelé en échec. `notifications.ts` appelle le
- * patient en 1er, puis le thérapeute — donc si lastTo contient appt.patient_email,
- * l'échec est sur le patient. Si lastTo contient adminEmail, c'est le thérapeute
- * (qui est best-effort, donc ignoré par la classification poison).
+ * Heuristique pour distinguer patient vs thérapeute : les envois sont CONCURRENTS
+ * (`Promise.allSettled` dans `notifications.ts`) et l'adaptateur capture à
+ * L'ÉCHEC (voir `_lib/send-fn.ts`) — `state.lastTo` désigne donc le destinataire
+ * du dernier envoi ÉCHOUÉ. `lastToWasPatient` est vrai exactement lorsque l'envoi
+ * capturé ciblait le patient. Un échec thérapeute seul capture `lastTo=[adminEmail]`
+ * → best-effort, aucune classification poison.
  */
 async function sendConfirmationEmails(
   appt: Appointment,
@@ -349,6 +350,10 @@ async function reconcile(): Promise<void> {
     }
 
     try {
+      // Hygiène par-row (miroir reconcile-invitations) : la capture-à-l'échec
+      // n'écrit qu'en cas d'échec — purge le résidu d'un row précédent avant
+      // de consulter l'heuristique.
+      sendBundle.state.lastError = null;
       const outcome = await sendConfirmationEmails(appt, {
         sendBundle,
         adminEmail,
@@ -380,10 +385,17 @@ async function reconcile(): Promise<void> {
         // Mark delivered to stop retrying; log at error so it surfaces in Sentry.
         // PII: on ne log PAS patient_email (scrub Sentry le retirerait de toute
         // façon, mais on garde aussi le drain Netlify propre).
+        // Diagnostics explicites : `logger` stringifie un non-Error en
+        // "[object Object]" — on passe la classification en fields + le message
+        // wrappé en Error (jamais l'adresse).
         logger.error(
           'reconcile: poison row — permanent Resend error, escaping retry loop',
-          { appointmentId: appt.id },
-          outcome.permanentError,
+          {
+            appointmentId: appt.id,
+            resendName: outcome.permanentError.name,
+            resendStatus: outcome.permanentError.statusCode,
+          },
+          new Error(outcome.permanentError.message),
         );
         const { error: escapeError } = await supabase
           .from('appointments')

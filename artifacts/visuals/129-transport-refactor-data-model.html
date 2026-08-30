@@ -45,7 +45,7 @@
   </div>
   <div class="node core">
     <h3>sendEmail(params, opts?) <span class="tag mutable">mutable</span></h3>
-    <div class="field new">opts.retries?: number <em>← NOUVEAU — défaut 3 (statu quo POST/patient), sweeps passent 1</em></div>
+    <div class="field new">opts.maxAttempts?: number <em>← NOUVEAU — défaut 3 (statu quo POST/patient), sweeps passent 1 ; clamp min 1</em></div>
     <div class="field new">lecture env: import.meta.env?.X ?? process.env.X <em>← env-agnostique (RESEND_API_KEY, RESEND_FROM_EMAIL, ADMIN_EMAIL, SMTP_HOST/PORT) — précondition runtime cron</em></div>
     <div class="field">auto-BCC ADMIN_EMAIL <em>(gelé — invariant existant)</em></div>
     <div class="field">thread: load/persist email_threads + In-Reply-To/References <em>(gelé)</em></div>
@@ -66,7 +66,7 @@
   <div class="node">
     <h3>email_threads <span class="tag frozen">table</span></h3>
     <div class="field">thread_key, root_message_id, last_message_id, thread_references</div>
-    <div class="rel">désormais racine/upsert par TOUT chemin d'envoi (POST ∨ sweep) — la racine existe quel que soit le premier émetteur</div>
+    <div class="rel">désormais racine par TOUT chemin d'envoi (POST ∨ sweep, load-then-insert/update) — la racine existe quel que soit le premier émetteur</div>
   </div>
   <div class="node">
     <h3>ResendApiError / isRetryableResendError <span class="tag frozen">src/lib/resend-errors.ts</span></h3>

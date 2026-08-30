@@ -1,18 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ---------------------------------------------------------------------------
-// RED tests — T4 defines the CONTRACT of the #129 transport migration for the
+// Contract tests — the #129 transport migration of the
 // `netlify/functions/reconcile-confirmations.ts` sweep (SC5/SC6/SC7).
 //
-// The sweep currently uses its LOCAL `makeSendFnWithCapture(resend, fromEmail)`
-// wrapper (a raw `new Resend(...)` client). After T5 it must import the shared
-// adapter `netlify/functions/_lib/send-fn.ts`, whose `sendFn` DELEGATES to
-// `sendEmail` from `src/lib/resend` and captures `result.rawError` into
-// `state.lastError`. These tests mock `sendEmail` (post-migration transport
-// seam) and are EXPECTED TO FAIL until T5 lands — the mock is never called by
-// today's code. That failure is the contract definition, not a bug.
-//
-// What this suite pins down:
+// The sweep sends through the shared adapter `netlify/functions/_lib/send-fn`,
+// whose `sendFn` DELEGATES to `sendEmail` from `src/lib/resend` and captures
+// `result.rawError` into `state.lastError` ONLY on failure (capture-at-failure,
+// PR #131 review: a concurrent success must never mask a prior failure). These
+// tests mock `sendEmail` (the transport seam) and pin the sweep's behaviour on
+// top of it:
 //
 //   1. SC6 — poison classification via `state.lastError` (fed from
 //      `SendEmailResult.rawError`): a NON-retryable 4xx on the PATIENT email
@@ -20,15 +17,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 //      `.is('confirmation_sent_at', null)` guard) + error log (Sentry-bound);
 //      retryable failures (429, 5xx, statusCode-less network error) → flag
 //      left NULL, retried on the next hourly pass.
-//   2. lastTo heuristic — the sweep only poisons when the failing recipient
-//      was the PATIENT (`state.lastTo` includes `patient_email`). A
-//      therapist-only failure is best-effort: no poison escape, and the flag
-//      is still set because the patient email succeeded.
+//   2. lastTo heuristic — the two sends are CONCURRENT (`Promise.allSettled`),
+//      so classification only trusts a captured FAILING send: `state.lastTo`
+//      must include `patient_email` for the poison escape to fire. A
+//      therapist-only failure captures `lastTo=[adminEmail]` → best-effort:
+//      no poison escape, and the flag is still set via the success path
+//      because the patient email succeeded.
 //   3. SC7 — forwarding: the params handed to `sendEmail` are exactly the
 //      params built by `buildAndSendConfirmationEmails` (real module, not
 //      mocked): `to`, `subject`, `react`, `threadKey`, `idempotencyKey` —
 //      verbatim, no mutation by the adapter (L1 keys `confirm:patient:{pi}` /
-//      `confirm:therapist:{pi}` unchanged).
+//      `confirm:therapist:{pi}` unchanged), with the adapter's own budget
+//      `{ maxAttempts: 1 }` as the opts argument.
 //   4. SC5 — inheritance shape: the sweep itself never constructs a BCC —
 //      even with ADMIN_EMAIL configured, no `sendEmail` call carries a
 //      manually-injected admin BCC (the BCC becomes `sendEmail`'s job).
@@ -36,8 +36,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Conventions mirror `tests/unit/reconcile-invitations.test.ts` (Sentry
 // passthrough, chainable+thenable Supabase mock recording every
 // `.eq()/.is()/update` payload). The REAL `buildAndSendConfirmationEmails`
-// runs (only the transport is mocked) so the ordering contract it relies on —
-// patient send invoked FIRST, therapist SECOND — is exercised for real.
+// runs (only the transport is mocked), so the CONCURRENT send shape it
+// relies on (patient + therapist via `Promise.allSettled`) is exercised for
+// real — the race tests below control which send settles last.
 // ---------------------------------------------------------------------------
 
 // --- Sentry passthrough mock (same contract as the invitations suite) -------
@@ -175,28 +176,12 @@ vi.mock('@supabase/supabase-js', () => ({
 
 vi.mock('ws', () => ({ default: vi.fn(), __esModule: true }));
 
-// --- Transport mocks ---------------------------------------------------------
+// --- Transport mock ----------------------------------------------------------
 //
-// CONTRACT (post-T5): the sweep's `sendFn` adapter delegates to `sendEmail`
-// from `src/lib/resend`; assertions below target the `sendEmail` mock
-// (params in, `{ success, error, rawError }` out).
-//
-// The `resend` SDK mock stays ONLY as a RED-phase network guard: until T5
-// migrates the sweep, today's local wrapper still calls
-// `new Resend(...).emails.send(...)`, which would hit the real API. After T5
-// the sweep no longer imports the SDK and this mock becomes inert (safe to
-// delete then). All contract assertions target `sendEmail`, never the SDK.
-
-const resendSend = vi.fn(async () => ({
-  data: { id: 're_guard' },
-  error: null,
-}));
-vi.mock('resend', () => ({
-  Resend: class {
-    constructor(_apiKey: string) {}
-    emails = { send: resendSend };
-  },
-}));
+// CONTRACT: the sweep's `sendFn` adapter (`_lib/send-fn`) delegates to
+// `sendEmail` from `src/lib/resend`; assertions below target the `sendEmail`
+// mock (params in, `{ success, error, rawError }` out). The sweep never
+// touches the Resend SDK directly, so no SDK mock is needed here.
 
 const sendEmailModule = vi.hoisted(() => ({
   sendEmail: vi.fn(),
@@ -223,8 +208,7 @@ vi.mock('../../src/lib/google-calendar', () => ({
   createCalendarEvent: googleCalendar.createCalendarEvent,
 }));
 
-// Module under test. RED until T5: the sendEmail mock is never called by the
-// current local wrapper, so every transport-contract test below fails.
+// Module under test — sends through the `_lib/send-fn` adapter → `sendEmail`.
 import handler, {
   config,
 } from '../../netlify/functions/reconcile-confirmations';
@@ -289,8 +273,6 @@ function resetMocks(): void {
   supabaseState.chains.length = 0;
   supabaseState.selectResults.length = 0;
   supabaseState.updateResults.length = 0;
-  resendSend.mockClear();
-  resendSend.mockResolvedValue({ data: { id: 're_guard' }, error: null });
   sendEmailModule.sendEmail.mockReset();
   // Default: both sends succeed (rawError absent on success).
   sendEmailModule.sendEmail.mockResolvedValue({ success: true, id: 're_ok' });
@@ -323,7 +305,7 @@ function flagUpdate():
 }
 
 // ===========================================================================
-// Contract tests — RED until T5 wires the sweep to the sendEmail transport.
+// Contract tests — the sweep wired to the sendEmail transport via _lib/send-fn.
 // ===========================================================================
 
 describe('reconcile-confirmations cron handler (#129 sendEmail transport contract)', () => {
@@ -341,9 +323,10 @@ describe('reconcile-confirmations cron handler (#129 sendEmail transport contrac
 
   describe('poison 4xx patient (SC6)', () => {
     it('sets confirmation_sent_at itself (set-once guard) and logs the poison row when the patient send fails with a non-retryable 4xx', async () => {
-      // ADMIN_EMAIL deliberately unset → the therapist email is skipped →
-      // `state.lastTo` is unambiguously the patient's (the heuristic's
-      // deterministic branch; see the lastTo group for the therapist case).
+      // ADMIN_EMAIL unset → the therapist email is skipped entirely, so the
+      // only (hence failing) send targets the patient. The admin-set variant —
+      // BOTH branches are now covered and deterministic under capture-at-failure:
+      // see the concurrent-sends tests in the lastTo group below.
       const appt = makeAppt();
       supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
       sendEmailModule.sendEmail.mockResolvedValue(
@@ -360,8 +343,7 @@ describe('reconcile-confirmations cron handler (#129 sendEmail transport contrac
 
       await handler();
 
-      // The transport seam was actually exercised (RED anchor: today's local
-      // wrapper never calls sendEmail).
+      // The transport seam was actually exercised.
       expect(sendEmailModule.sendEmail).toHaveBeenCalledTimes(1);
       expect(sendEmailModule.sendEmail.mock.calls[0][0].to).toBe(PATIENT_EMAIL);
 
@@ -441,11 +423,12 @@ describe('reconcile-confirmations cron handler (#129 sendEmail transport contrac
     });
   });
 
-  describe('lastTo heuristic (patient vs therapist)', () => {
+  describe('lastTo heuristic (patient vs therapist, concurrent sends)', () => {
     it('does NOT poison on a therapist-only 4xx — best-effort: flag still set via the success path', async () => {
       // Patient send succeeds, therapist notification fails permanently.
-      // `notifications.ts` invokes the patient FIRST, so `patientEmailSent`
-      // is true → no poison escape, and the L2 flag is set normally.
+      // `patientEmailSent` is true → the sweep never consults the capture
+      // state (therapist delivery is best-effort) → no poison escape, and the
+      // L2 flag is set normally via the success path.
       vi.stubEnv('ADMIN_EMAIL', ADMIN_EMAIL_TEST);
       const appt = makeAppt();
       supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
@@ -492,6 +475,93 @@ describe('reconcile-confirmations cron handler (#129 sendEmail transport contrac
 
       errorSpy.mockRestore();
     });
+
+    it('poisons on a patient 4xx even when the CONCURRENT therapist send succeeds (production branch, ADMIN_EMAIL set)', async () => {
+      // PR #131 regression pin: the two sends race inside `Promise.allSettled`.
+      // Under the old assign-before-delegation capture, the therapist SUCCESS
+      // overwrote the state (lastError=null) after the patient FAILURE → the
+      // poison escape never fired with ADMIN_EMAIL set. Capture-at-failure
+      // keeps the patient's rawError → the escape MUST fire.
+      vi.stubEnv('ADMIN_EMAIL', ADMIN_EMAIL_TEST);
+      const appt = makeAppt();
+      supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
+      sendEmailModule.sendEmail.mockImplementation(
+        async (params: SendParamsLike) => {
+          const to = Array.isArray(params.to) ? params.to[0] : params.to;
+          if (to === PATIENT_EMAIL) {
+            return sendFailure(
+              {
+                name: 'validation_error',
+                statusCode: 422,
+                message: 'Invalid to',
+              },
+              'Invalid to',
+            );
+          }
+          return { success: true, id: 're_admin' };
+        },
+      );
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await handler();
+
+      expect(sendEmailModule.sendEmail).toHaveBeenCalledTimes(2);
+
+      // Poison escape fires: the sweep itself marks the row delivered.
+      const escape = flagUpdate();
+      expect(escape).toBeDefined();
+      expect(escape!.chain.table).toBe('appointments');
+      expect(escape!.update.eqs).toContainEqual(['id', appt.id]);
+      expect(escape!.update.iss).toContainEqual(['confirmation_sent_at', null]);
+      expect(
+        allUpdates().filter(u => 'confirmation_sent_at' in u.update.payload),
+      ).toHaveLength(1);
+
+      const serialized = errorSpy.mock.calls.map(call => JSON.stringify(call));
+      expect(serialized.some(line => line.includes('poison row'))).toBe(true);
+
+      errorSpy.mockRestore();
+    });
+
+    it('does NOT poison when both sends fail 4xx and the therapist promise settles LAST (best-effort race)', async () => {
+      // Residual of capture-at-failure: two concurrent failures race and the
+      // last completion wins the capture — here the therapist's, so
+      // `lastToWasPatient` is false → no poison, the row stays NULL and the
+      // next hourly pass retries (best-effort: never mis-poisons).
+      vi.stubEnv('ADMIN_EMAIL', ADMIN_EMAIL_TEST);
+      const appt = makeAppt();
+      supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
+      sendEmailModule.sendEmail.mockImplementation(
+        async (params: SendParamsLike) => {
+          const to = Array.isArray(params.to) ? params.to[0] : params.to;
+          const failure = sendFailure(
+            {
+              name: 'validation_error',
+              statusCode: 422,
+              message: 'Invalid to',
+            },
+            'Invalid to',
+          );
+          if (to === PATIENT_EMAIL) return failure;
+          // Explicit resolution-order control: a macrotask turn guarantees the
+          // therapist promise settles AFTER the patient's immediate microtask.
+          await new Promise(resolve => setTimeout(resolve, 0));
+          return failure;
+        },
+      );
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await handler();
+
+      expect(sendEmailModule.sendEmail).toHaveBeenCalledTimes(2);
+      // No escape, no success write — the row stays eligible for the sweep.
+      expect(flagUpdate()).toBeUndefined();
+      expect(allUpdates()).toHaveLength(0);
+      const serialized = errorSpy.mock.calls.map(call => JSON.stringify(call));
+      expect(serialized.some(line => line.includes('poison row'))).toBe(false);
+
+      errorSpy.mockRestore();
+    });
   });
 
   describe('SC7 param forwarding (verbatim, no mutation by the adapter)', () => {
@@ -511,6 +581,11 @@ describe('reconcile-confirmations cron handler (#129 sendEmail transport contrac
         react: expect.anything(),
         threadKey: `appointment:${appt.id}:patient`,
         idempotencyKey: `confirm:patient:${PAYMENT_INTENT_ID}`,
+      });
+      // The adapter's own budget rides along as the opts argument (sweep
+      // cadence: one attempt per pass, the next hour retries).
+      expect(sendEmailModule.sendEmail.mock.calls[0][1]).toEqual({
+        maxAttempts: 1,
       });
     });
 

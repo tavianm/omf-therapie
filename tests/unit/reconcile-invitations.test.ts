@@ -1,12 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ---------------------------------------------------------------------------
-// RED tests — T10 defines the CONTRACT of the T13 scheduled function
+// Contract tests — the scheduled function
 // `netlify/functions/reconcile-invitations.ts` (issue #126, slice 3).
 //
-// The module does NOT exist yet: every test in this file is expected to FAIL
-// at import ("module not found") until T13 lands. Once implemented, these
-// tests pin down:
+// What this suite pins down:
 //
 //   1. Exports: callable default `handler` + named `config` with literal
 //      schedule `'20 * * * *'` (offset from #98's `'5 * * * *'`).
@@ -200,28 +198,12 @@ vi.mock('@supabase/supabase-js', () => ({
 
 vi.mock('ws', () => ({ default: vi.fn(), __esModule: true }));
 
-// --- Transport mocks (#129) --------------------------------------------------
+// --- Transport mock (#129) ---------------------------------------------------
 //
-// CONTRACT (post-T5): the sweep's `sendFn` adapter (`_lib/send-fn`) delegates
-// to `sendEmail` from `src/lib/resend`; assertions below target the
-// `sendEmail` mock (params in, `{ success, error, rawError }` out).
-//
-// The `resend` SDK mock stays ONLY as a RED-phase network guard: until T5
-// migrates the sweep, today's local wrapper still calls
-// `new Resend(...).emails.send(...)`, which would hit the real API. After T5
-// the sweep no longer imports the SDK and this mock becomes inert (safe to
-// delete then). All contract assertions target `sendEmail`, never the SDK.
-
-const resendSend = vi.fn(async () => ({
-  data: { id: 're_123' },
-  error: null,
-}));
-vi.mock('resend', () => ({
-  Resend: class {
-    constructor(_apiKey: string) {}
-    emails = { send: resendSend };
-  },
-}));
+// CONTRACT: the sweep's `sendFn` adapter (`_lib/send-fn`) delegates to
+// `sendEmail` from `src/lib/resend`; assertions below target the `sendEmail`
+// mock (params in, `{ success, error, rawError }` out). The sweep never
+// touches the Resend SDK directly, so no SDK mock is needed here.
 
 const sendEmailModule = vi.hoisted(() => ({
   sendEmail: vi.fn(),
@@ -285,7 +267,7 @@ vi.mock('../../src/lib/google-calendar', () => ({
   createCalendarEvent: googleCalendar.createCalendarEvent,
 }));
 
-// Module under test — DOES NOT EXIST YET (T13). All tests are RED at import.
+// Module under test.
 import handler, { config } from '../../netlify/functions/reconcile-invitations';
 
 // ---------------------------------------------------------------------------
@@ -331,8 +313,6 @@ function resetMocks(): void {
   supabaseState.chains.length = 0;
   supabaseState.selectResults.length = 0;
   supabaseState.updateResults.length = 0;
-  resendSend.mockClear();
-  resendSend.mockResolvedValue({ data: { id: 're_123' }, error: null });
   sendEmailModule.sendEmail.mockClear();
   // Default: the send succeeds (rawError absent on success).
   sendEmailModule.sendEmail.mockResolvedValue({
@@ -361,7 +341,7 @@ afterEach(() => {
 });
 
 // ===========================================================================
-// Contract tests — all RED until T13 implements the module.
+// Contract tests — the implemented sweep (T13).
 // ===========================================================================
 
 describe('reconcile-invitations cron handler (T13 contract)', () => {
@@ -635,6 +615,11 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
       // No manual BCC from the sweep (else the admin copy would be doubled).
       expect(params.bcc).toBeUndefined();
       expect(params.to).toBe('patient@example.com');
+      // The adapter's own budget rides along as the opts argument (sweep
+      // cadence: one attempt per pass, the next hour retries).
+      expect(sendEmailModule.sendEmail.mock.calls[0][1]).toEqual({
+        maxAttempts: 1,
+      });
     });
 
     it('passes no bcc either when ADMIN_EMAIL is empty', async () => {

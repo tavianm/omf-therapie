@@ -33,7 +33,7 @@
 
 <div class="hub">
   <h2>sendEmail — src/lib/resend.ts</h2>
-  <p>Seul chemin d'envoi. Invariants hérités partout : auto-BCC ADMIN_EMAIL · retries (opts) · email_threads (In-Reply-To/References) · idempotencyKey · env-agnostique (cron ∨ Astro). Expose rawError pour la classification poison.</p>
+  <p>Seul chemin d'envoi. Invariants hérités partout : auto-BCC ADMIN_EMAIL · maxAttempts (opts) · email_threads (In-Reply-To/References) · idempotencyKey · env-agnostique (cron ∨ Astro). Expose rawError pour la classification poison.</p>
 </div>
 
 <div class="legend">
@@ -43,19 +43,19 @@
 <div class="spoke migrated">
   <h3>POST /api/admin/appointments/ — post-réponse (waitUntil) <span class="status mig">inchangé, now tested</span></h3>
   <div class="who">notifications.ts processAppointmentSideEffects — S3 email</div>
-  <div class="fields">retries=3 (défaut) · threadKey · idempotencyKey invite:{id}:patient · BCC auto (déjà)</div>
+  <div class="fields">maxAttempts=3 (défaut) · threadKey · idempotencyKey invite:{id}:patient · BCC auto (déjà)</div>
 </div>
 
 <div class="spoke migrated">
   <h3>Sweep reconcile-invitations (cron horaire '20 * * * *') <span class="status mig">migré ← wrapper copie</span></h3>
-  <div class="who">via _lib/send-fn makeCapturingSendFn({ retries: 1 })</div>
-  <div class="fields">gagne : retries=1 explicite · racine thread si POST absent · BCC auto (déjà répliqué 8a84a22, maintenant hérité) · rawError via state.lastError</div>
+  <div class="who">via _lib/send-fn makeSendFnWithCapture({ maxAttempts: 1 })</div>
+  <div class="fields">gagne : maxAttempts=1 explicite · racine thread si POST absent · BCC auto (déjà répliqué 8a84a22, maintenant hérité) · rawError via state.lastError</div>
 </div>
 
 <div class="spoke migrated">
   <h3>Sweep reconcile-confirmations (#98, cron '5 * * * *') <span class="status mig">migré ← wrapper copie</span></h3>
   <div class="who">notifications.ts buildAndSendConfirmationEmails — patient + thérapeute</div>
-  <div class="fields">gagne : racine thread si webhook absent · BCC auto sur l'email patient · retries=1 · state.lastTo conservé (heuristique poison patient-vs-thérapeute)</div>
+  <div class="fields">gagne : racine thread si webhook absent · BCC auto sur l'email patient · maxAttempts=1 · state capture-à-l'échec (lastTo = destinataire en échec, heuristique poison)</div>
 </div>
 
 <div class="spoke existing">
@@ -67,7 +67,7 @@
 <div class="spoke future">
   <h3>send-reminders (cron) <span class="status fut">futur — lot suivant</span></h3>
   <div class="who">envois bruts resendClient.emails.send ×2 (rappel RDV, rappel paiement)</div>
-  <div class="fields">migration triviale une fois le seam posé ; delta à arbitrer : BCC admin sur rappels + retries</div>
+  <div class="fields">migration triviale une fois le seam posé ; delta à arbitrer : BCC admin sur rappels + maxAttempts</div>
 </div>
 
 <div class="spoke future">

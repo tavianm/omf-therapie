@@ -2,30 +2,31 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { ReactElement } from 'react';
-import type { SendEmailParams, SendEmailResult } from '../../src/lib/resend';
+import type {
+  SendEmailOpts,
+  SendEmailParams,
+  SendEmailResult,
+} from '../../src/lib/resend';
 
 // ---------------------------------------------------------------------------
-// RED tests — T1 pins the CONTRACT of the transport seam refactor of
-// `src/lib/resend.ts` (issue #129). T2 (not this task) implements it; groups
-// (a), (b) and (d) are EXPECTED TO FAIL against today's code — that failure
-// is the contract definition, not a bug. Group (c) is already green today and
-// pins an existing invariant (auto-BCC admin) that T2 must preserve.
-//
-// Contract under test:
+// Contract tests — the transport seam of `src/lib/resend.ts` (issue #129,
+// amended by the PR #131 review). The seam is implemented; these tests PIN it
+// so the invariants below cannot regress:
 //
 //   (a) SC1 — `SendEmailResult.rawError` (additive field): every failure path
-//       (API 4xx/5xx, network throw) must surface the ORIGINAL Resend error
-//       ({ name, statusCode, message }) alongside the human-readable `error`
-//       string, so callers (reconcile sweeps, webhook) can classify
-//       retryable-vs-poison without re-parsing the message. `rawError` stays
-//       absent on success.
-//   (b) SC2 — `sendEmail(params, { maxAttempts })`: the retry budget becomes
-//       caller-controlled. Default stays 3 (today's hardcoded budget).
+//       (API 4xx/5xx, network throw, outer render/pipeline throw, missing API
+//       key) surfaces the ORIGINAL Resend error ({ name, statusCode, message })
+//       alongside the human-readable `error` string, so callers (reconcile
+//       sweeps, webhook) can classify retryable-vs-poison without re-parsing
+//       the message. `rawError` stays absent on success. The idempotency key
+//       (L1) is propagated verbatim to the SDK options.
+//   (b) SC2 — `sendEmail(params, { maxAttempts })`: the retry budget is
+//       caller-controlled and CLAMPED (non-finite → default 3, <1 → 1).
 //       Classification (`resend-errors.ts`: 5xx/null/429/application_error →
 //       retryable, other 4xx → poison) is untouched.
-//   (c) Auto-BCC admin invariant (already green): ADMIN_EMAIL is appended to
-//       bcc unless the admin is already a recipient (in `to` or `bcc`,
-//       case-insensitively); never duplicated.
+//   (c) Auto-BCC admin invariant: ADMIN_EMAIL is appended to bcc unless the
+//       admin is already a recipient (in `to` or `bcc`, case-insensitively);
+//       never duplicated.
 //   (d) SC3 — env-agnostic guarded env reads (source assertion, mirrors
 //       cron-schedule-source.test.ts): each of RESEND_API_KEY,
 //       RESEND_FROM_EMAIL, ADMIN_EMAIL, SMTP_HOST, SMTP_PORT must be read
@@ -65,8 +66,12 @@ vi.mock('resend', () => ({
   },
 }));
 
-vi.mock('@react-email/render', () => ({
+const renderState = vi.hoisted(() => ({
   render: vi.fn(async () => '<html><body>rendu de test</body></html>'),
+}));
+
+vi.mock('@react-email/render', () => ({
+  render: renderState.render,
 }));
 
 // --- Supabase mock — thread persistence chain only ---------------------------
@@ -111,27 +116,6 @@ vi.mock('../../src/lib/supabase', () => ({
   supabaseAdmin: { from: supabaseFrom },
 }));
 
-// --- Future-contract types (T2 additions, cast-based — no @ts-expect-error) --
-
-/** T2 contract: `rawError` is additive on SendEmailResult. */
-interface FutureSendEmailResult extends SendEmailResult {
-  rawError?: {
-    name?: string;
-    statusCode?: number | null;
-    message?: string;
-  };
-}
-
-/** T2 contract: optional per-call opts. */
-interface SendEmailOpts {
-  maxAttempts?: number;
-}
-
-type SendEmailWithOpts = (
-  params: SendEmailParams,
-  opts?: SendEmailOpts,
-) => Promise<SendEmailResult>;
-
 // --- Fixtures ----------------------------------------------------------------
 
 const FAKE_REACT_ELEMENT = {} as ReactElement;
@@ -148,17 +132,14 @@ function baseParams(overrides?: Partial<SendEmailParams>): SendEmailParams {
 /**
  * Dynamic import per test: `vi.resetModules()` in beforeEach yields a fresh
  * module instance so the module-level transport/client caches never leak
- * between tests. The two casts centralize the future-contract surface (opts
- * param + rawError field) that T2 will make native — they compile today and
- * stay valid after T2 lands.
+ * between tests. The opts param + rawError field are native seam exports.
  */
 async function sendForContract(
   params: SendEmailParams,
   opts?: SendEmailOpts,
-): Promise<FutureSendEmailResult> {
+): Promise<SendEmailResult> {
   const { sendEmail } = await import('../../src/lib/resend');
-  const sendWithOpts = sendEmail as unknown as SendEmailWithOpts;
-  return (await sendWithOpts(params, opts)) as FutureSendEmailResult;
+  return sendEmail(params, opts);
 }
 
 function capturedPayload(callIndex = 0): Record<string, unknown> {
@@ -168,19 +149,30 @@ function capturedPayload(callIndex = 0): Record<string, unknown> {
   return args![0] as Record<string, unknown>;
 }
 
+/** The SDK options argument (`{ idempotencyKey }` — the L1 propagation pin). */
+function capturedOptions(callIndex = 0): Record<string, unknown> {
+  const calls = resendState.send.mock.calls as unknown[][];
+  const args = calls[callIndex];
+  expect(args, `emails.send call #${callIndex} not captured`).toBeDefined();
+  return args![1] as Record<string, unknown>;
+}
+
 function countAdminOccurrences(emails: string[] | undefined): number {
   return (emails ?? []).filter(
     address => address.trim().toLowerCase() === 'admin@omf-therapie.fr',
   ).length;
 }
 
-describe('sendEmail transport seam — issue #129 T1 (RED contract for T2)', () => {
+describe('sendEmail transport seam — issue #129 (contract)', () => {
   beforeEach(() => {
     vi.resetModules();
     resendState.send.mockReset();
     resendState.constructorKeys.length = 0;
-    // Client instantiation gate — today read from import.meta.env, post-T2
-    // from the guarded read (vi.stubEnv covers both sources).
+    // mockClear (not reset): keeps the default render implementation so only
+    // the outer-throw test needs to override it.
+    renderState.render.mockClear();
+    // Client instantiation gate — read through the guarded seam
+    // (vi.stubEnv covers both import.meta.env and process.env sources).
     vi.stubEnv('RESEND_API_KEY', 're_test_key');
   });
 
@@ -257,6 +249,46 @@ describe('sendEmail transport seam — issue #129 T1 (RED contract for T2)', () 
       // The client was built from the stubbed RESEND_API_KEY.
       expect(resendState.constructorKeys).toEqual(['re_test_key']);
     });
+
+    it('wraps an outer throw (render rejection) as rawError {name: unexpected_error}', async () => {
+      // render() runs before the SDK call inside the same try — a rejection
+      // must surface as a structured failure (the "every error has a rawError"
+      // contract), never as an exception escaping sendEmail.
+      renderState.render.mockRejectedValueOnce(new Error('render exploded'));
+
+      const result = await sendForContract(baseParams());
+
+      expect(result.success).toBe(false);
+      expect(result.rawError?.name).toBe('unexpected_error');
+      expect(result.error).toBe('render exploded');
+      expect(resendState.send).not.toHaveBeenCalled();
+    });
+
+    it('propagates the idempotencyKey to the SDK options (L1 — Idempotency-Key header)', async () => {
+      resendState.send.mockResolvedValue({
+        data: { id: 'email-id-1' },
+        error: null,
+      });
+
+      await sendForContract(
+        baseParams({ idempotencyKey: 'invite:appt-1:patient' }),
+      );
+
+      expect(capturedOptions()).toEqual({
+        idempotencyKey: 'invite:appt-1:patient',
+      });
+    });
+
+    it('sends empty SDK options when no idempotencyKey is set', async () => {
+      resendState.send.mockResolvedValue({
+        data: { id: 'email-id-1' },
+        error: null,
+      });
+
+      await sendForContract(baseParams());
+
+      expect(capturedOptions()).toEqual({});
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -323,6 +355,39 @@ describe('sendEmail transport seam — issue #129 T1 (RED contract for T2)', () 
       await sendForContract(baseParams(), { maxAttempts: 2 });
 
       expect(resendState.send).toHaveBeenCalledTimes(2);
+    });
+
+    it('clamps maxAttempts: 0 up to 1 — exactly one SDK call, no zero-budget silent skip', async () => {
+      // A 0 budget must not make the loop body run zero times (a failure
+      // reported without any SDK call would corrupt the retry semantics).
+      resendState.send.mockResolvedValue({
+        data: null,
+        error: {
+          name: 'server_error',
+          statusCode: 503,
+          message: 'Service unavailable',
+        },
+      });
+
+      const result = await sendForContract(baseParams(), { maxAttempts: 0 });
+
+      expect(resendState.send).toHaveBeenCalledTimes(1);
+      expect(result.success).toBe(false);
+    });
+
+    it('treats a non-finite maxAttempts (NaN) as the default budget 3', async () => {
+      resendState.send.mockResolvedValue({
+        data: null,
+        error: {
+          name: 'server_error',
+          statusCode: 503,
+          message: 'Service unavailable',
+        },
+      });
+
+      await sendForContract(baseParams(), { maxAttempts: Number.NaN });
+
+      expect(resendState.send).toHaveBeenCalledTimes(3);
     });
   });
 
