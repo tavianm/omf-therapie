@@ -35,14 +35,30 @@ if (!isAdminSession(session)) {
 // AppointmentsManager (et à AppointmentCard en vue dépliée). Évite la sérialisation
 // de données PII/cliniques dans les props Astro.
 const APPOINTMENT_COLUMNS = [
-  'id', 'status', 'scheduled_at', 'rescheduled_to',
-  'appointment_type', 'appointment_mode', 'duration',
-  'base_price', 'discount', 'final_price', 'is_first_session',
-  'patient_name', 'patient_email', 'patient_phone', 'patient_postal_code',
-  'patient_city', 'patient_reason', 'therapist_notes',
-  'video_link', 'google_calendar_event_id',
-  'stripe_payment_link_url', 'stripe_payment_link_id',
-  'created_at', 'updated_at',
+  'id',
+  'status',
+  'scheduled_at',
+  'rescheduled_to',
+  'appointment_type',
+  'appointment_mode',
+  'duration',
+  'base_price',
+  'discount',
+  'final_price',
+  'is_first_session',
+  'patient_name',
+  'patient_email',
+  'patient_phone',
+  'patient_postal_code',
+  'patient_city',
+  'patient_reason',
+  'therapist_notes',
+  'video_link',
+  'google_calendar_event_id',
+  'stripe_payment_link_url',
+  'stripe_payment_link_id',
+  'created_at',
+  'updated_at',
 ].join(',');
 
 const { data: rows, error } = await supabaseAdmin
@@ -59,7 +75,9 @@ if (error) {
 // (GenericStringError) does not overlap with Appointment, so the cast must not
 // run when `error` is truthy — an empty array renders a degraded dashboard
 // instead of masking the error as fake Appointment rows.
-const appointments: Appointment[] = error ? [] : (rows as unknown as Appointment[]);
+const appointments: Appointment[] = error
+  ? []
+  : (rows as unknown as Appointment[]);
 
 // ── Comptages par statut (pour l'en-tête de page : « N · X en attente ») ───────
 const counts: Record<string, number> = { all: appointments.length };
@@ -78,7 +96,6 @@ for (const appt of appointments) {
 
   <main class="min-h-screen bg-sage-50 pt-20 pb-12">
     <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-
       <!-- En-tête page -->
       <div class="flex flex-wrap items-center justify-between gap-4 py-8">
         <div>
@@ -97,17 +114,23 @@ for (const appt of appointments) {
           <button
             id="signout-btn"
             type="button"
-            class="
-              inline-flex items-center gap-2 px-4 py-2 text-sm font-medium font-sans
+            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium font-sans
               rounded-xl border border-sage-300 text-sage-600
               hover:bg-sage-100 hover:text-sage-800
               focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1
-              transition-colors min-h-[40px]
-            "
+              transition-colors min-h-[40px]"
             aria-label="Se déconnecter"
           >
-            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clip-rule="evenodd" />
+            <svg
+              class="w-4 h-4"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z"
+                clip-rule="evenodd"></path>
             </svg>
             Déconnexion
           </button>
@@ -129,11 +152,10 @@ for (const appt of appointments) {
             data-tab="appointments"
             aria-selected="true"
             aria-controls="appointments-tab-panel"
-            class="
-              tab-btn rounded-lg px-4 py-2 text-sm font-medium font-sans transition-colors
+            tabindex="0"
+            class="tab-btn rounded-lg px-4 py-2 text-sm font-medium font-sans transition-colors
               bg-mint-600 text-white
-              focus:outline-none focus:ring-2 focus:ring-mint-400
-            "
+              focus:outline-none focus:ring-2 focus:ring-mint-400"
           >
             Rendez-vous
           </button>
@@ -144,11 +166,10 @@ for (const appt of appointments) {
             data-tab="patients"
             aria-selected="false"
             aria-controls="patients-tab-panel"
-            class="
-              tab-btn rounded-lg px-4 py-2 text-sm font-medium font-sans transition-colors
+            tabindex="-1"
+            class="tab-btn rounded-lg px-4 py-2 text-sm font-medium font-sans transition-colors
               text-sage-600 hover:text-mint-700
-              focus:outline-none focus:ring-2 focus:ring-mint-400
-            "
+              focus:outline-none focus:ring-2 focus:ring-mint-400"
           >
             Patients
           </button>
@@ -159,18 +180,21 @@ for (const appt of appointments) {
             data-tab="timeslots"
             aria-selected="false"
             aria-controls="timeslots-tab-panel"
-            class="
-              tab-btn rounded-lg px-4 py-2 text-sm font-medium font-sans transition-colors
+            tabindex="-1"
+            class="tab-btn rounded-lg px-4 py-2 text-sm font-medium font-sans transition-colors
               text-sage-600 hover:text-mint-700
-              focus:outline-none focus:ring-2 focus:ring-mint-400
-            "
+              focus:outline-none focus:ring-2 focus:ring-mint-400"
           >
             Plages horaires
           </button>
         </div>
       </div>
 
-      <section id="appointments-tab-panel" role="tabpanel" aria-labelledby="appointments-tab">
+      <section
+        id="appointments-tab-panel"
+        role="tabpanel"
+        aria-labelledby="appointments-tab"
+      >
         <!--
           Island unique : reçoit tous les rendez-vous (déjà chargés côté serveur)
           et gère en interne la recherche, les filtres par statut, le partition
@@ -197,7 +221,6 @@ for (const appt of appointments) {
       >
         <TimeSlotManager client:load />
       </section>
-
     </div>
   </main>
 </Layout>
@@ -222,17 +245,33 @@ for (const appt of appointments) {
   // (Le filtrage par statut des rendez-vous est désormais géré par l'island
   //  React <AppointmentsManager />, y compris la persistance en sessionStorage.)
   const tabButtons = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
-  const appointmentsTabPanel = document.getElementById('appointments-tab-panel');
+  const tabList = document.querySelector<HTMLElement>('[role="tablist"]');
+  const appointmentsTabPanel = document.getElementById(
+    'appointments-tab-panel',
+  );
   const patientsTabPanel = document.getElementById('patients-tab-panel');
   const timeslotsTabPanel = document.getElementById('timeslots-tab-panel');
 
-  function setActiveTab(tab: 'appointments' | 'patients' | 'timeslots') {
-    tabButtons.forEach((button) => {
+  type DashboardTab = 'appointments' | 'patients' | 'timeslots';
+
+  function getTabName(button: HTMLButtonElement): DashboardTab | null {
+    const tabName = button.dataset['tab'];
+    return tabName === 'appointments' ||
+      tabName === 'patients' ||
+      tabName === 'timeslots'
+      ? tabName
+      : null;
+  }
+
+  function setActiveTab(tab: DashboardTab, shouldFocus = false) {
+    tabButtons.forEach(button => {
       const isActive = button.dataset['tab'] === tab;
       button.setAttribute('aria-selected', String(isActive));
+      button.tabIndex = isActive ? 0 : -1;
       if (isActive) {
         button.classList.add('bg-mint-600', 'text-white');
         button.classList.remove('text-sage-600', 'hover:text-mint-700');
+        if (shouldFocus) button.focus();
       } else {
         button.classList.remove('bg-mint-600', 'text-white');
         button.classList.add('text-sage-600', 'hover:text-mint-700');
@@ -246,18 +285,48 @@ for (const appt of appointments) {
   }
 
   const savedTab = sessionStorage.getItem('mes-rdvs-tab');
-  if (savedTab === 'appointments' || savedTab === 'patients' || savedTab === 'timeslots') {
+  if (
+    savedTab === 'appointments' ||
+    savedTab === 'patients' ||
+    savedTab === 'timeslots'
+  ) {
     setActiveTab(savedTab);
   } else {
     setActiveTab('appointments');
   }
 
-  tabButtons.forEach((button) => {
+  tabButtons.forEach(button => {
     button.addEventListener('click', () => {
-      const tabName = button.dataset['tab'];
-      if (tabName === 'appointments' || tabName === 'patients' || tabName === 'timeslots') {
-        setActiveTab(tabName);
-      }
+      const tabName = getTabName(button);
+      if (tabName) setActiveTab(tabName, true);
     });
+  });
+
+  tabList?.addEventListener('keydown', event => {
+    const currentButton = event.target;
+    if (
+      !(currentButton instanceof HTMLButtonElement) ||
+      !currentButton.classList.contains('tab-btn')
+    ) {
+      return;
+    }
+
+    const buttons = Array.from(tabButtons);
+    const currentIndex = buttons.indexOf(currentButton);
+    if (currentIndex < 0) return;
+
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowRight')
+      nextIndex = (currentIndex + 1) % buttons.length;
+    if (event.key === 'ArrowLeft')
+      nextIndex = (currentIndex - 1 + buttons.length) % buttons.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = buttons.length - 1;
+    if (nextIndex === null) return;
+
+    event.preventDefault();
+    const nextButton = buttons[nextIndex];
+    const tabName = getTabName(nextButton);
+    if (tabName) setActiveTab(tabName, true);
   });
 </script>
