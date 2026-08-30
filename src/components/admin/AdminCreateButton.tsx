@@ -215,7 +215,7 @@ function AdminCreateModal({
     setAvailableCredit(null);
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
     const controller = new AbortController();
-    fetch(`/api/admin/credits?email=${encodeURIComponent(email)}`, {
+    fetch(`/api/admin/credits/?email=${encodeURIComponent(email)}`, {
       credentials: 'same-origin',
       signal: controller.signal,
     })

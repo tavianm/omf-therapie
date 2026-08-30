@@ -1,4 +1,5 @@
 import type { Appointment } from '../../types/appointment';
+import type { Patient } from '../../types/patient';
 
 export const APPOINTMENT_CREATED_EVENT = 'admin:appointment-created';
 
@@ -26,6 +27,35 @@ export function upsertAppointment(
 
   return appointments.map(item =>
     item.id === appointment.id ? appointment : item,
+  );
+}
+
+/** Normalizes names and contact details so the search ignores case and accents. */
+export function normalizePatientSearch(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLocaleLowerCase('fr-FR')
+    .trim();
+}
+
+function normalizePhone(value: string): string {
+  return value.replace(/[^\d]/g, '');
+}
+
+/** Matches a patient by name, email, or phone without another network request. */
+export function patientMatchesSearch(patient: Patient, query: string): boolean {
+  const normalizedQuery = normalizePatientSearch(query);
+  if (!normalizedQuery) return true;
+
+  const searchableText = normalizePatientSearch(
+    `${patient.name} ${patient.email}`,
+  );
+  const normalizedPhoneQuery = normalizePhone(normalizedQuery);
+  return (
+    searchableText.includes(normalizedQuery) ||
+    (normalizedPhoneQuery.length > 0 &&
+      normalizePhone(patient.phone).includes(normalizedPhoneQuery))
   );
 }
 

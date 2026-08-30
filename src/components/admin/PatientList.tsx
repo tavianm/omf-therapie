@@ -1,27 +1,36 @@
-import { useEffect, useState } from "react";
-import { toast, Toaster } from "react-hot-toast";
-import { getModeLabel, getTypeLabel } from "../../lib/pricing";
-import { AdminCreateButton } from "./AdminCreateButton";
-import type { Patient, PrefillData, AppointmentStatus } from "../../types/patient";
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { toast, Toaster } from 'react-hot-toast';
+import { getModeLabel, getTypeLabel } from '../../lib/pricing';
+import { AdminCreateButton } from './AdminCreateButton';
+import type {
+  Patient,
+  PrefillData,
+  AppointmentStatus,
+} from '../../types/patient';
+import {
+  APPOINTMENT_CREATED_EVENT,
+  getCreatedAppointment,
+  patientMatchesSearch,
+} from './admin-dashboard-ui';
 
 const STATUS_LABELS: Record<AppointmentStatus, string> = {
-  pending: "En attente",
-  confirmed: "Confirmé",
-  declined: "Refusé",
-  rescheduled: "Reporté",
-  payment_pending: "Paiement en attente",
-  payment_received: "Paiement reçu",
-  cancelled: "Annulé",
+  pending: 'En attente',
+  confirmed: 'Confirmé',
+  declined: 'Refusé',
+  rescheduled: 'Reporté',
+  payment_pending: 'Paiement en attente',
+  payment_received: 'Paiement reçu',
+  cancelled: 'Annulé',
 };
 
 function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat("fr-FR", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Europe/Paris",
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Paris',
   }).format(new Date(iso));
 }
 
@@ -30,13 +39,14 @@ function formatPrice(cents: number): string {
 }
 
 function getPanelId(email: string): string {
-  return `patient-panel-${email.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+  return `patient-panel-${email.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
 }
 
 function getReviewableAppointmentId(patient: Patient): string | null {
   const reviewableAppointment = patient.appointments.find(
-    (appointment) =>
-      appointment.status === "confirmed" || appointment.status === "payment_received",
+    appointment =>
+      appointment.status === 'confirmed' ||
+      appointment.status === 'payment_received',
   );
   return reviewableAppointment?.id ?? null;
 }
@@ -46,8 +56,23 @@ export function PatientList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [includeArchived, setIncludeArchived] = useState(false);
-  const [expandedPatientEmail, setExpandedPatientEmail] = useState<string | null>(null);
-  const [reviewLoadingEmail, setReviewLoadingEmail] = useState<string | null>(null);
+  const [expandedPatientEmail, setExpandedPatientEmail] = useState<
+    string | null
+  >(null);
+  const [reviewLoadingEmail, setReviewLoadingEmail] = useState<string | null>(
+    null,
+  );
+  const [searchQuery, setSearchQuery] = useState('');
+  const [refreshVersion, setRefreshVersion] = useState(0);
+
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const filteredPatients = useMemo(
+    () =>
+      patients.filter(patient =>
+        patientMatchesSearch(patient, deferredSearchQuery),
+      ),
+    [patients, deferredSearchQuery],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -56,25 +81,32 @@ export function PatientList() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`/api/admin/patients?includeArchived=${String(includeArchived)}`, {
-          method: "GET",
-          credentials: "same-origin",
-          signal: controller.signal,
-        });
+        const response = await fetch(
+          `/api/admin/patients/?includeArchived=${String(includeArchived)}`,
+          {
+            method: 'GET',
+            credentials: 'same-origin',
+            signal: controller.signal,
+          },
+        );
 
         if (!response.ok) {
           const body = (await response.json()) as { error?: string };
-          throw new Error(body.error ?? "Erreur lors du chargement des patients");
+          throw new Error(
+            body.error ?? 'Erreur lors du chargement des patients',
+          );
         }
 
         const body = (await response.json()) as { patients: Patient[] };
         setPatients(body.patients ?? []);
-        setExpandedPatientEmail((current) =>
-          body.patients?.some((patient) => patient.email === current) ? current : null,
+        setExpandedPatientEmail(current =>
+          body.patients?.some(patient => patient.email === current)
+            ? current
+            : null,
         );
       } catch (err) {
         if (controller.signal.aborted) return;
-        setError(err instanceof Error ? err.message : "Erreur inconnue");
+        setError(err instanceof Error ? err.message : 'Erreur inconnue');
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false);
@@ -85,49 +117,123 @@ export function PatientList() {
     fetchPatients();
 
     return () => controller.abort();
-  }, [includeArchived]);
+  }, [includeArchived, refreshVersion]);
+
+  useEffect(() => {
+    function handleAppointmentCreated(event: Event) {
+      if (!getCreatedAppointment(event)) return;
+
+      setRefreshVersion(version => version + 1);
+    }
+
+    window.addEventListener(
+      APPOINTMENT_CREATED_EVENT,
+      handleAppointmentCreated,
+    );
+    return () =>
+      window.removeEventListener(
+        APPOINTMENT_CREATED_EVENT,
+        handleAppointmentCreated,
+      );
+  }, []);
 
   async function handleSendReviewReminder(patient: Patient) {
     const appointmentId = getReviewableAppointmentId(patient);
     if (!appointmentId) {
-      toast.error("Aucun rendez-vous confirmé à relancer pour ce patient.", { duration: 4000 });
+      toast.error('Aucun rendez-vous confirmé à relancer pour ce patient.', {
+        duration: 4000,
+      });
       return;
     }
 
     setReviewLoadingEmail(patient.email);
     try {
-      const response = await fetch("/api/send-review-email/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
+      const response = await fetch('/api/send-review-email/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ appointmentId }),
       });
 
       if (!response.ok) {
         const body = (await response.json()) as { error?: string };
-        throw new Error(body.error ?? "Erreur lors de l'envoi du rappel d'avis");
+        throw new Error(
+          body.error ?? "Erreur lors de l'envoi du rappel d'avis",
+        );
       }
 
-      toast.success(`Relance d'avis envoyée à ${patient.name}.`, { duration: 4000 });
+      toast.success(`Relance d'avis envoyée à ${patient.name}.`, {
+        duration: 4000,
+      });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erreur inconnue", { duration: 4000 });
+      toast.error(err instanceof Error ? err.message : 'Erreur inconnue', {
+        duration: 4000,
+      });
     } finally {
-      setReviewLoadingEmail((current) => (current === patient.email ? null : current));
+      setReviewLoadingEmail(current =>
+        current === patient.email ? null : current,
+      );
     }
   }
 
   return (
     <section className="space-y-4">
       <Toaster position="top-right" />
+      <div className="relative">
+        <label htmlFor="patient-search" className="sr-only">
+          Rechercher un patient
+        </label>
+        <svg
+          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-sage-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          aria-hidden="true"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z"
+          />
+        </svg>
+        <input
+          id="patient-search"
+          type="search"
+          value={searchQuery}
+          onChange={event => setSearchQuery(event.target.value)}
+          placeholder="Rechercher nom, email, téléphone…"
+          className="w-full rounded-xl border border-sage-200 bg-white py-2.5 pl-10 pr-9 text-sm text-sage-900 font-sans placeholder:text-sage-400 transition-colors min-h-[44px] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-mint-400"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery('')}
+            className="absolute right-2.5 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-sage-400 transition-colors hover:bg-sage-100 hover:text-sage-700 focus:outline-none focus:ring-2 focus:ring-mint-400"
+            aria-label="Effacer la recherche"
+          >
+            <svg
+              className="h-3.5 w-3.5"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+            </svg>
+          </button>
+        )}
+      </div>
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-sage-500 font-sans">
-          {loading ? "Chargement..." : `${patients.length} patient${patients.length > 1 ? "s" : ""}`}
+          {loading
+            ? 'Chargement...'
+            : `${filteredPatients.length} patient${filteredPatients.length > 1 ? 's' : ''}`}
         </p>
         <label className="inline-flex items-center gap-2 text-sm text-sage-700 font-sans">
           <input
             type="checkbox"
             checked={includeArchived}
-            onChange={(event) => setIncludeArchived(event.target.checked)}
+            onChange={event => setIncludeArchived(event.target.checked)}
             className="h-4 w-4 rounded border-sage-300 text-mint-700 focus:ring-mint-400"
           />
           Afficher les patients inactifs
@@ -135,13 +241,20 @@ export function PatientList() {
       </div>
 
       {error && (
-        <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 font-sans" role="alert">
+        <p
+          className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 font-sans"
+          role="alert"
+        >
           {error}
         </p>
       )}
 
       {loading && (
-        <p className="text-sm text-sage-500 font-sans" role="status" aria-live="polite">
+        <p
+          className="text-sm text-sage-500 font-sans"
+          role="status"
+          aria-live="polite"
+        >
           Chargement des patients...
         </p>
       )}
@@ -152,9 +265,18 @@ export function PatientList() {
         </p>
       )}
 
-      {!loading && !error && patients.length > 0 && (
+      {!loading &&
+        !error &&
+        patients.length > 0 &&
+        filteredPatients.length === 0 && (
+          <p className="rounded-2xl border border-sage-200 bg-white px-5 py-6 text-center text-sage-500 font-sans">
+            Aucun patient ne correspond à votre recherche.
+          </p>
+        )}
+
+      {!loading && !error && filteredPatients.length > 0 && (
         <ul className="space-y-3">
-          {patients.map((patient) => {
+          {filteredPatients.map(patient => {
             const isExpanded = expandedPatientEmail === patient.email;
             const panelId = getPanelId(patient.email);
             const prefillData: PrefillData = {
@@ -164,46 +286,73 @@ export function PatientList() {
               appointment_type: patient.lastAppointmentType,
             };
             const reviewableAppointmentId = getReviewableAppointmentId(patient);
-            const isReviewActionDisabled = !reviewableAppointmentId || reviewLoadingEmail === patient.email;
+            const isReviewActionDisabled =
+              !reviewableAppointmentId || reviewLoadingEmail === patient.email;
 
             return (
-              <li key={patient.email} className="rounded-2xl border border-sage-200 bg-white">
+              <li
+                key={patient.email}
+                className="rounded-2xl border border-sage-200 bg-white"
+              >
                 <button
                   type="button"
                   className="w-full px-4 py-4 text-left hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-mint-400 rounded-2xl"
                   aria-expanded={isExpanded}
                   aria-controls={panelId}
-                  aria-label={`${isExpanded ? "Masquer" : "Afficher"} l'historique de ${patient.name}`}
-                  onClick={() => setExpandedPatientEmail(isExpanded ? null : patient.email)}
+                  aria-label={`${isExpanded ? 'Masquer' : 'Afficher'} l'historique de ${patient.name}`}
+                  onClick={() =>
+                    setExpandedPatientEmail(isExpanded ? null : patient.email)
+                  }
                 >
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                     <div>
                       <p className="text-xs text-sage-500 font-sans">Nom</p>
-                      <p className="text-sm text-sage-900 font-medium font-sans">{patient.name}</p>
+                      <p className="text-sm text-sage-900 font-medium font-sans">
+                        {patient.name}
+                      </p>
                     </div>
                     <div>
                       <p className="text-xs text-sage-500 font-sans">Email</p>
-                      <p className="text-sm text-sage-900 font-sans break-all">{patient.email}</p>
+                      <p className="text-sm text-sage-900 font-sans break-all">
+                        {patient.email}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-xs text-sage-500 font-sans">Téléphone</p>
-                      <p className="text-sm text-sage-900 font-sans">{patient.phone || "—"}</p>
+                      <p className="text-xs text-sage-500 font-sans">
+                        Téléphone
+                      </p>
+                      <p className="text-sm text-sage-900 font-sans">
+                        {patient.phone || '—'}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-xs text-sage-500 font-sans">Nombre de séances</p>
-                      <p className="text-sm text-sage-900 font-sans">{patient.sessionCount}</p>
+                      <p className="text-xs text-sage-500 font-sans">
+                        Nombre de séances
+                      </p>
+                      <p className="text-sm text-sage-900 font-sans">
+                        {patient.sessionCount}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-xs text-sage-500 font-sans">Dernier RDV</p>
-                      <p className="text-sm text-sage-900 font-sans">{formatDate(patient.lastAppointmentAt)}</p>
+                      <p className="text-xs text-sage-500 font-sans">
+                        Dernier RDV
+                      </p>
+                      <p className="text-sm text-sage-900 font-sans">
+                        {formatDate(patient.lastAppointmentAt)}
+                      </p>
                     </div>
                   </div>
                 </button>
 
                 {isExpanded && (
-                  <div id={panelId} className="border-t border-sage-200 px-4 py-4 space-y-4">
+                  <div
+                    id={panelId}
+                    className="border-t border-sage-200 px-4 py-4 space-y-4"
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <h3 className="font-serif text-lg text-sage-800">Historique des rendez-vous</h3>
+                      <h3 className="font-serif text-lg text-sage-800">
+                        Historique des rendez-vous
+                      </h3>
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
@@ -211,23 +360,40 @@ export function PatientList() {
                           disabled={isReviewActionDisabled}
                           className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
                         >
-                          {reviewLoadingEmail === patient.email ? "Envoi..." : "Relancer avis"}
+                          {reviewLoadingEmail === patient.email
+                            ? 'Envoi...'
+                            : 'Relancer avis'}
                         </button>
                         <AdminCreateButton prefillData={prefillData} />
                       </div>
                     </div>
                     <ul className="space-y-2">
-                      {patient.appointments.map((appointment) => (
+                      {patient.appointments.map(appointment => (
                         <li
                           key={appointment.id}
                           className="rounded-xl border border-sage-200 bg-sage-50 px-3 py-3"
                         >
                           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5 text-sm font-sans text-sage-700">
-                            <p><span className="text-sage-500">Date :</span> {formatDate(appointment.scheduledAt)}</p>
-                            <p><span className="text-sage-500">Type :</span> {getTypeLabel(appointment.appointmentType)}</p>
-                            <p><span className="text-sage-500">Mode :</span> {getModeLabel(appointment.appointmentMode)}</p>
-                            <p><span className="text-sage-500">Statut :</span> {STATUS_LABELS[appointment.status]}</p>
-                            <p><span className="text-sage-500">Montant :</span> {formatPrice(appointment.finalPrice)}</p>
+                            <p>
+                              <span className="text-sage-500">Date :</span>{' '}
+                              {formatDate(appointment.scheduledAt)}
+                            </p>
+                            <p>
+                              <span className="text-sage-500">Type :</span>{' '}
+                              {getTypeLabel(appointment.appointmentType)}
+                            </p>
+                            <p>
+                              <span className="text-sage-500">Mode :</span>{' '}
+                              {getModeLabel(appointment.appointmentMode)}
+                            </p>
+                            <p>
+                              <span className="text-sage-500">Statut :</span>{' '}
+                              {STATUS_LABELS[appointment.status]}
+                            </p>
+                            <p>
+                              <span className="text-sage-500">Montant :</span>{' '}
+                              {formatPrice(appointment.finalPrice)}
+                            </p>
                           </div>
                         </li>
                       ))}
