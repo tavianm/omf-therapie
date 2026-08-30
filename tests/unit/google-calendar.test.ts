@@ -13,11 +13,20 @@ import type { Period } from '@/types/manual-slots';
 
 const TZ = 'Europe/Paris';
 const WEEKDAY_MAP: Record<string, number> = {
-  Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+  Sun: 7,
 };
 
 function parisWeekday(date: Date): number {
-  const wd = new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'short' }).format(date);
+  const wd = new Intl.DateTimeFormat('en-US', {
+    timeZone: TZ,
+    weekday: 'short',
+  }).format(date);
   return WEEKDAY_MAP[wd] ?? 7;
 }
 
@@ -28,7 +37,7 @@ function parisDateKey(date: Date): string {
     month: '2-digit',
     day: '2-digit',
   }).formatToParts(date);
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  const get = (t: string) => parts.find(p => p.type === t)?.value ?? '';
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
@@ -39,8 +48,11 @@ function parisHourMinute(date: Date): { hour: number; minute: number } {
     minute: '2-digit',
     hour12: false,
   }).formatToParts(date);
-  const hour = parseInt(parts.find((p) => p.type === 'hour')?.value ?? '0', 10);
-  const minute = parseInt(parts.find((p) => p.type === 'minute')?.value ?? '0', 10);
+  const hour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
+  const minute = parseInt(
+    parts.find(p => p.type === 'minute')?.value ?? '0',
+    10,
+  );
   return { hour: hour === 24 ? 0 : hour, minute };
 }
 
@@ -67,7 +79,9 @@ function buildInput(
   };
 }
 
-function manualMap(entries: Array<[string, Period[]]>): Map<string, Set<Period>> {
+function manualMap(
+  entries: Array<[string, Period[]]>,
+): Map<string, Set<Period>> {
   const map = new Map<string, Set<Period>>();
   for (const [date, periods] of entries) {
     map.set(date, new Set(periods));
@@ -85,7 +99,10 @@ function firstDateKeyWithWeekday(weekday: number): string {
   const minStartKey = parisDateKey(new Date(NOW.getTime() + MIN_NOTICE_MS));
   for (let i = 0; i < 14; i++) {
     const instant = new Date(START.getTime() + i * DAY_MS);
-    if (parisWeekday(instant) === weekday && parisDateKey(instant) > minStartKey) {
+    if (
+      parisWeekday(instant) === weekday &&
+      parisDateKey(instant) > minStartKey
+    ) {
       return parisDateKey(instant);
     }
   }
@@ -114,7 +131,7 @@ describe('generateSlotsForRange — eligibility model', () => {
     it('video and in-person are strictly disjoint (no shared slot start)', () => {
       const inPerson = generateSlotsForRange(buildInput({ mode: 'in-person' }));
       const video = generateSlotsForRange(buildInput({ mode: 'video' }));
-      const inPersonStarts = new Set(inPerson.map((s) => s.start));
+      const inPersonStarts = new Set(inPerson.map(s => s.start));
       for (const s of video) {
         expect(inPersonStarts.has(s.start)).toBe(false);
       }
@@ -131,7 +148,9 @@ describe('generateSlotsForRange — eligibility model', () => {
         }),
       );
 
-      const mondayStarts = slots.filter((s) => parisDateKey(new Date(s.start)) === monday);
+      const mondayStarts = slots.filter(
+        s => parisDateKey(new Date(s.start)) === monday,
+      );
       expect(mondayStarts.length).toBeGreaterThan(0);
       for (const s of mondayStarts) {
         const { hour } = parisHourMinute(new Date(s.start));
@@ -149,7 +168,9 @@ describe('generateSlotsForRange — eligibility model', () => {
         }),
       );
 
-      const mondaySlots = slots.filter((s) => parisDateKey(new Date(s.start)) === monday);
+      const mondaySlots = slots.filter(
+        s => parisDateKey(new Date(s.start)) === monday,
+      );
       for (const s of mondaySlots) {
         const { hour } = parisHourMinute(new Date(s.start));
         // Afternoon only — morning is now cabinet, so visio must not offer it.
@@ -163,14 +184,24 @@ describe('generateSlotsForRange — eligibility model', () => {
     it('manual all_day on a weekday → cabinet both halves, video none that day', () => {
       const tuesday = firstDateKeyWithWeekday(2);
       const inPerson = generateSlotsForRange(
-        buildInput({ mode: 'in-person', manualSlots: manualMap([[tuesday, ['all_day']]]) }),
+        buildInput({
+          mode: 'in-person',
+          manualSlots: manualMap([[tuesday, ['all_day']]]),
+        }),
       );
       const video = generateSlotsForRange(
-        buildInput({ mode: 'video', manualSlots: manualMap([[tuesday, ['all_day']]]) }),
+        buildInput({
+          mode: 'video',
+          manualSlots: manualMap([[tuesday, ['all_day']]]),
+        }),
       );
 
-      const ipTue = inPerson.filter((s) => parisDateKey(new Date(s.start)) === tuesday);
-      const vidTue = video.filter((s) => parisDateKey(new Date(s.start)) === tuesday);
+      const ipTue = inPerson.filter(
+        s => parisDateKey(new Date(s.start)) === tuesday,
+      );
+      const vidTue = video.filter(
+        s => parisDateKey(new Date(s.start)) === tuesday,
+      );
       expect(ipTue.length).toBeGreaterThan(0);
       expect(vidTue).toHaveLength(0);
     });
@@ -178,16 +209,28 @@ describe('generateSlotsForRange — eligibility model', () => {
     it('Wednesday stays fully cabinet even when a manual slot is added on it (additive)', () => {
       const wednesday = firstDateKeyWithWeekday(3);
       const inPerson = generateSlotsForRange(
-        buildInput({ mode: 'in-person', manualSlots: manualMap([[wednesday, ['morning']]]) }),
+        buildInput({
+          mode: 'in-person',
+          manualSlots: manualMap([[wednesday, ['morning']]]),
+        }),
       );
       const video = generateSlotsForRange(
-        buildInput({ mode: 'video', manualSlots: manualMap([[wednesday, ['morning']]]) }),
+        buildInput({
+          mode: 'video',
+          manualSlots: manualMap([[wednesday, ['morning']]]),
+        }),
       );
 
-      const ipWed = inPerson.filter((s) => parisDateKey(new Date(s.start)) === wednesday);
-      const vidWed = video.filter((s) => parisDateKey(new Date(s.start)) === wednesday);
+      const ipWed = inPerson.filter(
+        s => parisDateKey(new Date(s.start)) === wednesday,
+      );
+      const vidWed = video.filter(
+        s => parisDateKey(new Date(s.start)) === wednesday,
+      );
       // Wednesday afternoon remains cabinet (not flipped to visio)
-      const ipWedPm = ipWed.filter((s) => parisHourMinute(new Date(s.start)).hour >= 14);
+      const ipWedPm = ipWed.filter(
+        s => parisHourMinute(new Date(s.start)).hour >= 14,
+      );
       expect(ipWedPm.length).toBeGreaterThan(0);
       expect(vidWed).toHaveLength(0);
     });
@@ -202,21 +245,52 @@ describe('generateSlotsForRange — eligibility model', () => {
       }
     });
 
-    it('respects the 24h minimum notice — no slot starts before now + 24h', () => {
-      const minStart = NOW.getTime() + MIN_NOTICE_MS;
-      const inPerson = generateSlotsForRange(buildInput({ mode: 'in-person' }));
-      for (const s of inPerson) {
-        expect(new Date(s.start).getTime()).toBeGreaterThanOrEqual(minStart);
-      }
+    it('respects the 24h minimum notice by removing early Wednesday slots', () => {
+      // Tuesday 10:00 Paris puts the 24h cutoff at Wednesday 10:00 Paris.
+      // Mutation check: replacing the minStart guard in generatePeriodSlots
+      // with an unconditional branch must make this test fail.
+      const noticeNow = new Date('2026-06-16T08:00:00.000Z');
+      const earlierNow = new Date('2026-06-15T08:00:00.000Z');
+      const wednesday = '2026-06-17';
+
+      const filtered = generateSlotsForRange(
+        buildInput({ mode: 'in-person', now: noticeNow }),
+      );
+      const earlier = generateSlotsForRange(
+        buildInput({ mode: 'in-person', now: earlierNow }),
+      );
+      const filteredWednesday = filtered.filter(
+        slot => parisDateKey(new Date(slot.start)) === wednesday,
+      );
+      const earlierWednesday = earlier.filter(
+        slot => parisDateKey(new Date(slot.start)) === wednesday,
+      );
+      const starts = filteredWednesday.map(slot => {
+        const { hour, minute } = parisHourMinute(new Date(slot.start));
+        return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+      });
+
+      expect(starts).not.toContain('08:00');
+      expect(starts).not.toContain('08:30');
+      expect(starts).not.toContain('09:00');
+      expect(starts).not.toContain('09:30');
+      expect(starts).toContain('10:00');
+      expect(filteredWednesday.length).toBeLessThan(earlierWednesday.length);
     });
 
     it('morning slots stay within 08:00–12:00, afternoon within 14:00–19:00 (Paris)', () => {
       const wednesday = firstDateKeyWithWeekday(3);
       const inPerson = generateSlotsForRange(buildInput({ mode: 'in-person' }));
-      const wedSlots = inPerson.filter((s) => parisDateKey(new Date(s.start)) === wednesday);
+      const wedSlots = inPerson.filter(
+        s => parisDateKey(new Date(s.start)) === wednesday,
+      );
 
-      const startHours = wedSlots.map((s) => parisHourMinute(new Date(s.start)).hour);
-      const minutes = wedSlots.map((s) => parisHourMinute(new Date(s.start)).minute);
+      const startHours = wedSlots.map(
+        s => parisHourMinute(new Date(s.start)).hour,
+      );
+      const minutes = wedSlots.map(
+        s => parisHourMinute(new Date(s.start)).minute,
+      );
       // Every start is either in [8,11] (morning, 30-min grid) or [14,18] (afternoon)
       for (let i = 0; i < wedSlots.length; i++) {
         const totalMin = startHours[i] * 60 + minutes[i];
@@ -227,7 +301,9 @@ describe('generateSlotsForRange — eligibility model', () => {
     });
 
     it('90-min duration does not overflow the period end (no slot ending after 12:00 / 19:00)', () => {
-      const inPerson = generateSlotsForRange(buildInput({ mode: 'in-person', duration: 90 }));
+      const inPerson = generateSlotsForRange(
+        buildInput({ mode: 'in-person', duration: 90 }),
+      );
       for (const s of inPerson) {
         const startHm = parisHourMinute(new Date(s.start));
         const totalMin = startHm.hour * 60 + startHm.minute;
