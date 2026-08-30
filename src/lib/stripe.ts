@@ -7,28 +7,56 @@
 
 import Stripe from 'stripe';
 
-const stripeKey = import.meta.env.STRIPE_SECRET_KEY ?? '';
+// ---------------------------------------------------------------------------
+// Lazy initialization — this module must be importable from runtimes where
+// `import.meta.env` is undefined (Netlify Functions Node.js, cf. resend.ts #98).
+// The Stripe client and mock flag resolve on first use, not on module load.
+// `process.env` is the only env source available in the cron runtime.
+// ---------------------------------------------------------------------------
 
-if (!stripeKey) {
-  console.warn('[stripe] ⚠️  STRIPE_SECRET_KEY est absent. Les paiements Stripe échoueront.');
+function getStripeKey(): string {
+  // Guarded access (mirror of `readEnv` in google-calendar.ts): the optional
+  // chaining keeps this importable in runtimes where `import.meta.env` is
+  // undefined (Netlify scheduled functions — plain Node bundle, cf. #98/#126).
+  return (
+    (import.meta as { env?: Record<string, string | undefined> }).env
+      ?.STRIPE_SECRET_KEY ??
+    process.env.STRIPE_SECRET_KEY ??
+    ''
+  );
 }
 
-/** True when running in dev/test with placeholder Stripe keys */
-export const isStripeMock = !stripeKey || stripeKey === 'sk_test_placeholder' || stripeKey.startsWith('sk_test_placeholder');
+let cachedStripe: Stripe | null | undefined;
 
-/** Instance Stripe singleton */
-export const stripe: Stripe = new Stripe(stripeKey, {
-  // Explicitly pin the API version literal to the live account's pinned version
-  // (Dashboard → Developers → API version). stripe@22 bundles the
-  // "2026-06-24.dahlia" types; our account is still on "2024-12-18.acacia".
-  // Stripe pins requests to the account version regardless of this value, so
-  // the literal documents intent; the @ts-expect-error bridges the SDK-type
-  // drift and self-invalidates if the literal ever matches LatestApiVersion.
-  // To upgrade: bump the account version first, verify response shapes, then
-  // set this literal to match (the @ts-expect-error will drop automatically).
-  // @ts-expect-error — account version differs from bundled LatestApiVersion
-  apiVersion: '2024-12-18.acacia',
-});
+/** Instance Stripe (lazy) — null si STRIPE_SECRET_KEY est absente */
+export function getStripe(): Stripe | null {
+  if (cachedStripe !== undefined) return cachedStripe;
+  const stripeKey = getStripeKey();
+  cachedStripe = stripeKey
+    ? new Stripe(stripeKey, {
+        // Explicitly pin the API version literal to the live account's pinned version
+        // (Dashboard → Developers → API version). stripe@22 bundles the
+        // "2026-06-24.dahlia" types; our account is still on "2024-12-18.acacia".
+        // Stripe pins requests to the account version regardless of this value, so
+        // the literal documents intent; the @ts-expect-error bridges the SDK-type
+        // drift and self-invalidates if the literal ever matches LatestApiVersion.
+        // To upgrade: bump the account version first, verify response shapes, then
+        // set this literal to match (the @ts-expect-error will drop automatically).
+        // @ts-expect-error — account version differs from bundled LatestApiVersion
+        apiVersion: '2024-12-18.acacia',
+      })
+    : null;
+  if (!cachedStripe) {
+    console.warn('[stripe] ⚠️  STRIPE_SECRET_KEY est absent. Les paiements Stripe échoueront.');
+  }
+  return cachedStripe;
+}
+
+/** True when running in dev/test with placeholder (or missing) Stripe keys */
+export function isStripeMock(): boolean {
+  const stripeKey = getStripeKey();
+  return !stripeKey || stripeKey === 'sk_test_placeholder' || stripeKey.startsWith('sk_test_placeholder');
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -93,7 +121,7 @@ export async function createAppointmentPaymentLink(
   const redirectUrl = buildStripeSuccessUrl(successUrl);
 
   // Dev/test bypass: return a mock payment link when Stripe key is placeholder
-  if (isStripeMock) {
+  if (isStripeMock()) {
     console.warn('[stripe] 🔧 Mode dev — lien de paiement simulé (clé Stripe placeholder)');
     const mockUrl = withQueryParam(
       withQueryParam(redirectUrl, 'mock', '1'),
@@ -106,8 +134,13 @@ export async function createAppointmentPaymentLink(
     };
   }
 
+  const client = getStripe();
+  if (!client) {
+    throw new Error('Stripe client non initialisé — STRIPE_SECRET_KEY manquante');
+  }
+
   // 1. Créer un prix one-time
-  const price = await stripe.prices.create({
+  const price = await client.prices.create({
     unit_amount: amount,
     currency: 'eur',
     product_data: {
@@ -116,7 +149,7 @@ export async function createAppointmentPaymentLink(
   });
 
   // 2. Créer le Payment Link
-  const paymentLink = await stripe.paymentLinks.create({
+  const paymentLink = await client.paymentLinks.create({
     line_items: [{ price: price.id, quantity: 1 }],
     after_completion: {
       type: 'redirect',

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Modèle — invitations RDV admin (#126)</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; padding:32px; background:#0d1117; color:#e6edf3; font:14px/1.5 -apple-system,"Segoe UI",sans-serif; }
+  h1 { font-size:18px; color:#7ee787; margin:0 0 4px; }
+  p.sub { color:#8b949e; margin:0 0 28px; font-size:13px; }
+  .layer { margin-bottom:28px; }
+  .layer > h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:#8b949e; border-left:3px solid #388bfd; padding-left:8px; margin:0 0 12px; }
+  .layer.side > h2 { border-color:#d29922; }
+  .layer.out > h2 { border-color:#7ee787; }
+  .node { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:14px 16px; display:inline-block; vertical-align:top; margin:0 14px 14px 0; min-width:280px; }
+  .node.core { border-color:#388bfd; box-shadow:0 0 14px rgba(56,139,253,.15); }
+  .node.new { border-color:#7ee787; }
+  .node h3 { margin:0 0 8px; font-size:14px; }
+  .node .tag { float:right; font-size:10px; padding:1px 7px; border-radius:99px; margin-left:6px; }
+  .tag.new { background:#1f4d2a; color:#7ee787; }
+  .tag.frozen { background:#3d2d00; color:#d29922; }
+  .tag.mutable { background:#0c2d5e; color:#79c0ff; }
+  .field { font-family:ui-monospace,monospace; font-size:12px; padding:2px 0; color:#c9d1d9; }
+  .field em { color:#8b949e; font-style:normal; }
+  .field.new { color:#7ee787; }
+  .rel { font-family:ui-monospace,monospace; font-size:11px; color:#8b949e; margin-top:8px; border-top:1px dashed #30363d; padding-top:6px; }
+  .legend { margin-top:8px; font-size:11px; color:#8b949e; }
+  .legend span { margin-right:14px; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; vertical-align:middle; }
+</style>
+</head>
+<body>
+<h1>Modèle de données — invitations RDV admin (#126)</h1>
+<p class="sub">Layered : cœur (muté par ce changement) ↓ tables liées (lecture/écriture chemin critique) ↓ sorties externes. <span class="dot" style="background:#7ee787"></span>nouveau · <span class="dot" style="background:#79c0ff"></span>mutable · <span class="dot" style="background:#d29922"></span>gelé (contrainte)</p>
+
+<div class="layer">
+  <h2>Cœur — appointments</h2>
+  <div class="node core">
+    <h3>appointments <span class="tag mutable">mutable</span></h3>
+    <div class="field new">invitation_sent_at&nbsp; TIMESTAMPTZ NULL <em>← NOUVEAU (013) — set-once, jamais reset</em></div>
+    <div class="field">confirmation_sent_at TIMESTAMPTZ NULL <em>(011, inchangé)</em></div>
+    <div class="field">google_calendar_event_id UUID NULL</div>
+    <div class="field">video_link TEXT NULL</div>
+    <div class="field">stripe_payment_link_id / _url TEXT NULL</div>
+    <div class="field">status, appointment_mode, final_price, credit_applied <em>(inchangés)</em></div>
+    <div class="rel">idx partiel (created_at) WHERE invitation_sent_at IS NULL AND deleted_at IS NULL — NOUVEAU</div>
+  </div>
+</div>
+
+<div class="layer side">
+  <h2>Chemin critique (synchrone, inchangé)</h2>
+  <div class="node">
+    <h3>credits <span class="tag frozen">RLS service_role</span></h3>
+    <div class="field">remaining, patient_email</div>
+    <div class="rel">consume_credits() RPC FIFO — AVANT la réponse 201</div>
+  </div>
+  <div class="node">
+    <h3>credit_usages <span class="tag frozen">cascade</span></h3>
+    <div class="field">credit_id, appointment_id, amount</div>
+    <div class="rel">FK appointments ON DELETE CASCADE</div>
+  </div>
+  <div class="node">
+    <h3>email_threads <span class="tag mutable">upsert</span></h3>
+    <div class="field">thread_key = appointment:{id}:patient</div>
+    <div class="rel">racine créée par l'envoi web (sweep = header seul)</div>
+  </div>
+</div>
+
+<div class="layer out">
+  <h2>Side-effects externes (post-réponse + backstop)</h2>
+  <div class="node">
+    <h3>Google Calendar <span class="tag mutable">via createCalendarEvent</span></h3>
+    <div class="field">event id → google_calendar_event_id</div>
+    <div class="field">Meet link → video_link (vidéo sans lien fourni)</div>
+  </div>
+  <div class="node">
+    <h3>Stripe <span class="tag mutable">via createAppointmentPaymentLink</span></h3>
+    <div class="field">payment link id/url — vidéo + solde dû &gt; 0</div>
+  </div>
+  <div class="node">
+    <h3>Resend <span class="tag mutable">Idempotency-Key L1</span></h3>
+    <div class="field">PaymentRequest | AppointmentConfirmed</div>
+    <div class="field">clé confirm:patient:{pi} si payment_intent ∃</div>
+  </div>
+</div>
+<p class="legend">Sémantique L2 : NULL = invitation non livrée (signal de rattrapage sweep) · non-NULL = livrée. Backfill 013 : tous les RDV existants → non-NULL.</p>
+</body>
+</html>

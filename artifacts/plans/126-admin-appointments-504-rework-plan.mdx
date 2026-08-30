@@ -1,0 +1,182 @@
+---
+title: "Plan: Création RDV admin — post-INSERT + rattrapage invitations"
+issue: 126
+spec: artifacts/specs/126-admin-appointments-504-rework-spec.mdx
+complexity: 6/10
+tier: F-lite
+generated: 2026-08-28
+---
+
+## Summary
+
+Restructurer `POST /api/admin/appointments/` pour répondre 201 dès l'INSERT, exécuter agenda/Stripe/email en post-réponse via `waitUntil` avec logs par étape, et rattraper tout échec ≤ 1 h par une fonction programmée dédiée `reconcile-invitations` — après refactors lazy-init de `stripe.ts`/`google-calendar.ts` requis par le runtime cron.
+
+**Flux de données :** [Flux — création RDV admin #126](../visuals/126-admin-appointments-504-rework-data-flow.html)
+**Carte fichiers × fonctions :** [Fichiers × fonctions — #126](../visuals/126-admin-appointments-504-rework-file-map.html)
+
+*(Sidecars rédigés à la main — skill forge-chart non disponible dans cette session.)*
+
+## Bootstrap Context
+
+Patterns de référence à consulter avant implémentation :
+- `src/lib/resend.ts` — lazy-init des transports (précédent exact pour `stripe.ts`)
+- `src/lib/supabase.ts:37-42` — accès env `import.meta.env ?? process.env` (précédent pour `google-calendar.ts`)
+- `netlify/functions/reconcile-confirmations.ts` — squelette complet du sweep (monitor, deadline, poison-escape, DI sendFn, logs sans PII)
+- `supabase/migrations/011_confirmation_sent_at.sql` — patron migration L2 (backfill + index partiel + idempotence)
+- `src/pages/api/stripe-webhook.ts` — garde `WHERE … IS NULL` write-race
+
+## Agents
+
+| Agent | Instances | Tâches | Fichiers |
+|---|---|---|---|
+| backend-dev | A (T1,T3,T6,T7) · B (T11,T12) · C (T13) | 6 | endpoint, migrations, notifications, libs stripe/google, fonction cron |
+| frontend-dev | A (T8) | 1 | AdminCreateButton.tsx |
+| tester | A (T2,T4,T5,T9) · B (T10,T15) | 6 | tests/unit/* |
+| devops | A (T14) | 1 | netlify.toml |
+
+## Micro-Tasks
+
+### Slice V1 — Contrat L2 + migrations
+
+- **T1** [backend-dev-A · migrations · V1 · GREEN] Créer `supabase/migrations/012_credits_grants.sql` (copie depuis le worktree principal — hotfix prod 2026-08-28) et `supabase/migrations/013_invitation_sent_at.sql` (`ADD COLUMN IF NOT EXISTS invitation_sent_at TIMESTAMPTZ`, backfill `= now()` **sans filtre**, index partiel `IF NOT EXISTS … WHERE invitation_sent_at IS NULL AND deleted_at IS NULL` sur `created_at`). Ajouter `invitation_sent_at: string | null` à `src/types/appointment.ts`. *Vérif : `grep -c "IF NOT EXISTS" supabase/migrations/013_invitation_sent_at.sql` ≥ 2 ∧ `grep invitation_sent_at src/types/appointment.ts`.*
+- **T2** [tester-A · tests · V1 · RED] `tests/unit/admin-appointments-post.test.ts` — tests échouants : (a) POST pose `invitation_sent_at` après envoi email réussi (mock sendEmail) ; (b) statut `payment_received` (avoir) → pose AUSSI `confirmation_sent_at` ; (c) `send_email=false` → flag posé **à l'INSERT**, aucun appel sendEmail. *Vérif : `npm run test -- admin-appointments-post` → rouge sur (a)(c).*
+- **T3** [backend-dev-A · api · V1 · GREEN] `src/pages/api/admin/appointments/index.ts` : flag-setting post-email (structure encore synchrone) + `send_email=false` → `invitation_sent_at` dans le payload INSERT. Écritures de flag **non fatales** (log seul). *Vérif : tests T2 verts.*
+- **T4** [tester-A · tests · V1 · RED-GATE] `npm run test` → V1 vert complet. *Sentinelle : échec ici bloque V2.*
+
+### Slice V2 — Découplage post-réponse
+
+- **T5** [tester-A · tests · V2 · RED] Étendre `admin-appointments-post.test.ts` + créer `tests/unit/admin-appointment-side-effects.test.ts` : (a) 201 renvoyé sans qu'aucun mock externe (calendar/stripe/resend) ne soit sollicité ; (b) N2 : ordre S1→S2→S3, logs `step/appointmentId/ms/statut` ; (c) `send_email=false` → S1+S2 exécutés, S3 jamais ; (d) clé L1 `invite:{id}:patient` sur l'email ; (e) absence `locals.netlify` → fallback inline (non bloquant). *Vérif : rouge sur (a)(b).*
+- **T6** [backend-dev-A · lib · V2 · GREEN] `src/lib/notifications.ts` : extraire `processAppointmentSideEffects(appt, opts)` — agenda (skip Meet si `video_link` fourni) → Stripe (si vidéo + solde dû) → email (si `send_email`, templates PaymentRequest/AppointmentConfirmed, clé L1 `invite:{id}:patient`) → flags set-once (garde `WHERE … IS NULL`, `+confirmation_sent_at` si `payment_received`). DI : clients injectables (défaut = modules app). *Vérif : tests side-effects verts.*
+- **T7** [backend-dev-A · api · V2 · GREEN] POST : chemin critique réduit (INSERT → credits → invalidation cache → 201), dispatch `locals.netlify.context.waitUntil(processAppointmentSideEffects(...))` avec fallback inline best-effort non awaité si absent. *Vérif : T5(a) vert.*
+- **T8** [frontend-dev-A · ui · V2 · GREEN] `AdminCreateButton.tsx` : sur `res.status >= 500` ∨ erreur réseau → message « La création a peut-être abouti — vérifiez la liste des rendez-vous avant de retenter. » (les 4xx garde le `data.error` serveur). *Vérif : `npm run lint` ∧ grep message.*
+- **T9** [tester-A · tests · V2 · RED-GATE] `npm run test && npm run lint` → verts. *Sentinelle : bloque V3.*
+
+### Slice V3 — Backstop sweep + refactors runtime
+
+- **T10** [tester-B · tests · V3 · RED] `tests/unit/reconcile-invitations.test.ts` : éligibilité (statuses `confirmed|payment_pending`, flag NULL, `deleted_at` NULL, < 48 h, `scheduled_at > now()`, tri ancien d'abord, LIMIT) ; rattrapage par row S1→S2→S3 ; `GOOGLE_CALENDAR_MOCK` → skip agenda + log warn, reste exécuté ; poison-escape (4xx → flag posé) ; garde `WHERE invitation_sent_at IS NULL` sur le set-once ; clé L1 identique au POST. *Vérif : rouge.*
+- **T11** [backend-dev-B · lib-stripe · V3 · GREEN] `src/lib/stripe.ts` : lazy-init du client (miroir `resend.ts` — `import.meta.env.STRIPE_SECRET_KEY ?? process.env.STRIPE_SECRET_KEY` à la première utilisation, plus de construction au module-load). *Vérif : `grep -n "import.meta.env" src/lib/stripe.ts` → plus aucune lecture à la portée module hors fonction.*
+- **T12** [backend-dev-B · lib-google · V3 · GREEN] `src/lib/google-calendar.ts` : accesseurs env-agnostiques (`import.meta.env.X ?? process.env.X` — précédent `supabase.ts`) pour OAuth client/`GOOGLE_CALENDAR_ID`/`GOOGLE_CALENDAR_MOCK` ; seam DI acceptant un client/calendarId explicites (usage cron). *Vérif : idem + `npm run test` toujours vert.*
+- **T13** [backend-dev-C · sweep · V3 · GREEN] Créer `netlify/functions/reconcile-invitations.ts` (squelette `reconcile-confirmations.ts`) : schedule littéral `'20 * * * *'` + const `SCHEDULE` (verrou test), `Sentry.withMonitor('reconcile-invitations', …, { checkInMargin: 5, maxRuntime: 10 })` après `initSentry()`, `DEADLINE_MS = 8500`, `BATCH_LIMIT = 25`, clients DI depuis `process.env`, traitement par row via `processAppointmentSideEffects` (post T6/T11/T12 — **séquencement critique**), logs sans PII. *Vérif : tests T10 verts.*
+- **T14** [devops-A · config · V3 · GREEN] `netlify.toml` : documenter le bloc env vars de `reconcile-invitations` (`GOOGLE_CALENDAR_ID`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `GOOGLE_CALENDAR_MOCK`, `STRIPE_SECRET_KEY`, `STRIPE_SUCCESS_URL` + existants) ; étendre `tests/unit/cron-schedule-source.test.ts` au littéral de la nouvelle fonction. *Vérif : test cron vert ∧ grep netlify.toml.*
+- **T15** [tester-B · tests · V3 · RED-GATE] `npm run test && npm run lint && npm run build` → verts (typecheck advisory toléré, #68). *Sentinelle finale.*
+
+## Wave Structure
+
+4 vagues utiles, max 4 agents ∥. Séquentiel vs ~60 % de parallélisation.
+
+| Wave | Trigger | Agents | Tasks |
+|------|---------|--------|-------|
+| 1 | start | 4 ∥ | backend-dev-A: T1 · tester-A: T2 · frontend-dev-A: T8 · backend-dev-B: T11→T12 |
+| 2 | Wave 1 done | 2 ∥ | backend-dev-A: T3 · tester-A: T4→T5 |
+| 3 | Wave 2 done | 2 ∥ | backend-dev-A: T6→T7 · tester-A: T9→(prêt V3) |
+| 4 | Wave 3 done | 3 ∥ | tester-B: T10 · backend-dev-C: T13 · devops-A: T14 |
+| 5 | Wave 4 done | 1 | tester-B: T15 |
+
+*(T8 n'a pas de dépendance backend — Wave 1. T11→T12 indépendants du POST — Wave 1. T13 exige T6+T11+T12 → Wave 4.)*
+
+### Budget — per task
+
+| Task | Items | Class | Est. ops | Split? |
+|------|-------|-------|----------|--------|
+| T1 | 3 | bounded | 6 | — |
+| T2 | 3 | judgmental | 8 | — |
+| T3 | 2 | judgmental | 6 | — |
+| T4/T9/T15 (gates) | 1 | trivial | 2 | — |
+| T5 | 5 | judgmental | 10 | — |
+| T6 | 4 | judgmental | 12 | — |
+| T7 | 2 | judgmental | 8 | — |
+| T8 | 1 | bounded | 3 | — |
+| T10 | 6 | judgmental | 12 | — |
+| T11 | 1 | bounded | 4 | — |
+| T12 | 1 | judgmental | 6 | — |
+| T13 | 1 | judgmental | 10 | — |
+| T14 | 2 | bounded | 4 | — |
+
+**Total estimé : ~91 ops** — aucun task > 50.
+
+### Budget — per agent instance
+
+| Instance | Tasks | Σ ops | Subjects | Split? |
+|----------|-------|-------|----------|--------|
+| backend-dev-A | T1,T3,T6,T7 | 32 | migrations→api (1 fil V1/V2) | — |
+| backend-dev-B | T11,T12 | 10 | lib-runtime | — |
+| backend-dev-C | T13 | 10 | sweep | — |
+| tester-A | T2,T4,T5,T9 | 22 | tests | — (4 tasks, 1 sujet) |
+| tester-B | T10,T15 | 14 | tests | — |
+| frontend-dev-A | T8 | 3 | ui | — |
+| devops-A | T14 | 4 | config | — |
+
+## Task Seeding Blueprint
+
+<!-- T{n} | agent-instance | blockedBy | subject. Semer dans l'ordre des vagues ; dans une vague, ∥. -->
+
+### Wave 1 — no deps, 4 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T1 | backend-dev-A | — | migrations |
+| T2 | tester-A | — | tests |
+| T8 | frontend-dev-A | — | ui |
+| T11 | backend-dev-B | — | lib-stripe |
+
+### Wave 2 — after Wave 1, 2 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T3 | backend-dev-A | T1,T2 | api |
+| T12 | backend-dev-B | T11 | lib-google |
+| T4 | tester-A | T3 | tests |
+
+### Wave 3 — after Wave 2, 2 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T5 | tester-A | T4 | tests |
+| T6 | backend-dev-A | T5 | lib-notifications |
+
+### Wave 4 — after Wave 3, 2 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T7 | backend-dev-A | T6 | api |
+| T9 | tester-A | T7 | tests-gate |
+| T10 | tester-B | T9 | tests |
+
+### Wave 5 — after Wave 4, 2 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T13 | backend-dev-C | T6,T11,T12 | sweep |
+| T14 | devops-A | T13 | config |
+
+### Wave 6 — final
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T15 | tester-B | T13,T14 | tests-gate |
+
+## Consistency Report
+
+- Critères spec couverts : 8/8 (SC1→T5a/T7 · SC2→T6/T9 · SC3→T6/T10/T13 · SC4→T10/T13 · SC5→T1 · SC6→T6/T13/T14 · SC7→T8 · SC8→T1/T3 + runbook notes)
+- Breadboard : 13/13 IDs tracés (U1→T7, U2→T8, N1→T7, N2→T6/T13, S1-S3→T6, S4→T6, S5→T13, D1/D2→T1/T3/T6, D3/D4→T6)
+- Non couvert : néant. Exemptions : audit a11y non requis (pas de changement visuel de structure — message d'erreur textuel seul ; re-vérifier si le DOM change).
+
+## Task IDs
+
+<!-- Semées via la todo-list de session (adaptation harness : TodoWrite, pas de TaskCreate durable).
+     Au redémarrage de session, re-semer depuis le Task Seeding Blueprint ci-dessus (vagues 1→6). -->
+- T1: migrations 012/013 + type — backend-dev-A
+- T2: tests RED V1 (flags POST) — tester-A
+- T3: POST flag-setting + send_email=false — backend-dev-A
+- T4: RED-GATE V1 — tester-A
+- T5: tests RED V2 (201 sans externe, N2, fallback) — tester-A
+- T6: extraction processAppointmentSideEffects (N2) — backend-dev-A
+- T7: POST restructure waitUntil — backend-dev-A
+- T8: modal message ≥500/réseau — frontend-dev-A
+- T9: RED-GATE V2 — tester-A
+- T10: tests RED V3 (sweep invitations) — tester-B
+- T11: stripe.ts lazy-init — backend-dev-B
+- T12: google-calendar.ts env-agnostique — backend-dev-B
+- T13: fonction reconcile-invitations — backend-dev-C
+- T14: netlify.toml env cron + verrou schedule — devops-A
+- T15: RED-GATE final (test+lint+build) — tester-B

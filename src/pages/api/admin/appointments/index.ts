@@ -1,23 +1,19 @@
 export const prerender = false;
 
 import type { APIRoute } from 'astro';
-import { createElement } from 'react';
 import { auth } from '../../../../lib/auth';
 import { isAdminSession } from '../../../../lib/authz';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import { calculatePrice } from '../../../../lib/pricing';
 import { getAvailableCredit, consumeCredits } from '../../../../lib/credits';
-import { sendEmail, buildAppointmentConversationSubject } from '../../../../lib/resend';
-import { createAppointmentPaymentLink } from '../../../../lib/stripe';
-import { generateGoogleCalendarLink, generateOutlookCalendarLink, generateAppleCalendarInviteLink, CABINET_ADDRESS } from '../../../../lib/ics';
-import { createSecureLinkToken } from '../../../../lib/secure-links';
-import { createCalendarEvent } from '../../../../lib/google-calendar';
 import { hasAppointmentConflict } from '../../../../lib/appointment-conflicts';
-import AppointmentConfirmed from '../../../../emails/AppointmentConfirmed';
-import PaymentRequest from '../../../../emails/PaymentRequest';
 import type { AppointmentType } from '../../../../types/appointment';
 import { invalidateAvailabilityCache } from '../../../../lib/calendar-cache.js';
 import { isCabinetEligibleSlot } from '../../../../lib/appointment-eligibility';
+import {
+  claimInvitationProcessing,
+  processAppointmentSideEffects,
+} from '../../../../lib/notifications';
 
 // ---------------------------------------------------------------------------
 // Validation helpers
@@ -29,7 +25,11 @@ const PHONE_RE = /^(?:\+33|0033|0)[1-9](?:[0-9]{8})$/;
 const VALID_TYPES = new Set<string>(['individual', 'couple', 'family']);
 const VALID_MODES = new Set<string>(['in-person', 'video']);
 
-function errorResponse(status: number, message: string, field?: string): Response {
+function errorResponse(
+  status: number,
+  message: string,
+  field?: string,
+): Response {
   return new Response(JSON.stringify({ error: message, field }), {
     status,
     headers: { 'Content-Type': 'application/json' },
@@ -40,7 +40,12 @@ function errorResponse(status: number, message: string, field?: string): Respons
 // POST — création manuelle d'un rendez-vous par l'admin
 // ---------------------------------------------------------------------------
 
-export const POST: APIRoute = async ({ request }) => {
+// Issue #126 : les fonctions synchrones Netlify sont tuées à ~10s (504).
+// Le chemin critique ne fait AUCUN appel réseau externe (Google/Stripe/Resend) :
+// agenda, lien de paiement et email partent post-réponse via
+// `locals.netlify.context.waitUntil` (adaptateur @astrojs/netlify), avec un
+// repli inline best-effort (non attendu) hors runtime Netlify.
+export const POST: APIRoute = async ({ request, locals }) => {
   // 1. Auth guard — admin seulement
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user) {
@@ -69,20 +74,40 @@ export const POST: APIRoute = async ({ request }) => {
     patient_reason,
     override_first_session,
     is_solidarity,
-    send_email: shouldSendEmail = true,
+    send_email: rawSendEmail,
     video_link,
     override_price,
     use_credit,
   } = body;
 
-  // 3. Validation
-  if (!patient_name || typeof patient_name !== 'string' || patient_name.trim().length < 2)
-    return errorResponse(400, 'Nom requis (2 caractères minimum)', 'patient_name');
+  // send_email optionnel (défaut : envoi) — normalisé en booléen strict
+  const shouldSendEmail =
+    rawSendEmail === undefined ? true : rawSendEmail === true;
 
-  if (!patient_email || typeof patient_email !== 'string' || !EMAIL_RE.test(patient_email))
+  // 3. Validation
+  if (
+    !patient_name ||
+    typeof patient_name !== 'string' ||
+    patient_name.trim().length < 2
+  )
+    return errorResponse(
+      400,
+      'Nom requis (2 caractères minimum)',
+      'patient_name',
+    );
+
+  if (
+    !patient_email ||
+    typeof patient_email !== 'string' ||
+    !EMAIL_RE.test(patient_email)
+  )
     return errorResponse(400, 'Email invalide', 'patient_email');
 
-  if (patient_phone && (typeof patient_phone !== 'string' || !PHONE_RE.test(patient_phone.replace(/\s/g, ''))))
+  if (
+    patient_phone &&
+    (typeof patient_phone !== 'string' ||
+      !PHONE_RE.test(patient_phone.replace(/\s/g, '')))
+  )
     return errorResponse(400, 'Numéro de téléphone invalide', 'patient_phone');
 
   if (!appointment_type || !VALID_TYPES.has(appointment_type as string))
@@ -91,58 +116,103 @@ export const POST: APIRoute = async ({ request }) => {
   if (!appointment_mode || !VALID_MODES.has(appointment_mode as string))
     return errorResponse(400, 'Mode de séance invalide', 'appointment_mode');
 
-  if (!duration || !Number.isInteger(Number(duration)) || Number(duration) < 15 || Number(duration) > 240)
-    return errorResponse(400, 'Durée invalide (entre 15 et 240 minutes)', 'duration');
+  if (
+    !duration ||
+    !Number.isInteger(Number(duration)) ||
+    Number(duration) < 15 ||
+    Number(duration) > 240
+  )
+    return errorResponse(
+      400,
+      'Durée invalide (entre 15 et 240 minutes)',
+      'duration',
+    );
 
   const GRID_DURATIONS = new Set([60, 90]);
   if (!GRID_DURATIONS.has(Number(duration)) && override_price === undefined)
-    return errorResponse(400, 'Durée personnalisée : le tarif manuel est obligatoire', 'override_price');
+    return errorResponse(
+      400,
+      'Durée personnalisée : le tarif manuel est obligatoire',
+      'override_price',
+    );
 
-  if (!scheduled_at || typeof scheduled_at !== 'string' || isNaN(Date.parse(scheduled_at)))
+  if (
+    !scheduled_at ||
+    typeof scheduled_at !== 'string' ||
+    isNaN(Date.parse(scheduled_at))
+  )
     return errorResponse(400, 'Date de séance invalide', 'scheduled_at');
 
   if (appointment_mode === 'video' && video_link) {
-    if (typeof video_link !== 'string') return errorResponse(400, 'Lien vidéo invalide', 'video_link');
+    if (typeof video_link !== 'string')
+      return errorResponse(400, 'Lien vidéo invalide', 'video_link');
     try {
       const parsed = new URL(video_link as string);
       if (parsed.protocol !== 'https:')
-        return errorResponse(400, 'Lien vidéo invalide (HTTPS requis)', 'video_link');
+        return errorResponse(
+          400,
+          'Lien vidéo invalide (HTTPS requis)',
+          'video_link',
+        );
     } catch {
       return errorResponse(400, 'Lien vidéo invalide', 'video_link');
     }
   }
 
-  if (override_price !== undefined && (
-    !Number.isInteger(Number(override_price)) ||
-    Number(override_price) < 0 ||
-    Number(override_price) > 500
-  ))
-    return errorResponse(400, 'Tarif manuel invalide (entre 0 et 500€)', 'override_price');
+  if (
+    override_price !== undefined &&
+    (!Number.isInteger(Number(override_price)) ||
+      Number(override_price) < 0 ||
+      Number(override_price) > 500)
+  )
+    return errorResponse(
+      400,
+      'Tarif manuel invalide (entre 0 et 500€)',
+      'override_price',
+    );
 
   const scheduledDate = new Date(scheduled_at);
   if (scheduledDate.getTime() < Date.now())
-    return errorResponse(400, 'La date de séance doit être dans le futur', 'scheduled_at');
+    return errorResponse(
+      400,
+      'La date de séance doit être dans le futur',
+      'scheduled_at',
+    );
 
-  if (appointment_mode === 'in-person' && !(await isCabinetEligibleSlot(scheduled_at)))
-    return errorResponse(400, 'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.', 'scheduled_at');
+  if (
+    appointment_mode === 'in-person' &&
+    !(await isCabinetEligibleSlot(scheduled_at))
+  )
+    return errorResponse(
+      400,
+      'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.',
+      'scheduled_at',
+    );
 
   try {
-    const slotEnd = new Date(scheduledDate.getTime() + Number(duration) * 60 * 1000);
+    const slotEnd = new Date(
+      scheduledDate.getTime() + Number(duration) * 60 * 1000,
+    );
     const hasConflict = await hasAppointmentConflict({
       slotStartIso: scheduledDate.toISOString(),
       slotEndIso: slotEnd.toISOString(),
     });
     if (hasConflict) {
-      return errorResponse(409, 'Ce créneau n\'est plus disponible. Veuillez sélectionner un autre horaire.', 'scheduled_at');
+      return errorResponse(
+        409,
+        "Ce créneau n'est plus disponible. Veuillez sélectionner un autre horaire.",
+        'scheduled_at',
+      );
     }
   } catch (conflictError) {
-    console.error('[admin/appointments] Erreur vérification doublon:', conflictError);
+    console.error(
+      '[admin/appointments] Erreur vérification doublon:',
+      conflictError,
+    );
     return errorResponse(500, 'Erreur lors de la vérification du créneau');
   }
 
   // 4. Calcul tarifaire
-  // Pour une création manuelle, on calcule toujours la remise nouveau client si applicable.
-  // L'admin peut activer le tarif solidaire via is_solidarity.
   const { data: existingAppointments } = await supabaseAdmin
     .from('appointments')
     .select('id')
@@ -150,11 +220,12 @@ export const POST: APIRoute = async ({ request }) => {
     .in('status', ['confirmed', 'completed'])
     .limit(1);
 
-  const autoDetectedFirstSession = !existingAppointments || existingAppointments.length === 0;
-  // override_first_session allows admin to manually force/disable first-session discount
-  const isFirstSession = typeof override_first_session === 'boolean'
-    ? override_first_session
-    : autoDetectedFirstSession;
+  const autoDetectedFirstSession =
+    !existingAppointments || existingAppointments.length === 0;
+  const isFirstSession =
+    typeof override_first_session === 'boolean'
+      ? override_first_session
+      : autoDetectedFirstSession;
   const pricing = calculatePrice(
     appointment_type as AppointmentType,
     Number(duration),
@@ -163,18 +234,15 @@ export const POST: APIRoute = async ({ request }) => {
     override_price !== undefined ? Number(override_price) : undefined,
   );
 
-  // 5. Avoir (avoir interne) — déduction admin-only
-  // ----------------------------------------------------------------
-  // Si l'admin coche « utiliser l'avoir » et qu'un avoir est disponible pour
-  // cet email, on consomme en FIFO le montant plafonné à final_price.
-  // montant dû = final_price - credit_applied. Si 0 → pas de paiement Stripe,
-  // statut payment_received (video) / confirmed (in-person).
+  // 5. Avoir (avoir interne) — montant dû = final_price − crédit consommé
   const isVideo = appointment_mode === 'video';
   const finalPriceCents = pricing.finalPrice * 100;
   let creditApplied = 0;
 
   if (use_credit === true) {
-    const balance = await getAvailableCredit((patient_email as string).toLowerCase());
+    const balance = await getAvailableCredit(
+      (patient_email as string).toLowerCase(),
+    );
     if (balance > 0) {
       creditApplied = Math.min(balance, finalPriceCents);
     }
@@ -182,10 +250,10 @@ export const POST: APIRoute = async ({ request }) => {
   const amountDueCents = Math.max(0, finalPriceCents - creditApplied);
 
   // 6. Statut initial
-  // in-person → confirmed directement (jamais de paiement en ligne)
-  // video → payment_pending (lien Stripe) SAUF si montant dû = 0 → payment_received
   const initialStatus: string = isVideo
-    ? (amountDueCents === 0 ? 'payment_received' : 'payment_pending')
+    ? amountDueCents === 0
+      ? 'payment_received'
+      : 'payment_pending'
     : 'confirmed';
 
   // 7. Insertion en base
@@ -194,7 +262,9 @@ export const POST: APIRoute = async ({ request }) => {
     .insert({
       patient_name: (patient_name as string).trim(),
       patient_email: (patient_email as string).toLowerCase(),
-      patient_phone: patient_phone ? (patient_phone as string).replace(/\s/g, '') : '',
+      patient_phone: patient_phone
+        ? (patient_phone as string).replace(/\s/g, '')
+        : '',
       patient_postal_code: '',
       patient_city: '',
       appointment_type,
@@ -209,6 +279,20 @@ export const POST: APIRoute = async ({ request }) => {
       final_price: finalPriceCents,
       credit_applied: creditApplied,
       video_link: isVideo ? (video_link ?? null) : null,
+      // send_email:false → aucun email ne partira jamais : on pose le(s) flag(s)
+      // L2 dès l'insert pour que les sweeps (#126/#98) ne tentent pas d'envoi de
+      // rattrapage. Statut initial payment_received (avoir couvrant tout) :
+      // l'invitation EST la confirmation — le pipeline aval ne repassera pas
+      // (son set-once est gardé `.is('invitation_sent_at', null)`, déjà posé),
+      // donc les DEUX drapeaux partent dans le payload INSERT (C6).
+      ...(shouldSendEmail
+        ? {}
+        : initialStatus === 'payment_received'
+          ? {
+              invitation_sent_at: new Date().toISOString(),
+              confirmation_sent_at: new Date().toISOString(),
+            }
+          : { invitation_sent_at: new Date().toISOString() }),
     })
     .select()
     .single();
@@ -218,7 +302,7 @@ export const POST: APIRoute = async ({ request }) => {
     return errorResponse(500, 'Erreur lors de la création du rendez-vous');
   }
 
-  // 8. Consommer l'avoir (atomique, FIFO) — après l'insert (besoin de l'id).
+  // 8. Consommer l'avoir (atomique, FIFO) — échec → rollback INSERT + 409.
   if (creditApplied > 0) {
     try {
       await consumeCredits(
@@ -227,206 +311,95 @@ export const POST: APIRoute = async ({ request }) => {
         appointment.id,
       );
     } catch (creditErr) {
-      // Échec consommation : on annule le RDV (cohérence — pas de credit_applied sans usage).
-      console.error('[admin/appointments] Erreur consommation avoir:', creditErr);
-      await supabaseAdmin.from('appointments').delete().eq('id', appointment.id);
-      return errorResponse(409, 'Avoir insuffisant ou erreur lors de la consommation de l\'avoir.');
+      console.error(
+        '[admin/appointments] Erreur consommation avoir:',
+        creditErr,
+      );
+      await supabaseAdmin
+        .from('appointments')
+        .delete()
+        .eq('id', appointment.id);
+      return errorResponse(
+        409,
+        "Avoir insuffisant ou erreur lors de la consommation de l'avoir.",
+      );
     }
   }
 
   await invalidateAvailabilityCache().catch(console.error);
 
-  let resolvedVideoLink: string | undefined = appointment.video_link ?? undefined;
+  // 9. Side-effects post-réponse (issue #126) : agenda → Stripe → email +
+  // drapeaux L2. Le pipeline ne jette jamais ; chaque étape est isolée et
+  // observable (`[side-effects]` logs), le cron de rattrapage repasse sur les
+  // flags NULL.
+  // Le démarrage du pipeline est différé d'un macrotask : le préfixe de
+  // `processAppointmentSideEffects` est synchrone (l'appel à createCalendarEvent
+  // précède son premier await) et ne doit pas s'exécuter avant que la réponse
+  // 201 soit construite et retournée. `setImmediate` (runtime Node/Netlify) est
+  // FIFO avec les autres immediates ; fallback `setTimeout` ailleurs.
+  const schedule =
+    typeof setImmediate === 'function' ? setImmediate : setTimeout;
+  // `status` est le statut INSÉRÉ (payment_received/… ) : il pilote le drapeau
+  // confirmation_sent_at côté pipeline. Fallback défensif si la ligne retournée
+  // ne portait pas la colonne.
+  const apptForSideEffects = {
+    ...appointment,
+    status: appointment.status ?? initialStatus,
+  };
+  const sideEffects: Promise<void> = new Promise(resolve => {
+    schedule(() => {
+      // W2 — bail atomique (lease 10 min) AVANT le pipeline : si le sweep
+      // `reconcile-invitations` (ou un autre worker) traite déjà cette ligne,
+      // on NE démarre PAS — deux pipelines simultanés créeraient un doublon
+      // events.insert Google + Payment Link Stripe. Échec du claim (erreur
+      // DB) = fail-closed : le sweep horaire rattrapera la ligne.
+      void claimInvitationProcessing(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        supabaseAdmin as any,
+        appointment.id,
+      )
+        .then(claimed => {
+          if (!claimed) {
+            console.info('[side-effects] dispatch skipped — already claimed', {
+              appointmentId: appointment.id,
+            });
+            return;
+          }
+          return processAppointmentSideEffects(apptForSideEffects, {
+            sendEmail: shouldSendEmail,
+            amountDueCents,
+            successUrl:
+              import.meta.env.STRIPE_SUCCESS_URL ??
+              `${new URL(request.url).origin}/rdv/merci/?source=payment-success`,
+            baseUrl:
+              import.meta.env.BETTER_AUTH_URL ?? new URL(request.url).origin,
+          });
+        })
+        // La valeur de chaîne ({ flagsSet } | undefined) est ignorée : le
+        // contrat externe reste Promise<void>, résolu quoi qu'il arrive.
+        .then(
+          () => resolve(),
+          () => resolve(),
+        );
+    });
+  });
 
-  if (!appointment.google_calendar_event_id) {
-    try {
-      const start = new Date(appointment.scheduled_at);
-      const end = new Date(start.getTime() + appointment.duration * 60 * 1000);
-      const modeLabel = isVideo ? 'Téléconsultation' : 'Présentiel';
-      const calResult = await createCalendarEvent({
-        title: `${isVideo ? '🎥 ' : ''}${appointment.patient_name} — séance ${modeLabel.toLowerCase()} (${appointment.duration} min)`,
-        start: start.toISOString(),
-        end: end.toISOString(),
-        description: [
-          `Patient: ${appointment.patient_name}`,
-          `Email: ${appointment.patient_email}`,
-          `Mode: ${modeLabel}`,
-          `Durée: ${appointment.duration} min`,
-          ...(resolvedVideoLink ? [`Lien visio: ${resolvedVideoLink}`] : []),
-        ].join('\n'),
-        location: isVideo ? 'Téléconsultation' : CABINET_ADDRESS,
-        attendeeEmail: appointment.patient_email,
-        withMeet: isVideo && !resolvedVideoLink,
-        appointmentId: `${appointment.id}-admin-${isVideo ? 'video' : 'inperson'}`,
-        colorId: isVideo ? '11' : '2',
-      });
-      const calendarUpdate: Record<string, string> = { google_calendar_event_id: calResult.eventId };
-      if (isVideo && calResult.meetLink) calendarUpdate.video_link = calResult.meetLink;
-      await supabaseAdmin.from('appointments').update(calendarUpdate).eq('id', appointment.id);
-      if (isVideo && calResult.meetLink) resolvedVideoLink = calResult.meetLink;
-    } catch (calendarErr) {
-      console.error('[admin/appointments] Erreur création événement agenda:', calendarErr);
-    }
+  // waitUntil : promesse capturée par le runtime Netlify, exécutée APRÈS la
+  // réponse. `locals` n'est pas typé pour `netlify` — accès optionnel sûr.
+  const netlifyLocals = (
+    locals as { netlify?: { context?: { waitUntil?: unknown } } } | undefined
+  )?.netlify;
+  const waitUntil = netlifyLocals?.context?.waitUntil;
+  if (typeof waitUntil === 'function') {
+    (waitUntil as (p: Promise<unknown>) => void)(sideEffects);
+  } else {
+    // Repli inline best-effort (dev / hors Netlify) — NON attendu avant 201.
+    void sideEffects;
   }
 
-  // 9. Paiement Stripe + envoi email
-  // ----------------------------------------------------------------
-  // Video + montant dû > 0  → lien Stripe pour le SOLDE (final_price - credit_applied).
-  // Video + montant dû = 0  → aucun Stripe (avoir couvre tout), confirmation directe.
-  // In-person               → confirmation directe (jamais de paiement en ligne).
-  if (shouldSendEmail) {
-    const origin = new URL(request.url).origin;
-    const successUrl = import.meta.env.STRIPE_SUCCESS_URL ?? `${origin}/rdv/merci/?source=payment-success`;
-
-    if (isVideo && amountDueCents > 0) {
-      // Créer le lien Stripe (pour le solde dû) et envoyer une demande de paiement
-      try {
-        const paymentLink = await createAppointmentPaymentLink({
-          appointmentId: appointment.id,
-          patientEmail: appointment.patient_email,
-          patientName: appointment.patient_name,
-          amount: amountDueCents,
-          description: `Séance de thérapie — ${new Date(appointment.scheduled_at).toLocaleDateString('fr-FR')}`,
-          successUrl,
-        });
-
-        await supabaseAdmin
-          .from('appointments')
-          .update({ stripe_payment_link_id: paymentLink.id, stripe_payment_link_url: paymentLink.url })
-          .eq('id', appointment.id);
-
-        const emailResult = await sendEmail({
-          to: appointment.patient_email,
-          threadKey: `appointment:${appointment.id}:patient`,
-          subject: buildAppointmentConversationSubject(
-            `Prépaiement de votre séance — ${new Date(appointment.scheduled_at).toLocaleDateString('fr-FR')}`,
-            appointment.id,
-          ),
-          react: createElement(PaymentRequest, {
-            patientName: appointment.patient_name,
-            scheduledAt: appointment.scheduled_at,
-            appointmentType: appointment.appointment_type,
-            duration: appointment.duration,
-            finalPrice: amountDueCents,
-            stripePaymentUrl: paymentLink.url,
-          }),
-        });
-        if (!emailResult.success) {
-          console.error('[admin/appointments] email PaymentRequest error:', emailResult.error);
-        }
-      } catch (e) {
-        console.error('[admin/appointments] Stripe error (non-bloquant):', e);
-      }
-    } else if (isVideo && amountDueCents === 0) {
-      // Avoir couvre l'intégralité : envoyer une confirmation (séance réglée par avoir).
-      try {
-        const start = new Date(appointment.scheduled_at);
-        const end = new Date(start.getTime() + appointment.duration * 60 * 1000);
-        const calendarEvent = {
-          uid: appointment.id,
-          summary: 'Séance de thérapie — OMF Therapie',
-          description: `Patient: ${appointment.patient_name}\nMode: Téléconsultation`,
-          location: resolvedVideoLink ?? undefined,
-          url: resolvedVideoLink ?? undefined,
-          start,
-          end,
-          organizerName: 'Oriane Montabonnet — OMF Thérapie',
-          organizerEmail: import.meta.env.RESEND_FROM_EMAIL ?? 'contact@omf-therapie.fr',
-        };
-        const gcalLink = generateGoogleCalendarLink(calendarEvent);
-        const outlookLink = generateOutlookCalendarLink(calendarEvent);
-        const baseUrl = import.meta.env.BETTER_AUTH_URL ?? new URL(request.url).origin;
-        const inviteToken = createSecureLinkToken({
-          appointmentId: appointment.id,
-          purpose: 'ics-invite',
-          expiresInSeconds: 60 * 60 * 24 * 180,
-          nonce: appointment.scheduled_at,
-        });
-        const appleLink = generateAppleCalendarInviteLink(baseUrl, appointment.id, inviteToken);
-
-        await sendEmail({
-          to: appointment.patient_email,
-          threadKey: `appointment:${appointment.id}:patient`,
-          subject: buildAppointmentConversationSubject(
-            `Votre rendez-vous est confirmé — ${new Date(appointment.scheduled_at).toLocaleDateString('fr-FR')}`,
-            appointment.id,
-          ),
-          react: createElement(AppointmentConfirmed, {
-            patientName: appointment.patient_name,
-            appointmentType: appointment.appointment_type,
-            appointmentMode: appointment.appointment_mode,
-            scheduledAt: appointment.scheduled_at,
-            duration: appointment.duration,
-            finalPrice: appointment.final_price,
-            videoLink: resolvedVideoLink,
-            googleCalendarLink: gcalLink,
-            appleCalendarLink: appleLink,
-            outlookCalendarLink: outlookLink,
-          }),
-        });
-      } catch (e) {
-        console.error('[admin/appointments] email confirmation (avoir) error (non-bloquant):', e);
-      }
-    } else {
-      // In-person : confirmer directement et envoyer l'email de confirmation
-      const start = new Date(appointment.scheduled_at);
-      const end = new Date(start.getTime() + appointment.duration * 60 * 1000);
-      const calendarEvent = {
-        uid: appointment.id,
-        summary: 'Séance de thérapie — OMF Therapie',
-        description: `Patient: ${appointment.patient_name}\nMode: ${appointment.appointment_mode === 'video' ? 'Téléconsultation' : 'Présentiel'}`,
-        location: appointment.appointment_mode === 'in-person' ? CABINET_ADDRESS : (resolvedVideoLink ?? undefined),
-        url: resolvedVideoLink ?? undefined,
-        start,
-        end,
-        organizerName: 'Oriane Montabonnet — OMF Thérapie',
-        organizerEmail: import.meta.env.RESEND_FROM_EMAIL ?? 'contact@omf-therapie.fr',
-      };
-      const gcalLink = generateGoogleCalendarLink(calendarEvent);
-      const outlookCalendarLink = generateOutlookCalendarLink(calendarEvent);
-      const baseUrl = import.meta.env.BETTER_AUTH_URL ?? new URL(request.url).origin;
-      const inviteToken = createSecureLinkToken({
-        appointmentId: appointment.id,
-        purpose: 'ics-invite',
-        expiresInSeconds: 60 * 60 * 24 * 180,
-        nonce: appointment.scheduled_at,
-      });
-      const appleCalendarLink = generateAppleCalendarInviteLink(baseUrl, appointment.id, inviteToken);
-
-      const emailResult = await sendEmail({
-        to: appointment.patient_email,
-        threadKey: `appointment:${appointment.id}:patient`,
-        subject: buildAppointmentConversationSubject(
-          `Votre rendez-vous est confirmé — ${new Date(appointment.scheduled_at).toLocaleDateString('fr-FR')}`,
-          appointment.id,
-        ),
-        react: createElement(AppointmentConfirmed, {
-          patientName: appointment.patient_name,
-          appointmentType: appointment.appointment_type,
-          appointmentMode: appointment.appointment_mode,
-          scheduledAt: appointment.scheduled_at,
-          duration: appointment.duration,
-          finalPrice: appointment.final_price,
-          googleCalendarLink: gcalLink,
-          appleCalendarLink,
-          outlookCalendarLink,
-          cabinetAddress: CABINET_ADDRESS,
-        }),
-      });
-      if (!emailResult.success) {
-        console.error('[admin/appointments] email AppointmentConfirmed error:', emailResult.error);
-      }
-    }
-  }
-
-  // Refetch to include any calendar event ID set after the initial insert
-  const { data: finalAppointment } = await supabaseAdmin
-    .from('appointments')
-    .select('*')
-    .eq('id', appointment.id)
-    .single();
-
-  return new Response(JSON.stringify({ appointment: finalAppointment ?? appointment }), {
+  // 10. 201 immédiat — ligne insérée telle quelle (pas de re-fetch : les champs
+  // agenda/Stripe ne sont pas encore produits ; le client admin recharge la page).
+  return new Response(JSON.stringify({ appointment }), {
     status: 201,
     headers: { 'Content-Type': 'application/json' },
   });
