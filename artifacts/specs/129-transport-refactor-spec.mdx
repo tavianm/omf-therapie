@@ -88,14 +88,14 @@ Un seul chemin d'envoi d'emails : `sendEmail` expose l'erreur brute (`rawError`)
 
 ## Success Criteria
 
-- [ ] SC1 — `SendEmailResult.rawError` : une erreur API Resend mockée (4xx, puis 5xx) remonte `rawError` avec `statusCode`/`name` d'origine **et** `error: string` lisible (contrat additif ; test unitaire).
-- [ ] SC2 — `opts.maxAttempts` : défaut → exactement 3 appels API sur erreur retryable ; `maxAttempts: 1` → exactement 1 appel, aucun backoff (tests compteurs).
-- [ ] SC3 — env-agnostique : les 5 lectures env de `resend.ts` sont des accès gardés `import.meta.env?.X ?? process.env.X`, vérifiés par **assertion source** (pattern `cron-schedule-source.test.ts`) — `import.meta.env` existe toujours sous Vitest, l'absence de crash en runtime Node pur découle du texte gardé.
-- [ ] SC4 — copie unique, surface bornée : `grep -rl "makeSendFnWithCapture" src/ netlify/` retourne exactement `netlify/functions/_lib/send-fn.ts` ; `grep -rln "emails.send" netlify/functions/ --include='*.ts'` (hors `_lib/`) retourne exactement `send-reminders.ts` + `calendar-token-heartbeat.ts` (surface gelée du lot suivant).
-- [ ] SC5 — sweeps dégrossis : les 2 fichiers sweep n'instancient plus `new Resend(...)` côté envoi patient et n'importent plus le BCC manuel — l'adaptateur `_lib/send-fn` délègue à `sendEmail` (grep + test d'héritage : BCC admin ajouté par `sendEmail` vu dans les params reçus côté confirmations).
-- [ ] SC6 — poison vérifié des deux côtés : suite invitations existante adaptée et verte (4xx → flag posé via poison-escape ; 429/5xx → flag NULL, re-essai passage suivant) **et** nouvelle suite `reconcile-confirmations.test.ts` couvrant les mêmes classifications + l'heuristique `lastTo`.
-- [ ] SC7 — forwarding intégral : l'adaptateur transmet `to`, `bcc`, `subject`, `react`, `replyTo`, `threadKey`, `idempotencyKey` à l'identique (test param-par-param) — threading unifié et clés L1 inchangées découlent du forwarding.
-- [ ] SC8 — rétrocompatibilité : aucun appelant de `sendEmail` hors les 2 sweeps n'est modifié (diff borné à `resend.ts`, `_lib/send-fn.ts`, les 2 sweeps, tests — plus le dédoublonnage `ResendApiError` interne à `resend.ts`) ; suites existantes (resend, notifications, POST admin, webhook) vertes sans adaptation.
+- [x] SC1 — `SendEmailResult.rawError` : une erreur API Resend mockée (4xx, puis 5xx) remonte `rawError` avec `statusCode`/`name` d'origine **et** `error: string` lisible (contrat additif ; test unitaire).
+- [x] SC2 — `opts.maxAttempts` : défaut → exactement 3 appels API sur erreur retryable ; `maxAttempts: 1` → exactement 1 appel, aucun backoff (tests compteurs).
+- [x] SC3 — env-agnostique : les 5 lectures env de `resend.ts` sont des accès gardés `import.meta.env?.X ?? process.env.X`, vérifiés par **assertion source** (pattern `cron-schedule-source.test.ts`) — `import.meta.env` existe toujours sous Vitest, l'absence de crash en runtime Node pur découle du texte gardé.
+- [x] SC4 — copie unique, surface bornée : `grep -rln "function makeSendFnWithCapture" src/ netlify/` retourne exactement `netlify/functions/_lib/send-fn.ts` (grep **délimité à la définition** — amendement 11 : les 2 sweeps importent l'adaptateur par son nom, donc matchent aussi le grep brut ; la unicité visée est celle de la copie implémentée, pas des imports consommateurs) ; `grep -rln "emails.send" netlify/functions/ --include='*.ts'` (hors `_lib/`) retourne exactement `send-reminders.ts` + `calendar-token-heartbeat.ts` (surface gelée du lot suivant).
+- [x] SC5 — sweeps dégrossis : les 2 fichiers sweep n'instancient plus `new Resend(...)` côté envoi patient et n'importent plus le BCC manuel — l'adaptateur `_lib/send-fn` délègue à `sendEmail` (grep + test d'héritage : BCC admin ajouté par `sendEmail` vu dans les params reçus côté confirmations).
+- [x] SC6 — poison vérifié des deux côtés : suite invitations existante adaptée et verte (4xx → flag posé via poison-escape ; 429/5xx → flag NULL, re-essai passage suivant) **et** nouvelle suite `reconcile-confirmations.test.ts` couvrant les mêmes classifications + l'heuristique `lastTo`.
+- [x] SC7 — forwarding intégral : l'adaptateur transmet `to`, `bcc`, `subject`, `react`, `replyTo`, `threadKey`, `idempotencyKey` à l'identique (test param-par-param) — threading unifié et clés L1 inchangées découlent du forwarding.
+- [x] SC8 — rétrocompatibilité : aucun appelant de `sendEmail` hors les 2 sweeps n'est modifié (diff borné à `resend.ts`, `_lib/send-fn.ts`, les 2 sweeps, tests — plus le dédoublonnage `ResendApiError` interne à `resend.ts`) ; suites existantes (resend, notifications, POST admin, webhook) vertes sans adaptation.
 
 ## Amendements
 
@@ -110,3 +110,4 @@ Un seul chemin d'envoi d'emails : `sendEmail` expose l'erreur brute (`rawError`)
 - Note de latence threading (+~2 round-trips Supabase/email, deadlineHit plus tôt, guard inchangé) (architect C6, product-lead).
 - EB1 : `ResendApiError` importé de `resend-errors.ts`, doublon local `resend.ts:98-102` supprimé (architect/doc-writer).
 - 4 flux énumérés au Goal ; réf. ligne wrapper invitations corrigée 124→129 (product-lead, doc-writer).
+- SC4 : grep affiné à la forme délimitée à la définition (`function makeSendFnWithCapture`) — les imports nommés des 2 sweeps matchent le grep brut, la métrique « copie unique » vise l'implémentation (implémentation T5, constat lead).
