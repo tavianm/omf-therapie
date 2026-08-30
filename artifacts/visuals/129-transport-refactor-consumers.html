@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Consommateurs — sendEmail unifié (#129)</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; padding:32px; background:#0d1117; color:#e6edf3; font:14px/1.5 -apple-system,"Segoe UI",sans-serif; }
+  h1 { font-size:18px; color:#7ee787; margin:0 0 4px; }
+  p.sub { color:#8b949e; margin:0 0 28px; font-size:13px; }
+  .hub { background:#161b22; border:2px solid #388bfd; border-radius:12px; padding:16px 20px; max-width:560px; margin-bottom:32px; box-shadow:0 0 18px rgba(56,139,253,.18); }
+  .hub h2 { margin:0 0 6px; font-size:15px; color:#79c0ff; }
+  .hub p { margin:0; font-size:12px; color:#8b949e; }
+  .spoke { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:12px 14px; margin-bottom:12px; max-width:560px; }
+  .spoke h3 { margin:0 0 4px; font-size:13px; }
+  .spoke .who { font-size:11px; color:#8b949e; }
+  .spoke .fields { font-family:ui-monospace,monospace; font-size:11px; color:#c9d1d9; margin-top:4px; }
+  .spoke.migrated { border-color:#7ee787; }
+  .spoke.migrated h3::before { content:"⟲ "; color:#7ee787; }
+  .spoke.existing { border-style:solid; }
+  .spoke.future { border-style:dashed; opacity:.65; }
+  .status { float:right; font-size:10px; padding:1px 7px; border-radius:99px; }
+  .status.mig { background:#1f4d2a; color:#7ee787; }
+  .status.keep { background:#0c2d5e; color:#79c0ff; }
+  .status.fut { background:#3d2d00; color:#d29922; }
+  .legend { font-size:11px; color:#8b949e; margin-bottom:20px; }
+  .legend span { margin-right:14px; }
+</style>
+</head>
+<body>
+<h1>Carte des consommateurs — sendEmail après unification (#129)</h1>
+<p class="sub">Hub unique : le vrai transport. Solid = ce lot · pointillé = futur.</p>
+
+<div class="hub">
+  <h2>sendEmail — src/lib/resend.ts</h2>
+  <p>Seul chemin d'envoi. Invariants hérités partout : auto-BCC ADMIN_EMAIL · retries (opts) · email_threads (In-Reply-To/References) · idempotencyKey · env-agnostique (cron ∨ Astro). Expose rawError pour la classification poison.</p>
+</div>
+
+<div class="legend">
+  <span>■ plein = ce lot</span><span>□ pointillé = futur (hors lot)</span>
+</div>
+
+<div class="spoke migrated">
+  <h3>POST /api/admin/appointments/ — post-réponse (waitUntil) <span class="status mig">inchangé, now tested</span></h3>
+  <div class="who">notifications.ts processAppointmentSideEffects — S3 email</div>
+  <div class="fields">retries=3 (défaut) · threadKey · idempotencyKey invite:{id}:patient · BCC auto (déjà)</div>
+</div>
+
+<div class="spoke migrated">
+  <h3>Sweep reconcile-invitations (cron horaire '20 * * * *') <span class="status mig">migré ← wrapper copie</span></h3>
+  <div class="who">via _lib/send-fn makeCapturingSendFn({ retries: 1 })</div>
+  <div class="fields">gagne : retries=1 explicite · racine thread si POST absent · BCC auto (déjà répliqué 8a84a22, maintenant hérité) · rawError via state.lastError</div>
+</div>
+
+<div class="spoke migrated">
+  <h3>Sweep reconcile-confirmations (#98, cron '5 * * * *') <span class="status mig">migré ← wrapper copie</span></h3>
+  <div class="who">notifications.ts buildAndSendConfirmationEmails — patient + thérapeute</div>
+  <div class="fields">gagne : racine thread si webhook absent · BCC auto sur l'email patient · retries=1 · state.lastTo conservé (heuristique poison patient-vs-thérapeute)</div>
+</div>
+
+<div class="spoke existing">
+  <h3>Flux patient + webhook Stripe <span class="status keep">déjà sur sendEmail</span></h3>
+  <div class="who">rendez-vous.astro, rdv/*, stripe-webhook.ts</div>
+  <div class="fields">inchangés — contrat additif (rawError, opts) rétrocompatible</div>
+</div>
+
+<div class="spoke future">
+  <h3>send-reminders (cron) <span class="status fut">futur — lot suivant</span></h3>
+  <div class="who">envois bruts resendClient.emails.send ×2 (rappel RDV, rappel paiement)</div>
+  <div class="fields">migration triviale une fois le seam posé ; delta à arbitrer : BCC admin sur rappels + retries</div>
+</div>
+
+<div class="spoke future">
+  <h3>calendar-token-heartbeat <span class="status fut">futur — lot suivant</span></h3>
+  <div class="who">envoi brut d'alerte expiration token Google</div>
+  <div class="fields">idem — fire-and-forget, pas de capture poison</div>
+</div>
