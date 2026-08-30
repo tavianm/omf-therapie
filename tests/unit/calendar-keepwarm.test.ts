@@ -14,9 +14,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 //   3. invalid_grant handling — token revoked → admin alert email via Resend,
 //      and the run aborts BEFORE the availability warm-up (V2 scope).
 //
-// The V2 warm-up behavior (warmAvailabilityCache) is intentionally NOT
-// asserted here beyond the "not reached after invalid_grant" guard; its own
-// describe block is appended to this file separately.
+// V2 warm-up scope (warmAvailabilityCache, issue #132 / T6): its own describe
+// block below drives the handler with a valid token row and asserts the cache
+// writes through the REAL src/lib/calendar-cache.ts (only the @netlify/blobs
+// leaf is mocked). RED by design until T6 lands — the warm-up tests fail at
+// assertion level (zero getAvailableSlots / setJSON calls) while V1 stays green.
 //
 // Mock strategy mirrors tests/unit/cron-handlers.test.ts exactly: `withMonitor`
 // is a passthrough that invokes the callback immediately (so the monitor
@@ -58,6 +60,13 @@ const EMPTY_RESULT = {
   count: null,
   status: 200,
   statusText: 'OK',
+} as const;
+
+// Fixture slot returned by the file-wide getAvailableSlots mock (V2 warm-up).
+const MOCK_SLOT = {
+  start: '2030-01-02T10:00:00+01:00',
+  end: '2030-01-02T11:00:00+01:00',
+  available: true,
 } as const;
 
 // Supabase client factory: chainable + thenable builder whose terminal calls
@@ -111,10 +120,12 @@ vi.mock('resend', () => {
 });
 
 // googleapis: keepwarm instantiates `new google.auth.OAuth2(...)`, calls
-// `setCredentials`, then `refreshAccessToken()`. The V2 warm-up goes through
-// `google.calendar('v3').freebusy.query` (directly or via src/lib/google-
-// calendar.ts, which imports the same mocked 'googleapis' module), so the
-// `freebusyQuery` spy doubles as the leaf-level "warm-up did NOT run" signal.
+// `setCredentials`, then `refreshAccessToken()`. NOTE: `freebusyQuery` is
+// retained as a refresh-path leaf only — it is NO LONGER a valid "warm-up did
+// NOT run" signal, because src/lib/google-calendar is mocked file-wide (see
+// below): a RUNNING warm-up would never reach googleapis, so a freebusy
+// assertion would pass even when the warm-up runs (tautology). The guard test
+// asserts on the google-calendar getAvailableSlots spy instead.
 const googleMocks = vi.hoisted(() => ({
   refreshAccessToken: vi.fn(async () => ({
     credentials: {
@@ -150,10 +161,45 @@ vi.mock('googleapis', () => {
   };
 });
 
+// src/lib/google-calendar is mocked FILE-WIDE with an injectable
+// getAvailableSlots spy. The specifier is resolved relative to THIS test
+// file — vitest intercepts by resolved module ID, so the cron's own import
+// (any specifier style, e.g. '../../src/lib/google-calendar.js') is captured.
+// This is the ONLY valid observable for "did the warm-up run": see the
+// googleapis note above for why the freebusy leaf became tautological once
+// this mock exists.
+const googleCalendar = vi.hoisted(() => ({
+  getAvailableSlots: vi.fn(),
+}));
+
+vi.mock('../../src/lib/google-calendar', () => ({
+  getAvailableSlots: googleCalendar.getAvailableSlots,
+}));
+
 // `@react-email/render` backs the CalendarAuthAlert email rendered on the
 // invalid_grant path. Render is mocked (template itself loads for real).
 vi.mock('@react-email/render', () => ({
   render: vi.fn(async () => '<html/>'),
+}));
+
+// @netlify/blobs leaf mock — availability-cache write assertions go through
+// the REAL src/lib/calendar-cache.ts (real key construction, real
+// TTL → expiresAt math); only the store leaf is faked. getStore returns a
+// stable in-memory store object so calendar-cache's module-level store
+// promise stays valid for the whole file; call history is cleared per test.
+const blobsStore = vi.hoisted(() => {
+  const store = {
+    setJSON: vi.fn(async () => undefined),
+    set: vi.fn(async () => undefined),
+    get: vi.fn(async () => null),
+    delete: vi.fn(async () => undefined),
+    list: vi.fn(async () => ({ blobs: [] })),
+  };
+  return { store, getStore: vi.fn(() => store) };
+});
+
+vi.mock('@netlify/blobs', () => ({
+  getStore: blobsStore.getStore,
 }));
 
 // ---------------------------------------------------------------------------
@@ -164,6 +210,9 @@ vi.mock('@react-email/render', () => ({
 import keepwarmHandler, {
   shouldRefreshToken,
 } from '../../netlify/functions/calendar-keepwarm';
+// REAL calendar-cache (only its @netlify/blobs leaf is mocked above) — used
+// to compute the expected `available:{mode}:{duration}:4w:{weekStart}` keys.
+import { buildAvailabilityCacheKey } from '../../src/lib/calendar-cache';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -224,6 +273,22 @@ function resetMocks(): void {
     data: { calendars: {} },
     error: null,
   });
+
+  // V2 warm-up mocks: google-calendar spy + @netlify/blobs store leaf.
+  // mockReset (not mockClear) so a per-test mockImplementation/isolation
+  // rejection cannot leak into the next test, then restore the default
+  // resolution (one fixture slot per lookup).
+  googleCalendar.getAvailableSlots.mockReset();
+  googleCalendar.getAvailableSlots.mockResolvedValue([MOCK_SLOT]);
+
+  blobsStore.getStore.mockClear();
+  blobsStore.store.setJSON.mockClear();
+  blobsStore.store.setJSON.mockResolvedValue(undefined);
+  blobsStore.store.set.mockClear();
+  blobsStore.store.get.mockClear();
+  blobsStore.store.get.mockResolvedValue(null);
+  blobsStore.store.delete.mockClear();
+  blobsStore.store.list.mockClear();
 }
 
 beforeEach(() => {
@@ -242,6 +307,13 @@ beforeEach(() => {
     'https://developers.google.com/oauthplayground',
   );
   vi.stubEnv('ADMIN_EMAIL', ADMIN_EMAIL_TEST);
+  // T6's warm-up gates on GOOGLE_CALENDAR_ID (warn-and-continue in V1), and
+  // calendar-cache's store lookup on GOOGLE_CALENDAR_MOCK. afterEach's
+  // unstubAllEnvs() reverts the setup.ts stubs (and .env sets MOCK=true), so
+  // both are re-stubbed here — mock mode OFF so the real calendar-cache store
+  // path (mocked @netlify/blobs leaf) is exercised instead of its no-op.
+  vi.stubEnv('GOOGLE_CALENDAR_ID', 'primary');
+  vi.stubEnv('GOOGLE_CALENDAR_MOCK', 'false');
 });
 
 afterEach(() => {
@@ -338,9 +410,134 @@ describe('calendar-keepwarm invalid_grant handling', () => {
     // branch (the alert went out) — otherwise the assertion below would pass
     // vacuously on an early return.
     expect(resendSend).toHaveBeenCalledTimes(1);
-    // Leaf-level warm-up signal: zero freebusy queries. This holds whether
-    // the V2 warm-up calls google.calendar('v3').freebusy.query directly or
-    // via src/lib/google-calendar.ts (same mocked 'googleapis' module).
-    expect(googleMocks.freebusyQuery).not.toHaveBeenCalled();
+    // Primary warm-up signal: src/lib/google-calendar is mocked FILE-WIDE
+    // (getAvailableSlots spy), so this assertion observes the cron's warm-up
+    // import regardless of its specifier style. The previous leaf-level
+    // signal (googleapis freebusy.query) was retired: once google-calendar is
+    // mocked, a RUNNING warm-up could never reach googleapis, so that
+    // assertion would pass even when the warm-up runs — a tautology.
+    expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// warmAvailabilityCache (V2 warm-up, issue #132 / T6) — availability-cache
+// pre-fill after a healthy token step.
+//
+// RED by design (test-first): until the cron implements the warm-up, these
+// tests fail at ASSERTION level (getAvailableSlots / setJSON never called)
+// while the V1 tests above stay green.
+//
+// Contract under test (approved plan):
+//   - 4 combinations: {in-person, video} × {60, 90}
+//   - horizon: now → now + 28 days (weeks=4); dbBusyPeriods = [] because the
+//     patient read path re-applies live DB busy periods on a cache hit
+//   - writes via setCachedAvailability(key, slots, 900): TTL 900 s must
+//     outlast the 600 s cron cadence
+//   - one (mode, duration) lookup failing must not cancel the other writes
+//     (Promise.allSettled isolation)
+//
+// Keys + TTL are validated through the REAL src/lib/calendar-cache.ts — only
+// the @netlify/blobs leaf is mocked (see blobsStore above).
+// ===========================================================================
+
+describe('warmAvailabilityCache (V2 warm-up)', () => {
+  const WARM_MODES = ['in-person', 'video'] as const;
+  const WARM_DURATIONS = [60, 90] as const;
+  const FOUR_WEEKS_MS = 28 * 24 * 3600 * 1000;
+
+  /** The 4 expected cache keys, built by the REAL calendar-cache key fn. */
+  function expectedCacheKeys(): string[] {
+    return WARM_MODES.flatMap(mode =>
+      WARM_DURATIONS.map(duration =>
+        buildAvailabilityCacheKey(mode, duration, 4, new Date()),
+      ),
+    );
+  }
+
+  it('writes the 4 cache keys {in-person,video}×{60,90} with TTL 900 s', async () => {
+    // Valid token far in the future → no refresh → flow reaches the V2 seam.
+    seedTokenRow(Date.now() + 60 * 60_000);
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
+    expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
+
+    // Keys: exactly the {in-person,video}×{60,90} grid for the current week.
+    const writtenKeys = blobsStore.store.setJSON.mock.calls.map(c => c[0]);
+    expect(new Set(writtenKeys)).toEqual(new Set(expectedCacheKeys()));
+
+    // Payload + TTL: expiresAt = write time + 900_000 ms (TTL 900 s, which
+    // must outlast the 600 s cron cadence). The (840_000, 900_000] ms window
+    // excludes both the 600 s default and a 1800 s overshoot.
+    for (const call of blobsStore.store.setJSON.mock.calls) {
+      const entry = call[1] as { slots: unknown[]; expiresAt: number };
+      expect(entry.slots).toEqual([MOCK_SLOT]);
+      const remainingTtlMs = entry.expiresAt - Date.now();
+      expect(remainingTtlMs).toBeLessThanOrEqual(900_000);
+      expect(remainingTtlMs).toBeGreaterThan(900_000 - 60_000);
+    }
+  });
+
+  it('calls getAvailableSlots with weeks=4 horizon (endDate ≈ now + 28 days) and empty DB busy periods', async () => {
+    seedTokenRow(Date.now() + 60 * 60_000);
+    const before = Date.now();
+
+    await keepwarmHandler();
+
+    expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
+    const seenCombos = googleCalendar.getAvailableSlots.mock.calls.map(
+      call => {
+        const [start, end, duration, mode, dbBusyPeriods] = call as [
+          Date,
+          Date,
+          number,
+          string,
+          Array<{ start: string; end: string }>,
+        ];
+        // start ≈ run time (few-second tolerance).
+        expect(start.getTime()).toBeGreaterThanOrEqual(before - 5_000);
+        expect(start.getTime()).toBeLessThanOrEqual(Date.now() + 5_000);
+        // Horizon: end − start ≈ 28 days (±1 min tolerance).
+        expect(
+          Math.abs(end.getTime() - start.getTime() - FOUR_WEEKS_MS),
+        ).toBeLessThanOrEqual(60_000);
+        // Duration is a number in {60, 90} (combo set asserted below).
+        expect(duration).toBeTypeOf('number');
+        // Patient read path re-applies live DB busy on cache hit → empty array.
+        expect(dbBusyPeriods).toEqual([]);
+        return `${mode}:${duration}`;
+      },
+    );
+    expect(seenCombos.sort()).toEqual([
+      'in-person:60',
+      'in-person:90',
+      'video:60',
+      'video:90',
+    ]);
+  });
+
+  it('one key failing keeps the 3 other writes (Promise.allSettled isolation)', async () => {
+    seedTokenRow(Date.now() + 60 * 60_000);
+    googleCalendar.getAvailableSlots.mockImplementation(
+      async (_start, _end, duration, mode) => {
+        if (mode === 'video' && duration === 90) {
+          throw new Error('boom — single (mode, duration) lookup fails');
+        }
+        return [MOCK_SLOT];
+      },
+    );
+
+    // allSettled isolation: the single rejection must NOT propagate — the
+    // handler still resolves (Promise.all here would reject → test fails).
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(3);
+    const writtenKeys = blobsStore.store.setJSON.mock.calls.map(c => c[0]);
+    const survivors = expectedCacheKeys().filter(
+      key => key !== buildAvailabilityCacheKey('video', 90, 4, new Date()),
+    );
+    expect(writtenKeys.sort()).toEqual(survivors.sort());
   });
 });

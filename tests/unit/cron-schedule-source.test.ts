@@ -78,8 +78,12 @@ describe('regression #113 — Netlify schedule extraction', () => {
     });
   });
 
-  describe('calendar-token-heartbeat', () => {
-    const source = readCronSource('netlify/functions/calendar-token-heartbeat.ts');
+  describe('calendar-keepwarm', () => {
+    // Token keep-warm (#132) — same Netlify static-extraction contract as the
+    // other crons: the `schedule:` literal must stay inline (zisi's
+    // parsePrimitive does not resolve Identifiers) and in phase with the
+    // SCHEDULE const consumed by Sentry.withMonitor.
+    const source = readCronSource('netlify/functions/calendar-keepwarm.ts');
 
     it('exports `config.schedule` as an inline string literal', () => {
       const config = extractConfigBlock(source);
@@ -87,9 +91,9 @@ describe('regression #113 — Netlify schedule extraction', () => {
       expect(config).not.toMatch(/schedule:\s*SCHEDULE\b/);
     });
 
-    it('declares the expected weekly Sunday 00:00 UTC crontab', () => {
+    it('declares the expected every-10-minutes UTC crontab', () => {
       const config = extractConfigBlock(source);
-      expect(config).toMatch(/schedule:\s*['"]0 0 \* \* 0['"]/);
+      expect(config).toMatch(/schedule:\s*['"]\*\/10 \* \* \* \*['"]/);
     });
   });
 
@@ -147,8 +151,8 @@ describe('regression #113 — Netlify schedule extraction', () => {
       expect(constMatch![1]).toBe(literalMatch![1]);
     });
 
-    it('calendar-token-heartbeat: const SCHEDULE === config.schedule literal', () => {
-      const source = readCronSource('netlify/functions/calendar-token-heartbeat.ts');
+    it('calendar-keepwarm: const SCHEDULE === config.schedule literal', () => {
+      const source = readCronSource('netlify/functions/calendar-keepwarm.ts');
       const constMatch = source.match(/const\s+SCHEDULE\s*=\s*['"]([^'"]+)['"]/);
       const config = extractConfigBlock(source);
       const literalMatch = config.match(/schedule:\s*['"]([^'"]+)['"]/);
@@ -211,9 +215,9 @@ describe('regression #113 — Netlify schedule extraction', () => {
       assertInitBeforeWithMonitor(source, 'send-reminders');
     });
 
-    it('calendar-token-heartbeat: initSentry() precedes Sentry.withMonitor() inside handler()', () => {
-      const source = readCronSource('netlify/functions/calendar-token-heartbeat.ts');
-      assertInitBeforeWithMonitor(source, 'calendar-token-heartbeat');
+    it('calendar-keepwarm: initSentry() precedes Sentry.withMonitor() inside handler()', () => {
+      const source = readCronSource('netlify/functions/calendar-keepwarm.ts');
+      assertInitBeforeWithMonitor(source, 'calendar-keepwarm');
     });
 
     it('reconcile-confirmations: initSentry() precedes Sentry.withMonitor() inside handler()', () => {

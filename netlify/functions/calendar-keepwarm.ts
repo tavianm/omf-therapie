@@ -7,14 +7,18 @@
  * OAuth refresh latency on a cold request — it always finds a token with a
  * comfortable validity window.
  *
+ * V2 (T6) adds the second half of the run: after every healthy token pass the
+ * four availability cache keys the booking wizard reads ({in-person, video} ×
+ * {60, 90}, weeks=4) are pre-computed, so patients are served from a warm
+ * cache instead of paying the Google Freebusy round-trip.
+ *
  * Supersedes calendar-token-heartbeat.ts (weekly refresh against Google's
  * ~6-month idle revocation): a 10-minute cadence keeps the token continuously
  * fresh, which covers the inactivity concern a fortiori. The heartbeat file is
  * retired by a follow-up task of issue #132.
  *
- * V1 scope (issue #132 / T2): token keep-warm only. T6 will add the
- * availability-cache warm-up step — see the seam marker at the end of
- * keepwarm().
+ * Scope: V1 (issue #132 / T2) — token keep-warm. V2 (T6) — availability-cache
+ * warm-up, see warmAvailabilityCache() below.
  *
  * Schedule: every 10 minutes (UTC). The crontab is a plain 5-field expression
  * (minute step 10) so Sentry.withMonitor's MonitorSchedule type accepts it, and
@@ -43,9 +47,9 @@
  *   SUPABASE_SERVICE_ROLE_KEY — Supabase service-role key
  *   ADMIN_EMAIL              — alert recipient on invalid_grant
  *   RESEND_API_KEY           — for alert emails
- *   GOOGLE_CALENDAR_ID       — consumed by T6's availability warm-up, NOT by
- *                              the V1 token step: missing → warn + continue
- *                              (T6 skips the warm-up; no Sentry error spam)
+ *   GOOGLE_CALENDAR_ID       — consumed by the availability warm-up, NOT by
+ *                              the token step: missing → warn + continue
+ *                              (warm-up skipped; no Sentry error spam)
  *   GOOGLE_OAUTH_REDIRECT_URI (optional, fallback: https://developers.google.com/oauthplayground)
  *   SITE_URL                  (optional, fallback: https://omf-therapie.fr)
  *   RESEND_FROM_EMAIL         (optional, fallback: OMF Thérapie <contact@omf-therapie.fr>)
@@ -61,6 +65,14 @@ import ws from 'ws';
 import { Resend } from 'resend';
 import { render } from '@react-email/render';
 import CalendarAuthAlert from '../../src/emails/CalendarAuthAlert.js';
+// src/lib imports — same specifier style as reconcile-invitations.ts (relative,
+// no .js suffix): the lazy-init refactors (#126 / T12) make this module graph
+// safe to bundle into the plain-Node cron runtime.
+import { getAvailableSlots } from '../../src/lib/google-calendar';
+import {
+  buildAvailabilityCacheKey,
+  setCachedAvailability,
+} from '../../src/lib/calendar-cache';
 import { initSentry, captureAndFlush } from './_lib/sentry';
 import { logger } from './_lib/logger';
 
@@ -146,6 +158,87 @@ async function sendInvalidGrantAlert(
 }
 
 // ---------------------------------------------------------------------------
+// Availability-cache warm-up (V2 — issue #132 / T6)
+// ---------------------------------------------------------------------------
+
+/** The booking wizard always requests weeks=4 — the only keys the patient path reads. */
+const WARMUP_WEEKS = 4;
+
+/**
+ * 15 minutes, deliberately longer than the 10-minute cron cadence so a patient
+ * request between two runs never hits a miss window; the read path layers its
+ * own freshness bounds on top.
+ */
+const WARMUP_TTL_SECONDS = 900;
+
+/**
+ * Pre-computes the four availability cache keys the booking path reads
+ * ({in-person, video} × {60, 90}, weeks=4), so a patient request is served
+ * from the cache instead of paying the Google Freebusy round-trip.
+ *
+ * dbBusyPeriods is deliberately empty: DB appointments change minute to minute
+ * and the read path re-applies live busy filtering on every cache hit
+ * (filterSlotsByBusy) — warm entries must not bake busy state in. Mock mode
+ * (GOOGLE_CALENDAR_MOCK=true) returns fictional slots; caching them is
+ * acceptable dev behavior.
+ */
+export async function warmAvailabilityCache(): Promise<void> {
+  // Skip rather than fail: without a calendar id every getAvailableSlots call
+  // below throws the same configuration error — four identical errors every
+  // 10 minutes. One short warn here, NOT a captured error.
+  const calendarId = process.env.GOOGLE_CALENDAR_ID;
+  if (!calendarId) {
+    logger.warn('calendar-keepwarm: GOOGLE_CALENDAR_ID missing — skipping availability warm-up');
+    return;
+  }
+
+  const modes     = ['in-person', 'video'] as const;
+  const durations = [60, 90] as const;
+  const now       = new Date();
+  // 4 weeks ahead in ms — same horizon as the availability API's weeks=4.
+  const end       = new Date(now.getTime() + WARMUP_WEEKS * 7 * 24 * 3600 * 1000);
+
+  const pairs = modes.flatMap(mode =>
+    durations.map(duration => ({ mode, duration })),
+  );
+
+  // allSettled, not all: one key's Google API hiccup must not abort the other
+  // three — and no rejection may escape this function.
+  const results = await Promise.allSettled(
+    pairs.map(async ({ mode, duration }) => {
+      const slots = await getAvailableSlots(now, end, duration, mode, []);
+      const key = buildAvailabilityCacheKey(mode, duration, WARMUP_WEEKS, now);
+      await setCachedAvailability(key, slots, WARMUP_TTL_SECONDS);
+    }),
+  );
+
+  let warmed = 0;
+  results.forEach((result, index) => {
+    // allSettled preserves input order, so results[i] describes pairs[i].
+    const { mode, duration } = pairs[index];
+    if (result.status === 'fulfilled') {
+      warmed += 1;
+      return;
+    }
+
+    // Sanitized reason only — a raw Google error may embed credentials in its
+    // response/config payloads (same caution as the invalid_grant capture).
+    const reason =
+      result.reason instanceof Error ? result.reason.message : String(result.reason);
+    logger.error('calendar-keepwarm: availability warm-up failed for key', { mode, duration, reason });
+    Sentry.captureMessage(
+      `calendar-keepwarm: availability warm-up failed (${mode}/${duration}): ${reason}`,
+      'warning',
+    );
+  });
+
+  logger.info('calendar-keepwarm: availability cache warm-up complete', {
+    warmed,
+    failed: results.length - warmed,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
 
@@ -199,7 +292,7 @@ async function keepwarm(): Promise<void> {
   //    part of this cron's contract, and skipping the run when the channel is
   //    unconfigured surfaces the misconfig in logs instead of silently losing
   //    re-authorization alerts.
-  //    GOOGLE_CALENDAR_ID is NOT required by the V1 token step — see the
+  //    GOOGLE_CALENDAR_ID is NOT required by the token step — see the
   //    dedicated warn-only check below the guards.
   const clientId      = process.env.GOOGLE_OAUTH_CLIENT_ID;
   const clientSecret  = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
@@ -229,14 +322,14 @@ async function keepwarm(): Promise<void> {
     return;
   }
 
-  // GOOGLE_CALENDAR_ID is read by T6's availability warm-up (seam at the end
-  // of keepwarm), not by the token step. Warn on a missing value — a warn is
+  // GOOGLE_CALENDAR_ID is read by the availability warm-up at the end of
+  // keepwarm(), not by the token step. Warn on a missing value — a warn is
   // one log line + Sentry breadcrumb per run, NOT a captured error, so a
   // 10-minute cadence can't spam exception alerts — then CONTINUE: the token
-  // keep-warm has no reason to stop. T6 must skip the warm-up (not the token
-  // step) while this is unset.
+  // keep-warm has no reason to stop. The warm-up skips itself (never the
+  // token step) while this is unset — see warmAvailabilityCache()'s guard.
   if (!calendarId) {
-    logger.warn('calendar-keepwarm: GOOGLE_CALENDAR_ID missing — token keep-warm continues; T6 availability warm-up will be skipped');
+    logger.warn('calendar-keepwarm: GOOGLE_CALENDAR_ID missing — token keep-warm continues; availability warm-up will be skipped');
   }
 
   // 2. Initialise clients
@@ -317,17 +410,14 @@ async function keepwarm(): Promise<void> {
   }
 
   // ---------------------------------------------------------------------------
-  // T6 SEAM — availability-cache warm-up (issue #132, NOT in V1 scope)
+  // Availability-cache warm-up (V2 — issue #132 / T6)
   // ---------------------------------------------------------------------------
   // Reaching this point means the token step is healthy: either the token was
-  // still valid, or the refresh succeeded and was persisted. T6 inserts the
-  // warm-up step here (import from '../../src/lib/calendar-cache.js', call
-  // e.g. warmAvailabilityCache() with the calendarId read above).
-  //
-  // Placement contract: every auth-failure path (missing refresh_token,
-  // invalid_grant, failed refresh) returns BEFORE this marker — that is what
-  // guarantees the warm-up is skipped when Google auth is broken. T6 must
-  // additionally skip the warm-up (never the token step) when calendarId is
-  // unset — see the warn-only env check at the top of keepwarm(). Any new
-  // early-return must stay ABOVE this seam.
+  // still valid, or the refresh succeeded and was persisted. Every
+  // auth-failure path (no token row, missing refresh_token, invalid_grant,
+  // failed refresh, failed persist) returns above — that is what guarantees
+  // the warm-up is skipped when Google auth is broken. Any new early-return
+  // must stay ABOVE this call. warmAvailabilityCache() skips itself when
+  // GOOGLE_CALENDAR_ID is unset.
+  await warmAvailabilityCache();
 }
