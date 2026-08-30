@@ -13,7 +13,11 @@
  * Externals are mocked via vi.mock: supabaseAdmin (chained query builder),
  * createCalendarEvent, and buildAndSendConfirmationEmails (the shared module).
  */
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MOCK_WEBHOOK_TOKEN_HEADER } from '@/lib/mock-mode.server';
+
+const STRONG_MOCK_WEBHOOK_TOKEN =
+  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
 // --- Mocks must be hoisted before imports -----------------------------------
 
@@ -43,7 +47,8 @@ vi.mock('@/lib/google-calendar', () => ({
 // Mock buildAndSendConfirmationEmails — controllable per-test.
 const mockBuildAndSend = vi.fn();
 vi.mock('@/lib/notifications', () => ({
-  buildAndSendConfirmationEmails: (...args: unknown[]) => mockBuildAndSend(...args),
+  buildAndSendConfirmationEmails: (...args: unknown[]) =>
+    mockBuildAndSend(...args),
 }));
 
 // Mock pricing labels (pure functions, but imported by the webhook).
@@ -57,12 +62,16 @@ vi.mock('@/lib/stripe', () => ({ getStripe: () => null }));
 
 // --- Import after mocks -----------------------------------------------------
 
-import { handlePaymentSucceeded } from '@/pages/api/stripe-webhook';
+import { GET, handlePaymentSucceeded } from '@/pages/api/stripe-webhook';
+import { supabaseAdmin } from '@/lib/supabase';
+import { createCalendarEvent } from '@/lib/google-calendar';
 
 // --- Helpers ----------------------------------------------------------------
 
 /** Sets up the mock chain for the initial UPDATE (N1) to "win" (first deliverer). */
-function mockFirstDeliveryWins(apptOverrides: Partial<Record<string, unknown>> = {}) {
+function mockFirstDeliveryWins(
+  apptOverrides: Partial<Record<string, unknown>> = {},
+) {
   const appt = {
     id: 'appt_001',
     patient_name: 'Jean Dupont',
@@ -101,20 +110,153 @@ function mockRetryReRead(apptOverrides: Partial<Record<string, unknown>> = {}) {
     ...apptOverrides,
   };
   // N1 UPDATE fails (already processed) → re-read via .maybeSingle().
-  mockSupabaseChain.single.mockResolvedValueOnce({ data: null, error: { message: 'no rows' } });
-  mockSupabaseChain.maybeSingle.mockResolvedValueOnce({ data: appt, error: null });
+  mockSupabaseChain.single.mockResolvedValueOnce({
+    data: null,
+    error: { message: 'no rows' },
+  });
+  mockSupabaseChain.maybeSingle.mockResolvedValueOnce({
+    data: appt,
+    error: null,
+  });
   return appt;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv('DEV', true);
+  vi.stubEnv('GOOGLE_CALENDAR_MOCK', 'true');
+  vi.stubEnv('MOCK_WEBHOOK_TOKEN', STRONG_MOCK_WEBHOOK_TOKEN);
   // Default: the mark-delivered UPDATE succeeds.
   mockSupabaseChain.update.mockReturnThis();
   mockSupabaseChain.eq.mockReturnThis();
   mockSupabaseChain.is.mockReturnThis();
   mockSupabaseChain.select.mockReturnThis();
   // Default email result: success.
-  mockBuildAndSend.mockResolvedValue({ patientEmailSent: true, therapistEmailSent: true });
+  mockBuildAndSend.mockResolvedValue({
+    patientEmailSent: true,
+    therapistEmailSent: true,
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+// ---------------------------------------------------------------------------
+// Mock GET route — available only in explicit local development mode
+// ---------------------------------------------------------------------------
+
+describe('GET — development mock gate', () => {
+  async function callMockGet({
+    hostname = 'localhost',
+    query = 'mock=1&appointment_id=appt_001',
+    token = STRONG_MOCK_WEBHOOK_TOKEN,
+  }: {
+    hostname?: string;
+    query?: string;
+    token?: string | null;
+  } = {}): Promise<Response> {
+    const url = new URL(`http://${hostname}/api/stripe-webhook/?${query}`);
+    const headers = new Headers();
+    if (token) headers.set(MOCK_WEBHOOK_TOKEN_HEADER, token);
+
+    return GET({
+      request: new Request(url, { headers }),
+      url,
+    } as Parameters<typeof GET>[0]);
+  }
+
+  function expectNoPaymentSideEffects(): void {
+    expect(supabaseAdmin.from).not.toHaveBeenCalled();
+    expect(mockBuildAndSend).not.toHaveBeenCalled();
+    expect(createCalendarEvent).not.toHaveBeenCalled();
+  }
+
+  it('returns 403 outside development even when calendar mock mode is enabled', async () => {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('GOOGLE_CALENDAR_MOCK', 'true');
+
+    const response = await callMockGet();
+
+    expect(response.status).toBe(403);
+    expectNoPaymentSideEffects();
+  });
+
+  it('returns 403 in development when calendar mock mode is disabled', async () => {
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('GOOGLE_CALENDAR_MOCK', 'false');
+
+    const response = await callMockGet();
+
+    expect(response.status).toBe(403);
+    expectNoPaymentSideEffects();
+  });
+
+  it('returns 403 when the capability header is missing', async () => {
+    const response = await callMockGet({ token: null });
+
+    expect(response.status).toBe(403);
+    expectNoPaymentSideEffects();
+  });
+
+  it('returns 403 when the capability header is invalid', async () => {
+    const response = await callMockGet({ token: 'wrong-token' });
+
+    expect(response.status).toBe(403);
+    expectNoPaymentSideEffects();
+  });
+
+  it('returns 403 when the request hostname is not loopback', async () => {
+    const response = await callMockGet({ hostname: 'example.com' });
+
+    expect(response.status).toBe(403);
+    expectNoPaymentSideEffects();
+  });
+
+  it('returns 400 when mock=1 is missing from an authorized request', async () => {
+    const response = await callMockGet({ query: 'appointment_id=appt_001' });
+
+    expect(response.status).toBe(400);
+    await expect(response.text()).resolves.toBe('Paramètre mock=1 requis');
+    expectNoPaymentSideEffects();
+  });
+
+  it('returns 400 when appointment_id is missing from an authorized request', async () => {
+    const response = await callMockGet({ query: 'mock=1' });
+
+    expect(response.status).toBe(400);
+    await expect(response.text()).resolves.toBe('appointment_id manquant');
+    expectNoPaymentSideEffects();
+  });
+
+  it('returns deterministic mock identifiers after an authorized payment succeeds', async () => {
+    mockFirstDeliveryWins();
+
+    const response = await callMockGet();
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      mocked: true,
+      appointmentId: 'appt_001',
+      paymentIntentId: 'pi_mock_appt001',
+      eventId: 'evt_mock_appt001',
+    });
+    expect(mockBuildAndSend).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a bounded JSON 500 when payment processing fails', async () => {
+    mockFirstDeliveryWins();
+    mockBuildAndSend.mockRejectedValueOnce(new Error('delivery unavailable'));
+
+    const response = await callMockGet();
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: 'Erreur interne mock',
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -131,7 +273,7 @@ describe('handlePaymentSucceeded — L2 gate (confirmation_sent_at)', () => {
 
     // Assert — NO email sent, NO calendar event created, NO mark-delivered UPDATE.
     expect(mockBuildAndSend).not.toHaveBeenCalled();
-    expect(vi.mocked(await import('@/lib/google-calendar')).createCalendarEvent).not.toHaveBeenCalled();
+    expect(createCalendarEvent).not.toHaveBeenCalled();
     // The only UPDATEs should be the N1 (which failed) — no mark-delivered.
     // We check that .update was not called with confirmation_sent_at by verifying
     // buildAndSend was never called (the side effect that precedes the mark).
@@ -146,7 +288,10 @@ describe('handlePaymentSucceeded — throw on patient email failure', () => {
   it('throws and does not set confirmation_sent_at when patientEmailSent is false', async () => {
     // Arrange — first delivery wins, but the email send returns failure.
     mockFirstDeliveryWins();
-    mockBuildAndSend.mockResolvedValueOnce({ patientEmailSent: false, therapistEmailSent: true });
+    mockBuildAndSend.mockResolvedValueOnce({
+      patientEmailSent: false,
+      therapistEmailSent: true,
+    });
 
     // Act + Assert — the function must throw so the POST handler returns 500.
     await expect(
@@ -167,7 +312,10 @@ describe('handlePaymentSucceeded — mark delivered on success', () => {
   it('sets confirmation_sent_at after successful patient email', async () => {
     // Arrange — first delivery wins, email succeeds.
     mockFirstDeliveryWins();
-    mockBuildAndSend.mockResolvedValueOnce({ patientEmailSent: true, therapistEmailSent: true });
+    mockBuildAndSend.mockResolvedValueOnce({
+      patientEmailSent: true,
+      therapistEmailSent: true,
+    });
 
     // Act
     await handlePaymentSucceeded('appt_001', 'pi_test_123', 'evt_001');

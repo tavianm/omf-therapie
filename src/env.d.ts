@@ -25,6 +25,8 @@ interface ImportMetaEnv {
   readonly GOOGLE_SERVICE_ACCOUNT_EMAIL?: string;
   readonly GOOGLE_PRIVATE_KEY?: string;
   readonly GOOGLE_CALENDAR_ID?: string;
+  /** Capability locale requise pour simuler un webhook de paiement en développement. */
+  readonly MOCK_WEBHOOK_TOKEN?: string;
 
   // Google OAuth (3-legged) for Meet link generation
   readonly GOOGLE_OAUTH_CLIENT_ID?: string;
