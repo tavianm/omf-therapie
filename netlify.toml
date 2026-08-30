@@ -90,10 +90,15 @@
 #   Requiert : SUPABASE_DATABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
 #              RESEND_API_KEY, RESEND_FROM_EMAIL
 #
-# netlify/functions/calendar-token-heartbeat.ts — refresh token Google OAuth (@weekly)
+# netlify/functions/calendar-keepwarm.ts — token Google chaud + cache
+#   disponibilités (*/10 * * * *) : refresh conditionnel du token OAuth
+#   (< 15 min de validité restante) puis pré-remplissage des 4 clés du cache
+#   de disponibilités ({présentiel, vidéo} × {60, 90} min, weeks=4, TTL 900 s).
 #   Requiert : SUPABASE_DATABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
 #              GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET,
-#              ADMIN_EMAIL, RESEND_API_KEY, RESEND_FROM_EMAIL
+#              GOOGLE_CALENDAR_ID, ADMIN_EMAIL, RESEND_API_KEY
+#   Fallbacks : GOOGLE_OAUTH_REDIRECT_URI, SITE_URL, RESEND_FROM_EMAIL,
+#              PUBLIC_SENTRY_DSN
 #
 # netlify/functions/reconcile-confirmations.ts — sweep de réconciliation #68 (horaire :05)
 #   Backstop du webhook Stripe : renvoie les emails de confirmation pour les

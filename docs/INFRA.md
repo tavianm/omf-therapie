@@ -311,9 +311,11 @@ le logger dégrade vers `console.*` uniquement.
 Les cron functions sont enveloppées par `Sentry.withMonitor()`. Dans Sentry :
 
 1. **Alerts → Monitors** : vérifier que `send-reminders` (crontab
-   `0 18 * * *`, checkInMargin 5 min) et `calendar-token-heartbeat` (crontab
-   `0 0 * * 0`, checkInMargin 5 min) apparaissent après le premier
-   déclenchement.
+   `0 18 * * *`, checkInMargin 5 min) et `calendar-keepwarm` (crontab
+   `*/10 * * * *`, checkInMargin 2 min, maxRuntime 5 min) apparaissent après
+   le premier déclenchement. L'ancien monitor `calendar-token-heartbeat`
+   (remplacé par `calendar-keepwarm` en #132) est orphelin — l'archiver
+   manuellement une fois le nouveau cron vérifié.
 2. Configurer une alerte email/Slack sur **No check-ins** (mauvais fire) et
    **Execution duration** (timeout).
 
