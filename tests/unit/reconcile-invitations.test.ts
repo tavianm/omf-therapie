@@ -25,10 +25,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 //   6. GOOGLE_CALENDAR_MOCK=true → injected no-op createCalendarEvent that
 //      console.warns; the real calendar module is never called; the rest of
 //      the per-row reconciliation continues.
-//   7. Poison-escape (makeSendFnWithCapture pattern #98): non-retryable Resend
-//      4xx on the patient email → the sweep itself sets `invitation_sent_at`
-//      (set-once `.is('invitation_sent_at', null)` guard) + error log;
-//      retryable 5xx → flag left NULL for the next hourly pass.
+//   7. Poison-escape (capture pattern #98, fed by #129's `rawError` seam):
+//      non-retryable Resend 4xx on the patient email → the sweep itself sets
+//      `invitation_sent_at` (set-once `.is('invitation_sent_at', null)`
+//      guard) + error log; retryable 5xx → flag left NULL for the next
+//      hourly pass.
 //   8. Deadline: the loop stops at now() + DEADLINE_MS (remaining rows are
 //      deferred to the next hourly pass).
 //   9. Per-row isolation: one throwing row does not block the batch.
@@ -199,7 +200,18 @@ vi.mock('@supabase/supabase-js', () => ({
 
 vi.mock('ws', () => ({ default: vi.fn(), __esModule: true }));
 
-// --- Resend mock (client instantiated from process.env by the sweep) --------
+// --- Transport mocks (#129) --------------------------------------------------
+//
+// CONTRACT (post-T5): the sweep's `sendFn` adapter (`_lib/send-fn`) delegates
+// to `sendEmail` from `src/lib/resend`; assertions below target the
+// `sendEmail` mock (params in, `{ success, error, rawError }` out).
+//
+// The `resend` SDK mock stays ONLY as a RED-phase network guard: until T5
+// migrates the sweep, today's local wrapper still calls
+// `new Resend(...).emails.send(...)`, which would hit the real API. After T5
+// the sweep no longer imports the SDK and this mock becomes inert (safe to
+// delete then). All contract assertions target `sendEmail`, never the SDK.
+
 const resendSend = vi.fn(async () => ({
   data: { id: 're_123' },
   error: null,
@@ -210,6 +222,17 @@ vi.mock('resend', () => ({
     emails = { send: resendSend };
   },
 }));
+
+const sendEmailModule = vi.hoisted(() => ({
+  sendEmail: vi.fn(),
+}));
+
+vi.mock('../../src/lib/resend', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../src/lib/resend')>();
+  // `buildAppointmentConversationSubject` (imported by notifications.ts for
+  // real) must survive the partial mock — only the transport is replaced.
+  return { ...actual, sendEmail: sendEmailModule.sendEmail };
+});
 
 // --- notifications.ts mock — the sweep DELEGATES each row here (T6) --------
 const notifications = vi.hoisted(() => ({
@@ -310,6 +333,12 @@ function resetMocks(): void {
   supabaseState.updateResults.length = 0;
   resendSend.mockClear();
   resendSend.mockResolvedValue({ data: { id: 're_123' }, error: null });
+  sendEmailModule.sendEmail.mockClear();
+  // Default: the send succeeds (rawError absent on success).
+  sendEmailModule.sendEmail.mockResolvedValue({
+    success: true,
+    id: 're_123',
+  });
   notifications.processAppointmentSideEffects.mockClear();
   // Keep the default delegation implementation unless a test overrides it.
   notifications.processAppointmentSideEffects.mockImplementation(
@@ -589,44 +618,49 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
     });
   });
 
-  describe('admin BCC parity (makeSendFnWithCapture vs sendEmail)', () => {
-    // Recette 2026-08-30 : les emails de rattrapage partaient sans la copie
-    // thérapeute — le BCC ADMIN_EMAIL est un invariant de transport de
-    // sendEmail (resend.ts) que le wrapper DI doit répliquer.
-    it('BCCs ADMIN_EMAIL on rattrapage emails (parity with sendEmail)', async () => {
+  describe('admin BCC inheritance (sendEmail owns the BCC — SC5)', () => {
+    // Recette 2026-08-30 (8a84a22) : les emails de rattrapage partaient sans
+    // la copie thérapeute. Post-#129, le BCC ADMIN_EMAIL est un invariant de
+    // transport de sendEmail (resend.ts, auto-BCC + dédoublonnage) — le sweep
+    // n'a PLUS à le répliquer : il transmet les params intacts.
+    it('forwards the patient email WITHOUT a sweep-injected bcc — sendEmail adds the ADMIN_EMAIL copy', async () => {
       vi.stubEnv('ADMIN_EMAIL', 'therapeute@omf-therapie.fr');
       const appt = makeAppt({ patient_email: 'patient@example.com' });
       supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
 
       await handler();
 
-      expect(resendSend).toHaveBeenCalledTimes(1);
-      const payload = resendSend.mock.calls[0][0];
-      expect(payload.to).toEqual(['patient@example.com']);
-      expect(payload.bcc).toEqual(['therapeute@omf-therapie.fr']);
+      expect(sendEmailModule.sendEmail).toHaveBeenCalledTimes(1);
+      const params = sendEmailModule.sendEmail.mock.calls[0][0];
+      // No manual BCC from the sweep (else the admin copy would be doubled).
+      expect(params.bcc).toBeUndefined();
+      expect(params.to).toBe('patient@example.com');
     });
 
-    it('adds no bcc when ADMIN_EMAIL is empty', async () => {
+    it('passes no bcc either when ADMIN_EMAIL is empty', async () => {
       vi.stubEnv('ADMIN_EMAIL', '');
       const appt = makeAppt({ patient_email: 'patient@example.com' });
       supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
 
       await handler();
 
-      const payload = resendSend.mock.calls[0][0];
-      expect(payload.bcc).toBeUndefined();
+      const params = sendEmailModule.sendEmail.mock.calls[0][0];
+      expect(params.bcc).toBeUndefined();
     });
 
-    it('does not duplicate the admin when they are already the recipient', async () => {
+    it('forwards the recipient VERBATIM when the admin is already the recipient (no sweep-level normalize/dedup)', async () => {
+      // The old wrapper lowercased `to` and de-duplicated the admin itself;
+      // post-#129 the sweep must NOT mutate the params — sendEmail owns both
+      // the case-insensitive dedup and the BCC decision.
       vi.stubEnv('ADMIN_EMAIL', 'therapeute@omf-therapie.fr');
       const appt = makeAppt({ patient_email: 'Therapeute@OMF-Therapie.fr' });
       supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
 
       await handler();
 
-      const payload = resendSend.mock.calls[0][0];
-      expect(payload.to).toEqual(['therapeute@omf-therapie.fr']);
-      expect(payload.bcc).toBeUndefined();
+      const params = sendEmailModule.sendEmail.mock.calls[0][0];
+      expect(params.to).toBe('Therapeute@OMF-Therapie.fr');
+      expect(params.bcc).toBeUndefined();
     });
   });
 
@@ -662,7 +696,7 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
 
       // The rest of the per-row reconciliation still ran (Stripe/email/flags
       // are delegated through the same call — asserted via the email sendFn).
-      expect(resendSend).toHaveBeenCalled();
+      expect(sendEmailModule.sendEmail).toHaveBeenCalled();
 
       warnSpy.mockRestore();
     });
@@ -702,7 +736,7 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
         .find(entry => entry.step === 'calendar');
       expect(calLog?.status).toBe('skipped');
       // …and the row was still fully reconciled (email delivered, flags set).
-      expect(resendSend).toHaveBeenCalled();
+      expect(sendEmailModule.sendEmail).toHaveBeenCalled();
       expect(
         allUpdatePayloads.filter(p => 'invitation_sent_at' in p),
       ).toHaveLength(1);
@@ -713,17 +747,19 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
     });
   });
 
-  describe('poison-escape (makeSendFnWithCapture pattern)', () => {
+  describe('poison-escape (capture pattern #98, classified via the #129 rawError seam)', () => {
     it('sets invitation_sent_at itself (set-once guard) on a NON-retryable Resend 4xx', async () => {
       const appt = makeAppt();
       supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
-      // Resend returns a validation 4xx → isRetryableResendError === false →
-      // poison. processAppointmentSideEffects swallows it (mocked impl calls
-      // the injected sendFn), so the sweep must detect it via its capture
-      // wrapper and escape the retry loop itself.
-      resendSend.mockResolvedValue({
-        data: null,
-        error: {
+      // sendEmail fails with a validation 4xx → isRetryableResendError ===
+      // false → poison. processAppointmentSideEffects swallows it (mocked
+      // impl calls the injected sendFn), so the sweep must detect it via
+      // state.lastError (fed from result.rawError by the adapter) and escape
+      // the retry loop itself.
+      sendEmailModule.sendEmail.mockResolvedValue({
+        success: false,
+        error: 'Invalid "to" address',
+        rawError: {
           name: 'validation_error',
           statusCode: 422,
           message: 'Invalid "to" address',
@@ -747,9 +783,10 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
     it('leaves invitation_sent_at NULL on a RETRYABLE Resend 5xx (next hourly pass retries)', async () => {
       const appt = makeAppt();
       supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
-      resendSend.mockResolvedValue({
-        data: null,
-        error: {
+      sendEmailModule.sendEmail.mockResolvedValue({
+        success: false,
+        error: 'Resend unavailable',
+        rawError: {
           name: 'internal_server_error',
           statusCode: 500,
           message: 'Resend unavailable',
@@ -814,9 +851,10 @@ describe('reconcile-invitations cron handler (T13 contract)', () => {
     it('never logs the patient email address on the poison-escape error path', async () => {
       const appt = makeAppt({ patient_email: 'secret-patient@example.com' });
       supabaseState.selectResults.push({ ...EMPTY_RESULT, data: [appt] });
-      resendSend.mockResolvedValue({
-        data: null,
-        error: {
+      sendEmailModule.sendEmail.mockResolvedValue({
+        success: false,
+        error: 'Invalid "to" address',
+        rawError: {
           name: 'validation_error',
           statusCode: 422,
           message: 'Invalid "to" address',
