@@ -56,3 +56,12 @@
 
 - Entry: `http://localhost:4321` after `npm run dev`.
 - State: local Docker services and the documented Google Calendar and Stripe mocks support deterministic development.
+
+- Subagents and other parallel contexts (implement/fix/review agents) must run only
+  targeted test files with `--maxWorkers=1` — never the full suite, `npm run build`,
+  or `npm run audit:*` while another process may be running. On 2026-08-28 four
+  parallel agents each ran `npm run test` (default worker pool) and crashed the WSL
+  VM mid-task.
+- For local full-suite runs prefer `npm run test:low` (added in PR #127): same suite
+  as `npm run test`, chained with `pretest`, capped to one worker with no file
+  parallelism.
