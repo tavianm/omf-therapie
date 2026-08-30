@@ -10,11 +10,11 @@
  * Strategy: DELEGATION (not duplication). Each eligible row is claimed
  * atomically (W2 — `claimInvitationProcessing`, 10 min lease on
  * `invitation_claimed_at`, see 014_invitation_claim_at.sql) then re-run
- * through the shared pipeline `src/lib/notifications.ts` with a
- * process.env-injected `sendFn` (poison-escape capture, pattern #98). The
- * pipeline sets the L2 flags itself on success; the sweep only intervenes on
- * PERMANENT (non-retryable) Resend errors to escape the retry loop (set-once
- * flag update).
+ * through the shared pipeline `src/lib/notifications.ts` with the shared
+ * adapter `_lib/send-fn` (delegates to `sendEmail`, captures `rawError` for
+ * the poison escape — patterns #98/#129). The pipeline sets the L2 flags
+ * itself on success; the sweep only intervenes on PERMANENT (non-retryable)
+ * Resend errors to escape the retry loop (set-once flag update).
  *
  * Runtime constraint: this cron runs in plain Node (`import.meta.env` is
  * absent). Possible only thanks to the lazy-init refactors of `stripe.ts`
@@ -36,14 +36,9 @@
 import type { Config } from '@netlify/functions';
 import * as Sentry from '@sentry/node';
 import { createClient } from '@supabase/supabase-js';
-import { Resend } from 'resend';
 import ws from 'ws';
 import type { Appointment } from '../../src/types/appointment';
-import type { SendEmailParams, SendEmailResult } from '../../src/lib/resend';
-import {
-  isRetryableResendError,
-  type ResendApiError,
-} from '../../src/lib/resend-errors';
+import { isRetryableResendError } from '../../src/lib/resend-errors';
 import {
   claimInvitationProcessing,
   processAppointmentSideEffects,
@@ -53,6 +48,7 @@ import { createCalendarEvent } from '../../src/lib/google-calendar';
 import { scrubPii, shouldDropEvent, captureAndFlush } from './_lib/sentry';
 import { BUILD_CONTEXT } from './_lib/build-env';
 import { logger } from './_lib/logger';
+import { makeSendFnWithCapture } from './_lib/send-fn';
 
 /**
  * Sentry init PER-INVOCATION (not the `initialized`-guarded `_lib/sentry`
@@ -110,64 +106,6 @@ export const config: Config = {
   schedule: '20 * * * *',
   // No schedule_timezone → Netlify defaults to UTC (matches Sentry monitor).
 };
-
-// ---------------------------------------------------------------------------
-// sendFn with capture (poison-escape pattern #98 — makeSendFnWithCapture)
-// ---------------------------------------------------------------------------
-
-/**
- * Crée un `sendFn` (client Resend instancié depuis process.env) + un état de
- * capture récupérant la dernière erreur brute Resend. Le pipeline avalle les
- * erreurs email (runStep) — le sweep lit `state.lastError` pour classifier
- * poison (4xx permanent → échappatoire) vs retryable (5xx/429 → passage suivant).
- *
- * Parité transport avec `sendEmail` (src/lib/resend.ts) : ADMIN_EMAIL est
- * ajouté en BCC de chaque email patient sauf s'il est déjà destinataire —
- * le flux POST obtient ce BCC via sendEmail ; sans cette réplication, la
- * thérapeute perdrait sa copie sur les emails de rattrapage.
- */
-function makeSendFnWithCapture(resend: Resend, fromEmail: string) {
-  const state: { lastError: ResendApiError | null } = { lastError: null };
-  const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-  const sendFn = async (params: SendEmailParams): Promise<SendEmailResult> => {
-    const { to, bcc, subject, react, replyTo, threadKey, idempotencyKey } =
-      params;
-    state.lastError = null;
-    const toList = (Array.isArray(to) ? to : [to]).map(email =>
-      email.trim().toLowerCase(),
-    );
-    const bccList = (bcc ? (Array.isArray(bcc) ? bcc : [bcc]) : []).map(email =>
-      email.trim(),
-    );
-    const adminAlreadyTargeted =
-      !!adminEmail &&
-      (toList.includes(adminEmail) ||
-        bccList.some(email => email.toLowerCase() === adminEmail));
-    const resolvedBcc =
-      adminEmail && !adminAlreadyTargeted ? [...bccList, adminEmail] : bccList;
-    const { data, error } = await resend.emails.send(
-      {
-        from: fromEmail,
-        to: toList,
-        ...(resolvedBcc.length > 0 ? { bcc: resolvedBcc } : {}),
-        subject,
-        react,
-        ...(replyTo ? { replyTo } : {}),
-        ...(threadKey ? { headers: { 'X-Thread-Key': threadKey } } : {}),
-      },
-      idempotencyKey ? { idempotencyKey } : undefined,
-    );
-    if (error) {
-      state.lastError = error as ResendApiError;
-      return {
-        success: false,
-        error: (error as ResendApiError).message ?? 'Erreur Resend',
-      };
-    }
-    return { success: true, id: data?.id };
-  };
-  return { sendFn, state };
-}
 
 // ---------------------------------------------------------------------------
 // Calendar DI — no-op when GOOGLE_CALENDAR_MOCK=true (dev-only skip)
@@ -231,8 +169,6 @@ async function reconcile(): Promise<void> {
   const supabaseUrl = process.env.SUPABASE_DATABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const resendApiKey = process.env.RESEND_API_KEY;
-  const fromEmail =
-    process.env.RESEND_FROM_EMAIL ?? 'OMF Thérapie <contact@omf-therapie.fr>';
   // C2 : le jeton d'invitation .ics (email S3 des RDV confirmés/payés par
   // avoir) est signé HMAC — `import.meta.env` est absent ici, le secret DOIT
   // venir de process.env (parité reconcile-confirmations.ts).
@@ -261,8 +197,10 @@ async function reconcile(): Promise<void> {
     auth: { persistSession: false, autoRefreshToken: false },
     realtime: { transport: ws },
   });
-  const resend = new Resend(resendApiKey);
-  const sendBundle = makeSendFnWithCapture(resend, fromEmail);
+  // Envoi via l'adaptateur partagé `_lib/send-fn` : délègue à `sendEmail`
+  // (lectures env gardées, BCC admin auto, idempotence, threads email) et
+  // capture `rawError` pour la classification poison ci-dessous.
+  const sendBundle = makeSendFnWithCapture();
 
   // Calendar DI: real module unless GOOGLE_CALENDAR_MOCK==='true' (default false).
   const isCalendarMock = process.env.GOOGLE_CALENDAR_MOCK === 'true';
