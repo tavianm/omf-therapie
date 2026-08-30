@@ -1,0 +1,51 @@
+---
+title: "Refactor transport — rawError dans sendEmail + adaptateurs minces pour les sweeps"
+issue: 129
+status: approved
+tier: F-lite
+date: 2026-08-30
+---
+
+## Problem
+
+L'envoi d'emails « side-effects » s'est triplicé. D'un côté le vrai transport `sendEmail` (`src/lib/resend.ts`) : BCC `ADMIN_EMAIL` automatique, 3 retries via `isRetryableResendError` avec backoff, persistance des threads (`persistThreadState`). De l'autre, deux wrappers `makeSendFnWithCapture` (`netlify/functions/reconcile-invitations.ts`, `netlify/functions/reconcile-confirmations.ts`) : chacun instancie un client Resend brut et réimplémente partiellement le protocole — imparfaitement.
+
+Le bug de recette du 2026-08-30 en est la conséquence directe : la thérapeute ne recevait pas de copie des emails de rattrapage parce que le wrapper invitations ne répliquait pas le BCC `ADMIN_EMAIL` (correctif ad hoc 8a84a22, duplicqué à la main). Les copies divergent déjà sur trois invariants : `lastTo` capturé seulement côté confirmations, `persistThreadState` absent des deux, retries/backoff absents des deux.
+
+Racine technique : `sendEmail` avale l'erreur Resend brute — `SendEmailResult` n'expose que `error: string` — ce qui empêche les sweeps de passer par le vrai transport tout en classifiant poison (4xx permanent) vs retryable (429/5xx) sur l'objet d'erreur d'origine.
+
+## Who
+
+- **Primary :** développeurs/mainteneurs — chaque invariant transport doit être répliqué à la main dans jusqu'à 3 endroits ; les revues #127 l'ont annoté 3 fois (architect 82 %)
+- **Secondary :** la thérapeute (destinataire BCC) et les patientes — victimes silencieuses des invariants manquants dans les flux de rattrapage nocturnes
+
+## Constraints
+
+- Refactor de dette **sans changement de comportement visible**, à une exception close et voulue : les sweeps héritent des invariants manquants (BCC déjà répliqué ; retries + `persistThreadState` deviennent effectifs pour les flux de rattrapage)
+- Deadline sweep 8,5 s par invocation (30 s Netlify, marge) vs 3 retries internes de `sendEmail` avec backoff — un row lent ne doit pas consommer tout le budget : l'adaptateur sweep a besoin d'une option no-retry (ou backoff borné à 1 retry court)
+- Runtime cron Node (`process.env`) — `sendEmail` doit rester lazy-init/env-agnostique (déjà le cas depuis #98)
+- Le poison-escape doit continuer à classifier via l'erreur brute → l'adaptateur expose `rawError` dans le résultat
+- Clés L1 Resend (`Idempotency-Key` `invite:{id}:patient` / `confirm:{id}:patient`) préservées à l'identique — le refactor ne doit pas provoquer de double envoi pendant la fenêtre TTL
+- Extraction du wrapper partagé vers `netlify/functions/_lib/` (2 copies déjà divergentes)
+
+## Out of Scope
+
+- Le reste des advisories #129 (lots ultérieurs) : timeout par row, alertes Sentry sur early-returns config, log du mode dispatch POST, `readEnv` partagé, déplacement de `processAppointmentSideEffects` vers `src/lib/appointment-side-effects.ts`, `organizerEmail` en DI, garde `x-cron-secret`, bornes de tests (deadline `>=`, défaut `send_email`, harnais PATCH)
+- Toute évolution des templates/contenu des emails
+- Le flux POST (déjà sur le vrai `sendEmail`)
+
+## Premise Validity
+
+**Success in 6 months :** tout invariant transport ajouté dans `sendEmail` (BCC, retry, threading…) s'applique automatiquement aux 4 flux (POST, sweep invitations, sweep confirmations, flows patient) ; plus aucune copie divergente de `makeSendFnWithCapture` dans l'arbre.
+
+**Failure in 6 months :** un invariant ajouté dans `sendEmail` n'atteint pas les sweeps (test le prouve), OU une 3ᵉ copie du wrapper réapparaît dans un nouveau cron ; falsifiable par `grep -r "makeSendFnWithCapture"` > 1 fichier après ce PR, ou par échec d'un test d'héritage d'invariant.
+
+**Simplest alternative :** ne pas exposer `rawError` et patcher à la main chaque wrapper pour chaque invariant manquant, comme le correctif BCC de recette (8a84a22).
+
+**Why not simplest :** chaque invariant futur = patch ×2 (voire ×3 avec le prochain cron), et les divergences déjà constatées (`lastTo`, BCC) montrent que les copies dérivent silencieusement — c'est le mécanisme exact du bug « thérapeute sans copie ».
+
+## Complexity
+
+**Tier : F-lite** — portée claire (1 seam `rawError` + 2 adaptateurs réduits + 1 lib partagée `_lib/`), un domaine (backend transport email), pas d'inconnue bloquante ; le compromis deadline/retries est borné et décisionnable au spec.
+
+**Signaux :** fichiers touchés ≈ 5 (resend.ts, 2 fonctions cron, _lib/send-fn partagé, tests) ; pas de nouveau pattern d'architecture ; dépendances connues (#98/#127 préchargés en contexte) ; label taille absent → détection par signaux (« clear scope, single domain »).
