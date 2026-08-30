@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Flux — seam transport emails (#129)</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; padding:32px; background:#0d1117; color:#e6edf3; font:14px/1.5 -apple-system,"Segoe UI",sans-serif; }
+  h1 { font-size:18px; color:#7ee787; margin:0 0 4px; }
+  p.sub { color:#8b949e; margin:0 0 28px; font-size:13px; }
+  .zone { margin-bottom:26px; padding:14px 16px; border:1px dashed #30363d; border-radius:12px; }
+  .zone > h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:#8b949e; margin:0 0 10px; }
+  .zone.env > h2 { color:#d29922; } .zone.seam > h2 { color:#388bfd; } .zone.sweeps > h2 { color:#7ee787; } .zone.ext > h2 { color:#f778ba; }
+  .stage { display:flex; align-items:stretch; gap:10px; flex-wrap:wrap; }
+  .node { flex:1; min-width:200px; background:#161b22; border:1px solid #30363d; border-radius:10px; padding:12px 14px; }
+  .node.seam { border-color:#388bfd; box-shadow:0 0 12px rgba(56,139,253,.15); }
+  .node.new { border-color:#7ee787; }
+  .node h3 { margin:0 0 6px; font-size:13px; }
+  .node .file { font-family:ui-monospace,monospace; font-size:10px; color:#8b949e; display:block; margin-bottom:6px; }
+  .node p { margin:0; font-size:12px; color:#c9d1d9; }
+  .arrow { align-self:center; color:#484f58; font-size:18px; }
+  .tag { display:inline-block; font-size:10px; padding:1px 7px; border-radius:99px; margin-left:6px; }
+  .tag.new { background:#1f4d2a; color:#7ee787; } .tag.mod { background:#0c2d5e; color:#79c0ff; } .tag.frozen { background:#3d2d00; color:#d29922; }
+</style>
+</head>
+<body>
+<h1>Flux de données — unification du transport emails (#129)</h1>
+<p class="sub">fd-engine : env → seam (modifié) → adaptateur (nouveau) → sweeps (migrés) → sorties externes. <span style="color:#7ee787">vert = nouveau</span> · <span style="color:#79c0ff">bleu = modifié</span> · <span style="color:#d29922">ambre = gelé</span></p>
+
+<div class="zone env">
+  <h2>Zone 1 — Configuration (accès gardé, cron ∨ Astro)</h2>
+  <div class="stage">
+    <div class="node">
+      <h3>env <span class="tag mod">gardé</span></h3>
+      <span class="file">import.meta.env?.X ?? process.env.X</span>
+      <p>RESEND_API_KEY · RESEND_FROM_EMAIL · ADMIN_EMAIL · SMTP_HOST · SMTP_PORT — lues en lazy, jamais à l'import ; les 5 accès deviennent gardés (T2)</p>
+    </div>
+  </div>
+</div>
+
+<div class="zone seam">
+  <h2>Zone 2 — Seam : le vrai transport (T2)</h2>
+  <div class="stage">
+    <div class="node">
+      <h3>sendEmail(params, opts?) <span class="tag mod">modifié</span></h3>
+      <span class="file">src/lib/resend.ts</span>
+      <p>auto-BCC ADMIN_EMAIL (gelé) → dispatch SMTP ∨ Resend</p>
+    </div>
+    <span class="arrow">→</span>
+    <div class="node seam">
+      <h3>opts.maxAttempts <span class="tag new">nouveau</span></h3>
+      <span class="file">sendEmailViaResend</span>
+      <p>défaut 3 (statu quo POST/patient) ; sweeps passent 1 — zéro backoff</p>
+    </div>
+    <span class="arrow">→</span>
+    <div class="node seam">
+      <h3>SendEmailResult.rawError <span class="tag new">nouveau</span></h3>
+      <span class="file">type importé de resend-errors.ts</span>
+      <p>{name, statusCode, message} brut sur échec API — consommable par isRetryableResendError</p>
+    </div>
+  </div>
+</div>
+
+<div class="zone sweeps">
+  <h2>Zone 3 — Adaptateur partagé + sweeps migrés (T4/T5)</h2>
+  <div class="stage">
+    <div class="node new">
+      <h3>makeSendFnWithCapture <span class="tag new">nouveau</span></h3>
+      <span class="file">netlify/functions/_lib/send-fn.ts</span>
+      <p>state.lastTo + reset AVANT délégation → sendEmail(p, {maxAttempts:1}) → state.lastError ← rawError. Zéro client Resend, zéro BCC répliqué.</p>
+    </div>
+    <span class="arrow">→</span>
+    <div class="node">
+      <h3>reconcile-invitations <span class="tag mod">migré</span></h3>
+      <span class="file">cron '20 * * * *'</span>
+      <p>poison-escape + set-once inchangés ; classification via state.lastError</p>
+    </div>
+    <span class="arrow">→</span>
+    <div class="node">
+      <h3>reconcile-confirmations <span class="tag mod">migré</span></h3>
+      <span class="file">cron '5 * * * *'</span>
+      <p>idem + heuristique state.lastTo (patient vs thérapeute) conservée</p>
+    </div>
+  </div>
+</div>
+
+<div class="zone ext">
+  <h2>Zone 4 — Sorties externes (gelées)</h2>
+  <div class="stage">
+    <div class="node">
+      <h3>Resend API <span class="tag frozen">gelé</span></h3>
+      <p>Idempotency-Key L1 (invite:{id}:patient · confirm:{p|t}:{intent}) — produites en amont, transmises à l'identique</p>
+    </div>
+    <div class="node">
+      <h3>Supabase email_threads <span class="tag frozen">table</span></h3>
+      <p>load-then-insert/update par TOUT chemin désormais (PK thread_key en garde) ; In-Reply-To/References</p>
+    </div>
+    <div class="node">
+      <h3>SMTP Mailpit <span class="tag frozen">dev</span></h3>
+      <p>SMTP_HOST → sweeps en dev passent par Mailpit (delta voulu c)</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>

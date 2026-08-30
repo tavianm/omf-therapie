@@ -1,0 +1,130 @@
+---
+title: "Plan: Refactor transport emails — rawError + adaptateurs minces sweeps"
+issue: 129
+spec: artifacts/specs/129-transport-refactor-spec.mdx
+complexity: 4/10
+tier: F-lite
+generated: 2026-08-30
+---
+
+## Summary
+
+Poser le seam `rawError` + `maxAttempts` + accès env gardés dans `src/lib/resend.ts`, puis réduire les deux wrappers `makeSendFnWithCapture` des sweeps en un adaptateur mince unique `netlify/functions/_lib/send-fn.ts` déléguant au vrai `sendEmail` — héritant BCC admin, tentatives explicites et threading `email_threads`.
+
+**Flux de données :** [Flux — seam transport emails](../visuals/129-transport-refactor-data-flow.html)
+**Carte fichiers × fonctions :** [Fichiers × fonctions — transport unifié](../visuals/129-transport-refactor-file-map.html)
+
+*(Sidecars rédigés à la main — skill forge-chart non disponible dans cette session.)*
+
+## Bootstrap Context
+
+Patterns de référence à consulter avant implémentation :
+- `src/lib/resend.ts` — intégralité (le seam vit ici ; lectures env l.37-50, 363-365 ; boucle maxAttempts l.292-335 ; interface locale ResendApiError l.98-102 à dédoublonner)
+- `src/lib/resend-errors.ts` — type `ResendApiError` exporté + `isRetryableResendError` (l.33-40 : statusCode absent → retryable)
+- `netlify/functions/reconcile-confirmations.ts:129-264` — wrapper local avec `lastTo` (l.180-186), JSDoc dupliqué (l.132-178), heuristique poison (l.256-262)
+- `netlify/functions/reconcile-invitations.ts:114-235` — wrapper local + bloc BCC manuel 8a84a22 (à supprimer)
+- `src/lib/stripe.ts:22` — patron d'accès gardé `(import.meta as { env?: … }).env?.X ?? process.env.X`
+- `tests/unit/cron-schedule-source.test.ts:1-40` — idiome d'assertion source (readFileSync) pour SC3
+- `tests/unit/reconcile-invitations.test.ts` — harnais existant (24 tests, mocks 'resend' à basculer sur sendEmail)
+- `netlify/functions/_lib/` — convention du répertoire (sentry.ts, logger.ts ; `_` ignoré par la découverte Netlify)
+
+## Agents
+
+| Agent | Instances | Tâches | Fichiers |
+|---|---|---|---|
+| backend-dev | A (T2) · B (T5) | 2 | resend.ts (seam) · _lib/send-fn + 2 sweeps (adaptateur/migration) |
+| tester | A (T1,T3) · B (T4,T6) | 4 | tests/unit/* (resend, confirmations à créer, invitations à adapter, gates) |
+
+## Micro-Tasks
+
+### Slice V1 — Seam transport (resend.ts)
+
+- **T1** [tester-A · tests · V1 · RED] Créer `tests/unit/resend.test.ts` (aucune suite resend n'existe) : (a) SC1 — erreur API Resend mockée 422 puis 503 → `result.rawError` porte `statusCode`/`name` d'origine **et** `result.error` lisible ; throw réseau → `rawError.name === 'network_error'` ; succès → `rawError` absent ; (b) SC2 — erreur retryable + défaut → `emails.send` appelé exactement 3× ; `maxAttempts: 1` → exactement 1× ; (c) invariant prémissé — auto-BCC `ADMIN_EMAIL` ajouté quand non ciblé, absent quand déjà destinataire ; (d) SC3 — assertion source (readFileSync, pattern `cron-schedule-source.test.ts`) : les 5 lectures (`RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `ADMIN_EMAIL`, `SMTP_HOST`, `SMTP_PORT`) passent par l'accès gardé `import.meta.env?.X ?? process.env.X`. Mocks : `resend` SDK, `@react-email/render`, `./supabase`. *Vérif : `npm run test -- resend` → rouge sur (a)(b)(d).*
+- **T2** [backend-dev-A · lib · V1 · GREEN] `src/lib/resend.ts` : (1) `SendEmailResult.rawError?: ResendApiError` — type **importé** de `./resend-errors` (supprimer l'interface locale l.98-102), rempli aux sorties d'échec de `sendEmailViaResend` (erreur API l.321, réseau l.325/328, final l.336) — chemin SMTP : `rawError` undefined ; (2) `sendEmail(params, opts?: { maxAttempts?: number })` → `maxAttempts` paramètre la boucle (défaut 3), transmis seulement au chemin Resend ; (3) accès gardés sur les 5 lectures env (patron `stripe.ts:22`). *Vérif : tests T1 verts ∧ `npm run test -- resend-errors` vert (classification intacte).*
+- **T3** [tester-A · gate · V1 · RED-GATE] `npm run test && npm run lint` → verts (suites notifications/POST/webhook non modifiées = rétrocompatibilité SC8 par exécution). *Sentinelle : échec ici bloque V2.*
+
+### Slice V2 — Adaptateur partagé + migration des sweeps
+
+- **T4** [tester-B · tests · V2 · RED] (a) Créer `tests/unit/reconcile-confirmations.test.ts` (suite inexistante — SC6) : poison 4xx patient → échappatoire (flag posé via set-once) ; 429/5xx → flag NULL (re-essai passage suivant) ; heuristique `state.lastTo` (échec patient → poison ; échec thérapeute seul → best-effort, pas de poison) ; forwarding des params vers `sendEmail` (SC7). (b) Adapter `tests/unit/reconcile-invitations.test.ts` : mocks du module `resend` → mock de `sendEmail` (`vi.mock('@/lib/resend')` via chemin relatif) retournant `{ success, error, rawError }` ; conserver les assertions poison/BCC/claim existantes. (c) SC5 — test d'héritage : l'adaptateur transmet les params intacts (le BCC admin est ajouté par `sendEmail`, plus par le sweep). *Vérif : `npm run test -- reconcile` → rouge (module `_lib/send-fn` absent, comportement non migré).*
+- **T5** [backend-dev-B · sweep · V2 · GREEN] (a) Créer `netlify/functions/_lib/send-fn.ts` : `makeSendFnWithCapture(opts?: { maxAttempts?: number })` → `{ sendFn, state }` — `state.lastTo` assigné + `state.lastError` reset **avant** délégation ; `sendFn` → `sendEmail(params, { maxAttempts: opts?.maxAttempts ?? 1 })` ; `state.lastError ← result.rawError ?? null` ; JSDoc **unique** (documenter : pourquoi l'adaptateur est mince, ce que sendEmail apporte). (b) `reconcile-invitations.ts` : supprimer wrapper local + bloc BCC manuel + import `Resend` ; importer `./_lib/send-fn`. (c) `reconcile-confirmations.ts` : supprimer wrapper local (et son JSDoc dupliqué) + import `Resend` ; importer `./_lib/send-fn`. Startup validations inchangées. *Vérif : tests T4 verts ∧ `grep -rl makeSendFnWithCapture src/ netlify/` → exactement `netlify/functions/_lib/send-fn.ts`.*
+- **T6** [tester-B · gate · V2 · RED-GATE] `npm run test && npm run lint && npm run build` → verts ; SC4 vérifié : `grep -rl "makeSendFnWithCapture" src/ netlify/` = `_lib/send-fn.ts` seul ∧ `grep -rln "emails.send" netlify/functions/ --include='*.ts'` (hors `_lib/`) = exactement `send-reminders.ts` + `calendar-token-heartbeat.ts`. *Sentinelle finale.*
+
+## Wave Structure
+
+4 vagues, max 2 agents ∥. Les gates (T3, T6) sont séquencés par le lead après retour des agents de la vague (règle WSL : jamais de suites ∥ non bornées).
+
+| Wave | Trigger | Agents | Tasks |
+|------|---------|--------|-------|
+| 1 | start | 2 ∥ | tester-A: T1 · tester-B: T4 |
+| 2 | Wave 1 done | 1 | backend-dev-A: T2 |
+| 3 | Wave 2 done | 2 ∥ | backend-dev-B: T5 · (tester-A: T3 gate — exécuté par le lead après T2, avant validation finale) |
+| 4 | Wave 3 done | 1 | tester-B: T6 (gate final par le lead) |
+
+### Budget — per task
+
+| Task | Items | Class | Est. ops | Split? |
+|------|-------|-------|----------|--------|
+| T1 | 4 | judgmental | 8 | — |
+| T2 | 3 | judgmental | 8 | — |
+| T3 (gate) | 1 | trivial | 2 | — |
+| T4 | 3 | judgmental | 12 | — |
+| T5 | 3 | judgmental | 10 | — |
+| T6 (gate) | 1 | trivial | 3 | — |
+
+**Total estimé : ~43 ops** — aucun task > 50.
+
+### Budget — per agent instance
+
+| Instance | Tasks | Σ ops | Subjects | Split? |
+|----------|-------|-------|----------|--------|
+| backend-dev-A | T2 | 8 | resend-seam | — |
+| backend-dev-B | T5 | 10 | transport-adapter | — |
+| tester-A | T1,T3 | 10 | resend-tests | — |
+| tester-B | T4,T6 | 15 | sweep-tests | — |
+
+## Task Seeding Blueprint
+
+<!-- T{n} | agent-instance | blockedBy | subject. Semer dans l'ordre des vagues ; dans une vague, ∥. -->
+
+### Wave 1 — no deps, 2 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T1 | tester-A | — | resend-tests |
+| T4 | tester-B | — | sweep-tests |
+
+### Wave 2 — after Wave 1, 1 agent
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T2 | backend-dev-A | T1 | resend-seam |
+
+### Wave 3 — after Wave 2, 2 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T3 | tester-A | T2 | gate-v1 |
+| T5 | backend-dev-B | T2,T4 | transport-adapter |
+
+### Wave 4 — final
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T6 | tester-B | T3,T5 | gate-final |
+
+## Consistency Report
+
+- Critères spec couverts : 8/8 (SC1→T1/T2 · SC2→T1/T2 · SC3→T1/T2 · SC4→T5/T6 · SC5→T4/T5 · SC6→T4/T5 · SC7→T4/T5 · SC8→T3/T6)
+- Breadboard : 6/6 IDs tracés (N1→T2 · N2→T5 · S1→T5 · S2→T5 · D1→T4/T5 · D2→T4/T5)
+- Non couvert : néant. Exemptions : audit a11y non requis (aucune UI — backend pur) ; netlify.toml inchangé (aucune var nouvelle).
+
+## Task IDs
+
+<!-- Semées via la todo-list de session (adaptation harness : TodoWrite, pas de TaskCreate durable).
+     Au redémarrage de session, re-semer depuis le Task Seeding Blueprint ci-dessus (vagues 1→4). -->
+- T1: tests RED V1 (resend seam — rawError/maxAttempts/env) — tester-A
+- T2: seam resend.ts GREEN — backend-dev-A
+- T3: RED-GATE V1 (test+lint) — tester-A
+- T4: tests RED V2 (confirmations à créer + invitations adaptées + forwarding) — tester-B
+- T5: _lib/send-fn + migration 2 sweeps GREEN — backend-dev-B
+- T6: RED-GATE final (test+lint+build+greps SC4) — tester-B
