@@ -1,0 +1,52 @@
+---
+title: "Cron Netlify — token Google chaud + pré-remplissage du cache de disponibilités"
+issue: 132
+status: approved
+tier: F-lite
+date: 2026-08-30
+---
+
+## Problem
+
+Le site présente un trafic insuffisant pour maintenir chauds les deux états dont dépend la consultation des créneaux : le token d'accès Google OAuth (validité ~1 h) et le cache de disponibilités Netlify Blobs (TTL 10 min). Entre deux visites espacées, les deux expirent presque toujours, donc le premier patient qui consulte /rendez-vous paie le chemin complet — lecture Supabase, refresh OAuth (~300-800 ms), requête Freebusy Google, écriture du cache — sur un cold start Lambda où l'import de `googleapis` est déjà coûteux. Résultat observable : premier chargement de plusieurs secondes.
+
+Historique aggravant : la gestion du token a déjà été source d'incidents répétés (crons cassés par #75 puis régression #113 — littéral `schedule:` résolu à `null` par l'extracteur Netlify, réparés par #114). Le bouton « Reconnecter » de /mes-rdvs est un palliatif de ces pannes, actionné manuellement par la thérapeute. L'heartbeat hebdomadaire existant (`calendar-token-heartbeat.ts`, `0 0 * * 0`) ne vise qu'à empêcher la révocation du refresh_token après ~6 mois d'inactivité Google — il ne garde pas l'access token chaud.
+
+## Who
+
+- **Primary :** le patient qui consulte les créneaux sur /rendez-vous — subit la latence multi-secondes du premier chargement, voire un 503 en cas d'échec de refresh.
+- **Secondary :** la thérapeute — doit surveiller le statut Google Calendar sur /mes-rdvs et cliquer « Reconnecter » quand le mécanisme automatif échoue (maintenance non désirée pour un site vitrine + prise de RDV).
+
+## Constraints
+
+- ⚠️ Le littéral `schedule:` doit rester **inline** dans le `config` de la fonction — l'extracteur statique Netlify (`@netlify/zip-it-and-ship-it`) ne résout pas les `Identifier` (régression #113). DRY brisée volontairement.
+- Runtime Node pur pour les Netlify Functions : `process.env` uniquement (pas `import.meta.env`), clients Supabase instanciés localement dans chaque fonction.
+- Le code partagé `src/lib/google-calendar.ts` / `src/lib/calendar-cache.ts` est côté Astro : toute réutilisation depuis le cron doit passer par un seam d'injection (précédent : `CalendarClientOptions` pour `reconcile-invitations`).
+- Quotas : ~6-12 invocations/h négligeables vs 125 k/mois Netlify ; refresh ≤ 32/jour très loin des limites Google.
+- Le cache est invalidé par les mutations de RDV (création/annulation/report) — le warm-up ne doit pas écraser une invalidation récente.
+- Langue : code/commentaires EN, user-facing FR, commits FR présent.
+
+## Out of Scope
+
+- Supprimer le refresh à la volée (`getPersistedOAuthClient`) — il reste en filet de sécurité (race cron/patient, échec du cron).
+- Supprimer le bouton « Reconnecter » /mes-rdvs — il reste le dernier recours en cas de révocation du consentement (`invalid_grant`).
+- Optimiser le cold start Lambda (bundle `googleapis`, pré-bundling) — distinct du problème de fraîcheur token/cache.
+- Rappels SMS (#40), migration console→logger (#108) — adjacents, non liés.
+
+## Premise Validity
+
+**Success in 6 months :** Toute consultation patient trouve token et cache chauds — `/api/availability` répond < 1 s en régime normal, zéro refresh OAuth dans le chemin patient, zéro intervention manuelle sur 6 mois (hors révocation réelle du consentement Google).
+
+**Failure in 6 months :** Au moins un patient subit un chargement > 3 s ou une erreur 503 dus à un token expiré / cache froid malgré le cron actif.
+
+**Simplest alternative :** Palier A seul — passer le heartbeat existant en cadence horaire (~2 lignes).
+**Why not simplest :** ne retire que le refresh OAuth (~0,3-1 s) ; le cold start Lambda et la requête Freebusy restent dans le chemin patient, donc le premier chargement multi-secondes persiste à trafic nul.
+
+## Complexity
+
+**Tier : F-lite** — scope clair, un seul domaine (ops/calendar), pas d'inconnue architecturale ; le travail réel est l'intégration runtime Node ↔ modules Astro et le respect des contraintes de scheduler documentées.
+
+Signals observés :
+- Label `Size: M` sur l'issue → F-lite.
+- 4-6 fichiers touchés : fonction cron (étendue ou nouvelle), seam de warm-up dans `src/lib/calendar-cache.ts` ou module partagé, doc `netlify.toml`, tests unitaires éventuels.
+- Précédents réutilisables : `reconcile-invitations.ts` (cron → pipeline partagé via DI), `CalendarClientOptions`.
