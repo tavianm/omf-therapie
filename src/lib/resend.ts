@@ -19,7 +19,7 @@ import { render } from '@react-email/render';
 import { createTransport as createSmtpTransport } from 'nodemailer';
 import type { ReactElement } from 'react';
 import { supabaseAdmin } from './supabase';
-import { isRetryableResendError } from './resend-errors';
+import { isRetryableResendError, type ResendApiError } from './resend-errors';
 
 // ---------------------------------------------------------------------------
 // Transport selection — resolved lazily so this module can be imported from
@@ -29,13 +29,23 @@ import { isRetryableResendError } from './resend-errors';
 // (Issue #68 post-rebase review : retire la duplication Path B du sweep.)
 // ---------------------------------------------------------------------------
 
-let cachedSmtpTransport: ReturnType<typeof createSmtpTransport> | null | undefined;
+let cachedSmtpTransport:
+  ReturnType<typeof createSmtpTransport> | null | undefined;
 let cachedResendClient: Resend | null | undefined;
 
 function getSmtpTransport(): ReturnType<typeof createSmtpTransport> | null {
   if (cachedSmtpTransport !== undefined) return cachedSmtpTransport;
-  const smtpHost = import.meta.env.SMTP_HOST as string | undefined;
-  const smtpPort = Number((import.meta.env.SMTP_PORT as string | undefined) ?? 1025);
+  // Lecture gardée inline (idiome stripe.ts) : `import.meta.env` n'existe pas
+  // dans le runtime cron Netlify — on retombe sur `process.env`.
+  const smtpHost =
+    (import.meta as { env?: Record<string, string | undefined> }).env
+      ?.SMTP_HOST ?? process.env.SMTP_HOST;
+  const smtpPort = Number(
+    (import.meta as { env?: Record<string, string | undefined> }).env
+      ?.SMTP_PORT ??
+      process.env.SMTP_PORT ??
+      1025,
+  );
   cachedSmtpTransport = smtpHost
     ? createSmtpTransport({ host: smtpHost, port: smtpPort, secure: false })
     : null;
@@ -47,11 +57,16 @@ function getSmtpTransport(): ReturnType<typeof createSmtpTransport> | null {
 
 function getResendClient(): Resend | null {
   if (cachedResendClient !== undefined) return cachedResendClient;
-  const resendApiKey = import.meta.env.RESEND_API_KEY as string | undefined;
+  // Lecture gardée inline — même raison que getSmtpTransport (runtime cron).
+  const resendApiKey =
+    (import.meta as { env?: Record<string, string | undefined> }).env
+      ?.RESEND_API_KEY ?? process.env.RESEND_API_KEY;
   const smtp = getSmtpTransport();
   if (!smtp && !resendApiKey) {
     // Avertissement au démarrage — ne bloque pas le build mais log clairement
-    console.warn('[resend] RESEND_API_KEY manquante. Les emails ne seront pas envoyés.');
+    console.warn(
+      '[resend] RESEND_API_KEY manquante. Les emails ne seront pas envoyés.',
+    );
   }
   // Resend client is only used when SMTP is absent (production path)
   cachedResendClient = resendApiKey ? new Resend(resendApiKey) : null;
@@ -89,16 +104,20 @@ export interface SendEmailResult {
   success: boolean;
   id?: string;
   error?: string;
+  /**
+   * Erreur Resend brute ({ name, statusCode, message }) — additive (#129) :
+   * permet aux appelants (sweeps de réconciliation, webhook) de classifier
+   * retryable vs poison sans re-parser la chaîne `error`. Absent en succès ;
+   * non renseigné en chemin SMTP (contrat additif, chemin dev inchangé).
+   */
+  rawError?: ResendApiError;
 }
 
-export function buildAppointmentConversationSubject(subject: string, _appointmentId?: string): string {
+export function buildAppointmentConversationSubject(
+  subject: string,
+  _appointmentId?: string,
+): string {
   return subject;
-}
-
-interface ResendApiError {
-  name?: string;
-  statusCode?: number | null;
-  message?: string;
 }
 
 interface EmailThreadState {
@@ -138,10 +157,14 @@ function appendReferences(existing: string, nextMessageId: string): string {
   return refs.join(' ');
 }
 
-async function loadThreadState(threadKey: string): Promise<EmailThreadState | null> {
+async function loadThreadState(
+  threadKey: string,
+): Promise<EmailThreadState | null> {
   const { data, error } = await supabaseAdmin
     .from('email_threads')
-    .select('thread_key, thread_subject, root_message_id, last_message_id, thread_references')
+    .select(
+      'thread_key, thread_subject, root_message_id, last_message_id, thread_references',
+    )
     .eq('thread_key', threadKey)
     .maybeSingle();
 
@@ -159,15 +182,13 @@ async function persistThreadState(
   currentThread: EmailThreadState | null,
 ): Promise<void> {
   if (!currentThread) {
-    const { error } = await supabaseAdmin
-      .from('email_threads')
-      .insert({
-        thread_key: threadKey,
-        thread_subject: threadSubject,
-        root_message_id: messageId,
-        last_message_id: messageId,
-        thread_references: messageId,
-      });
+    const { error } = await supabaseAdmin.from('email_threads').insert({
+      thread_key: threadKey,
+      thread_subject: threadSubject,
+      root_message_id: messageId,
+      last_message_id: messageId,
+      thread_references: messageId,
+    });
     if (error) {
       console.error('[resend] Impossible de créer le thread email :', error);
     }
@@ -178,12 +199,18 @@ async function persistThreadState(
     .from('email_threads')
     .update({
       last_message_id: messageId,
-      thread_references: appendReferences(currentThread.thread_references, messageId),
+      thread_references: appendReferences(
+        currentThread.thread_references,
+        messageId,
+      ),
     })
     .eq('thread_key', threadKey);
 
   if (error) {
-    console.error('[resend] Impossible de mettre à jour le thread email :', error);
+    console.error(
+      '[resend] Impossible de mettre à jour le thread email :',
+      error,
+    );
   }
 }
 
@@ -219,12 +246,16 @@ async function sendEmailViaSMTP(
   params: SendEmailParams,
   fromEmail: string,
 ): Promise<SendEmailResult> {
-  const { to, bcc, subject, react, replyTo, threadKey, idempotencyKey } = params;
+  const { to, bcc, subject, react, replyTo, threadKey, idempotencyKey } =
+    params;
 
   try {
     const html = await render(react);
     const normalizedThreadKey = threadKey?.trim();
-    const threadContext = await prepareThreadSendContext(normalizedThreadKey, subject);
+    const threadContext = await prepareThreadSendContext(
+      normalizedThreadKey,
+      subject,
+    );
 
     const info = await getSmtpTransport()!.sendMail({
       from: fromEmail,
@@ -266,19 +297,26 @@ async function sendEmailViaSMTP(
 async function sendEmailViaResend(
   params: SendEmailParams,
   fromEmail: string,
+  maxAttempts = 3,
 ): Promise<SendEmailResult> {
   const resendClient = getResendClient();
   if (!resendClient) {
-    console.error('[resend] Resend client non initialisé — RESEND_API_KEY manquante.');
+    console.error(
+      '[resend] Resend client non initialisé — RESEND_API_KEY manquante.',
+    );
     return { success: false, error: 'RESEND_API_KEY manquante' };
   }
 
-  const { to, bcc, subject, react, replyTo, threadKey, idempotencyKey } = params;
+  const { to, bcc, subject, react, replyTo, threadKey, idempotencyKey } =
+    params;
 
   try {
     const html = await render(react);
     const normalizedThreadKey = threadKey?.trim();
-    const threadContext = await prepareThreadSendContext(normalizedThreadKey, subject);
+    const threadContext = await prepareThreadSendContext(
+      normalizedThreadKey,
+      subject,
+    );
 
     const payload = {
       from: fromEmail,
@@ -289,7 +327,6 @@ async function sendEmailViaResend(
       ...(threadContext.headers ? { headers: threadContext.headers } : {}),
       ...(replyTo ? { replyTo } : {}),
     };
-    const maxAttempts = 3;
     let lastError: ResendApiError | null = null;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -304,7 +341,8 @@ async function sendEmailViaResend(
         if (!error) {
           if (normalizedThreadKey && data?.id) {
             const messageId = toResendMessageId(data.id);
-            const threadSubject = threadContext.thread?.thread_subject ?? subject;
+            const threadSubject =
+              threadContext.thread?.thread_subject ?? subject;
             await persistThreadState(
               normalizedThreadKey,
               threadSubject,
@@ -318,32 +356,64 @@ async function sendEmailViaResend(
         lastError = error as ResendApiError;
         if (!isRetryableResendError(lastError) || attempt === maxAttempts) {
           console.error('[resend] Erreur API Resend :', lastError);
-          return { success: false, error: lastError.message ?? 'Erreur Resend inconnue' };
+          // rawError = l'erreur originale (statusCode/name intacts), pas une copie.
+          return {
+            success: false,
+            error: lastError.message ?? 'Erreur Resend inconnue',
+            rawError: lastError,
+          };
         }
       } catch (networkErr: unknown) {
-        const message = networkErr instanceof Error ? networkErr.message : 'Erreur réseau inconnue';
+        const message =
+          networkErr instanceof Error
+            ? networkErr.message
+            : 'Erreur réseau inconnue';
         lastError = { name: 'network_error', message };
         if (attempt === maxAttempts) {
           console.error('[resend] Exception réseau non récupérable :', message);
-          return { success: false, error: message };
+          return { success: false, error: message, rawError: lastError };
         }
-        console.warn(`[resend] Exception réseau (tentative ${attempt}/${maxAttempts}), retry...`);
+        console.warn(
+          `[resend] Exception réseau (tentative ${attempt}/${maxAttempts}), retry...`,
+        );
       }
 
-      console.warn(`[resend] Erreur transitoire (tentative ${attempt}/${maxAttempts}), retry...`);
+      console.warn(
+        `[resend] Erreur transitoire (tentative ${attempt}/${maxAttempts}), retry...`,
+      );
       await sleep(attempt * 300);
     }
-    return { success: false, error: lastError?.message ?? 'Erreur Resend inconnue' };
+    return {
+      success: false,
+      error: lastError?.message ?? 'Erreur Resend inconnue',
+      rawError: lastError ?? undefined,
+    };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Erreur inconnue';
     console.error(`[resend] Exception lors de l'envoi de l'email :`, message);
-    return { success: false, error: message };
+    // Aucune erreur structurée n'existe ici (render()/contexte thread) — on
+    // synthétise un rawError pour que le contrat « toute erreur a un rawError »
+    // reste vérifiable côté appelants.
+    return {
+      success: false,
+      error: message,
+      rawError: { name: 'unexpected_error', message },
+    };
   }
 }
 
 // ---------------------------------------------------------------------------
 // Public helper — dispatches to the appropriate transport
 // ---------------------------------------------------------------------------
+
+/** Options par appel — budget de retry contrôlé par l'appelant (#129). */
+export interface SendEmailOpts {
+  /**
+   * Nombre maximal de tentatives sur le chemin Resend (défaut : 3, le budget
+   * historique). Ignoré par le chemin SMTP (dev/Mailpit : pas de retry).
+   */
+  maxAttempts?: number;
+}
 
 /**
  * Envoie un email transactionnel.
@@ -358,18 +428,33 @@ async function sendEmailViaResend(
  *   react: <ConfirmationEmail {...props} />,
  * });
  */
-export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
+export async function sendEmail(
+  params: SendEmailParams,
+  opts?: SendEmailOpts,
+): Promise<SendEmailResult> {
+  // Lectures gardées inline (idiome stripe.ts) — le module doit rester
+  // importable dans les runtimes sans `import.meta.env` (cron Netlify).
   const fromEmail =
-    (import.meta.env.RESEND_FROM_EMAIL as string | undefined) ??
+    (import.meta as { env?: Record<string, string | undefined> }).env
+      ?.RESEND_FROM_EMAIL ??
+    process.env.RESEND_FROM_EMAIL ??
     'OMF Thérapie <contact@omf-therapie.fr>';
-  const adminEmail = (import.meta.env.ADMIN_EMAIL as string | undefined)?.trim().toLowerCase();
-  const toList = (Array.isArray(params.to) ? params.to : [params.to])
-    .map(email => email.trim().toLowerCase());
-  const explicitBccList = (params.bcc ? (Array.isArray(params.bcc) ? params.bcc : [params.bcc]) : [])
-    .map(email => email.trim());
+  const adminEmail = (
+    (import.meta as { env?: Record<string, string | undefined> }).env
+      ?.ADMIN_EMAIL ?? process.env.ADMIN_EMAIL
+  )
+    ?.trim()
+    .toLowerCase();
+  const toList = (Array.isArray(params.to) ? params.to : [params.to]).map(
+    email => email.trim().toLowerCase(),
+  );
+  const explicitBccList = (
+    params.bcc ? (Array.isArray(params.bcc) ? params.bcc : [params.bcc]) : []
+  ).map(email => email.trim());
   const adminAlreadyTargeted =
     !!adminEmail &&
-    (toList.includes(adminEmail) || explicitBccList.some(email => email.toLowerCase() === adminEmail));
+    (toList.includes(adminEmail) ||
+      explicitBccList.some(email => email.toLowerCase() === adminEmail));
 
   const resolvedParams: SendEmailParams =
     adminEmail && !adminAlreadyTargeted
@@ -380,5 +465,5 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     return sendEmailViaSMTP(resolvedParams, fromEmail);
   }
 
-  return sendEmailViaResend(resolvedParams, fromEmail);
+  return sendEmailViaResend(resolvedParams, fromEmail, opts?.maxAttempts);
 }
