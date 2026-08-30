@@ -389,6 +389,40 @@ describe('sendEmail transport seam — issue #129 (contract)', () => {
 
       expect(resendState.send).toHaveBeenCalledTimes(3);
     });
+
+    it.each([
+      ['Infinity (non-finite)', Number.POSITIVE_INFINITY, 3],
+      ['fractional 0.5 (floors + clamps up)', 0.5, 1],
+    ] as const)(
+      'clamps maxAttempts: %s → budget %d',
+      async (_label, input, expectedCalls) => {
+        resendState.send.mockResolvedValue({
+          data: null,
+          error: {
+            name: 'server_error',
+            statusCode: 503,
+            message: 'Service unavailable',
+          },
+        });
+
+        await sendForContract(baseParams(), { maxAttempts: input });
+
+        expect(resendState.send).toHaveBeenCalledTimes(expectedCalls);
+      },
+    );
+
+    it('synthesizes rawError {missing_api_key} when the client cannot initialize', async () => {
+      // Amendement 12 : la sortie client-absent porte elle aussi un rawError
+      // (sans statusCode → retryable → la row est re-essayée au passage
+      // suivant, cohérent avec la garde startup des sweeps).
+      vi.stubEnv('RESEND_API_KEY', '');
+
+      const result = await sendForContract(baseParams());
+
+      expect(result.success).toBe(false);
+      expect(result.rawError).toMatchObject({ name: 'missing_api_key' });
+      expect(resendState.send).not.toHaveBeenCalled();
+    });
   });
 
   // -------------------------------------------------------------------------

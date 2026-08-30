@@ -387,7 +387,10 @@ async function reconcile(): Promise<void> {
         // façon, mais on garde aussi le drain Netlify propre).
         // Diagnostics explicites : `logger` stringifie un non-Error en
         // "[object Object]" — on passe la classification en fields + le message
-        // wrappé en Error (jamais l'adresse).
+        // Message synthétisé des seuls champs de classification : le message
+        // Resend brut peut citer l'adresse destinataire (RGPD) — il ne doit
+        // atteindre ni le drain JSON ni Sentry (scrubPii ne couvre pas
+        // exception.values[].value).
         logger.error(
           'reconcile: poison row — permanent Resend error, escaping retry loop',
           {
@@ -395,7 +398,9 @@ async function reconcile(): Promise<void> {
             resendName: outcome.permanentError.name,
             resendStatus: outcome.permanentError.statusCode,
           },
-          new Error(outcome.permanentError.message),
+          new Error(
+            `resend ${outcome.permanentError.name ?? 'unknown'} ${outcome.permanentError.statusCode ?? 'no-status'}`,
+          ),
         );
         const { error: escapeError } = await supabase
           .from('appointments')

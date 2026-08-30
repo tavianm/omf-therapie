@@ -363,6 +363,8 @@ describe('reconcile-confirmations cron handler (#129 sendEmail transport contrac
       // Surfaced at error level (logger routes it to Sentry).
       const serialized = errorSpy.mock.calls.map(call => JSON.stringify(call));
       expect(serialized.some(line => line.includes('poison row'))).toBe(true);
+      // RGPD (miroir invitations) : l'adresse patient ne fuit dans aucun log.
+      expect(serialized.some(line => line.includes(PATIENT_EMAIL))).toBe(false);
 
       errorSpy.mockRestore();
     });
@@ -559,6 +561,56 @@ describe('reconcile-confirmations cron handler (#129 sendEmail transport contrac
       expect(allUpdates()).toHaveLength(0);
       const serialized = errorSpy.mock.calls.map(call => JSON.stringify(call));
       expect(serialized.some(line => line.includes('poison row'))).toBe(false);
+
+      errorSpy.mockRestore();
+    });
+  });
+
+  describe('per-row state hygiene (capture reset between rows)', () => {
+    it('does NOT let a row-1 poison capture leak into a row-2 rawError-less failure (same patient)', async () => {
+      // Pins the per-row `sendBundle.state.lastError = null` reset: row 1
+      // poisons (422 patient) ; row 2 — même patient_email — échoue SANS
+      // rawError (échec SMTP-shaped, permis par le contrat #129). Sans reset,
+      // la capture stale de la row 1 (422 + lastTo=[patient]) produirait une
+      // fausse échappatoire poison sur la row 2.
+      const appt1 = makeAppt();
+      const appt2 = makeAppt({
+        id: 'appt-confirm-2',
+        stripe_payment_intent_id: 'pi_test_129_row2',
+      });
+      supabaseState.selectResults.push({
+        ...EMPTY_RESULT,
+        data: [appt1, appt2],
+      });
+      let call = 0;
+      sendEmailModule.sendEmail.mockImplementation(async () => {
+        call += 1;
+        if (call === 1) {
+          return sendFailure(
+            {
+              name: 'validation_error',
+              statusCode: 422,
+              message: 'Invalid "to" address',
+            },
+            'Invalid "to" address',
+          );
+        }
+        // Row 2 : échec SANS rawError (chemin SMTP du contrat) — la capture
+        // reste intacte, seul le reset par-row protège la classification.
+        return { success: false, error: 'SMTP error' };
+      });
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await handler();
+
+      expect(sendEmailModule.sendEmail).toHaveBeenCalledTimes(2);
+      // Exactement UNE écriture de flag : l'échappatoire de la row 1.
+      const escapes = allUpdates().filter(
+        u => 'confirmation_sent_at' in u.update.payload,
+      );
+      expect(escapes).toHaveLength(1);
+      expect(escapes[0]!.update.eqs).toContainEqual(['id', appt1.id]);
+      expect(escapes[0]!.update.eqs).not.toContainEqual(['id', appt2.id]);
 
       errorSpy.mockRestore();
     });
