@@ -1,5 +1,33 @@
 import { supabaseAdmin } from './supabase';
-import type { ManualTimeSlot, CreateManualSlotData, UpdateManualSlotData } from '@/types/manual-slots';
+import type {
+  ManualTimeSlot,
+  CreateManualSlotData,
+  UpdateManualSlotData,
+} from '@/types/manual-slots';
+
+const PARIS_TIMEZONE = 'Europe/Paris';
+
+export class NotFoundError extends Error {
+  readonly status = 404;
+
+  constructor(message = 'Créneau introuvable') {
+    super(message);
+    this.name = 'NotFoundError';
+  }
+}
+
+function parisDateKey(date: Date): string {
+  const parts = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: PARIS_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const getPart = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find(part => part.type === type)?.value ?? '';
+
+  return `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
+}
 
 /**
  * Fetch manual time slots for a date range
@@ -7,12 +35,15 @@ import type { ManualTimeSlot, CreateManualSlotData, UpdateManualSlotData } from 
  * @param to - End date (inclusive)
  * @returns Array of manual time slots
  */
-export async function fetchManualSlots(from: Date, to: Date): Promise<ManualTimeSlot[]> {
+export async function fetchManualSlots(
+  from: Date,
+  to: Date,
+): Promise<ManualTimeSlot[]> {
   const { data, error } = await supabaseAdmin
     .from('manual_time_slots')
     .select('*')
-    .gte('slot_date', from.toISOString().split('T')[0])
-    .lte('slot_date', to.toISOString().split('T')[0])
+    .gte('slot_date', parisDateKey(from))
+    .lte('slot_date', parisDateKey(to))
     .is('deleted_at', null)
     .order('slot_date', { ascending: true });
 
@@ -28,7 +59,9 @@ export async function fetchManualSlots(from: Date, to: Date): Promise<ManualTime
  * @param data - Slot data to create
  * @returns Created manual time slot
  */
-export async function createManualSlot(data: CreateManualSlotData): Promise<ManualTimeSlot> {
+export async function createManualSlot(
+  data: CreateManualSlotData,
+): Promise<ManualTimeSlot> {
   const { data: slot, error } = await supabaseAdmin
     .from('manual_time_slots')
     .insert({
@@ -39,7 +72,13 @@ export async function createManualSlot(data: CreateManualSlotData): Promise<Manu
     .single();
 
   if (error) {
-    throw new Error(`Failed to create manual slot: ${error.message}`);
+    const createError = new Error(
+      `Failed to create manual slot: ${error.message}`,
+    ) as Error & {
+      code?: string;
+    };
+    createError.code = error.code;
+    throw createError;
   }
 
   return slot;
@@ -51,20 +90,27 @@ export async function createManualSlot(data: CreateManualSlotData): Promise<Manu
  * @param data - Updated slot data
  * @returns Updated manual time slot
  */
-export async function updateManualSlot(id: string, data: UpdateManualSlotData): Promise<ManualTimeSlot> {
+export async function updateManualSlot(
+  id: string,
+  data: UpdateManualSlotData,
+): Promise<ManualTimeSlot> {
   const { data: slot, error } = await supabaseAdmin
     .from('manual_time_slots')
     .update({
       ...(data.period !== undefined && { period: data.period }),
-      ...(data.deleted_at !== undefined && { deleted_at: data.deleted_at }),
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
+    .is('deleted_at', null)
     .select()
-    .single();
+    .maybeSingle();
 
   if (error) {
     throw new Error(`Failed to update manual slot: ${error.message}`);
+  }
+
+  if (!slot) {
+    throw new NotFoundError();
   }
 
   return slot;
@@ -74,18 +120,27 @@ export async function updateManualSlot(id: string, data: UpdateManualSlotData): 
  * Soft delete a manual time slot
  * @param id - Slot ID to delete
  */
-export async function deleteManualSlot(id: string): Promise<void> {
-  const { error } = await supabaseAdmin
+export async function deleteManualSlot(id: string): Promise<ManualTimeSlot> {
+  const { data: slot, error } = await supabaseAdmin
     .from('manual_time_slots')
     .update({
       deleted_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
-    .eq('id', id);
+    .eq('id', id)
+    .is('deleted_at', null)
+    .select()
+    .maybeSingle();
 
   if (error) {
     throw new Error(`Failed to delete manual slot: ${error.message}`);
   }
+
+  if (!slot) {
+    throw new NotFoundError();
+  }
+
+  return slot;
 }
 
 /**
@@ -104,7 +159,7 @@ export async function invalidateSlotCache(): Promise<void> {
     const { invalidateAvailabilityCache } = await import('./calendar-cache.js');
     await invalidateAvailabilityCache();
   } catch (err) {
-    console.warn(
+    console.error(
       '[invalidateSlotCache] Availability cache invalidation failed (non-blocking):',
       err instanceof Error ? err.message : err,
     );

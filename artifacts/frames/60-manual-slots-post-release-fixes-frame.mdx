@@ -1,0 +1,127 @@
+---
+title: "Post-release fixes for manual time slots (#59 review)"
+issue: 60
+status: approved
+tier: F-lite
+date: 2026-07-22
+---
+
+## Problem
+
+PR #59 shipped the manual time-slots feature for cabinet appointments.
+The post-merge `/code-review` (issue #60) surfaced **9 blockers** across
+correctness, security, and accessibility. Each blocker has a known
+root cause and a specified fix — the feature works for the happy path
+but fails silently on edge cases (missing rows, gateway HTML, double
+clicks, tz boundaries, duplicates) and exposes a WAI-ARIA tablist
+without its keyboard contract.
+
+Re-verified 2026-07-22 against the current `main`: **all 9 blockers
+are still present.** The git-drift commits (#61/#62 booking wiring,
+#65 /mes-rdvs redesign, #88 TS fixes) touched adjacent code but did
+not resolve any of the flagged defects.
+
+## Who
+
+- **Primary:** Oriane (the single practitioner) — admin of
+  `/mes-rdvs`. She creates/edits/deletes manual plages and switches
+  tabs. Silent no-ops, double-fire hangs, and unkeyboardable tabs
+  land directly on her workflow.
+- **Secondary:** Patients booking a cabinet RDV — affected indirectly
+  by tz-skew (edge-day slots dropped) and duplicate slots (duplicate
+  list entries).
+
+## Constraints
+
+- **Astro SSG + React islands** — admin routes are SSR; the TimeSlotManager
+  is a `client:load` island.
+- **Supabase `service_role`** bypasses RLS, so real authz = `isAdminSession()`
+  at the API layer (RLS is inert for the writing client — defense-in-depth
+  only).
+- **Trailing slash on every client URL** (ADR-013).
+- **WCAG 2.1 AA** remains a project requirement. For issue #60, the
+  auth-gated tablist behavior is blocked by its targeted Playwright
+  keyboard journey. `npm run audit:a11y` is still run informationally against
+  the public-site baseline (51 pre-existing contrast errors, 598 warnings),
+  which is tracked outside this bounded repair.
+- **French** for all user-facing text.
+- **CI** = `lint → test → build` blocking; `typecheck` advisory.
+- Migration `007` is already shipped; fixes requiring schema changes go
+  in a **new migration** (`015_…`) — never edit an applied migration.
+
+## Out of Scope
+
+- **DST round-trip corruption** in `parisLocalToUTC` (google-calendar.ts:278)
+  — pre-existing, not modified by #59. Tracked as a separate follow-up.
+- **`freebusy.query` not wrapped in `withCalendarRetry`** (google-calendar.ts:578)
+  — pre-existing. Separate follow-up.
+- **Modal close (X) focus ring** (Modal.tsx:72) — Modal.tsx is unchanged
+  this PR. Separate fix.
+- **Non-blocking suggestions** (static import in `invalidateSlotCache`,
+  shared Paris-weekday helper, perf-test determinism, RLS deny-all policy).
+  Track separately; not in this fix set.
+- **Resurrecting or rewording** the shipped #59 feature surface (no new
+  admin UX, no new API routes — only repair of the existing ones).
+
+## Premise Validity
+
+**Success in 6 months:** The manual time-slots feature is trustworthy
+end-to-end — DELETE on a missing id returns 404 (not 204), PATCH
+rejects `deleted_at`, duplicates are prevented at the DB, the tablist
+is fully keyboard-navigable (arrow keys), and the targeted B9 Playwright
+journey plus `npm run test` are green with the new regression tests. The
+global `npm run audit:a11y` baseline is recorded informationally without
+misrepresenting its pre-existing violations as green. The practitioner
+never sees a false-success toast, a hung button, or a 500 on a duplicate.
+
+**Failure in 6 months:** The 9 blockers remain (or regress) AND the
+tautological "24h notice" test still passes with the guard deleted —
+i.e. the test suite gives false confidence that the fix landed. This
+is falsifiable: delete the minStart guard in
+`generateSlotsForRange`, run `npm run test`, and check whether the
+notice test fails. If it passes, the premise failed.
+
+**Simplest alternative:** Fix only the 3 security/correctness blockers
+(silent DELETE, PATCH `deleted_at`, error masking) and defer the
+a11y + frontend robustness + duplicate-guard work.
+**Why not simplest:** The tautological test is explicitly called out
+as a blocker because it *masks regressions* — leaving it means future
+changes to the notice logic ship untested. And the a11y tablist is a
+WCAG 2.1 AA requirement, not a nice-to-have for this project. A partial
+fix would leave the feature half-trusted and fail the targeted keyboard
+journey that blocks issue #60.
+
+## Complexity
+
+**Tier: F-lite** — 9 well-specified blockers with known root causes,
+but the surface is narrow (5 files + 1 migration + tests) and each
+fix is self-contained. No new architecture, no domain unknowns — the
+review already did the analysis. F-full's `/analyze` + architecture
+sketch would re-derive what the review already established.
+
+**Signals observed:**
+- Clear scope: all blockers cite exact file:line + root cause + fix.
+- Single feature domain (manual time slots), touching backend (manual-slots.ts,
+  time-slots API), frontend (TimeSlotManager.tsx), a11y (mes-rdvs.astro),
+  test (google-calendar.test.ts), DB (new migration 015).
+- No new patterns — reuses existing error-response helpers, Supabase
+  error-code mapping, AbortController pattern (already used on the read
+  path of TimeSlotManager).
+- The 9 blockers decompose cleanly into independent fixes (low coupling).
+
+## Blocker Inventory (residual, re-verified 2026-07-22)
+
+| # | Domain | Location | Defect |
+|---|--------|----------|--------|
+| B1 | test | google-calendar.test.ts:205 | "24h notice" test is tautological — NOW=Mon 03:00 Paris → earliest slot is Wed 08:00 (~29h past minStart), so no candidate ever falls in the filtered window; passes with the guard deleted |
+| B2 | backend | manual-slots.ts:78 (`deleteManualSlot`) | `.update(...).eq('id', id)` with no `.select()`/rowcount → missing id = 204 success |
+| B3 | security/backend | time-slots/[id].ts:67,102 | PATCH/DELETE classify "not found" by substring match on error.message → masks 500/403 as 404 |
+| B4 | security | time-slots/[id].ts:49 | PATCH forwards client-controlled `deleted_at` → can resurrect or forge timestamps |
+| B5 | backend | manual-slots.ts:14 | `fetchManualSlots` uses UTC date slice via `toISOString().split('T')[0]` → tz skew drops edge-day slots |
+| B6 | backend | time-slots/index.ts:98 + manual-slots.ts:32 | no duplicate (slot_date, period) guard → unique-violation surfaces as generic 500 |
+| B7 | frontend | TimeSlotManager.tsx:141 (`handleDelete`) | no `isDeleting` flag (double-click = 2 DELETEs) + no fetch timeout/AbortController |
+| B8 | frontend | TimeSlotManager.tsx:63,99,123,148 | `response.json()` on error paths → non-JSON gateway body (502/HTML) throws SyntaxError, masks real status |
+| B9 | a11y | mes-rdvs.astro:123-170 | `role="tab"` without arrow-key nav + tabindex management (active=0, others=-1) — violates WAI-ARIA tab pattern |
+
+**Also addressed (non-blocking, low-cost, same-surface):**
+- `invalidateSlotCache` log level: `console.warn` → `console.error` (manual-slots.ts:107).

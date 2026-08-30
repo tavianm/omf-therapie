@@ -1,0 +1,319 @@
+---
+title: "Post-release fixes for manual time slots (#59 review)"
+issue: 60
+status: approved
+tier: F-lite
+date: 2026-07-22
+source: artifacts/frames/60-manual-slots-post-release-fixes-frame.mdx
+promoted_from: frame
+---
+
+## Context
+
+Promoted from `artifacts/frames/60-manual-slots-post-release-fixes-frame.mdx`
+(approved 2026-07-22). Issue #60 is the consolidated `/code-review` of
+the merged PR #59 (manual time slots). All 9 blockers were re-verified
+against current `main` (2026-07-22) — **all still present**; the
+git-drift commits (#61/#62 booking wiring, #65 /mes-rdvs redesign,
+#88 TS fixes) touched adjacent code but resolved none of the flagged
+defects.
+
+This spec turns the 9 blockers (plus one low-cost non-blocking log-level
+fix on the same surface) into binary acceptance criteria. The data model
+is **unchanged** (the `manual_time_slots` table is already in production);
+only a partial unique index is added via a new migration `015`.
+
+## Goal
+
+Make the manual time-slots feature trustworthy end-to-end: no silent
+no-ops, no error-masking, no input-injection of soft-delete state, no
+tz-skew slot loss, no generic 500 on duplicates, no double-fire/hang on
+the delete button, no `SyntaxError` on gateway HTML, and a fully
+keyboard-navigable (WAI-ARIA) tablist — all backed by regression tests.
+
+## Users
+
+- **Oriane (practitioner/admin)** — sole user of `/mes-rdvs`. Creates,
+  edits, deletes manual plages and switches the Rendez-vous / Patients /
+  Plages horaires tabs. Directly hit by B2/B7/B8/B9; defense-in-depth
+  beneficiary of B3 (error masking) and B4 (`deleted_at` injection /
+  session-cookie escalation).
+- **Patients booking a cabinet RDV** — indirectly hit by B5 (edge-day
+  slots dropped) and B6 (duplicate plages surfacing as duplicates or 500).
+- **Developers / future regressions** — B1 is a test-trust blocker: it
+  affects no end user, but the tautological test gives false confidence
+  in the 24h-notice guard. Fixing it protects future changes to notice
+  logic.
+
+## Expected Behavior
+
+### B1 — 24h-notice test is no longer tautological
+
+The existing test `"respects the 24h minimum notice"` passes *even if
+the minStart guard is deleted*, because `NOW` (Mon 03:00 Paris) pushes
+`minStart` to mid-Tuesday, while the earliest cabinet slot is Wednesday
+08:00 — already ~29h past the cutoff. The fix is a test fixture change:
+move `NOW` so that `minStart` (= NOW + 24h) lands **~Wed 10:00 Paris**
+(e.g. `NOW` ≈ Tue 10:00 Paris), so that the Wednesday 08:00–09:30 slots
+*are filtered out* but the 10:00+ slots *remain*. Then assert the early
+Wednesday-AM slots are absent and the count shrinks vs. an earlier
+`NOW`. This makes the guard load-bearing: deleting the guard makes the
+AM slots reappear and the test fails meaningfully. (Avoid `NOW` =
+late-Tuesday-evening — that pushes `minStart` to late Wednesday evening,
+filtering *all* Wednesday slots and producing a vacuously-passing empty
+array, i.e. a different tautology.)
+
+### B2 — DELETE returns 404 for a missing/already-deleted id
+
+`deleteManualSlot(id)` currently does `.update(...).eq('id', id)` with no
+`.select()` — Supabase returns success for zero affected rows. Fix:
+return the updated row (`.select().maybeSingle()`) and throw a typed
+`NotFoundError` when null. The update also filters on `deleted_at IS NULL`,
+so an already-deleted row is indistinguishable from a missing row and a
+second DELETE returns 404. The API maps it to 404. This mirrors the existing
+`resend.ts` `.maybeSingle()` pattern.
+
+### B3 — PATCH/DELETE map "not found" by PostgREST code, not substring
+
+The current handlers do `error.message.includes('Failed to …')`, which
+matches *any* DB failure (constraint, timeout, RLS). Fix: introduce a
+typed `NotFoundError` (thrown by the lib layer on null return) and map
+it to 404 at the API layer; everything else stays 500. Error-code
+mapping (`23505` for B6) reuses the pattern already in `credits.ts:119`.
+
+### B4 — PATCH strips `deleted_at` from client input (type-enforced)
+
+PATCH forwards `data.deleted_at` unvalidated. An admin (or anyone with
+the session cookie) can send `null` to resurrect a soft-deleted row or
+forge a timestamp. Fix is **two-layered** so the contract is enforced
+by type, not convention:
+
+1. **API layer** (`[id].ts` PATCH): return `400` if `data.deleted_at`
+   is present in the body — before calling the lib.
+2. **Lib + type layer** (`manual-slots.ts` + `types/manual-slots.ts`):
+   remove the `deleted_at` branch from `updateManualSlot` AND remove
+   `deleted_at` from `UpdateManualSlotData`; filter updates on
+   `deleted_at IS NULL` so deleted rows cannot be mutated. Soft-delete flows only
+   through DELETE, which sets `deleted_at` server-side. After this, no
+   code path can forward `deleted_at` to the DB — the field is dead at
+   the type level.
+
+### B5 — `fetchManualSlots` filters on Paris date, not UTC date
+
+`from.toISOString().split('T')[0]` yields the UTC calendar date, but
+`slot_date` is keyed by Paris date (the `formatDate` helper in
+google-calendar.ts). A Paris early-morning `from` yields the previous
+UTC day → edge-day slots silently dropped. This is safe to fix at the
+query window only — `generateSlotsForRange` already keys the
+`manualSlots` Map by Paris date on both sides (DB column on read,
+`formatDate(currentDay)` on lookup), so correcting the slice to Paris
+date does *not* create a key mismatch.
+
+**Chosen strategy:** inline a `parisDateKey(date)` helper (~3-line
+`Intl.DateTimeFormat` formatter, same idiom already used in
+google-calendar.ts:330 and the test file) **inside `manual-slots.ts`**.
+We deliberately do **not** extract a shared module-level helper (that is
+explicitly out-of-scope per the frame). The ±1-day window-widening
+alternative is rejected — it over-fetches by up to 2 rows and is less
+precise than a correct Paris-date slice.
+
+### B6 — Duplicate (slot_date, period) prevented at DB + mapped to 409
+
+`createManualSlot` inserts without an existence check; migration 007 has
+no unique constraint. A duplicate surfaces as a generic 500. Fix: new
+migration `015_manual_slots_unique.sql` adds `UNIQUE (slot_date, period)
+WHERE deleted_at IS NULL`; `createManualSlot` maps Postgres `23505`
+(unique_violation) to a thrown error whose `code === '23505'`; the POST
+handler maps it to **409 Conflict**. Soft-deleted rows are excluded
+(allows re-creating a slot after deletion).
+
+**Migration safety (dedupe pre-pass):** migration 015 **must** guard
+against pre-existing active duplicates in production — a bare
+`CREATE UNIQUE INDEX` will *fail to apply* if any duplicate
+`(slot_date, period)` active rows exist. Follow the precedent of
+`010_payment_intent_unique.sql`: snapshot duplicates into an audit
+table, soft-delete (or otherwise resolve) the extras so only one active
+row per `(slot_date, period)` remains, then create the index. Use
+`CREATE UNIQUE INDEX IF NOT EXISTS` for re-runnability (matches the 010
+convention).
+
+### B7 — `handleDelete` has a concurrency guard + fetch timeout
+
+No `isDeleting` flag → a double-click fires two DELETEs. No
+`AbortController`/timeout → a hung network leaves `isSubmitting` stuck
+forever. Fix: add `isDeleting` state bound to the confirm-button's
+`disabled`; wrap the DELETE `fetch` in `AbortController` + 10s timeout
+→ toast `"Délai dépassé, réessayez"`. Mirrors the read-path
+`AbortController` already in `TimeSlotManager` (line 47).
+
+### B8 — Safe response parsing on error paths
+
+`(await response.json()) as { error?: string }` on error paths throws
+`SyntaxError` when the body is non-JSON (502/HTML from Netlify edge),
+masking the real HTTP status with "Unexpected token…". Fix: read
+`await response.text()` then safe-parse; fall back to a status-based
+message (`response.status === 502 ? "Service indisponible" : "Erreur
+(${status})"`). Applied to all 4 error-path call sites in
+`TimeSlotManager` (GET, PATCH, POST, DELETE).
+
+### B9 — Tablist honors the WAI-ARIA keyboard contract
+
+`role="tab"` requires Left/Right arrow navigation + roving tabindex
+(active tab `tabindex=0`, others `tabindex=-1`). The current tabs are
+all plain Tab-focusable with no arrow handling. The markup already has
+`aria-controls`/`aria-selected`; only the keyboard + tabindex layer is
+missing. Fix: implement the APG tabs pattern in the existing `<script>`
+block — arrow keys move focus and activate, Home/End jump to first/last,
+`tabindex` is managed on `aria-selected`, and `setActiveTab` must call
+`.focus()` on the activated tab. **Justification:** WAI-ARIA conformance
+/ keyboard-user support is a project principle (AGENTS.md mandates WCAG
+2.1 AA). The blocking proof for this auth-gated behavior is the targeted
+Playwright keyboard journey; the global `audit:a11y` run remains
+informational for issue #60 because its public-site baseline already contains
+51 contrast errors and 598 warnings. Adopting `role="tab"` is an implicit
+claim to the full APG contract.
+
+### Non-blocking — `invalidateSlotCache` log level
+
+`console.warn` → `console.error` (manual-slots.ts:107). Sibling callers
+use `error`; cache-invalidation failure is a real prod signal.
+
+## Data Model & Consumers
+
+> **Note:** `manual_time_slots` is an **existing** table (migration 007,
+> in production). The data model does not change. This spec adds one
+> partial unique index via a new migration `015`. Forge-chart sidecars
+> are omitted because (a) the `forge` plugin is not installed in this
+> environment and (b) there is no new/changed entity or relationship to
+> visualize — only an index on existing columns. The consumer table
+> below is the machine-readable index per forge-chart convention.
+
+| Field | Type | Mutable | Notes |
+|-------|------|---------|-------|
+| `id` | UUID | frozen (default) | PK |
+| `slot_date` | DATE | **mutable** (PATCH period re-keys eligibility) | Paris calendar date, `YYYY-MM-DD` |
+| `period` | TEXT | mutable | `morning` \| `afternoon` \| `all_day` |
+| `created_at` | TIMESTAMPTZ | frozen | default `now()` |
+| `updated_at` | TIMESTAMPTZ | auto (trigger) | |
+| `deleted_at` | TIMESTAMPTZ | mutable (server-side only after B4) | soft-delete |
+
+**New index (migration 015):**
+```sql
+-- (preceded by a dedupe pre-pass — see B6 migration safety)
+CREATE UNIQUE INDEX IF NOT EXISTS manual_time_slots_slot_date_period_active_uniq
+  ON manual_time_slots (slot_date, period)
+  WHERE deleted_at IS NULL;
+```
+
+### Consumer summary
+
+| Consumer | Fields consumed | When | Status |
+|----------|----------------|------|--------|
+| `fetchManualSlots` (lib) | slot_date, period, deleted_at, id | GET time-slots range | **this issue (B5 fix)** |
+| `createManualSlot` (lib) | slot_date, period | POST time-slots | **this issue (B6: 23505→409)** |
+| `updateManualSlot` (lib) | period (+ updated_at) | PATCH time-slots/[id] | **this issue (B4: strip deleted_at, B3: NotFoundError)** |
+| `deleteManualSlot` (lib) | deleted_at, updated_at | DELETE time-slots/[id] | **this issue (B2: null→404, B3: NotFoundError)** |
+| `generateSlotsForRange` (google-calendar) | slot_date, period (via `manualSlots` Map) | booking availability | unchanged (consumes via injected Map, not DB) |
+| `TimeSlotManager` (island) | all display fields | admin UI CRUD | **this issue (B7, B8)** |
+| `/mes-rdvs.astro` tablist | — | tab navigation | **this issue (B9)** |
+| `tests/unit/google-calendar.test.ts` | — | regression | **this issue (B1)** |
+
+## Breadboard
+
+### Affordances (admin UI)
+
+| ID | Element | Handler | Data | Notes |
+|----|---------|---------|------|-------|
+| U1 | Delete confirm button (`Modal`) | `handleDelete` | slot.id | **B7**: `isDeleting` disables button; AbortController+timeout |
+| U2 | Edit form submit | `handleSubmit` (PATCH branch) | { period } | **B8**: safe error parse |
+| U3 | Create form submit | `handleSubmit` (POST branch) | { slot_date, period } | **B8**: safe error parse |
+| U4 | Slot list (GET load) | `fetchSlots` | from/to | already has AbortController; **B8**: safe error parse |
+| U5 | Tab buttons (`.tab-btn`) | `setActiveTab` + **new** keydown | data-tab | **B9**: arrows/Home/End/roving tabindex |
+
+### Endpoints (SSR API)
+
+| ID | Route | Method | Handler change | Status mapping |
+|----|-------|--------|----------------|----------------|
+| N1 | `/api/admin/time-slots/` | POST | unchanged logic; lib throws on `23505` | `23505` → **409** |
+| N2 | `/api/admin/time-slots/[id]/` | PATCH | **strip `deleted_at`** (400 if present); NotFoundError | NotFoundError → **404**; else 500 |
+| N3 | `/api/admin/time-slots/[id]/` | DELETE | lib returns row; null → NotFoundError | NotFoundError → **404**; else 500 |
+
+### Lib functions
+
+| ID | Function | Change | Error thrown |
+|----|----------|--------|--------------|
+| S1 | `fetchManualSlots` | Paris-date slice via inline `parisDateKey` (B5) | — |
+| S2 | `createManualSlot` | unchanged logic; PG `23505` surfaced with `.code` | `Error` with `code: '23505'` |
+| S3 | `updateManualSlot` | remove `deleted_at` branch **and** field from `UpdateManualSlotData`; filter active rows; null row → throw | `NotFoundError` |
+| S4 | `deleteManualSlot` | filter active rows, then `.select().maybeSingle()`; null → throw | `NotFoundError` |
+| S5 | new `NotFoundError` class (in `manual-slots.ts`, domain-local) | `extends Error`, `status = 404` | — |
+
+## Slices
+
+Vertical increments, each independently demo-able. Ordered so the typed
+error + lib contract (Slice 1) unlocks the API 404/409 mapping (Slice 2).
+
+| # | Slice | Blockers | Demo |
+|---|-------|----------|-----|
+| 1 | Typed errors + lib contract | B2, B3, B4, B5, B6 (lib half), log-level | Missing or already-deleted rows throw `NotFoundError`; `createManualSlot` dupe throws `code:'23505'`; PATCH ignores `deleted_at`; `fetchManualSlots` uses Paris date; `console.error`. Unit-testable in isolation. |
+| 2 | API status mapping | B3, B6 (API half) | `DELETE /api/admin/time-slots/{bad}/` → 404 JSON; `POST` dupe → 409 JSON; PATCH with `deleted_at` → 400 JSON. Hit with `curl`/Playwright. |
+| 3 | Frontend robustness | B7, B8 | Double-click delete = 1 request; 10s timeout → toast; 502 body → readable toast (not SyntaxError). |
+| 4 | A11y tablist | B9 | Arrow keys move/activate; Home/End; roving tabindex. Targeted Playwright keyboard journey green; global audit baseline recorded informationally. |
+| 5 | Regression test | B1 | "24h notice" test fails when guard deleted; passes when restored. |
+
+## Success Criteria
+
+- [ ] **B1** The `"respects the 24h minimum notice"` test (or its
+      replacement) **fails** if the minStart guard is deleted from
+      `generateSlotsForRange`, and **passes** when restored. (Mutation
+      check documented in the PR description.)
+- [ ] **B2** `DELETE /api/admin/time-slots/{nonexistent-id}/` and a second
+      DELETE of an already-deleted slot return `404` with JSON `{ error }`,
+      not `204`.
+- [ ] **B3** PATCH and DELETE map "not found" via typed `NotFoundError`
+      (lib layer) → 404; a non-not-found DB error (e.g. forced 500)
+      still returns 500, never masked as 404.
+- [ ] **B4** PATCH with `deleted_at` in the body returns `400`; the
+      field is never forwarded to `updateManualSlot`, and
+      `UpdateManualSlotData` no longer declares `deleted_at`.
+- [ ] **B5** `fetchManualSlots` slices the date window on the **Paris**
+      calendar date (verified by a unit test with a Paris early-morning
+      `from` that previously yielded the prior UTC day).
+- [ ] **B6** Inserting a duplicate `(slot_date, period)` (where
+      `deleted_at IS NULL`) returns `409` (after migration `015` adds
+      the partial unique index). Soft-deleted rows do not block re-create.
+      Migration 015 applies cleanly even if active duplicates pre-exist
+      in production (dedupe pre-pass snapshot + resolve before index).
+- [ ] **B7** The delete-confirm button is disabled while a DELETE is in
+      flight (`isDeleting`); a DELETE that exceeds 10s aborts and shows
+      `"Délai dépassé, réessayez"`.
+- [ ] **B8** All 4 `TimeSlotManager` error paths parse `response.text()`
+      then safe-parse JSON; a non-JSON 502-style body yields a readable
+      French toast, never `SyntaxError: Unexpected token`.
+- [ ] **B9** The `/mes-rdvs` tablist supports Left/Right arrow
+      navigation (move focus + activate), Home/End (first/last), and
+      roving tabindex (active=`0`, others=`-1`). Verified by manual
+      keyboard interaction (or a Playwright keyboard spec), since the
+      static `audit:a11y` gate does not assert the APG keyboard contract.
+- [ ] **Authz regression** PATCH and DELETE on `/api/admin/time-slots/[id]/`
+      still return `401` (unauthenticated) and `403` (non-admin) after
+      the `NotFoundError`/`23505` error-path refactor.
+- [ ] **Non-blocking** `invalidateSlotCache` failures log at
+      `console.error` (grep-verifiable).
+- [ ] `npm run lint` passes.
+- [ ] `npm run test` passes (including the B1 regression test and new
+      unit tests for lib typed errors).
+- [ ] The targeted real-browser Playwright keyboard journey passes and is the
+      blocking proof for B9.
+- [ ] `npm run audit:a11y` is run informationally and its pre-existing
+      public-site baseline (51 contrast errors, 598 warnings) is reported
+      without being described as green. WCAG 2.1 AA remains a project
+      requirement; fixing the unrelated global contrast baseline is out of
+      scope for issue #60.
+
+## Out of Scope
+
+(unchanged from frame) DST round-trip, freebusy retry wrapping, Modal
+close-button focus ring, static-import refactor, shared Paris-weekday
+helper extraction, perf-test determinism, RLS deny-all policy. All
+tracked as separate follow-ups.

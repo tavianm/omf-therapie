@@ -16,5 +16,4 @@ export interface CreateManualSlotData {
 
 export interface UpdateManualSlotData {
   period?: Period;
-  deleted_at?: string | null;
 }
