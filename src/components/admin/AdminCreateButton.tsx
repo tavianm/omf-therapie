@@ -3,14 +3,20 @@
  * Island React monté sur la page mes-rdvs avec client:load.
  */
 
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   calculatePrice,
   SOLIDARITY_DISCOUNT,
   FIRST_SESSION_DISCOUNT,
-} from "../../lib/pricing";
-import type { AppointmentType, AppointmentDuration, AppointmentMode } from "../../lib/pricing";
-import type { PrefillData } from "../../types/patient";
+} from '../../lib/pricing';
+import type {
+  AppointmentType,
+  AppointmentDuration,
+  AppointmentMode,
+} from '../../lib/pricing';
+import type { CreateAppointmentResponse } from '../../types/appointment';
+import type { PrefillData } from '../../types/patient';
+import { dispatchAppointmentCreated } from './admin-dashboard-ui';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,42 +50,42 @@ interface FormState {
 // ---------------------------------------------------------------------------
 
 const APPOINTMENT_TYPES: { value: AppointmentType; label: string }[] = [
-  { value: "individual", label: "Thérapie individuelle" },
-  { value: "couple", label: "Thérapie de couple" },
-  { value: "family", label: "Thérapie familiale" },
+  { value: 'individual', label: 'Thérapie individuelle' },
+  { value: 'couple', label: 'Thérapie de couple' },
+  { value: 'family', label: 'Thérapie familiale' },
 ];
 
 const APPOINTMENT_MODES: { value: AppointmentMode; label: string }[] = [
-  { value: "in-person", label: "Présentiel" },
-  { value: "video", label: "Téléconsultation" },
+  { value: 'in-person', label: 'Présentiel' },
+  { value: 'video', label: 'Téléconsultation' },
 ];
 
 const DURATIONS: { value: AppointmentDuration | 'custom'; label: string }[] = [
-  { value: 60, label: "60 min" },
-  { value: 90, label: "90 min" },
+  { value: 60, label: '60 min' },
+  { value: 90, label: '90 min' },
   { value: 'custom' as const, label: 'Personnalisée…' },
 ];
 
 // 5xx ou erreur réseau : le traitement serveur a peut-être abouti malgré l'échec apparent.
 const UNCERTAIN_RESULT_MESSAGE =
-  "La création a peut-être abouti — vérifiez la liste des rendez-vous avant de retenter.";
+  'La création a peut-être abouti — vérifiez la liste des rendez-vous avant de retenter.';
 
 const INITIAL_STATE: FormState = {
-  patient_name: "",
-  patient_email: "",
-  patient_phone: "",
-  appointment_type: "individual",
-  appointment_mode: "in-person",
+  patient_name: '',
+  patient_email: '',
+  patient_phone: '',
+  appointment_type: 'individual',
+  appointment_mode: 'in-person',
   duration: 60,
   customDurationMinutes: 45,
   useOverridePrice: false,
   overridePrice: 0,
-  scheduled_at: "",
-  patient_reason: "",
+  scheduled_at: '',
+  patient_reason: '',
   override_first_session: false,
   is_solidarity: false,
   send_email: true,
-  video_link: "",
+  video_link: '',
   use_credit: false,
 };
 
@@ -87,9 +93,18 @@ const INITIAL_STATE: FormState = {
 // Sub-component: Label
 // ---------------------------------------------------------------------------
 
-function Label({ htmlFor, children }: { htmlFor: string; children: React.ReactNode }) {
+function Label({
+  htmlFor,
+  children,
+}: {
+  htmlFor: string;
+  children: React.ReactNode;
+}) {
   return (
-    <label htmlFor={htmlFor} className="mb-1 block text-sm font-medium text-sage-700 font-sans">
+    <label
+      htmlFor={htmlFor}
+      className="mb-1 block text-sm font-medium text-sage-700 font-sans"
+    >
       {children}
     </label>
   );
@@ -101,7 +116,7 @@ function Label({ htmlFor, children }: { htmlFor: string; children: React.ReactNo
 
 function Input({
   id,
-  type = "text",
+  type = 'text',
   value,
   onChange,
   placeholder,
@@ -131,7 +146,9 @@ function Input({
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function AdminCreateButton({ prefillData }: AdminCreateButtonProps = {}) {
+export function AdminCreateButton({
+  prefillData,
+}: AdminCreateButtonProps = {}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -148,8 +165,17 @@ export function AdminCreateButton({ prefillData }: AdminCreateButtonProps = {}) 
         "
         aria-label="Créer un rendez-vous manuellement"
       >
-        <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-          <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+        <svg
+          className="w-4 h-4"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path
+            fillRule="evenodd"
+            d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
+            clipRule="evenodd"
+          />
         </svg>
         Nouveau rendez-vous
       </button>
@@ -167,7 +193,13 @@ export function AdminCreateButton({ prefillData }: AdminCreateButtonProps = {}) 
 // Modal Component (internal)
 // ---------------------------------------------------------------------------
 
-function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefillData?: PrefillData }) {
+function AdminCreateModal({
+  onClose,
+  prefillData,
+}: {
+  onClose: () => void;
+  prefillData?: PrefillData;
+}) {
   const initialFormState = prefillData
     ? { ...INITIAL_STATE, ...prefillData }
     : INITIAL_STATE;
@@ -183,12 +215,18 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
     setAvailableCredit(null);
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
     const controller = new AbortController();
-    fetch(`/api/admin/credits?email=${encodeURIComponent(email)}`, { credentials: "same-origin", signal: controller.signal })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data && typeof data.balance === "number") setAvailableCredit(data.balance);
+    fetch(`/api/admin/credits?email=${encodeURIComponent(email)}`, {
+      credentials: 'same-origin',
+      signal: controller.signal,
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (data && typeof data.balance === 'number')
+          setAvailableCredit(data.balance);
       })
-      .catch(() => { /* silencieux : pas d'avoir connu */ });
+      .catch(() => {
+        /* silencieux : pas d'avoir connu */
+      });
     return () => controller.abort();
   }, [form.patient_email]);
 
@@ -202,7 +240,9 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
     const FOCUSABLE =
       'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
     const focusables = () =>
-      Array.from(containerRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []);
+      Array.from(
+        containerRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [],
+      );
     const timer = setTimeout(() => focusables()[0]?.focus(), 0);
 
     function trap(e: KeyboardEvent) {
@@ -232,10 +272,23 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousDocumentOverflow = document.documentElement.style.overflow;
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousDocumentOverflow;
+    };
+  }, []);
+
   // Réinitialise le formulaire si prefillData change pendant que la modale est ouverte.
   useEffect(() => {
     setForm(prefillData ? { ...INITIAL_STATE, ...prefillData } : INITIAL_STATE);
-  }, [prefillData]);  
+  }, [prefillData]);
 
   function isDirty() {
     return (
@@ -250,7 +303,11 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
   }
 
   function handleClose() {
-    if (isDirty() && !window.confirm('Abandonner ? Les données saisies seront perdues.')) return;
+    if (
+      isDirty() &&
+      !window.confirm('Abandonner ? Les données saisies seront perdues.')
+    )
+      return;
     onCloseRef.current();
   }
 
@@ -258,20 +315,35 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
     setForm(prev => ({ ...prev, [key]: value }));
   }
 
-  const livePrice = useMemo(
-    () => {
-      if (form.useOverridePrice) {
-        return { finalPrice: form.overridePrice, discount: 0, basePrice: form.overridePrice, label: `${form.overridePrice} € (tarif manuel)` };
-      }
-      const durationForPrice = form.duration === 'custom' ? 60 : form.duration;
-      return calculatePrice(form.appointment_type, durationForPrice, form.override_first_session, form.is_solidarity);
-    },
-    [form.appointment_type, form.duration, form.override_first_session, form.is_solidarity, form.useOverridePrice, form.overridePrice],
-  );
+  const livePrice = useMemo(() => {
+    if (form.useOverridePrice) {
+      return {
+        finalPrice: form.overridePrice,
+        discount: 0,
+        basePrice: form.overridePrice,
+        label: `${form.overridePrice} € (tarif manuel)`,
+      };
+    }
+    const durationForPrice = form.duration === 'custom' ? 60 : form.duration;
+    return calculatePrice(
+      form.appointment_type,
+      durationForPrice,
+      form.override_first_session,
+      form.is_solidarity,
+    );
+  }, [
+    form.appointment_type,
+    form.duration,
+    form.override_first_session,
+    form.is_solidarity,
+    form.useOverridePrice,
+    form.overridePrice,
+  ]);
 
   // Avoir déductible (centimes → euros). Plafonné au prix final si l'avoir est plus grand.
   const creditEuros = useMemo(() => {
-    if (!form.use_credit || availableCredit == null || availableCredit <= 0) return 0;
+    if (!form.use_credit || availableCredit == null || availableCredit <= 0)
+      return 0;
     return Math.min(availableCredit / 100, livePrice.finalPrice);
   }, [form.use_credit, availableCredit, livePrice.finalPrice]);
 
@@ -283,7 +355,8 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
     setError(null);
 
     try {
-      const durationValue = form.duration === 'custom' ? form.customDurationMinutes : form.duration;
+      const durationValue =
+        form.duration === 'custom' ? form.customDurationMinutes : form.duration;
       const payload: Record<string, unknown> = {
         patient_name: form.patient_name.trim(),
         patient_email: form.patient_email.trim(),
@@ -296,23 +369,26 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
         override_first_session: form.override_first_session,
         is_solidarity: form.is_solidarity,
         send_email: form.send_email,
-        ...(form.useOverridePrice ? { override_price: form.overridePrice } : {}),
+        ...(form.useOverridePrice
+          ? { override_price: form.overridePrice }
+          : {}),
         ...(form.use_credit && availableCredit != null && availableCredit > 0
           ? { use_credit: true }
           : {}),
       };
 
-      if (form.appointment_mode === "video" && form.video_link.trim()) {
+      if (form.appointment_mode === 'video' && form.video_link.trim()) {
         payload.video_link = form.video_link.trim();
       }
 
-      const res = await fetch("/api/admin/appointments/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/admin/appointments/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
+      if (res.status !== 201) {
         // 5xx (504/502…) : le traitement serveur peut continuer en arrière-plan —
         // la ligne est peut-être créée. On invite à vérifier avant de retenter.
         if (res.status >= 500) throw new Error(UNCERTAIN_RESULT_MESSAGE);
@@ -320,14 +396,21 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
         throw new Error(data.error ?? `Erreur ${res.status}`);
       }
 
-      // Succès : recharger la page pour afficher le nouveau RDV
-      window.location.reload();
+      const result = (await res.json()) as CreateAppointmentResponse;
+      if (!result.appointment || typeof result.appointment.id !== 'string') {
+        throw new Error('La réponse de création est invalide.');
+      }
+
+      dispatchAppointmentCreated(result.appointment);
+      onCloseRef.current();
     } catch (err) {
       // Erreur réseau (fetch rejeté) : même incertitude — la requête a peut-être abouti.
       setError(
-        err instanceof TypeError ? UNCERTAIN_RESULT_MESSAGE
-          : err instanceof Error ? err.message
-          : "Une erreur est survenue",
+        err instanceof TypeError
+          ? UNCERTAIN_RESULT_MESSAGE
+          : err instanceof Error
+            ? err.message
+            : 'Une erreur est survenue',
       );
     } finally {
       setLoading(false);
@@ -336,15 +419,21 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 overflow-y-auto"
+      className="fixed inset-0 z-50 flex h-[100dvh] items-center justify-center overflow-hidden overscroll-contain bg-black/40 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="create-modal-title"
     >
-      <div ref={containerRef} className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 my-4">
+      <div
+        ref={containerRef}
+        className="flex w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-xl max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-1.5rem)]"
+      >
         {/* ── En-tête ── */}
-        <div className="flex items-center justify-between mb-5">
-          <h3 id="create-modal-title" className="font-serif text-lg font-semibold text-sage-800">
+        <div className="flex shrink-0 items-center justify-between px-6 pb-5 pt-6">
+          <h3
+            id="create-modal-title"
+            className="font-serif text-lg font-semibold text-sage-800"
+          >
             Nouveau rendez-vous
           </h3>
           <button
@@ -353,7 +442,12 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
             className="text-sage-400 hover:text-sage-600 transition-colors"
             aria-label="Fermer"
           >
-            <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <svg
+              className="w-5 h-5"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
               <path
                 fillRule="evenodd"
                 d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
@@ -364,273 +458,326 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
         </div>
 
         {/* ── Formulaire ── */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Patient */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-6 py-1">
+            {/* Patient */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="cm-name">Nom du patient *</Label>
+                <Input
+                  id="cm-name"
+                  value={form.patient_name}
+                  onChange={v => update('patient_name', v)}
+                  placeholder="Marie Dupont"
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="cm-phone">Téléphone</Label>
+                <Input
+                  id="cm-phone"
+                  type="tel"
+                  value={form.patient_phone}
+                  onChange={v => update('patient_phone', v)}
+                  placeholder="06 12 34 56 78"
+                />
+              </div>
+            </div>
+
             <div>
-              <Label htmlFor="cm-name">Nom du patient *</Label>
+              <Label htmlFor="cm-email">Email du patient *</Label>
               <Input
-                id="cm-name"
-                value={form.patient_name}
-                onChange={v => update("patient_name", v)}
-                placeholder="Marie Dupont"
+                id="cm-email"
+                type="email"
+                value={form.patient_email}
+                onChange={v => update('patient_email', v)}
+                placeholder="marie@exemple.fr"
                 required
               />
             </div>
+
+            {/* Type / Mode / Durée */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div>
+                <Label htmlFor="cm-type">Type de séance *</Label>
+                <select
+                  id="cm-type"
+                  value={form.appointment_type}
+                  onChange={e =>
+                    update(
+                      'appointment_type',
+                      e.target.value as AppointmentType,
+                    )
+                  }
+                  className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans focus:border-mint-400 focus:outline-none focus:ring-2 focus:ring-mint-200"
+                >
+                  {APPOINTMENT_TYPES.map(t => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="cm-mode">Mode *</Label>
+                <select
+                  id="cm-mode"
+                  value={form.appointment_mode}
+                  onChange={e =>
+                    update(
+                      'appointment_mode',
+                      e.target.value as AppointmentMode,
+                    )
+                  }
+                  className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans focus:border-mint-400 focus:outline-none focus:ring-2 focus:ring-mint-200"
+                >
+                  {APPOINTMENT_MODES.map(m => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="cm-duration">Durée *</Label>
+                <select
+                  id="cm-duration"
+                  value={form.duration}
+                  onChange={e => {
+                    const val = e.target.value;
+                    const isCustom = val === 'custom';
+                    setForm(f => ({
+                      ...f,
+                      duration: isCustom ? 'custom' : Number(val),
+                      ...(isCustom ? { useOverridePrice: true } : {}),
+                    }));
+                  }}
+                  className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans focus:border-mint-400 focus:outline-none focus:ring-2 focus:ring-mint-200"
+                >
+                  {DURATIONS.map(d => (
+                    <option key={d.value} value={d.value}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
+                {form.duration === 'custom' && (
+                  <input
+                    type="number"
+                    min={15}
+                    max={240}
+                    step={1}
+                    value={form.customDurationMinutes}
+                    onChange={e =>
+                      setForm(f => ({
+                        ...f,
+                        customDurationMinutes: Number(e.target.value),
+                      }))
+                    }
+                    className="mt-1 w-full rounded border border-sage-200 px-2 py-1 text-sm"
+                    placeholder="Durée en minutes (ex: 45)"
+                    required
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Date et heure */}
             <div>
-              <Label htmlFor="cm-phone">Téléphone</Label>
+              <Label htmlFor="cm-date">Date et heure *</Label>
               <Input
-                id="cm-phone"
-                type="tel"
-                value={form.patient_phone}
-                onChange={v => update("patient_phone", v)}
-                placeholder="06 12 34 56 78"
+                id="cm-date"
+                type="datetime-local"
+                value={form.scheduled_at}
+                onChange={v => update('scheduled_at', v)}
+                required
               />
             </div>
-          </div>
 
-          <div>
-            <Label htmlFor="cm-email">Email du patient *</Label>
-            <Input
-              id="cm-email"
-              type="email"
-              value={form.patient_email}
-              onChange={v => update("patient_email", v)}
-              placeholder="marie@exemple.fr"
-              required
-            />
-          </div>
-
-          {/* Type / Mode / Durée */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div>
-              <Label htmlFor="cm-type">Type de séance *</Label>
-              <select
-                id="cm-type"
-                value={form.appointment_type}
-                onChange={e => update("appointment_type", e.target.value as AppointmentType)}
-                className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans focus:border-mint-400 focus:outline-none focus:ring-2 focus:ring-mint-200"
-              >
-                {APPOINTMENT_TYPES.map(t => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="cm-mode">Mode *</Label>
-              <select
-                id="cm-mode"
-                value={form.appointment_mode}
-                onChange={e => update("appointment_mode", e.target.value as AppointmentMode)}
-                className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans focus:border-mint-400 focus:outline-none focus:ring-2 focus:ring-mint-200"
-              >
-                {APPOINTMENT_MODES.map(m => (
-                  <option key={m.value} value={m.value}>{m.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="cm-duration">Durée *</Label>
-              <select
-                id="cm-duration"
-                value={form.duration}
-                onChange={e => {
-                  const val = e.target.value;
-                  const isCustom = val === 'custom';
-                  setForm(f => ({
-                    ...f,
-                    duration: isCustom ? 'custom' : Number(val),
-                    ...(isCustom ? { useOverridePrice: true } : {}),
-                  }));
-                }}
-                className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans focus:border-mint-400 focus:outline-none focus:ring-2 focus:ring-mint-200"
-              >
-                {DURATIONS.map(d => (
-                  <option key={d.value} value={d.value}>{d.label}</option>
-                ))}
-              </select>
-              {form.duration === 'custom' && (
-                <input
-                  type="number"
-                  min={15}
-                  max={240}
-                  step={1}
-                  value={form.customDurationMinutes}
-                  onChange={(e) => setForm(f => ({ ...f, customDurationMinutes: Number(e.target.value) }))}
-                  className="mt-1 w-full rounded border border-sage-200 px-2 py-1 text-sm"
-                  placeholder="Durée en minutes (ex: 45)"
-                  required
-                />
-              )}
-            </div>
-          </div>
-
-          {/* Date et heure */}
-          <div>
-            <Label htmlFor="cm-date">Date et heure *</Label>
-            <Input
-              id="cm-date"
-              type="datetime-local"
-              value={form.scheduled_at}
-              onChange={v => update("scheduled_at", v)}
-              required
-            />
-          </div>
-
-          {/* Lien vidéo (conditionnel) */}
-          {form.appointment_mode === "video" && (
-            <div>
-              <Label htmlFor="cm-video">Lien de téléconsultation <span className="font-normal text-sage-400">(optionnel — généré automatiquement si vide)</span></Label>
-              <Input
-                id="cm-video"
-                type="url"
-                value={form.video_link}
-                onChange={v => update("video_link", v)}
-                placeholder="Laissez vide pour auto-génération Google Meet"
-              />
-            </div>
-          )}
-
-          {/* Motif */}
-          <div>
-            <Label htmlFor="cm-reason">Motif / notes</Label>
-            <textarea
-              id="cm-reason"
-              value={form.patient_reason}
-              onChange={e => update("patient_reason", e.target.value)}
-              rows={3}
-              placeholder="Motif de consultation, contexte particulier…"
-              className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans placeholder:text-sage-400 focus:border-mint-400 focus:outline-none focus:ring-2 focus:ring-mint-200 resize-none"
-            />
-          </div>
-
-          {/* ── Tarification ── */}
-          <div className="rounded-xl border border-sage-200 bg-sage-50 p-4">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-sage-500 font-sans">
-              Tarification
-            </p>
-            <div className="space-y-2">
-              <label className="flex items-center gap-3 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={form.override_first_session && !form.is_solidarity}
-                  disabled={form.useOverridePrice}
-                  onChange={e => {
-                    if (e.target.checked) { update("override_first_session", true); update("is_solidarity", false); }
-                    else update("override_first_session", false);
-                  }}
-                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400 disabled:opacity-40"
-                />
-                <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
-                  Remise nouveau client{" "}
-                  <span className="text-sage-400">(−{FIRST_SESSION_DISCOUNT}€ première séance)</span>
-                </span>
-              </label>
-              <label className="flex items-center gap-3 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={form.is_solidarity}
-                  disabled={form.useOverridePrice}
-                  onChange={e => {
-                    if (e.target.checked) { update("is_solidarity", true); update("override_first_session", false); }
-                    else update("is_solidarity", false);
-                  }}
-                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400 disabled:opacity-40"
-                />
-                <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
-                  Tarif solidaire{" "}
-                  <span className="text-sage-400">(−{SOLIDARITY_DISCOUNT}€ · RSA / ASS / Étudiant)</span>
-                </span>
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.useOverridePrice}
-                  onChange={(e) => setForm(f => ({ ...f, useOverridePrice: e.target.checked }))}
-                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
-                />
-                Tarif manuel
-              </label>
-              {form.useOverridePrice && (
-                <input
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={form.overridePrice}
-                  onChange={(e) => setForm(f => ({ ...f, overridePrice: Number(e.target.value) }))}
-                  className="mt-1 w-full rounded border border-sage-200 px-2 py-1 text-sm"
-                  placeholder="Tarif en € (ex: 45)"
-                  required
-                />
-              )}
-            </div>
-            <div className="mt-3 flex items-center justify-between border-t border-sage-200 pt-3">
-              <span className="text-xs text-sage-500 font-sans">
-                Base {livePrice.basePrice}€
-                {livePrice.discount > 0 && (
-                  <span className="text-mint-700"> · remise −{livePrice.discount}€</span>
-                )}
-                {creditEuros > 0 && (
-                  <span className="text-mint-700"> · avoir −{creditEuros.toFixed(2)}€</span>
-                )}
-              </span>
-              <span className="text-base font-semibold text-sage-900 font-sans">
-                À régler : {amountDueEuros.toFixed(2)}€
-              </span>
-            </div>
-
-            {/* Case « Utiliser l'avoir » — admin-only, visible si le patient a un avoir */}
-            {availableCredit != null && availableCredit > 0 && (
-              <label className="mt-3 flex items-center gap-3 cursor-pointer group border-t border-sage-200 pt-3">
-                <input
-                  type="checkbox"
-                  checked={form.use_credit}
-                  onChange={e => update("use_credit", e.target.checked)}
-                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
-                />
-                <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
-                  Utiliser l'avoir disponible{" "}
-                  <span className="text-mint-700 font-medium">
-                    ({(availableCredit / 100).toFixed(2)}€)
+            {/* Lien vidéo (conditionnel) */}
+            {form.appointment_mode === 'video' && (
+              <div>
+                <Label htmlFor="cm-video">
+                  Lien de téléconsultation{' '}
+                  <span className="font-normal text-sage-400">
+                    (optionnel — généré automatiquement si vide)
                   </span>
-                  {form.use_credit && amountDueEuros === 0 && (
-                    <span className="block text-xs text-mint-700 mt-0.5">
-                      Avoir suffisant : aucun paiement en ligne ne sera demandé.
+                </Label>
+                <Input
+                  id="cm-video"
+                  type="url"
+                  value={form.video_link}
+                  onChange={v => update('video_link', v)}
+                  placeholder="Laissez vide pour auto-génération Google Meet"
+                />
+              </div>
+            )}
+
+            {/* Motif */}
+            <div>
+              <Label htmlFor="cm-reason">Motif / notes</Label>
+              <textarea
+                id="cm-reason"
+                value={form.patient_reason}
+                onChange={e => update('patient_reason', e.target.value)}
+                rows={3}
+                placeholder="Motif de consultation, contexte particulier…"
+                className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans placeholder:text-sage-400 focus:border-mint-400 focus:outline-none focus:ring-2 focus:ring-mint-200 resize-none"
+              />
+            </div>
+
+            {/* ── Tarification ── */}
+            <div className="rounded-xl border border-sage-200 bg-sage-50 p-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-sage-500 font-sans">
+                Tarification
+              </p>
+              <div className="space-y-2">
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={form.override_first_session && !form.is_solidarity}
+                    disabled={form.useOverridePrice}
+                    onChange={e => {
+                      if (e.target.checked) {
+                        update('override_first_session', true);
+                        update('is_solidarity', false);
+                      } else update('override_first_session', false);
+                    }}
+                    className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400 disabled:opacity-40"
+                  />
+                  <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
+                    Remise nouveau client{' '}
+                    <span className="text-sage-400">
+                      (−{FIRST_SESSION_DISCOUNT}€ première séance)
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={form.is_solidarity}
+                    disabled={form.useOverridePrice}
+                    onChange={e => {
+                      if (e.target.checked) {
+                        update('is_solidarity', true);
+                        update('override_first_session', false);
+                      } else update('is_solidarity', false);
+                    }}
+                    className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400 disabled:opacity-40"
+                  />
+                  <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
+                    Tarif solidaire{' '}
+                    <span className="text-sage-400">
+                      (−{SOLIDARITY_DISCOUNT}€ · RSA / ASS / Étudiant)
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.useOverridePrice}
+                    onChange={e =>
+                      setForm(f => ({
+                        ...f,
+                        useOverridePrice: e.target.checked,
+                      }))
+                    }
+                    className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+                  />
+                  Tarif manuel
+                </label>
+                {form.useOverridePrice && (
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={form.overridePrice}
+                    onChange={e =>
+                      setForm(f => ({
+                        ...f,
+                        overridePrice: Number(e.target.value),
+                      }))
+                    }
+                    className="mt-1 w-full rounded border border-sage-200 px-2 py-1 text-sm"
+                    placeholder="Tarif en € (ex: 45)"
+                    required
+                  />
+                )}
+              </div>
+              <div className="mt-3 flex items-center justify-between border-t border-sage-200 pt-3">
+                <span className="text-xs text-sage-500 font-sans">
+                  Base {livePrice.basePrice}€
+                  {livePrice.discount > 0 && (
+                    <span className="text-mint-700">
+                      {' '}
+                      · remise −{livePrice.discount}€
+                    </span>
+                  )}
+                  {creditEuros > 0 && (
+                    <span className="text-mint-700">
+                      {' '}
+                      · avoir −{creditEuros.toFixed(2)}€
                     </span>
                   )}
                 </span>
-              </label>
+                <span className="text-base font-semibold text-sage-900 font-sans">
+                  À régler : {amountDueEuros.toFixed(2)}€
+                </span>
+              </div>
+
+              {/* Case « Utiliser l'avoir » — admin-only, visible si le patient a un avoir */}
+              {availableCredit != null && availableCredit > 0 && (
+                <label className="mt-3 flex items-center gap-3 cursor-pointer group border-t border-sage-200 pt-3">
+                  <input
+                    type="checkbox"
+                    checked={form.use_credit}
+                    onChange={e => update('use_credit', e.target.checked)}
+                    className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+                  />
+                  <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
+                    Utiliser l'avoir disponible{' '}
+                    <span className="text-mint-700 font-medium">
+                      ({(availableCredit / 100).toFixed(2)}€)
+                    </span>
+                    {form.use_credit && amountDueEuros === 0 && (
+                      <span className="block text-xs text-mint-700 mt-0.5">
+                        Avoir suffisant : aucun paiement en ligne ne sera
+                        demandé.
+                      </span>
+                    )}
+                  </span>
+                </label>
+              )}
+            </div>
+
+            {/* ── Options ── */}
+            <label className="flex items-center gap-3 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={form.send_email}
+                onChange={e => update('send_email', e.target.checked)}
+                className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+              />
+              <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
+                Envoyer un email au patient
+                {form.appointment_mode === 'video'
+                  ? ' (lien de paiement Stripe)'
+                  : ' (confirmation)'}
+              </span>
+            </label>
+
+            {/* ── Erreur ── */}
+            {error && (
+              <div
+                role="alert"
+                className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 font-sans"
+              >
+                {error}
+              </div>
             )}
           </div>
 
-          {/* ── Options ── */}
-          <label className="flex items-center gap-3 cursor-pointer group">
-            <input
-              type="checkbox"
-              checked={form.send_email}
-              onChange={e => update("send_email", e.target.checked)}
-              className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
-            />
-            <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
-              Envoyer un email au patient
-              {form.appointment_mode === "video"
-                ? " (lien de paiement Stripe)"
-                : " (confirmation)"}
-            </span>
-          </label>
-
-          {/* ── Erreur ── */}
-          {error && (
-            <div
-              role="alert"
-              className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 font-sans"
-            >
-              {error}
-            </div>
-          )}
-
           {/* ── Actions ── */}
-          <div className="flex gap-3 pt-1">
+          <div className="flex shrink-0 gap-3 border-t border-sage-200 px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4">
             <button
               type="button"
               onClick={handleClose}
@@ -644,7 +791,7 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
               disabled={loading}
               className="flex-1 rounded-xl bg-mint-700 px-4 py-2.5 text-sm font-semibold text-white font-sans shadow-sm transition-colors hover:bg-mint-800 disabled:opacity-50"
             >
-              {loading ? "Création…" : "Créer le rendez-vous"}
+              {loading ? 'Création…' : 'Créer le rendez-vous'}
             </button>
           </div>
         </form>

@@ -13,7 +13,7 @@
  * identique au comportement vanilla précédent.
  */
 
-import { useDeferredValue, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import type { Appointment, AppointmentStatus } from '../../types/appointment';
 import {
   AppointmentCard,
@@ -28,6 +28,11 @@ import {
   toParisDateString,
 } from '../../utils/date';
 import { getModeLabel } from '../../lib/pricing';
+import {
+  APPOINTMENT_CREATED_EVENT,
+  getCreatedAppointment,
+  upsertAppointment,
+} from './admin-dashboard-ui';
 
 // ---------------------------------------------------------------------------
 // Types & constantes
@@ -109,61 +114,91 @@ function panelId(apptId: string): string {
 function readInitialFilter(): FilterKey {
   if (typeof window === 'undefined') return 'all';
   const saved = window.sessionStorage.getItem(FILTER_STORAGE_KEY);
-  return saved && FILTERS.some((f) => f.key === saved) ? (saved as FilterKey) : 'all';
+  return saved && FILTERS.some(f => f.key === saved)
+    ? (saved as FilterKey)
+    : 'all';
 }
 
 // ---------------------------------------------------------------------------
 // Composant principal
 // ---------------------------------------------------------------------------
 
-export function AppointmentsManager({ appointments }: AppointmentsManagerProps) {
+export function AppointmentsManager({
+  appointments,
+}: AppointmentsManagerProps) {
+  const [appointmentList, setAppointmentList] = useState(appointments);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<FilterKey>(readInitialFilter);
+  const [statusFilter, setStatusFilter] =
+    useState<FilterKey>(readInitialFilter);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showPast, setShowPast] = useState(false);
 
   const deferredQuery = useDeferredValue(searchQuery);
 
+  useEffect(() => {
+    setAppointmentList(appointments);
+  }, [appointments]);
+
+  useEffect(() => {
+    function handleAppointmentCreated(event: Event) {
+      const appointment = getCreatedAppointment(event);
+      if (!appointment) return;
+
+      setAppointmentList(current => upsertAppointment(current, appointment));
+    }
+
+    window.addEventListener(
+      APPOINTMENT_CREATED_EVENT,
+      handleAppointmentCreated,
+    );
+    return () =>
+      window.removeEventListener(
+        APPOINTMENT_CREATED_EVENT,
+        handleAppointmentCreated,
+      );
+  }, []);
+
   // ── 1. Filtrage (recherche + statut) ──────────────────────────────────────
   const filtered = useMemo(() => {
     const q = deferredQuery.toLowerCase().trim();
-    return appointments.filter((a) => {
+    return appointmentList.filter(a => {
       if (statusFilter !== 'all' && a.status !== statusFilter) return false;
       if (q && !searchableText(a).includes(q)) return false;
       return true;
     });
-  }, [appointments, deferredQuery, statusFilter]);
+  }, [appointmentList, deferredQuery, statusFilter]);
 
   // Compteurs dynamiques des filtres (reflètent la recherche en cours).
   const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: appointments.length };
+    const counts: Record<string, number> = { all: appointmentList.length };
     const q = deferredQuery.toLowerCase().trim();
     const base = q
-      ? appointments.filter((a) => searchableText(a).includes(q))
-      : appointments;
+      ? appointmentList.filter(a => searchableText(a).includes(q))
+      : appointmentList;
     counts.all = base.length;
     for (const a of base) {
       counts[a.status] = (counts[a.status] ?? 0) + 1;
     }
     return counts;
-  }, [appointments, deferredQuery]);
+  }, [appointmentList, deferredQuery]);
 
   // ── 2. Partition À venir / Passés ─────────────────────────────────────────
-  const { upcomingGroups, pastGroups, upcomingCount, pastCount } = useMemo(() => {
-    const now = Date.now();
-    const upcoming = filtered
-      .filter((a) => isUpcoming(a.scheduled_at, now))
-      .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)); // ascendant
-    const past = filtered
-      .filter((a) => !isUpcoming(a.scheduled_at, now))
-      .sort((a, b) => b.scheduled_at.localeCompare(a.scheduled_at)); // descendant
-    return {
-      upcomingGroups: groupByDay(upcoming),
-      pastGroups: groupByDay(past),
-      upcomingCount: upcoming.length,
-      pastCount: past.length,
-    };
-  }, [filtered]);
+  const { upcomingGroups, pastGroups, upcomingCount, pastCount } =
+    useMemo(() => {
+      const now = Date.now();
+      const upcoming = filtered
+        .filter(a => isUpcoming(a.scheduled_at, now))
+        .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)); // ascendant
+      const past = filtered
+        .filter(a => !isUpcoming(a.scheduled_at, now))
+        .sort((a, b) => b.scheduled_at.localeCompare(a.scheduled_at)); // descendant
+      return {
+        upcomingGroups: groupByDay(upcoming),
+        pastGroups: groupByDay(past),
+        upcomingCount: upcoming.length,
+        pastCount: past.length,
+      };
+    }, [filtered]);
 
   function handleFilterChange(key: FilterKey) {
     setStatusFilter(key);
@@ -203,7 +238,7 @@ export function AppointmentsManager({ appointments }: AppointmentsManagerProps) 
           id="appt-search"
           type="search"
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={e => setSearchQuery(e.target.value)}
           placeholder="Rechercher nom, email, téléphone…"
           className="
             w-full pl-10 pr-9 py-2.5 text-sm text-sage-900 placeholder-sage-400 font-sans
@@ -223,7 +258,12 @@ export function AppointmentsManager({ appointments }: AppointmentsManagerProps) 
             "
             aria-label="Effacer la recherche"
           >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <svg
+              className="w-3.5 h-3.5"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
               <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
             </svg>
           </button>
@@ -249,9 +289,11 @@ export function AppointmentsManager({ appointments }: AppointmentsManagerProps) 
               className={`
                 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium font-sans
                 rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-mint-400
-                ${isActive
-                  ? 'bg-mint-600 text-white border-mint-600'
-                  : 'bg-white text-sage-600 border-sage-200 hover:border-mint-400 hover:text-mint-700'}
+                ${
+                  isActive
+                    ? 'bg-mint-600 text-white border-mint-600'
+                    : 'bg-white text-sage-600 border-sage-200 hover:border-mint-400 hover:text-mint-700'
+                }
               `}
             >
               {label}
@@ -272,8 +314,19 @@ export function AppointmentsManager({ appointments }: AppointmentsManagerProps) 
       {hasNoResult && (
         <div className="text-center py-12">
           <div className="w-14 h-14 mx-auto mb-4 bg-sage-100 rounded-full flex items-center justify-center">
-            <svg className="w-7 h-7 text-sage-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
+            <svg
+              className="w-7 h-7 text-sage-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z"
+              />
             </svg>
           </div>
           <p className="font-serif text-lg text-sage-600">
@@ -299,7 +352,7 @@ export function AppointmentsManager({ appointments }: AppointmentsManagerProps) 
             </h2>
           </div>
           <div className="space-y-6">
-            {upcomingGroups.map((group) => (
+            {upcomingGroups.map(group => (
               <DayGroupBlock
                 key={group.dayKey}
                 group={group}
@@ -316,7 +369,7 @@ export function AppointmentsManager({ appointments }: AppointmentsManagerProps) 
         <section aria-label="Rendez-vous passés" className="pt-2">
           <button
             type="button"
-            onClick={() => setShowPast((v) => !v)}
+            onClick={() => setShowPast(v => !v)}
             aria-expanded={showPast}
             className="
               w-full flex items-center justify-between gap-3 px-4 py-3
@@ -328,9 +381,15 @@ export function AppointmentsManager({ appointments }: AppointmentsManagerProps) 
             <span className="flex items-center gap-2.5 font-serif text-base font-semibold text-sage-700">
               <svg
                 className={`w-4 h-4 text-sage-400 transition-transform ${showPast ? 'rotate-90' : ''}`}
-                viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
               >
-                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                <path
+                  fillRule="evenodd"
+                  d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                  clipRule="evenodd"
+                />
               </svg>
               Passés
               <span className="text-sm font-sans font-normal text-sage-500">
@@ -343,7 +402,7 @@ export function AppointmentsManager({ appointments }: AppointmentsManagerProps) 
           </button>
           {showPast && (
             <div className="space-y-6 mt-4">
-              {pastGroups.map((group) => (
+              {pastGroups.map(group => (
                 <DayGroupBlock
                   key={group.dayKey}
                   group={group}
@@ -385,7 +444,7 @@ function DayGroupBlock({ group, expandedId, onToggle }: DayGroupBlockProps) {
       </div>
 
       <ul className="space-y-2">
-        {group.appointments.map((appt) => {
+        {group.appointments.map(appt => {
           const isOpen = expandedId === appt.id;
           const pid = panelId(appt.id);
           return (
@@ -424,9 +483,15 @@ function DayGroupBlock({ group, expandedId, onToggle }: DayGroupBlockProps) {
                 </span>
                 <svg
                   className={`w-4 h-4 text-sage-400 transition-transform shrink-0 ${isOpen ? 'rotate-90' : ''}`}
-                  viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
                 >
-                  <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                  <path
+                    fillRule="evenodd"
+                    d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                    clipRule="evenodd"
+                  />
                 </svg>
               </button>
 
