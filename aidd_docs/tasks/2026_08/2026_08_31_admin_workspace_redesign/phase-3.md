@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 ---
 
 # Instruction: Création successive et répertoire patients
@@ -116,4 +116,3 @@ journey
 | 1 | Le parcours minimal ne montre que les informations nécessaires à l'étape courante, tandis que toutes les options existantes restent accessibles. |
 | 2 | Deux rendez-vous individuels pour deux patients différents peuvent être créés à la suite sans fermer le panneau ni recharger l'application. |
 | 3 | Environ cinquante patients restent recherchables et un seul détail avec historique borné est rendu à la fois. |
-

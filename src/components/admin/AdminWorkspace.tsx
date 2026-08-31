@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Appointment } from '../../types/appointment';
+import type { Patient } from '../../types/patient';
 import { AppointmentCard } from './AppointmentCard';
 import { AdminOverview } from './AdminOverview';
 import { AdminSidePanel } from './AdminSidePanel';
 import { AppointmentsManager } from './AppointmentsManager';
+import { AppointmentComposer } from './AppointmentComposer';
+import { PatientList } from './PatientList';
 import {
   getWorkspaceSummary,
   type AdminWorkspaceDestination,
@@ -36,6 +39,8 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
   const [destination, setDestination] =
     useState<AdminWorkspaceDestination>(readDestination);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerPatient, setComposerPatient] = useState<Patient | null>(null);
   const [calendarStatus, setCalendarStatus] = useState(
     'Vérification de l’agenda…',
   );
@@ -91,6 +96,8 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
 
   function closePanel() {
     setSelectedId(null);
+    setComposerOpen(false);
+    setComposerPatient(null);
     requestAnimationFrame(() => returnFocusRef.current?.focus());
   }
 
@@ -100,6 +107,22 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
     );
     setNotice(
       'Enregistré. Les traitements agenda, paiement ou email peuvent encore se finaliser.',
+    );
+  }
+
+  function openComposer(patient: Patient | null = null) {
+    returnFocusRef.current = document.activeElement as HTMLElement;
+    setSelectedId(null);
+    setComposerPatient(patient);
+    setComposerOpen(true);
+  }
+
+  function handleAppointmentCreated(appointment: Appointment) {
+    setAppointmentList(current =>
+      upsertWorkspaceAppointment(current, appointment),
+    );
+    setNotice(
+      `Rendez-vous créé pour ${appointment.patient_name}. Le formulaire est prêt pour le suivant.`,
     );
   }
 
@@ -125,9 +148,7 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() =>
-              setNotice('La création s’ouvre depuis le panneau de travail.')
-            }
+            onClick={() => openComposer()}
             className="min-h-11 rounded-xl bg-mint-700 px-4 text-sm font-semibold text-white hover:bg-mint-800 focus:outline-none focus:ring-2 focus:ring-mint-400 focus:ring-offset-2"
           >
             Nouveau rendez-vous
@@ -185,18 +206,7 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
             />
           )}
           {destination === 'patients' && (
-            <section aria-labelledby="patients-coming-title">
-              <h2
-                id="patients-coming-title"
-                className="font-serif text-2xl font-semibold text-sage-900"
-              >
-                Patients
-              </h2>
-              <p className="mt-2 text-sm text-sage-600">
-                Le répertoire patient est disponible dans cette même surface de
-                travail.
-              </p>
-            </section>
+            <PatientList onStartAppointment={openComposer} />
           )}
           {destination === 'availability' && (
             <section aria-labelledby="availability-coming-title">
@@ -222,6 +232,15 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
             <AppointmentCard
               appointment={selectedAppointment}
               onAppointmentUpdated={handleAppointmentUpdated}
+            />
+          </AdminSidePanel>
+        )}
+        {composerOpen && !selectedAppointment && (
+          <AdminSidePanel title="Nouveau rendez-vous" onClose={closePanel}>
+            <AppointmentComposer
+              initialPatient={composerPatient}
+              onCreated={handleAppointmentCreated}
+              onClose={closePanel}
             />
           </AdminSidePanel>
         )}
