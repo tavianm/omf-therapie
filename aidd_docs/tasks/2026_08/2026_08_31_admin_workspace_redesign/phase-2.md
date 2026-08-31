@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 ---
 
 # Instruction: Socle du poste de travail et rendez-vous à grande échelle
@@ -119,4 +119,3 @@ journey
 | 1 | La page démarre sur une synthèse exploitable et la navigation active reste cohérente pendant la session. |
 | 2 | Au plus un détail complet et un lot borné de lignes sont rendus, y compris avec 360 rendez-vous. |
 | 3 | Toute action réussie actualise les vues concernées sans `reload`, et toute erreur conserve le contexte et la saisie. |
-

@@ -26,9 +26,11 @@ import { Modal } from './Modal';
 
 interface AppointmentCardProps {
   appointment: Appointment;
+  onAppointmentUpdated?: (appointment: Appointment) => void;
 }
 
-type ModalType = 'confirm' | 'decline' | 'cancel' | 'reschedule' | 'reschedule_paid' | null;
+type ModalType =
+  'confirm' | 'decline' | 'cancel' | 'reschedule' | 'reschedule_paid' | null;
 
 // ---------------------------------------------------------------------------
 // Constantes statut
@@ -77,7 +79,10 @@ function formatPrice(centimes: number): string {
 // Composant principal
 // ---------------------------------------------------------------------------
 
-export function AppointmentCard({ appointment }: AppointmentCardProps) {
+export function AppointmentCard({
+  appointment,
+  onAppointmentUpdated,
+}: AppointmentCardProps) {
   const [modal, setModal] = useState<ModalType>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -111,7 +116,8 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
   // (confirmed) se reporte par move direct admin : la thérapeute déplace le créneau
   // sans re-validation du patient. Pour les RDV vidéo, le paiement Stripe est conservé.
   const isDirectReschedule =
-    (appointment.appointment_mode === 'video' && status === 'payment_received') ||
+    (appointment.appointment_mode === 'video' &&
+      status === 'payment_received') ||
     (appointment.appointment_mode === 'in-person' && status === 'confirmed');
 
   // ── PATCH helper ─────────────────────────────────────────────────────────
@@ -130,7 +136,9 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
         const data = (await res.json()) as { error?: string };
         throw new Error(data.error ?? `Erreur HTTP ${res.status}`);
       }
-      window.location.reload();
+      const data = (await res.json()) as { appointment?: Appointment };
+      if (data.appointment) onAppointmentUpdated?.(data.appointment);
+      setActionLoading(false);
       return true;
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Erreur inconnue');
@@ -220,6 +228,8 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
         const data = (await res.json()) as { error?: string };
         throw new Error(data.error ?? `Erreur HTTP ${res.status}`);
       }
+      const data = (await res.json()) as { appointment?: Appointment };
+      if (data.appointment) onAppointmentUpdated?.(data.appointment);
       setNotesSaved(true);
       setTimeout(() => setNotesSaved(false), 2000);
     } catch (e) {
@@ -565,8 +575,10 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
         appointment.final_price - appointment.credit_applied > 0 && (
           <p className="mb-4 text-xs text-amber-700 font-sans">
             L'annulation émettra un avoir de{' '}
-            {Math.round((appointment.final_price - appointment.credit_applied) / 100)}€
-            au profit du patient.
+            {Math.round(
+              (appointment.final_price - appointment.credit_applied) / 100,
+            )}
+            € au profit du patient.
           </p>
         )}
 
@@ -664,7 +676,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
         <textarea
           id={`notes-${appointment.id}`}
           value={notes}
-          onChange={(e) => setNotes(e.target.value)}
+          onChange={e => setNotes(e.target.value)}
           rows={2}
           className="w-full px-3 py-2 text-sm text-sage-800 border border-sage-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent resize-none font-sans placeholder-sage-300 transition-colors"
           placeholder="Notes internes…"
@@ -729,7 +741,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
             <textarea
               id="decline-msg-input"
               value={declineMessage}
-              onChange={(e) => setDeclineMessage(e.target.value)}
+              onChange={e => setDeclineMessage(e.target.value)}
               rows={3}
               placeholder="Expliquez la raison du refus…"
               className="w-full px-4 py-2.5 rounded-xl border border-sage-200 bg-sage-50 text-sage-900 placeholder-sage-400 font-sans text-sm focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent resize-none transition-colors"
@@ -779,14 +791,20 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
         >
           <p className="text-sm text-sage-600 font-sans mb-4">
             Le patient recevra un email d'annulation.
-            {appointment.status === 'payment_received' && appointment.final_price - appointment.credit_applied > 0 && (
-              <>
-                {' '}
-                <span className="text-amber-700 font-medium">
-                  Un avoir de {Math.round((appointment.final_price - appointment.credit_applied) / 100)}€ (montant payé) sera émis au profit du patient.
-                </span>
-              </>
-            )}
+            {appointment.status === 'payment_received' &&
+              appointment.final_price - appointment.credit_applied > 0 && (
+                <>
+                  {' '}
+                  <span className="text-amber-700 font-medium">
+                    Un avoir de{' '}
+                    {Math.round(
+                      (appointment.final_price - appointment.credit_applied) /
+                        100,
+                    )}
+                    € (montant payé) sera émis au profit du patient.
+                  </span>
+                </>
+              )}
           </p>
           <div className="mb-5">
             <label
@@ -799,7 +817,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
             <textarea
               id="cancel-msg-input"
               value={cancelMessage}
-              onChange={(e) => setCancelMessage(e.target.value)}
+              onChange={e => setCancelMessage(e.target.value)}
               rows={3}
               placeholder="Expliquez la raison de l'annulation…"
               className="w-full px-4 py-2.5 rounded-xl border border-sage-200 bg-sage-50 text-sage-900 placeholder-sage-400 font-sans text-sm focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent resize-none transition-colors"
@@ -851,7 +869,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
         >
           <p className="text-sm text-sage-600 font-sans mb-4">
             {isDirectReschedule
-              ? 'Le rendez-vous sera déplacé vers le nouveau créneau. Le paiement déjà effectué (ou l\'avoir) est conservé — aucun nouveau paiement ne sera demandé. Le patient sera notifié.'
+              ? "Le rendez-vous sera déplacé vers le nouveau créneau. Le paiement déjà effectué (ou l'avoir) est conservé — aucun nouveau paiement ne sera demandé. Le patient sera notifié."
               : 'Le patient recevra un email avec le nouveau créneau proposé.'}
           </p>
           <div className="mb-4">
@@ -865,7 +883,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
               id="reschedule-date-input"
               type="datetime-local"
               value={rescheduleDate}
-              onChange={(e) => setRescheduleDate(e.target.value)}
+              onChange={e => setRescheduleDate(e.target.value)}
               className="w-full px-4 py-2.5 rounded-xl border border-sage-200 bg-sage-50 text-sage-900 font-sans text-sm focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent transition-colors"
             />
           </div>
@@ -880,7 +898,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
             <textarea
               id="reschedule-msg-input"
               value={rescheduleMessage}
-              onChange={(e) => setRescheduleMessage(e.target.value)}
+              onChange={e => setRescheduleMessage(e.target.value)}
               rows={2}
               placeholder="Expliquez le report…"
               className="w-full px-4 py-2.5 rounded-xl border border-sage-200 bg-sage-50 text-sage-900 placeholder-sage-400 font-sans text-sm focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent resize-none transition-colors"

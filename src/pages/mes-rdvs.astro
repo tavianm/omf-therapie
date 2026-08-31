@@ -1,48 +1,51 @@
 ---
-/**
- * /mes-rdvs — Dashboard admin SSR
- *
- * Guard auth → redirige vers /login si non connecté.
- * Charge tous les rendez-vous actifs depuis Supabase (soft-delete exclus).
- * Délègue le rendu interactif à l'island React AppointmentCard.
- */
-
 export const prerender = false;
 
 import Layout from '../layouts/Layout.astro';
 import Navbar from '../components/islands/Navbar';
-import { AppointmentsManager } from '../components/admin/AppointmentsManager';
-import { AdminCreateButton } from '../components/admin/AdminCreateButton';
-import GoogleCalendarStatus from '../components/admin/GoogleCalendarStatus';
-import { PatientList } from '../components/admin/PatientList';
-import { TimeSlotManager } from '../components/admin/TimeSlotManager';
+import { AdminWorkspace } from '../components/admin/AdminWorkspace';
 import { auth } from '../lib/auth';
 import { isAdminSession } from '../lib/authz';
 import { supabaseAdmin } from '../lib/supabase';
 import type { Appointment } from '../types/appointment';
 
-// ── Auth guard ───────────────────────────────────────────────────────────────
 const session = await auth.api.getSession({ headers: Astro.request.headers });
-if (!session) {
-  return Astro.redirect('/login/?redirect=/mes-rdvs/');
-}
-if (!isAdminSession(session)) {
+if (!session) return Astro.redirect('/login/?redirect=/mes-rdvs/');
+if (!isAdminSession(session))
   return Astro.redirect('/login/?error=acces-refuse');
-}
 
-// ── Fetch appointments ───────────────────────────────────────────────────────
-// Colonnes explicites : exclut les champs sensibles non nécessaires à l'island
-// AppointmentsManager (et à AppointmentCard en vue dépliée). Évite la sérialisation
-// de données PII/cliniques dans les props Astro.
 const APPOINTMENT_COLUMNS = [
-  'id', 'status', 'scheduled_at', 'rescheduled_to',
-  'appointment_type', 'appointment_mode', 'duration',
-  'base_price', 'discount', 'final_price', 'is_first_session',
-  'patient_name', 'patient_email', 'patient_phone', 'patient_postal_code',
-  'patient_city', 'patient_reason', 'therapist_notes',
-  'video_link', 'google_calendar_event_id',
-  'stripe_payment_link_url', 'stripe_payment_link_id',
-  'created_at', 'updated_at',
+  'id',
+  'status',
+  'scheduled_at',
+  'scheduled_end',
+  'blocked_until',
+  'rescheduled_to',
+  'appointment_type',
+  'appointment_mode',
+  'duration',
+  'base_price',
+  'discount',
+  'final_price',
+  'credit_applied',
+  'is_first_session',
+  'patient_name',
+  'patient_email',
+  'patient_phone',
+  'patient_postal_code',
+  'patient_city',
+  'patient_reason',
+  'therapist_notes',
+  'video_link',
+  'google_calendar_event_id',
+  'stripe_payment_link_url',
+  'stripe_payment_link_id',
+  'stripe_payment_intent_id',
+  'confirmation_sent_at',
+  'invitation_sent_at',
+  'created_at',
+  'updated_at',
+  'deleted_at',
 ].join(',');
 
 const { data: rows, error } = await supabaseAdmin
@@ -51,213 +54,19 @@ const { data: rows, error } = await supabaseAdmin
   .is('deleted_at', null)
   .order('scheduled_at', { ascending: false });
 
-if (error) {
-  console.error('[mes-rdvs] Erreur Supabase :', error);
-}
-
-// Cast applies only on the verified-success branch: the Supabase error shape
-// (GenericStringError) does not overlap with Appointment, so the cast must not
-// run when `error` is truthy — an empty array renders a degraded dashboard
-// instead of masking the error as fake Appointment rows.
-const appointments: Appointment[] = error ? [] : (rows as unknown as Appointment[]);
-
-// ── Comptages par statut (pour l'en-tête de page : « N · X en attente ») ───────
-const counts: Record<string, number> = { all: appointments.length };
-for (const appt of appointments) {
-  counts[appt.status] = (counts[appt.status] ?? 0) + 1;
-}
+if (error) console.error('[mes-rdvs] Erreur Supabase :', error);
+const appointments: Appointment[] = error
+  ? []
+  : (rows as unknown as Appointment[]);
 ---
 
 <Layout
   title="Mes rendez-vous — OMF Thérapie"
-  description="Tableau de bord de gestion des rendez-vous."
+  description="Poste de travail de gestion des rendez-vous."
   noindex={true}
 >
-  <!-- Navbar avec flag isAuthenticated (utilisateur vérifié côté serveur) -->
   <Navbar client:load isAuthenticated={true} />
-
-  <main class="min-h-screen bg-sage-50 pt-20 pb-12">
-    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-
-      <!-- En-tête page -->
-      <div class="flex flex-wrap items-center justify-between gap-4 py-8">
-        <div>
-          <h1 class="font-serif text-3xl font-semibold text-sage-900">
-            Mes rendez-vous
-          </h1>
-          <p class="text-sage-500 text-sm font-sans mt-1">
-            {appointments.length} rendez-vous
-            {counts['pending'] ? ` · ${counts['pending']} en attente` : ''}
-          </p>
-        </div>
-        <div class="flex flex-wrap items-center gap-3">
-          <!-- Nouveau rendez-vous (island React — gère l'état open/close de la modale) -->
-          <AdminCreateButton client:load />
-          <!-- Déconnexion -->
-          <button
-            id="signout-btn"
-            type="button"
-            class="
-              inline-flex items-center gap-2 px-4 py-2 text-sm font-medium font-sans
-              rounded-xl border border-sage-300 text-sage-600
-              hover:bg-sage-100 hover:text-sage-800
-              focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1
-              transition-colors min-h-[40px]
-            "
-            aria-label="Se déconnecter"
-          >
-            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clip-rule="evenodd" />
-            </svg>
-            Déconnexion
-          </button>
-        </div>
-      </div>
-
-      <!-- Statut connexion Google Calendar -->
-      <div class="mb-5">
-        <GoogleCalendarStatus client:load />
-      </div>
-
-      <!-- Onglets -->
-      <div class="mb-6" role="tablist" aria-label="Sections de gestion">
-        <div class="inline-flex rounded-xl border border-sage-200 bg-white p-1">
-          <button
-            type="button"
-            role="tab"
-            id="appointments-tab"
-            data-tab="appointments"
-            aria-selected="true"
-            aria-controls="appointments-tab-panel"
-            class="
-              tab-btn rounded-lg px-4 py-2 text-sm font-medium font-sans transition-colors
-              bg-mint-600 text-white
-              focus:outline-none focus:ring-2 focus:ring-mint-400
-            "
-          >
-            Rendez-vous
-          </button>
-          <button
-            type="button"
-            role="tab"
-            id="patients-tab"
-            data-tab="patients"
-            aria-selected="false"
-            aria-controls="patients-tab-panel"
-            class="
-              tab-btn rounded-lg px-4 py-2 text-sm font-medium font-sans transition-colors
-              text-sage-600 hover:text-mint-700
-              focus:outline-none focus:ring-2 focus:ring-mint-400
-            "
-          >
-            Patients
-          </button>
-          <button
-            type="button"
-            role="tab"
-            id="timeslots-tab"
-            data-tab="timeslots"
-            aria-selected="false"
-            aria-controls="timeslots-tab-panel"
-            class="
-              tab-btn rounded-lg px-4 py-2 text-sm font-medium font-sans transition-colors
-              text-sage-600 hover:text-mint-700
-              focus:outline-none focus:ring-2 focus:ring-mint-400
-            "
-          >
-            Plages horaires
-          </button>
-        </div>
-      </div>
-
-      <section id="appointments-tab-panel" role="tabpanel" aria-labelledby="appointments-tab">
-        <!--
-          Island unique : reçoit tous les rendez-vous (déjà chargés côté serveur)
-          et gère en interne la recherche, les filtres par statut, le partition
-          À venir / Passés et le regroupement par jour. La vue dépliée d'un RDV
-          réutilise <AppointmentCard /> tel quel.
-        -->
-        <AppointmentsManager client:load appointments={appointments} />
-      </section>
-
-      <section
-        id="patients-tab-panel"
-        role="tabpanel"
-        aria-labelledby="patients-tab"
-        class="hidden"
-      >
-        <PatientList client:load />
-      </section>
-
-      <section
-        id="timeslots-tab-panel"
-        role="tabpanel"
-        aria-labelledby="timeslots-tab"
-        class="hidden"
-      >
-        <TimeSlotManager client:load />
-      </section>
-
-    </div>
+  <main class="min-h-screen bg-sage-50 px-4 pb-12 pt-24 sm:px-6 lg:px-8">
+    <AdminWorkspace client:load appointments={appointments} />
   </main>
 </Layout>
-
-<script>
-  // ── Déconnexion ────────────────────────────────────────────────────────────
-  const signoutBtn = document.getElementById('signout-btn');
-  signoutBtn?.addEventListener('click', async () => {
-    signoutBtn.setAttribute('disabled', 'true');
-    try {
-      await fetch('/api/auth/sign-out/', {
-        method: 'POST',
-        credentials: 'same-origin',
-      });
-    } finally {
-      window.localStorage.removeItem('omf-admin-auth');
-      window.location.href = '/login/';
-    }
-  });
-
-  // ── Onglets Rendez-vous / Patients / Plages horaires ─────────────────────────────
-  // (Le filtrage par statut des rendez-vous est désormais géré par l'island
-  //  React <AppointmentsManager />, y compris la persistance en sessionStorage.)
-  const tabButtons = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
-  const appointmentsTabPanel = document.getElementById('appointments-tab-panel');
-  const patientsTabPanel = document.getElementById('patients-tab-panel');
-  const timeslotsTabPanel = document.getElementById('timeslots-tab-panel');
-
-  function setActiveTab(tab: 'appointments' | 'patients' | 'timeslots') {
-    tabButtons.forEach((button) => {
-      const isActive = button.dataset['tab'] === tab;
-      button.setAttribute('aria-selected', String(isActive));
-      if (isActive) {
-        button.classList.add('bg-mint-600', 'text-white');
-        button.classList.remove('text-sage-600', 'hover:text-mint-700');
-      } else {
-        button.classList.remove('bg-mint-600', 'text-white');
-        button.classList.add('text-sage-600', 'hover:text-mint-700');
-      }
-    });
-
-    appointmentsTabPanel?.classList.toggle('hidden', tab !== 'appointments');
-    patientsTabPanel?.classList.toggle('hidden', tab !== 'patients');
-    timeslotsTabPanel?.classList.toggle('hidden', tab !== 'timeslots');
-    sessionStorage.setItem('mes-rdvs-tab', tab);
-  }
-
-  const savedTab = sessionStorage.getItem('mes-rdvs-tab');
-  if (savedTab === 'appointments' || savedTab === 'patients' || savedTab === 'timeslots') {
-    setActiveTab(savedTab);
-  } else {
-    setActiveTab('appointments');
-  }
-
-  tabButtons.forEach((button) => {
-    button.addEventListener('click', () => {
-      const tabName = button.dataset['tab'];
-      if (tabName === 'appointments' || tabName === 'patients' || tabName === 'timeslots') {
-        setActiveTab(tabName);
-      }
-    });
-  });
-</script>
