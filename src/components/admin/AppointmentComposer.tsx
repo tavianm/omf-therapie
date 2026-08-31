@@ -47,6 +47,7 @@ const EMPTY_FORM: FormState = {
   override_price: '',
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function formForPatient(patient?: Patient | null): FormState {
   if (!patient) return EMPTY_FORM;
   return {
@@ -175,16 +176,15 @@ export function AppointmentComposer({
     setLoading(true);
     setError(null);
     try {
+      const { override_price, ...appointmentForm } = form;
       const response = await fetch('/api/admin/appointments/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify({
-          ...form,
+          ...appointmentForm,
           scheduled_at: new Date(form.scheduled_at).toISOString(),
-          ...(form.override_price
-            ? { override_price: Number(form.override_price) }
-            : {}),
+          ...(override_price ? { override_price: Number(override_price) } : {}),
         }),
       });
       const payload = (await response.json()) as {

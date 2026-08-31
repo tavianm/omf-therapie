@@ -18,6 +18,7 @@ function monthBounds(month: Date): { from: string; to: string } {
   return { from: dateKey(from), to: dateKey(to) };
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function monthDays(month: Date): Date[] {
   const lastDay = new Date(
     Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 0),
