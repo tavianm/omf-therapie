@@ -1,5 +1,16 @@
 import { supabaseAdmin } from './supabase';
-import type { ManualTimeSlot, CreateManualSlotData, UpdateManualSlotData } from '@/types/manual-slots';
+import type {
+  ManualTimeSlot,
+  CreateManualSlotData,
+  UpdateManualSlotData,
+} from '@/types/manual-slots';
+
+export class ManualSlotDuplicateError extends Error {
+  constructor() {
+    super('Cette présence existe déjà pour cette période.');
+    this.name = 'ManualSlotDuplicateError';
+  }
+}
 
 /**
  * Fetch manual time slots for a date range
@@ -7,7 +18,10 @@ import type { ManualTimeSlot, CreateManualSlotData, UpdateManualSlotData } from 
  * @param to - End date (inclusive)
  * @returns Array of manual time slots
  */
-export async function fetchManualSlots(from: Date, to: Date): Promise<ManualTimeSlot[]> {
+export async function fetchManualSlots(
+  from: Date,
+  to: Date,
+): Promise<ManualTimeSlot[]> {
   const { data, error } = await supabaseAdmin
     .from('manual_time_slots')
     .select('*')
@@ -28,7 +42,22 @@ export async function fetchManualSlots(from: Date, to: Date): Promise<ManualTime
  * @param data - Slot data to create
  * @returns Created manual time slot
  */
-export async function createManualSlot(data: CreateManualSlotData): Promise<ManualTimeSlot> {
+export async function createManualSlot(
+  data: CreateManualSlotData,
+): Promise<ManualTimeSlot> {
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from('manual_time_slots')
+    .select('id')
+    .eq('slot_date', data.slot_date)
+    .eq('period', data.period)
+    .is('deleted_at', null)
+    .limit(1);
+
+  if (existingError) {
+    throw new Error(`Failed to check manual slot: ${existingError.message}`);
+  }
+  if ((existing ?? []).length > 0) throw new ManualSlotDuplicateError();
+
   const { data: slot, error } = await supabaseAdmin
     .from('manual_time_slots')
     .insert({
@@ -51,7 +80,10 @@ export async function createManualSlot(data: CreateManualSlotData): Promise<Manu
  * @param data - Updated slot data
  * @returns Updated manual time slot
  */
-export async function updateManualSlot(id: string, data: UpdateManualSlotData): Promise<ManualTimeSlot> {
+export async function updateManualSlot(
+  id: string,
+  data: UpdateManualSlotData,
+): Promise<ManualTimeSlot> {
   const { data: slot, error } = await supabaseAdmin
     .from('manual_time_slots')
     .update({

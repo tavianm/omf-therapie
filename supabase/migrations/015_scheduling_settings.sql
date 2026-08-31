@@ -182,6 +182,8 @@ BEGIN
     FROM public.appointments
     WHERE deleted_at IS NULL
       AND status = ANY (ARRAY['pending', 'confirmed', 'payment_pending', 'payment_received', 'rescheduled'])
+      AND scheduled_at + duration * interval '1 minute'
+        + new_buffer_minutes * interval '1 minute' > now()
     UNION ALL
     SELECT id, rescheduled_to AS starts_at,
       rescheduled_to + duration * interval '1 minute'
@@ -190,6 +192,8 @@ BEGIN
     WHERE deleted_at IS NULL
       AND status = 'rescheduled'
       AND rescheduled_to IS NOT NULL
+      AND rescheduled_to + duration * interval '1 minute'
+        + new_buffer_minutes * interval '1 minute' > now()
   )
   SELECT EXISTS (
     SELECT 1
@@ -214,7 +218,9 @@ BEGIN
   UPDATE public.appointments
   SET blocked_until = scheduled_at
     + duration * interval '1 minute'
-    + new_buffer_minutes * interval '1 minute';
+    + new_buffer_minutes * interval '1 minute'
+  WHERE scheduled_at + duration * interval '1 minute'
+    + new_buffer_minutes * interval '1 minute' > now();
 
   RETURN QUERY
     SELECT settings.buffer_minutes, settings.updated_at

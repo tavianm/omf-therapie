@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 ---
 
 # Instruction: Disponibilités, présence au cabinet et finition iPad
@@ -107,4 +107,3 @@ journey
 | 1 | Une présence est lisible, ajoutable et retirable depuis le calendrier sans rechargement ni doublon visible. |
 | 2 | Le réglage 0/15/20 reflète exactement la valeur serveur acceptée et explique clairement son impact. |
 | 3 | Les parcours principaux fonctionnent au toucher et au clavier en portrait et paysage, sans cible trop petite ni contenu essentiel masqué. |
-

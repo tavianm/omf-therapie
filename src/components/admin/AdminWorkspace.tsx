@@ -7,6 +7,7 @@ import { AdminSidePanel } from './AdminSidePanel';
 import { AppointmentsManager } from './AppointmentsManager';
 import { AppointmentComposer } from './AppointmentComposer';
 import { PatientList } from './PatientList';
+import { AvailabilityManager } from './AvailabilityManager';
 import {
   getWorkspaceSummary,
   type AdminWorkspaceDestination,
@@ -208,20 +209,7 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
           {destination === 'patients' && (
             <PatientList onStartAppointment={openComposer} />
           )}
-          {destination === 'availability' && (
-            <section aria-labelledby="availability-coming-title">
-              <h2
-                id="availability-coming-title"
-                className="font-serif text-2xl font-semibold text-sage-900"
-              >
-                Disponibilités
-              </h2>
-              <p className="mt-2 text-sm text-sage-600">
-                Les présences et la marge entre séances sont gérées dans cette
-                même surface de travail.
-              </p>
-            </section>
-          )}
+          {destination === 'availability' && <AvailabilityManager />}
         </main>
 
         {selectedAppointment && (
