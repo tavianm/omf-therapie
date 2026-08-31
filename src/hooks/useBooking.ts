@@ -5,8 +5,8 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import { calculatePrice } from '../lib/pricing';
-import type { PricingResult } from '../lib/pricing';
+import { calculatePrice } from '../utils/pricing';
+import type { PricingResult } from '../utils/pricing';
 import { APPOINTMENT_ESTIMATED_VALUE, trackEvent } from '../lib/analytics';
 
 // ---------------------------------------------------------------------------
@@ -14,11 +14,7 @@ import { APPOINTMENT_ESTIMATED_VALUE, trackEvent } from '../lib/analytics';
 // ---------------------------------------------------------------------------
 
 export type BookingStep =
-  | 'type-mode'
-  | 'datetime'
-  | 'patient-info'
-  | 'review'
-  | 'submitted';
+  'type-mode' | 'datetime' | 'patient-info' | 'review' | 'submitted';
 
 export interface BookingState {
   step: BookingStep;
@@ -98,46 +94,49 @@ export function useBooking() {
 
   // ── Mise à jour champ ─────────────────────────────────────────────────────
 
-  const updateField = useCallback(<K extends keyof BookingState>(
-    field: K,
-    value: BookingState[K],
-  ) => {
-    setState(prev => ({ ...prev, [field]: value }));
-  }, []);
+  const updateField = useCallback(
+    <K extends keyof BookingState>(field: K, value: BookingState[K]) => {
+      setState(prev => ({ ...prev, [field]: value }));
+    },
+    [],
+  );
 
   // ── Validation par étape ──────────────────────────────────────────────────
 
-  const isStepValid = useCallback((step: BookingStep): boolean => {
-    switch (step) {
-      case 'type-mode':
-        return (
-          state.appointment_type !== null &&
-          state.appointment_mode !== null &&
-          state.duration !== null
-        );
+  const isStepValid = useCallback(
+    (step: BookingStep): boolean => {
+      switch (step) {
+        case 'type-mode':
+          return (
+            state.appointment_type !== null &&
+            state.appointment_mode !== null &&
+            state.duration !== null
+          );
 
-      case 'datetime':
-        return state.scheduled_at !== null;
+        case 'datetime':
+          return state.scheduled_at !== null;
 
-      case 'patient-info': {
-        const phoneClean = state.patient_phone.replace(/\s/g, '');
-        return (
-          state.patient_name.trim().length >= 2 &&
-          state.patient_name.trim().length <= 100 &&
-          EMAIL_RE.test(state.patient_email) &&
-          PHONE_RE.test(phoneClean) &&
-          POSTAL_RE.test(state.patient_postal_code) &&
-          state.patient_city.trim().length >= 2 &&
-          state.patient_reason.trim().length >= 10 &&
-          state.patient_reason.trim().length <= 1500
-        );
+        case 'patient-info': {
+          const phoneClean = state.patient_phone.replace(/\s/g, '');
+          return (
+            state.patient_name.trim().length >= 2 &&
+            state.patient_name.trim().length <= 100 &&
+            EMAIL_RE.test(state.patient_email) &&
+            PHONE_RE.test(phoneClean) &&
+            POSTAL_RE.test(state.patient_postal_code) &&
+            state.patient_city.trim().length >= 2 &&
+            state.patient_reason.trim().length >= 10 &&
+            state.patient_reason.trim().length <= 1500
+          );
+        }
+
+        case 'review':
+        case 'submitted':
+          return true;
       }
-
-      case 'review':
-      case 'submitted':
-        return true;
-    }
-  }, [state]);
+    },
+    [state],
+  );
 
   // ── Avancer ───────────────────────────────────────────────────────────────
 
@@ -184,8 +183,10 @@ export function useBooking() {
       });
 
       if (!response.ok) {
-        const data = await response.json() as { error?: string };
-        throw new Error(data.error ?? 'Une erreur est survenue lors de l\'envoi.');
+        const data = (await response.json()) as { error?: string };
+        throw new Error(
+          data.error ?? "Une erreur est survenue lors de l'envoi.",
+        );
       }
 
       // Conversion — fired exactly once, on successful submit. Marked as a
@@ -194,7 +195,9 @@ export function useBooking() {
       // `method: 'booking_form'`. step transitions to 'submitted' below.
       trackEvent('generate_lead', {
         currency: 'EUR',
-        value: APPOINTMENT_ESTIMATED_VALUE[state.appointment_type ?? 'individual'] ?? 65,
+        value:
+          APPOINTMENT_ESTIMATED_VALUE[state.appointment_type ?? 'individual'] ??
+          65,
         method: 'booking_form',
         appointment_type: state.appointment_type ?? undefined,
         appointment_mode: state.appointment_mode ?? undefined,
@@ -202,10 +205,15 @@ export function useBooking() {
 
       setState(prev => ({ ...prev, step: 'submitted', isSubmitting: false }));
     } catch (err: unknown) {
-      const message = err instanceof Error
-        ? err.message
-        : 'Une erreur inattendue est survenue.';
-      setState(prev => ({ ...prev, isSubmitting: false, submitError: message }));
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Une erreur inattendue est survenue.';
+      setState(prev => ({
+        ...prev,
+        isSubmitting: false,
+        submitError: message,
+      }));
     }
   }, [state]);
 

@@ -18,7 +18,7 @@ export const prerender = false;
 import Layout from '../../layouts/Layout.astro';
 import Navbar from '../../components/islands/Navbar';
 import type { AppointmentType, AppointmentMode } from '../../types/appointment';
-import { getTypeLabel, getModeLabel } from '../../lib/pricing';
+import { getTypeLabel, getModeLabel } from '../../utils/pricing';
 import {
   isAuthorizedLocalMockRequest,
   MOCK_WEBHOOK_TOKEN_HEADER,

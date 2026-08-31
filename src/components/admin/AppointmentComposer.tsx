@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { calculatePrice } from '../../lib/pricing';
+import { calculatePrice } from '../../utils/pricing';
 import type {
   Appointment,
   AppointmentMode,

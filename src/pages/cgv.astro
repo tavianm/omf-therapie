@@ -2,7 +2,11 @@
 import Layout from '../layouts/Layout.astro';
 import Navbar from '../components/islands/Navbar';
 import Footer from '../components/layout/Footer.astro';
-import { PRICE_GRID, FIRST_SESSION_DISCOUNT, SOLIDARITY_DISCOUNT } from '../lib/pricing';
+import {
+  PRICE_GRID,
+  FIRST_SESSION_DISCOUNT,
+  SOLIDARITY_DISCOUNT,
+} from '../utils/pricing';
 import { COMPANY_NAME, CONTACT_INFO } from '../config/global.config';
 ---
 
@@ -12,7 +16,10 @@ import { COMPANY_NAME, CONTACT_INFO } from '../config/global.config';
   canonical="https://omf-therapie.fr/cgv"
   noindex={false}
 >
-  <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded">
+  <a
+    href="#main-content"
+    class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded"
+  >
     Aller au contenu principal
   </a>
 
@@ -23,9 +30,18 @@ import { COMPANY_NAME, CONTACT_INFO } from '../config/global.config';
       <div class="max-w-3xl mx-auto">
         <nav class="mb-4 text-sm text-sage-500" aria-label="Fil d'Ariane">
           <ol class="flex items-center gap-2 flex-wrap" role="list">
-            <li role="listitem"><a href="/" class="hover:text-mint-600 transition-colors">Accueil</a></li>
+            <li role="listitem">
+              <a href="/" class="hover:text-mint-600 transition-colors"
+                >Accueil</a>
+            </li>
             <li role="listitem" aria-hidden="true">›</li>
-            <li role="listitem" aria-current="page" class="text-sage-700 font-medium">Conditions Générales de Vente</li>
+            <li
+              role="listitem"
+              aria-current="page"
+              class="text-sage-700 font-medium"
+            >
+              Conditions Générales de Vente
+            </li>
           </ol>
         </nav>
         <h1 class="text-3xl md:text-4xl font-serif font-semibold text-sage-800">
@@ -52,8 +68,8 @@ import { COMPANY_NAME, CONTACT_INFO } from '../config/global.config';
         Les présentes CGV définissent les conditions dans lesquelles le
         prestataire fournit des prestations de psychothérapie et
         d'accompagnement thérapeutique au client ayant passé commande via le
-        site <strong>omf-therapie.fr</strong> ou par téléphone. Toute prise de
-        rendez-vous implique l'acceptation pleine et entière des présentes CGV.
+        site <strong>omf-therapie.fr</strong> ou par téléphone. Toute prise de rendez-vous
+        implique l'acceptation pleine et entière des présentes CGV.
       </p>
 
       <!-- 2. Prestataire -->
@@ -66,7 +82,10 @@ import { COMPANY_NAME, CONTACT_INFO } from '../config/global.config';
         <p>{CONTACT_INFO.address}</p>
         <p>
           Téléphone :
-          <a href={`tel:${CONTACT_INFO.phoneE164}`} class="text-mint-600 underline hover:text-mint-700">
+          <a
+            href={`tel:${CONTACT_INFO.phoneE164}`}
+            class="text-mint-600 underline hover:text-mint-700"
+          >
             {CONTACT_INFO.phone}
           </a>
         </p>
@@ -95,26 +114,44 @@ import { COMPANY_NAME, CONTACT_INFO } from '../config/global.config';
         <table class="w-full text-sm border-collapse">
           <thead>
             <tr class="bg-sage-100 text-sage-800">
-              <th class="text-left p-3 border border-sage-200 font-semibold">Prestation</th>
-              <th class="text-left p-3 border border-sage-200 font-semibold">60 minutes</th>
-              <th class="text-left p-3 border border-sage-200 font-semibold">90 minutes</th>
+              <th class="text-left p-3 border border-sage-200 font-semibold"
+                >Prestation</th
+              >
+              <th class="text-left p-3 border border-sage-200 font-semibold"
+                >60 minutes</th
+              >
+              <th class="text-left p-3 border border-sage-200 font-semibold"
+                >90 minutes</th
+              >
             </tr>
           </thead>
           <tbody>
             <tr>
               <td class="p-3 border border-sage-200">Thérapie individuelle</td>
-              <td class="p-3 border border-sage-200">{PRICE_GRID.individual[60]}&nbsp;€</td>
-              <td class="p-3 border border-sage-200">{PRICE_GRID.individual[90]}&nbsp;€</td>
+              <td class="p-3 border border-sage-200"
+                >{PRICE_GRID.individual[60]}&nbsp;€</td
+              >
+              <td class="p-3 border border-sage-200"
+                >{PRICE_GRID.individual[90]}&nbsp;€</td
+              >
             </tr>
             <tr class="bg-sage-50">
               <td class="p-3 border border-sage-200">Thérapie de couple</td>
-              <td class="p-3 border border-sage-200">{PRICE_GRID.couple[60]}&nbsp;€</td>
-              <td class="p-3 border border-sage-200">{PRICE_GRID.couple[90]}&nbsp;€</td>
+              <td class="p-3 border border-sage-200"
+                >{PRICE_GRID.couple[60]}&nbsp;€</td
+              >
+              <td class="p-3 border border-sage-200"
+                >{PRICE_GRID.couple[90]}&nbsp;€</td
+              >
             </tr>
             <tr>
               <td class="p-3 border border-sage-200">Thérapie familiale</td>
-              <td class="p-3 border border-sage-200">{PRICE_GRID.family[60]}&nbsp;€</td>
-              <td class="p-3 border border-sage-200">{PRICE_GRID.family[90]}&nbsp;€</td>
+              <td class="p-3 border border-sage-200"
+                >{PRICE_GRID.family[60]}&nbsp;€</td
+              >
+              <td class="p-3 border border-sage-200"
+                >{PRICE_GRID.family[90]}&nbsp;€</td
+              >
             </tr>
           </tbody>
         </table>
@@ -125,13 +162,15 @@ import { COMPANY_NAME, CONTACT_INFO } from '../config/global.config';
       </h3>
       <ul class="list-disc pl-6 space-y-2 mb-6">
         <li>
-          <strong>Première séance</strong> : réduction de <strong>{FIRST_SESSION_DISCOUNT}&nbsp;€</strong>
+          <strong>Première séance</strong> : réduction de <strong
+            >{FIRST_SESSION_DISCOUNT}&nbsp;€</strong
+          >
           sur le tarif standard.
         </li>
         <li>
           <strong>Tarif solidaire</strong> (sur justificatif) : réduction de
-          <strong>{SOLIDARITY_DISCOUNT}&nbsp;€</strong> pour les bénéficiaires du RSA, de
-          l'Allocation de Solidarité Spécifique (ASS) ou les étudiants.
+          <strong>{SOLIDARITY_DISCOUNT}&nbsp;€</strong> pour les bénéficiaires du
+          RSA, de l'Allocation de Solidarité Spécifique (ASS) ou les étudiants.
         </li>
       </ul>
 
@@ -139,9 +178,11 @@ import { COMPANY_NAME, CONTACT_INFO } from '../config/global.config';
         Modalités de prestation
       </h3>
       <p class="mb-8">
-        Les séances peuvent se dérouler en cabinet à Montpellier ({CONTACT_INFO.address}) ou en téléconsultation par
-        téléconsultation sécurisée. Les prix s'entendent toutes taxes comprises
-        (TVA non applicable — art. 293 B du Code général des impôts).
+        Les séances peuvent se dérouler en cabinet à Montpellier ({
+          CONTACT_INFO.address
+        }) ou en téléconsultation par téléconsultation sécurisée. Les prix
+        s'entendent toutes taxes comprises (TVA non applicable — art. 293 B du
+        Code général des impôts).
       </p>
 
       <!-- 4. Prise de rendez-vous -->
@@ -149,19 +190,23 @@ import { COMPANY_NAME, CONTACT_INFO } from '../config/global.config';
         4. Modalités de prise de rendez-vous
       </h2>
       <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
-      <p class="mb-4">
-        La prise de rendez-vous s'effectue :
-      </p>
+      <p class="mb-4">La prise de rendez-vous s'effectue :</p>
       <ul class="list-disc pl-6 space-y-2 mb-6">
         <li>
           Via le formulaire de réservation en ligne sur
-          <a href="https://omf-therapie.fr" class="text-mint-600 underline hover:text-mint-700">
+          <a
+            href="https://omf-therapie.fr"
+            class="text-mint-600 underline hover:text-mint-700"
+          >
             omf-therapie.fr
           </a>
         </li>
         <li>
           Par téléphone au
-          <a href={`tel:${CONTACT_INFO.phoneE164}`} class="text-mint-600 underline hover:text-mint-700">
+          <a
+            href={`tel:${CONTACT_INFO.phoneE164}`}
+            class="text-mint-600 underline hover:text-mint-700"
+          >
             {CONTACT_INFO.phone}
           </a>
         </li>
@@ -209,11 +254,12 @@ import { COMPANY_NAME, CONTACT_INFO } from '../config/global.config';
         Remboursement par la Sécurité Sociale
       </h3>
       <p class="mb-8">
-        Les séances de psychothérapie ne sont <strong>pas remboursées par
-        l'Assurance Maladie</strong>. Certaines mutuelles et complémentaires
-        santé proposent une prise en charge partielle. Nous vous conseillons de
-        vous renseigner directement auprès de votre organisme complémentaire.
-        Une facture peut être fournie sur demande.
+        Les séances de psychothérapie ne sont <strong
+          >pas remboursées par l'Assurance Maladie</strong
+        >. Certaines mutuelles et complémentaires santé proposent une prise en
+        charge partielle. Nous vous conseillons de vous renseigner directement
+        auprès de votre organisme complémentaire. Une facture peut être fournie
+        sur demande.
       </p>
 
       <!-- 6. Annulation et report -->
@@ -223,19 +269,18 @@ import { COMPANY_NAME, CONTACT_INFO } from '../config/global.config';
       <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
       <ul class="list-disc pl-6 space-y-2 mb-6">
         <li>
-          <strong>Annulation jusqu'à 24 heures avant la séance</strong> :
-          gratuite. La séance prépayée est intégralement remboursée ou reportée
-          sans frais.
+          <strong>Annulation jusqu'à 24 heures avant la séance</strong> : gratuite.
+          La séance prépayée est intégralement remboursée ou reportée sans frais.
         </li>
         <li>
-          <strong>Annulation moins de 24 heures avant ou absence non signalée</strong> :
-          la séance est due dans son intégralité. Pour les séances en
-          téléconsultation prépayées, aucun remboursement n'est effectué.
+          <strong
+            >Annulation moins de 24 heures avant ou absence non signalée</strong
+          > : la séance est due dans son intégralité. Pour les séances en téléconsultation
+          prépayées, aucun remboursement n'est effectué.
         </li>
         <li>
-          <strong>Cas de force majeure ou urgence avérée</strong> (maladie
-          soudaine, accident, hospitalisation…) : aucune facturation ne sera
-          appliquée sur justificatif.
+          <strong>Cas de force majeure ou urgence avérée</strong> (maladie soudaine,
+          accident, hospitalisation…) : aucune facturation ne sera appliquée sur justificatif.
         </li>
       </ul>
       <p class="mb-8">
@@ -249,8 +294,8 @@ import { COMPANY_NAME, CONTACT_INFO } from '../config/global.config';
       </h2>
       <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
       <p class="mb-4">
-        Conformément à l'article L221-28 du Code de la consommation, le droit
-        de rétractation de 14 jours ne s'applique pas aux contrats de prestations
+        Conformément à l'article L221-28 du Code de la consommation, le droit de
+        rétractation de 14 jours ne s'applique pas aux contrats de prestations
         de services pleinement exécutés avant la fin du délai de rétractation,
         ni aux soins relatifs à la santé mentale fournis par un professionnel de
         santé.
@@ -274,7 +319,10 @@ import { COMPANY_NAME, CONTACT_INFO } from '../config/global.config';
       <p class="mb-8">
         Les données personnelles collectées dans le cadre de la prise de
         rendez-vous sont traitées conformément à notre
-        <a href="/confidentialite" class="text-mint-600 underline hover:text-mint-700">
+        <a
+          href="/confidentialite"
+          class="text-mint-600 underline hover:text-mint-700"
+        >
           politique de confidentialité
         </a>.
       </p>
@@ -285,15 +333,15 @@ import { COMPANY_NAME, CONTACT_INFO } from '../config/global.config';
       </h2>
       <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div>
       <p class="mb-4">
-        L'accompagnement thérapeutique proposé ne se substitue en aucun cas à
-        un traitement médical ou psychiatrique. En cas de symptômes médicaux ou
+        L'accompagnement thérapeutique proposé ne se substitue en aucun cas à un
+        traitement médical ou psychiatrique. En cas de symptômes médicaux ou
         psychiatriques, le client est invité à consulter un médecin ou un
         psychiatre.
       </p>
       <p class="mb-8">
-        Le prestataire s'engage à une <strong>obligation de moyens</strong> et
-        non de résultat. Les progrès thérapeutiques dépendent de nombreux
-        facteurs propres à chaque individu et ne peuvent être garantis.
+        Le prestataire s'engage à une <strong>obligation de moyens</strong> et non
+        de résultat. Les progrès thérapeutiques dépendent de nombreux facteurs propres
+        à chaque individu et ne peuvent être garantis.
       </p>
 
       <!-- 10. Droit applicable -->

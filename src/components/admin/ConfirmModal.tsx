@@ -2,7 +2,7 @@
 // Sous-composant ConfirmModal (isolé de AppointmentCard)
 // ---------------------------------------------------------------------------
 
-import { calculatePrice, SOLIDARITY_DISCOUNT } from '@/lib/pricing';
+import { calculatePrice, SOLIDARITY_DISCOUNT } from '@/utils/pricing';
 import type { Appointment } from '@/types/appointment';
 import { useMemo, useState } from 'react';
 import { Modal } from './Modal';
@@ -41,7 +41,12 @@ export function ConfirmModal({
         overrideFirstSession,
         isSolidarity,
       ),
-    [appointment.appointment_type, appointment.duration, overrideFirstSession, isSolidarity],
+    [
+      appointment.appointment_type,
+      appointment.duration,
+      overrideFirstSession,
+      isSolidarity,
+    ],
   );
 
   return (
@@ -56,7 +61,7 @@ export function ConfirmModal({
             <input
               type="checkbox"
               checked={overrideFirstSession && !isSolidarity}
-              onChange={(e) => {
+              onChange={e => {
                 if (e.target.checked) {
                   setOverrideFirstSession(true);
                   setIsSolidarity(false);
@@ -67,7 +72,7 @@ export function ConfirmModal({
               className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
             />
             <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
-              Remise nouveau client{" "}
+              Remise nouveau client{' '}
               <span className="text-sage-400">(−15€ première séance)</span>
             </span>
           </label>
@@ -75,7 +80,7 @@ export function ConfirmModal({
             <input
               type="checkbox"
               checked={isSolidarity}
-              onChange={(e) => {
+              onChange={e => {
                 if (e.target.checked) {
                   setIsSolidarity(true);
                   setOverrideFirstSession(false);
@@ -86,7 +91,7 @@ export function ConfirmModal({
               className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
             />
             <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
-              Tarif solidaire{" "}
+              Tarif solidaire{' '}
               <span className="text-sage-400">
                 (−{SOLIDARITY_DISCOUNT}€ · RSA / ASS / Étudiant)
               </span>
@@ -98,7 +103,7 @@ export function ConfirmModal({
             Base {livePrice.basePrice}€
             {livePrice.discount > 0 && (
               <span className="text-mint-700">
-                {" "}
+                {' '}
                 · remise −{livePrice.discount}€
               </span>
             )}
@@ -109,13 +114,13 @@ export function ConfirmModal({
         </div>
       </div>
 
-      {appointment.appointment_mode === "video" && (
+      {appointment.appointment_mode === 'video' && (
         <div className="mb-5">
           <label
             htmlFor="video-link-input"
             className="block text-sm font-medium text-sage-700 font-sans mb-1.5"
           >
-            Lien visio Google Meet{" "}
+            Lien visio Google Meet{' '}
             <span className="text-sage-400 font-normal">
               (optionnel — auto-généré si vide)
             </span>
@@ -124,7 +129,7 @@ export function ConfirmModal({
             id="video-link-input"
             type="url"
             value={videoLink}
-            onChange={(e) => setVideoLink(e.target.value)}
+            onChange={e => setVideoLink(e.target.value)}
             placeholder="Laissez vide pour auto-génération Google Meet"
             className="w-full px-4 py-2.5 rounded-xl border border-sage-200 bg-sage-50 text-sage-900 placeholder-sage-400 font-sans text-sm focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent transition-colors"
           />
@@ -147,7 +152,7 @@ export function ConfirmModal({
           disabled={actionLoading}
           className="px-4 py-2 text-sm font-medium font-sans rounded-xl bg-mint-600 text-white hover:bg-mint-700 transition-colors disabled:opacity-60 min-h-[40px]"
         >
-          {actionLoading ? "En cours…" : "Confirmer"}
+          {actionLoading ? 'En cours…' : 'Confirmer'}
         </button>
       </div>
     </Modal>

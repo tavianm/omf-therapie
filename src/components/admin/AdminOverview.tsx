@@ -1,5 +1,5 @@
 import type { Appointment } from '../../types/appointment';
-import { getModeLabel, getTypeLabel } from '../../lib/pricing';
+import { getModeLabel, getTypeLabel } from '../../utils/pricing';
 import { STATUS_LABELS } from './AppointmentCard';
 import type { WorkspaceSummary } from './admin-workspace-utils';
 

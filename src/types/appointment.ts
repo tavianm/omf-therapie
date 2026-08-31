@@ -14,7 +14,7 @@ export type {
   AppointmentType,
   AppointmentDuration,
   AppointmentMode,
-} from '../lib/pricing';
+} from '../utils/pricing';
 
 // ---------------------------------------------------------------------------
 // Statut du rendez-vous

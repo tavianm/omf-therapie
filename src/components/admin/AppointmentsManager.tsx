@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import type { Appointment, AppointmentStatus } from '../../types/appointment';
-import { getModeLabel } from '../../lib/pricing';
+import { getModeLabel } from '../../utils/pricing';
 import { STATUS_LABELS } from './AppointmentCard';
 import {
   isUpcomingAppointment,
