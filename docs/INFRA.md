@@ -314,8 +314,13 @@ Les cron functions sont enveloppées par `Sentry.withMonitor()`. Dans Sentry :
    `0 18 * * *`, checkInMargin 5 min) et `calendar-keepwarm` (crontab
    `*/10 * * * *`, checkInMargin 2 min, maxRuntime 5 min) apparaissent après
    le premier déclenchement. L'ancien monitor `calendar-token-heartbeat`
-   (remplacé par `calendar-keepwarm` en #132) est orphelin — l'archiver
-   manuellement une fois le nouveau cron vérifié.
+   (remplacé par `calendar-keepwarm` en #132) est orphelin — l'archiver (ou
+   le muter) **au moment du merge**, sans attendre la vérification du
+   nouveau cron : il émet une alerte « missed check-in » dès le premier
+   dimanche 00h00 UTC suivant le déploiement. Note budget d'exécution : les
+   fonctions programmées Netlify sont synchrones (timeout 10 s par défaut,
+   ~26 s max — non configuré dans ce repo) ; `maxRuntime: 5` est une fenêtre
+   de classification Sentry, pas un budget exécutoire.
 2. Configurer une alerte email/Slack sur **No check-ins** (mauvais fire) et
    **Execution duration** (timeout).
 

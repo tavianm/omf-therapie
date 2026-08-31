@@ -25,6 +25,23 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // config is capturable AND the work function actually runs), and every
 // external dep (Supabase, Resend, googleapis, ws, @react-email/render) is
 // mocked at the leaf — no network, no DB.
+//
+// Review-fix contracts (#132 review round 2) — encoded test-first; the tests
+// below marked RED-until-impl fail at ASSERTION level until the reworked
+// netlify/functions/calendar-keepwarm.ts lands:
+//   B1 fall-through — warm-up skipped ONLY on no-row / null refresh_token /
+//     invalid_grant. Non-invalid_grant refresh failures (log + proceed) and
+//     persist verification failures (warn + proceed) still reach the warm-up.
+//   W2 — persist verification via .select('id').single(): a null data payload
+//     (zero rows matched) counts as persist failure → warn + proceed.
+//   B4 — the invalid_grant admin alert is throttled via a cooldown stored in
+//     the 'calendar-keepwarm-state' @netlify/blobs store (key
+//     'invalid-grant-alert', 24 h TTL), fail-open when blobs is unavailable.
+//   W1 — every missing-required-env guard also captures a Sentry message at
+//     level 'error' before returning.
+//   B2 — GOOGLE_CALENDAR_ID unset skips ONLY the warm-up, never the token step.
+//   S4 — Sentry.flush(2000) after healthy runs; a keepwarm throw is captured
+//     AND rethrown (ported from the retired calendar-token-heartbeat tests).
 // ---------------------------------------------------------------------------
 
 // vi.hoisted keeps the spy fns referenceable inside vi.mock factory callbacks
@@ -184,18 +201,94 @@ vi.mock('@react-email/render', () => ({
 
 // @netlify/blobs leaf mock — availability-cache write assertions go through
 // the REAL src/lib/calendar-cache.ts (real key construction, real
-// TTL → expiresAt math); only the store leaf is faked. getStore returns a
-// stable in-memory store object so calendar-cache's module-level store
-// promise stays valid for the whole file; call history is cleared per test.
+// TTL → expiresAt math); only the store leaf is faked.
+//
+// TWO named stores are served from the SAME in-memory implementation
+// (contract B4): 'calendar-availability' (calendar-cache's warm-up store) and
+// 'calendar-keepwarm-state' (the invalid_grant alert-cooldown store). Stores
+// have REAL get/set semantics — writes go through to a per-store Map, get
+// reads it back — because the cooldown contract needs a SECOND handler run to
+// observe the state persisted by the first. Unknown store names resolve to an
+// isolated misc store, so an impl writing the cooldown to the wrong store
+// stays behaviorally functional but fails the state-store key assertions
+// below. `blobsStore.store` remains the availability store so every existing
+// warm-up assertion is preserved verbatim.
 const blobsStore = vi.hoisted(() => {
-  const store = {
-    setJSON: vi.fn(async () => undefined),
-    set: vi.fn(async () => undefined),
-    get: vi.fn(async () => null),
-    delete: vi.fn(async () => undefined),
-    list: vi.fn(async () => ({ blobs: [] })),
+  interface FakeStore {
+    setJSON: ReturnType<typeof vi.fn>;
+    set: ReturnType<typeof vi.fn>;
+    get: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
+    list: ReturnType<typeof vi.fn>;
+  }
+
+  function createStore(): { store: FakeStore; backing: Map<string, unknown> } {
+    const backing = new Map<string, unknown>();
+    const store: FakeStore = {
+      // Write-through (not call-recording-only): the B4 cooldown reads back
+      // what a previous handler run wrote.
+      setJSON: vi.fn(async (key: string, value: unknown) => {
+        backing.set(key, value);
+      }),
+      set: vi.fn(async (key: string, value: unknown) => {
+        backing.set(key, value);
+      }),
+      get: vi.fn(async (key: string) => backing.get(key) ?? null),
+      delete: vi.fn(async (key: string) => {
+        backing.delete(key);
+      }),
+      list: vi.fn(async () => ({
+        blobs: Array.from(backing.keys()).map(key => ({ key })),
+      })),
+    };
+    return { store, backing };
+  }
+
+  const availability = createStore();
+  const state = createStore();
+  const misc = createStore();
+
+  const stores: Record<string, FakeStore> = {
+    'calendar-availability': availability.store,
+    'calendar-keepwarm-state': state.store,
   };
-  return { store, getStore: vi.fn(() => store) };
+  const defaultGetStore = (name: string) => stores[name] ?? misc.store;
+  const getStore = vi.fn(defaultGetStore);
+
+  /** Clears call history + in-memory data and re-arms write-through impls. */
+  function reset(): void {
+    for (const { store, backing } of [availability, state, misc]) {
+      backing.clear();
+      store.setJSON.mockClear();
+      store.setJSON.mockImplementation(async (key: string, value: unknown) => {
+        backing.set(key, value);
+      });
+      store.set.mockClear();
+      store.set.mockImplementation(async (key: string, value: unknown) => {
+        backing.set(key, value);
+      });
+      store.get.mockClear();
+      store.get.mockImplementation(
+        async (key: string) => backing.get(key) ?? null,
+      );
+      store.delete.mockClear();
+      store.delete.mockImplementation(async (key: string) => {
+        backing.delete(key);
+      });
+      store.list.mockClear();
+      store.list.mockImplementation(async () => ({ blobs: [] }));
+    }
+    getStore.mockClear();
+    getStore.mockImplementation(defaultGetStore);
+  }
+
+  return {
+    store: availability.store,
+    stateStore: state.store,
+    getStore,
+    defaultGetStore,
+    reset,
+  };
 });
 
 vi.mock('@netlify/blobs', () => ({
@@ -240,6 +333,33 @@ function invalidGrantError(): Error {
   });
 }
 
+/** Keys written to the 'calendar-keepwarm-state' store during this test. */
+function stateStoreWriteKeys(): string[] {
+  return [
+    ...blobsStore.stateStore.setJSON.mock.calls.map(c => c[0] as string),
+    ...blobsStore.stateStore.set.mock.calls.map(c => c[0] as string),
+  ];
+}
+
+/**
+ * W1 — missing-required-env guards must surface the misconfiguration to
+ * Sentry at level 'error', not only to the logs. Accepts Sentry's canonical
+ * string level ('error') or an options object carrying level: 'error'.
+ */
+function expectErrorLevelCaptureMessage(): void {
+  expect(sentry.captureMessage).toHaveBeenCalledTimes(1);
+  const [, level] = sentry.captureMessage.mock.calls[0] as [string, unknown];
+  const isError =
+    level === 'error' ||
+    (typeof level === 'object' &&
+      level !== null &&
+      (level as { level?: unknown }).level === 'error');
+  expect(
+    isError,
+    `captureMessage must carry level 'error' (got ${JSON.stringify(level)})`,
+  ).toBe(true);
+}
+
 /** Resets every shared mock + re-stubs the default resolutions. */
 function resetMocks(): void {
   sentry.init.mockClear();
@@ -274,21 +394,14 @@ function resetMocks(): void {
     error: null,
   });
 
-  // V2 warm-up mocks: google-calendar spy + @netlify/blobs store leaf.
-  // mockReset (not mockClear) so a per-test mockImplementation/isolation
-  // rejection cannot leak into the next test, then restore the default
-  // resolution (one fixture slot per lookup).
+  // V2 warm-up + B4 cooldown mocks: google-calendar spy + @netlify/blobs
+  // stores. reset() re-arms the write-through get/set implementations (a
+  // fail-open test may have replaced them with mockRejectedValue) and clears
+  // BOTH stores' in-memory data so cooldown state never leaks between tests.
   googleCalendar.getAvailableSlots.mockReset();
   googleCalendar.getAvailableSlots.mockResolvedValue([MOCK_SLOT]);
 
-  blobsStore.getStore.mockClear();
-  blobsStore.store.setJSON.mockClear();
-  blobsStore.store.setJSON.mockResolvedValue(undefined);
-  blobsStore.store.set.mockClear();
-  blobsStore.store.get.mockClear();
-  blobsStore.store.get.mockResolvedValue(null);
-  blobsStore.store.delete.mockClear();
-  blobsStore.store.list.mockClear();
+  blobsStore.reset();
 }
 
 beforeEach(() => {
@@ -377,6 +490,35 @@ describe('calendar-keepwarm handler wiring', () => {
 });
 
 // ===========================================================================
+// Env guard alerting (W1) — a missing required env var is a configuration
+// error that silences the alert channel itself: it must surface in Sentry at
+// level 'error', not only in the function logs.
+// RED-until-impl: the pre-rework guards only logger.warn + return.
+// ===========================================================================
+
+describe('env guard alerting (W1)', () => {
+  it("captures a Sentry 'error'-level message and skips the run when ADMIN_EMAIL is missing", async () => {
+    vi.stubEnv('ADMIN_EMAIL', '');
+
+    // The guard skips the run — it must not crash the scheduled handler.
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expectErrorLevelCaptureMessage();
+    // The run aborted before any warm-up work.
+    expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
+  });
+
+  it("captures a Sentry 'error'-level message and skips the run when a GOOGLE_OAUTH credential is missing", async () => {
+    vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', '');
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expectErrorLevelCaptureMessage();
+    expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
 // invalid_grant handling — revoked refresh token
 // ===========================================================================
 
@@ -417,6 +559,137 @@ describe('calendar-keepwarm invalid_grant handling', () => {
     // mocked, a RUNNING warm-up could never reach googleapis, so that
     // assertion would pass even when the warm-up runs — a tautology.
     expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
+    // B4: this run must also ARM the alert cooldown — the 10-minute cadence
+    // must not re-alert every run while the token stays revoked. The state
+    // store's spies are cleared per test, so this observes THIS run only;
+    // a key landing on the state store also proves the dedicated
+    // 'calendar-keepwarm-state' store name is used (unknown names resolve to
+    // an isolated misc store in the blobs mock).
+    expect(
+      stateStoreWriteKeys(),
+      'invalid_grant run must arm the cooldown in the calendar-keepwarm-state store under key invalid-grant-alert',
+    ).toContain('invalid-grant-alert');
+  });
+});
+
+// ===========================================================================
+// Warm-up fall-through contract (B1 / B2 / W2) — the warm-up is skipped ONLY
+// when auth is known-broken (no token row, null refresh_token, invalid_grant).
+// Every other token-step outcome — non-invalid_grant refresh failure (B1 row
+// 2 of the spec edge cases), persist verification failure (W2), refresh
+// success — still reaches the warm-up.
+// ===========================================================================
+
+describe('warm-up fall-through contract (B1/B2/W2)', () => {
+  it('skips the warm-up when there is no token row in the DB', async () => {
+    // Default supabaseQuery resolution is the canonical empty result
+    // (data: null) — the "no row" case. Deliberately no seedTokenRow().
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // Non-tautological precondition: the DB read really ran, so the skip is
+    // attributable to the no-row guard and not an earlier env abort.
+    expect(supabaseQuery).toHaveBeenCalled();
+    expect(googleMocks.refreshAccessToken).not.toHaveBeenCalled();
+    expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
+  });
+
+  it('sends the alert and skips the warm-up when the token row has a null refresh_token', async () => {
+    supabaseQuery.mockResolvedValueOnce({
+      ...EMPTY_RESULT,
+      data: {
+        refresh_token: null,
+        access_token: 'ya29.old',
+        expiry_date: Date.now() + 60 * 60_000,
+      },
+    });
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // Non-tautological precondition: the alert path was really taken.
+    expect(resendSend).toHaveBeenCalledTimes(1);
+    expect(googleMocks.refreshAccessToken).not.toHaveBeenCalled();
+    expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
+  });
+
+  it('still runs the warm-up (4 writes) when refresh fails with a NON-invalid_grant error', async () => {
+    // Spec edge-case row 2: a transient refresh failure must not disable the
+    // warm-up — log + proceed. RED-until-impl: the pre-rework code returns.
+    seedTokenRow(Date.now() - 60_000); // expired → refresh is attempted
+    googleMocks.refreshAccessToken.mockRejectedValueOnce(
+      new Error('network glitch'),
+    );
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // Precondition: the refresh was really attempted (and rejected above).
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    // A transient failure is NOT invalid_grant — no admin alert email.
+    expect(resendSend).not.toHaveBeenCalled();
+    expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
+    expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
+  });
+
+  it('still runs the warm-up when the refreshed token persist verification matches zero rows (W2)', async () => {
+    seedTokenRow(Date.now() - 60_000); // expired → refresh is attempted
+    // W2: the persist step verifies via .select('id').single(); the mock's
+    // second queued resolution is that verification. data: null = zero rows
+    // matched = persist failure → warn + proceed, NOT abort.
+    supabaseQuery.mockResolvedValueOnce({ ...EMPTY_RESULT, data: null });
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
+    expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
+  });
+
+  it('still runs the warm-up when persisting the refreshed token errors (W2)', async () => {
+    seedTokenRow(Date.now() - 60_000);
+    // Persist verification resolves a DB error → persist failure; the run
+    // must still proceed to the warm-up. RED-until-impl: the pre-rework code
+    // returns on updateError.
+    supabaseQuery.mockResolvedValueOnce({
+      ...EMPTY_RESULT,
+      data: null,
+      error: { message: 'persist failed', code: 'XX000' },
+    });
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
+    expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
+  });
+
+  it('runs the warm-up (4 writes) after a successful refresh AND persist — pins the refresh-branch coupling', async () => {
+    seedTokenRow(Date.now() - 60_000); // expired → the refresh branch runs
+    // Persist verification returns the matched row → persist succeeded.
+    supabaseQuery.mockResolvedValueOnce({
+      ...EMPTY_RESULT,
+      data: { id: 'therapist' },
+    });
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // Non-tautological precondition: this really exercised the REFRESH branch
+    // (the older warm-up tests only cover the still-valid shortcut).
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
+    expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
+  });
+
+  it('skips only the warm-up, not the token step, when GOOGLE_CALENDAR_ID is unset (B2)', async () => {
+    vi.stubEnv('GOOGLE_CALENDAR_ID', '');
+    seedTokenRow(Date.now() - 60_000); // expired → the token step must refresh
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // Precondition: the run reached the refresh path — the warm-up skip is
+    // attributable to the calendar-id guard, not an earlier abort.
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
   });
 });
 
@@ -487,29 +760,27 @@ describe('warmAvailabilityCache (V2 warm-up)', () => {
     await keepwarmHandler();
 
     expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
-    const seenCombos = googleCalendar.getAvailableSlots.mock.calls.map(
-      call => {
-        const [start, end, duration, mode, dbBusyPeriods] = call as [
-          Date,
-          Date,
-          number,
-          string,
-          Array<{ start: string; end: string }>,
-        ];
-        // start ≈ run time (few-second tolerance).
-        expect(start.getTime()).toBeGreaterThanOrEqual(before - 5_000);
-        expect(start.getTime()).toBeLessThanOrEqual(Date.now() + 5_000);
-        // Horizon: end − start ≈ 28 days (±1 min tolerance).
-        expect(
-          Math.abs(end.getTime() - start.getTime() - FOUR_WEEKS_MS),
-        ).toBeLessThanOrEqual(60_000);
-        // Duration is a number in {60, 90} (combo set asserted below).
-        expect(duration).toBeTypeOf('number');
-        // Patient read path re-applies live DB busy on cache hit → empty array.
-        expect(dbBusyPeriods).toEqual([]);
-        return `${mode}:${duration}`;
-      },
-    );
+    const seenCombos = googleCalendar.getAvailableSlots.mock.calls.map(call => {
+      const [start, end, duration, mode, dbBusyPeriods] = call as [
+        Date,
+        Date,
+        number,
+        string,
+        Array<{ start: string; end: string }>,
+      ];
+      // start ≈ run time (few-second tolerance).
+      expect(start.getTime()).toBeGreaterThanOrEqual(before - 5_000);
+      expect(start.getTime()).toBeLessThanOrEqual(Date.now() + 5_000);
+      // Horizon: end − start ≈ 28 days (±1 min tolerance).
+      expect(
+        Math.abs(end.getTime() - start.getTime() - FOUR_WEEKS_MS),
+      ).toBeLessThanOrEqual(60_000);
+      // Duration is a number in {60, 90} (combo set asserted below).
+      expect(duration).toBeTypeOf('number');
+      // Patient read path re-applies live DB busy on cache hit → empty array.
+      expect(dbBusyPeriods).toEqual([]);
+      return `${mode}:${duration}`;
+    });
     expect(seenCombos.sort()).toEqual([
       'in-person:60',
       'in-person:90',
@@ -539,5 +810,124 @@ describe('warmAvailabilityCache (V2 warm-up)', () => {
       key => key !== buildAvailabilityCacheKey('video', 90, 4, new Date()),
     );
     expect(writtenKeys.sort()).toEqual(survivors.sort());
+  });
+});
+
+// ===========================================================================
+// invalid_grant alert cooldown (B4) — the admin alert is throttled via a
+// state entry in the 'calendar-keepwarm-state' blobs store (key
+// 'invalid-grant-alert', 24 h TTL): the 10-minute cadence must not email the
+// admin every run while the token stays revoked. Sentry still captures on
+// every run, and blobs failures fail OPEN (the alert must never be lost
+// because the cooldown mechanism itself is broken).
+// ===========================================================================
+
+describe('invalid_grant alert cooldown (B4)', () => {
+  /** Seeds a revoked-token world: expired row + invalid_grant on refresh. */
+  function seedRevokedToken(): void {
+    seedTokenRow(Date.now() - 60_000); // expired → refresh is attempted
+    googleMocks.refreshAccessToken.mockRejectedValueOnce(invalidGrantError());
+  }
+
+  it('first invalid_grant run sends the alert and records cooldown state in the calendar-keepwarm-state store', async () => {
+    seedRevokedToken();
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(resendSend).toHaveBeenCalledTimes(1);
+    // The cooldown state must be persisted for the next run to observe —
+    // under the contract key, in the contract store (see stateStoreWriteKeys).
+    expect(
+      stateStoreWriteKeys(),
+      'first invalid_grant run must arm the cooldown under key invalid-grant-alert in the calendar-keepwarm-state store',
+    ).toContain('invalid-grant-alert');
+  });
+
+  it('second run within the cooldown window does NOT resend the alert but still captures to Sentry', async () => {
+    // Persistent (non-Once) stubs so BOTH runs see the identical revoked-token
+    // world — only the email spy is reset between runs. The cooldown read on
+    // run 2 must observe the state run 1 wrote (the blobs mock is a real
+    // in-memory write-through store).
+    supabaseQuery.mockResolvedValue({
+      ...EMPTY_RESULT,
+      data: {
+        refresh_token: '1//persisted-rt',
+        access_token: 'ya29.old',
+        expiry_date: Date.now() - 60_000,
+      },
+    });
+    googleMocks.refreshAccessToken.mockRejectedValue(invalidGrantError());
+
+    // Run 1 — alert goes out, cooldown is armed.
+    await keepwarmHandler();
+    expect(resendSend).toHaveBeenCalledTimes(1);
+    const capturesAfterRun1 = sentry.captureException.mock.calls.length;
+    expect(capturesAfterRun1).toBeGreaterThan(0);
+
+    resendSend.mockClear(); // reset ONLY the email spy
+
+    // Run 2, within the 24 h window — throttled email, Sentry still fires.
+    await keepwarmHandler();
+    expect(
+      resendSend,
+      'alert email must be throttled within the cooldown window',
+    ).not.toHaveBeenCalled();
+    expect(sentry.captureException.mock.calls.length).toBeGreaterThan(
+      capturesAfterRun1,
+    );
+  });
+
+  it('still sends the alert when writing the cooldown state throws (fail open)', async () => {
+    seedRevokedToken();
+    blobsStore.stateStore.setJSON.mockRejectedValue(
+      new Error('blobs write failed'),
+    );
+    blobsStore.stateStore.set.mockRejectedValue(
+      new Error('blobs write failed'),
+    );
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+    expect(resendSend).toHaveBeenCalledTimes(1);
+  });
+
+  it('still sends the alert when the blobs store is unavailable (fail open)', async () => {
+    seedRevokedToken();
+    blobsStore.getStore.mockRejectedValue(
+      new Error('Netlify Blobs context unavailable'),
+    );
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+    expect(resendSend).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ===========================================================================
+// Sentry flush + failure capture (S4) — ported from the retired
+// calendar-token-heartbeat tests: a healthy run flushes the Sentry client
+// (Netlify freezes the instance on handler return), and a keepwarm throw is
+// captured AND rethrown (so the Sentry monitor run is marked errored).
+// ===========================================================================
+
+describe('Sentry flush + failure capture (S4, ported from heartbeat)', () => {
+  it('flushes Sentry with the 2 s budget after a healthy run', async () => {
+    seedTokenRow(Date.now() + 60 * 60_000); // valid token → clean run
+
+    await keepwarmHandler();
+
+    // PUBLIC_SENTRY_DSN is stubbed in beforeEach, so the finally block runs.
+    expect(sentry.flush).toHaveBeenCalledWith(2000);
+  });
+
+  it('captures the exception and rethrows when the token step throws', async () => {
+    supabaseQuery.mockRejectedValue(new Error('supabase unavailable'));
+
+    // The handler must NOT swallow the failure: runKeepwarm captures +
+    // rethrows so the scheduled run surfaces as errored.
+    await expect(keepwarmHandler()).rejects.toThrow('supabase unavailable');
+
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(sentry.captureException).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'supabase unavailable' }),
+    );
   });
 });

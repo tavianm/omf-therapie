@@ -96,7 +96,9 @@
 #   de disponibilités ({présentiel, vidéo} × {60, 90} min, weeks=4, TTL 900 s).
 #   Requiert : SUPABASE_DATABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
 #              GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET,
-#              GOOGLE_CALENDAR_ID, ADMIN_EMAIL, RESEND_API_KEY
+#              ADMIN_EMAIL, RESEND_API_KEY
+#   Conditionnel : GOOGLE_CALENDAR_ID (warm-up uniquement — absent = token
+#              maintenu chaud, warm-up ignoré avec warning)
 #   Fallbacks : GOOGLE_OAUTH_REDIRECT_URI, SITE_URL, RESEND_FROM_EMAIL,
 #              PUBLIC_SENTRY_DSN
 #
