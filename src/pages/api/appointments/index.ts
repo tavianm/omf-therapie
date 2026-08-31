@@ -4,13 +4,21 @@ import type { APIRoute } from 'astro';
 import { createElement } from 'react';
 import { supabaseAdmin } from '../../../lib/supabase';
 import { calculatePrice } from '../../../lib/pricing';
-import { sendEmail, buildAppointmentConversationSubject } from '../../../lib/resend';
+import {
+  sendEmail,
+  buildAppointmentConversationSubject,
+} from '../../../lib/resend';
 import AppointmentRequestReceived from '../../../emails/AppointmentRequestReceived';
 import AppointmentRequestNotification from '../../../emails/AppointmentRequestNotification';
-import type { AppointmentType, AppointmentDuration, AppointmentMode } from '../../../types/appointment';
+import type {
+  AppointmentType,
+  AppointmentDuration,
+  AppointmentMode,
+} from '../../../types/appointment';
 import { checkRateLimit, rateLimitResponse } from '../../../lib/rate-limit';
 import { isWithinBusinessHours } from '../../../utils/date';
 import { hasAppointmentConflict } from '../../../lib/appointment-conflicts';
+import { isSchedulingConflictError } from '../../../lib/scheduling-settings';
 import { isCabinetEligibleSlot } from '../../../lib/appointment-eligibility';
 
 // ---------------------------------------------------------------------------
@@ -25,7 +33,11 @@ const VALID_TYPES = new Set<string>(['individual', 'couple', 'family']);
 const VALID_MODES = new Set<string>(['in-person', 'video']);
 const VALID_DURATIONS = new Set<number>([60, 90]);
 
-function errorResponse(status: number, message: string, field?: string): Response {
+function errorResponse(
+  status: number,
+  message: string,
+  field?: string,
+): Response {
   return new Response(JSON.stringify({ error: message, field }), {
     status,
     headers: { 'Content-Type': 'application/json' },
@@ -35,7 +47,6 @@ function errorResponse(status: number, message: string, field?: string): Respons
 // ---------------------------------------------------------------------------
 // Validation helpers (fonctions locales supprimées — voir src/utils/date.ts)
 // ---------------------------------------------------------------------------
-
 
 // ---------------------------------------------------------------------------
 
@@ -47,7 +58,10 @@ export const POST: APIRoute = async ({ request }) => {
     request.headers.get('x-nf-client-connection-ip') ??
     request.headers.get('x-forwarded-for')?.split(',').at(-1)?.trim() ??
     'unknown';
-  const rl = checkRateLimit(clientIp, 'appointments', { limit: 5, windowSeconds: 900 });
+  const rl = checkRateLimit(clientIp, 'appointments', {
+    limit: 5,
+    windowSeconds: 900,
+  });
   if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
   // 1. Parse body
@@ -73,35 +87,86 @@ export const POST: APIRoute = async ({ request }) => {
     scheduled_at,
   } = body;
 
-  if (!patient_name || typeof patient_name !== 'string' || patient_name.trim().length < 2 || patient_name.trim().length > 100)
-    return errorResponse(422, 'Nom invalide (2-100 caractères requis)', 'patient_name');
+  if (
+    !patient_name ||
+    typeof patient_name !== 'string' ||
+    patient_name.trim().length < 2 ||
+    patient_name.trim().length > 100
+  )
+    return errorResponse(
+      422,
+      'Nom invalide (2-100 caractères requis)',
+      'patient_name',
+    );
 
-  if (!patient_email || typeof patient_email !== 'string' || !EMAIL_RE.test(patient_email))
+  if (
+    !patient_email ||
+    typeof patient_email !== 'string' ||
+    !EMAIL_RE.test(patient_email)
+  )
     return errorResponse(422, 'Adresse email invalide', 'patient_email');
 
-  if (!patient_phone || typeof patient_phone !== 'string' || !PHONE_RE.test(patient_phone.replace(/\s/g, '')))
-    return errorResponse(422, 'Numéro de téléphone français invalide', 'patient_phone');
+  if (
+    !patient_phone ||
+    typeof patient_phone !== 'string' ||
+    !PHONE_RE.test(patient_phone.replace(/\s/g, ''))
+  )
+    return errorResponse(
+      422,
+      'Numéro de téléphone français invalide',
+      'patient_phone',
+    );
 
-  if (!patient_postal_code || typeof patient_postal_code !== 'string' || !POSTAL_RE.test(patient_postal_code))
-    return errorResponse(422, 'Code postal invalide (5 chiffres)', 'patient_postal_code');
+  if (
+    !patient_postal_code ||
+    typeof patient_postal_code !== 'string' ||
+    !POSTAL_RE.test(patient_postal_code)
+  )
+    return errorResponse(
+      422,
+      'Code postal invalide (5 chiffres)',
+      'patient_postal_code',
+    );
 
-  if (!patient_city || typeof patient_city !== 'string' || patient_city.trim().length < 2 || patient_city.trim().length > 100)
+  if (
+    !patient_city ||
+    typeof patient_city !== 'string' ||
+    patient_city.trim().length < 2 ||
+    patient_city.trim().length > 100
+  )
     return errorResponse(422, 'Ville invalide', 'patient_city');
 
-  if (!patient_reason || typeof patient_reason !== 'string' || patient_reason.trim().length < 10 || patient_reason.trim().length > 1500)
-    return errorResponse(422, 'Le motif doit contenir entre 10 et 1500 caractères', 'patient_reason');
+  if (
+    !patient_reason ||
+    typeof patient_reason !== 'string' ||
+    patient_reason.trim().length < 10 ||
+    patient_reason.trim().length > 1500
+  )
+    return errorResponse(
+      422,
+      'Le motif doit contenir entre 10 et 1500 caractères',
+      'patient_reason',
+    );
 
   if (!appointment_type || !VALID_TYPES.has(appointment_type as string))
     return errorResponse(422, 'Type de thérapie invalide', 'appointment_type');
 
   if (!appointment_mode || !VALID_MODES.has(appointment_mode as string))
-    return errorResponse(422, 'Mode de consultation invalide', 'appointment_mode');
+    return errorResponse(
+      422,
+      'Mode de consultation invalide',
+      'appointment_mode',
+    );
 
   if (!duration || !VALID_DURATIONS.has(duration as number))
     return errorResponse(422, 'Durée invalide (60 ou 90 minutes)', 'duration');
 
   if (typeof is_first_session !== 'boolean')
-    return errorResponse(422, 'Champ première séance invalide', 'is_first_session');
+    return errorResponse(
+      422,
+      'Champ première séance invalide',
+      'is_first_session',
+    );
 
   if (!scheduled_at || typeof scheduled_at !== 'string')
     return errorResponse(422, 'Date de rendez-vous manquante', 'scheduled_at');
@@ -112,19 +177,34 @@ export const POST: APIRoute = async ({ request }) => {
 
   // La date doit être dans le futur (> now + 1h)
   if (scheduledDate.getTime() < Date.now() + 60 * 60 * 1000)
-    return errorResponse(422, 'Le rendez-vous doit être pris au moins 1 heure à l\'avance', 'scheduled_at');
+    return errorResponse(
+      422,
+      "Le rendez-vous doit être pris au moins 1 heure à l'avance",
+      'scheduled_at',
+    );
 
   // 3. Règles métier
   // Éligibilité cabinet réutilisée avec le moteur de génération des créneaux :
   // mercredi par défaut OU plages manuelles (manual_time_slots).
-  if (appointment_mode === 'in-person' && !(await isCabinetEligibleSlot(scheduled_at as string)))
-    return errorResponse(422, 'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.');
+  if (
+    appointment_mode === 'in-person' &&
+    !(await isCabinetEligibleSlot(scheduled_at as string))
+  )
+    return errorResponse(
+      422,
+      'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.',
+    );
 
   if (!isWithinBusinessHours(scheduled_at as string, duration as number))
-    return errorResponse(422, 'Le créneau est en dehors des horaires d\'ouverture (8h-12h et 14h-19h).');
+    return errorResponse(
+      422,
+      "Le créneau est en dehors des horaires d'ouverture (8h-12h et 14h-19h).",
+    );
 
   // 4. Anti-doublon : vérifier qu'aucun rdv (incluant reports proposés) ne chevauche ce créneau
-  const slotEnd = new Date(scheduledDate.getTime() + (duration as number) * 60 * 1000);
+  const slotEnd = new Date(
+    scheduledDate.getTime() + (duration as number) * 60 * 1000,
+  );
 
   try {
     const hasConflict = await hasAppointmentConflict({
@@ -133,7 +213,10 @@ export const POST: APIRoute = async ({ request }) => {
     });
 
     if (hasConflict) {
-      return errorResponse(409, 'Ce créneau n\'est plus disponible. Veuillez sélectionner un autre horaire.');
+      return errorResponse(
+        409,
+        "Ce créneau n'est plus disponible. Veuillez sélectionner un autre horaire.",
+      );
     }
   } catch (conflictError) {
     console.error('[appointments] Erreur vérification doublon:', conflictError);
@@ -171,8 +254,15 @@ export const POST: APIRoute = async ({ request }) => {
     .single();
 
   if (insertError || !inserted) {
+    if (isSchedulingConflictError(insertError)) {
+      return errorResponse(
+        409,
+        "Ce créneau n'est plus disponible. Veuillez sélectionner un autre horaire.",
+        'scheduled_at',
+      );
+    }
     console.error('[appointments] Erreur insertion:', insertError);
-    return errorResponse(500, 'Erreur lors de l\'enregistrement du rendez-vous');
+    return errorResponse(500, "Erreur lors de l'enregistrement du rendez-vous");
   }
 
   // 7. Emails en parallèle — awaités pour éviter la fermeture anticipée

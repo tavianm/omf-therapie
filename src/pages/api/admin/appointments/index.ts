@@ -7,6 +7,7 @@ import { supabaseAdmin } from '../../../../lib/supabase';
 import { calculatePrice } from '../../../../lib/pricing';
 import { getAvailableCredit, consumeCredits } from '../../../../lib/credits';
 import { hasAppointmentConflict } from '../../../../lib/appointment-conflicts';
+import { isSchedulingConflictError } from '../../../../lib/scheduling-settings';
 import type { AppointmentType } from '../../../../types/appointment';
 import { invalidateAvailabilityCache } from '../../../../lib/calendar-cache.js';
 import { isCabinetEligibleSlot } from '../../../../lib/appointment-eligibility';
@@ -298,6 +299,13 @@ export const POST: APIRoute = async ({ request, locals }) => {
     .single();
 
   if (dbError || !appointment) {
+    if (isSchedulingConflictError(dbError)) {
+      return errorResponse(
+        409,
+        "Ce créneau n'est plus disponible. Veuillez sélectionner un autre horaire.",
+        'scheduled_at',
+      );
+    }
     console.error('[admin/appointments] DB insert error:', dbError);
     return errorResponse(500, 'Erreur lors de la création du rendez-vous');
   }

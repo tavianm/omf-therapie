@@ -6,13 +6,33 @@ import { auth } from '../../../lib/auth';
 import { isAdminSession } from '../../../lib/authz';
 import { supabaseAdmin } from '../../../lib/supabase';
 import { logger } from '../../../lib/logger';
-import { sendEmail, buildAppointmentConversationSubject } from '../../../lib/resend';
-import { generateGoogleCalendarLink, generateOutlookCalendarLink, generateAppleCalendarInviteLink, CABINET_ADDRESS } from '../../../lib/ics';
-import { createSecureLinkToken, verifySecureLinkToken } from '../../../lib/secure-links';
-import { getTypeLabel, getModeLabel, calculatePrice } from '../../../lib/pricing';
+import {
+  sendEmail,
+  buildAppointmentConversationSubject,
+} from '../../../lib/resend';
+import {
+  generateGoogleCalendarLink,
+  generateOutlookCalendarLink,
+  generateAppleCalendarInviteLink,
+  CABINET_ADDRESS,
+} from '../../../lib/ics';
+import {
+  createSecureLinkToken,
+  verifySecureLinkToken,
+} from '../../../lib/secure-links';
+import {
+  getTypeLabel,
+  getModeLabel,
+  calculatePrice,
+} from '../../../lib/pricing';
 import { createAppointmentPaymentLink, getStripe } from '../../../lib/stripe';
-import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from '../../../lib/google-calendar';
+import {
+  createCalendarEvent,
+  updateCalendarEvent,
+  deleteCalendarEvent,
+} from '../../../lib/google-calendar';
 import { hasAppointmentConflict } from '../../../lib/appointment-conflicts';
+import { isSchedulingConflictError } from '../../../lib/scheduling-settings';
 import { isCabinetEligibleSlot } from '../../../lib/appointment-eligibility';
 import { invalidateAvailabilityCache } from '../../../lib/calendar-cache.js';
 import AppointmentConfirmed from '../../../emails/AppointmentConfirmed';
@@ -22,7 +42,10 @@ import AppointmentRescheduledPaid from '../../../emails/AppointmentRescheduledPa
 import AppointmentCancelled from '../../../emails/AppointmentCancelled';
 import PaymentRequest from '../../../emails/PaymentRequest';
 import type { Appointment } from '../../../types/appointment';
-import { issueCreditForCancellation, restoreCredits } from '../../../lib/credits';
+import {
+  issueCreditForCancellation,
+  restoreCredits,
+} from '../../../lib/credits';
 import { isCancellableByTherapist } from '../../../lib/appointment-eligibility';
 
 function errorResponse(status: number, message: string): Response {
@@ -45,7 +68,11 @@ function jsonResponse(data: unknown, status = 200): Response {
  * error must still be observable (logger forwards to Sentry when configured).
  */
 function onCacheInvalidateError(err: unknown): void {
-  logger.error('appointments/patch: availability cache invalidation failed', {}, err);
+  logger.error(
+    'appointments/patch: availability cache invalidation failed',
+    {},
+    err,
+  );
 }
 
 /**
@@ -57,7 +84,10 @@ function onCacheInvalidateError(err: unknown): void {
  * Non fatal : si l'update échoue, on loggue et on continue — la réponse HTTP
  * prime, le cron de rattrapage reprend le relais (même patron que le POST admin).
  */
-async function markInvitationSent(appointmentId: string, emailSent: boolean): Promise<void> {
+async function markInvitationSent(
+  appointmentId: string,
+  emailSent: boolean,
+): Promise<void> {
   if (!emailSent) return;
   try {
     const { error } = await supabaseAdmin
@@ -67,7 +97,11 @@ async function markInvitationSent(appointmentId: string, emailSent: boolean): Pr
       .is('invitation_sent_at', null);
     if (error) throw error;
   } catch (err) {
-    logger.error('appointments/patch: invitation_sent_at set-once update failed', { appointmentId }, err);
+    logger.error(
+      'appointments/patch: invitation_sent_at set-once update failed',
+      { appointmentId },
+      err,
+    );
   }
 }
 
@@ -82,19 +116,25 @@ function buildICSEvent(appt: Appointment) {
     uid: appt.id,
     summary: `Séance OMF Thérapie — ${typeLabel}`,
     description: `${typeLabel} (${modeLabel}) · ${appt.duration} min`,
-    location: appt.appointment_mode === 'in-person'
-      ? CABINET_ADDRESS
-      : (appt.video_link ?? undefined),
+    location:
+      appt.appointment_mode === 'in-person'
+        ? CABINET_ADDRESS
+        : (appt.video_link ?? undefined),
     url: appt.video_link ?? undefined,
     start,
     end,
     organizerName: 'Oriane Montabonnet — OMF Thérapie',
-    organizerEmail: import.meta.env.RESEND_FROM_EMAIL ?? 'contact@omf-therapie.fr',
+    organizerEmail:
+      import.meta.env.RESEND_FROM_EMAIL ?? 'contact@omf-therapie.fr',
   };
 }
 
 function buildFallbackVideoLink(appointmentId: string): string {
-  const slug = appointmentId.replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 24) || 'session';
+  const slug =
+    appointmentId
+      .replace(/[^a-z0-9]/gi, '')
+      .toLowerCase()
+      .slice(0, 24) || 'session';
   return `https://meet.jit.si/omf-therapie-${slug}`;
 }
 
@@ -133,11 +173,28 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const { id } = params;
   if (!id) return errorResponse(400, 'Identifiant manquant');
 
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!UUID_RE.test(id)) return errorResponse(400, 'Identifiant de rendez-vous invalide');
+  const UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(id))
+    return errorResponse(400, 'Identifiant de rendez-vous invalide');
 
-  if (!action || !['confirm', 'decline', 'cancel', 'reschedule', 'reschedule_paid', 'save_notes', 'accept_reschedule', 'cancel_reschedule'].includes(action as string))
-    return errorResponse(422, 'Action invalide (confirm | decline | cancel | reschedule | reschedule_paid | save_notes | accept_reschedule | cancel_reschedule)');
+  if (
+    !action ||
+    ![
+      'confirm',
+      'decline',
+      'cancel',
+      'reschedule',
+      'reschedule_paid',
+      'save_notes',
+      'accept_reschedule',
+      'cancel_reschedule',
+    ].includes(action as string)
+  )
+    return errorResponse(
+      422,
+      'Action invalide (confirm | decline | cancel | reschedule | reschedule_paid | save_notes | accept_reschedule | cancel_reschedule)',
+    );
 
   // 3. Récupérer le rendez-vous
   const { data: appt, error: fetchError } = await supabaseAdmin
@@ -155,8 +212,15 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // Action: confirm
   // ---------------------------------------------------------------------------
   if (action === 'confirm') {
-    if (!['pending', 'payment_received', 'rescheduled'].includes(appointment.status))
-      return errorResponse(409, 'Ce rendez-vous ne peut pas être confirmé dans son état actuel');
+    if (
+      !['pending', 'payment_received', 'rescheduled'].includes(
+        appointment.status,
+      )
+    )
+      return errorResponse(
+        409,
+        'Ce rendez-vous ne peut pas être confirmé dans son état actuel',
+      );
 
     let newStatus: Appointment['status'];
     if (appointment.appointment_mode === 'video') {
@@ -171,7 +235,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     };
 
     // Recalcul tarifaire si l'admin a modifié les options de remise
-    const hasOverride = override_first_session !== undefined || is_solidarity !== undefined;
+    const hasOverride =
+      override_first_session !== undefined || is_solidarity !== undefined;
     if (hasOverride) {
       const resolvedFirstSession =
         typeof override_first_session === 'boolean'
@@ -184,17 +249,31 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         typeof is_solidarity === 'boolean' ? is_solidarity : false,
       );
       updateData.is_first_session = resolvedFirstSession;
-      updateData.discount    = pricing.discount * 100;    // → centimes
-      updateData.final_price = pricing.finalPrice * 100;  // → centimes
+      updateData.discount = pricing.discount * 100; // → centimes
+      updateData.final_price = pricing.finalPrice * 100; // → centimes
     }
 
     // Validation URL vidéo
     if (video_link) {
-      const ALLOWED_VIDEO_HOSTS = ['meet.google.com', 'zoom.us', 'teams.microsoft.com', 'whereby.com', 'jitsi.org'];
+      const ALLOWED_VIDEO_HOSTS = [
+        'meet.google.com',
+        'zoom.us',
+        'teams.microsoft.com',
+        'whereby.com',
+        'jitsi.org',
+      ];
       try {
         const parsed = new URL(String(video_link));
-        if (parsed.protocol !== 'https:' || !ALLOWED_VIDEO_HOSTS.some(h => parsed.hostname === h || parsed.hostname.endsWith('.' + h))) {
-          return errorResponse(400, 'Lien vidéo invalide : seuls les liens sécurisés vers des services de visioconférence connus sont acceptés');
+        if (
+          parsed.protocol !== 'https:' ||
+          !ALLOWED_VIDEO_HOSTS.some(
+            h => parsed.hostname === h || parsed.hostname.endsWith('.' + h),
+          )
+        ) {
+          return errorResponse(
+            400,
+            'Lien vidéo invalide : seuls les liens sécurisés vers des services de visioconférence connus sont acceptés',
+          );
         }
         updateData.video_link = parsed.toString();
       } catch {
@@ -202,34 +281,57 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       }
     }
 
-    if (stripe_payment_intent_id) updateData.stripe_payment_intent_id = stripe_payment_intent_id;
+    if (stripe_payment_intent_id)
+      updateData.stripe_payment_intent_id = stripe_payment_intent_id;
 
     // Génération du Payment Link Stripe côté serveur pour les séances vidéo
-    if (appointment.appointment_mode === 'video' && newStatus === 'payment_pending') {
+    if (
+      appointment.appointment_mode === 'video' &&
+      newStatus === 'payment_pending'
+    ) {
       try {
-        const successUrl = import.meta.env.STRIPE_SUCCESS_URL ?? ((import.meta.env.BETTER_AUTH_URL ?? 'https://omf-therapie.fr') + '/rdv/merci/?source=payment-success');
+        const successUrl =
+          import.meta.env.STRIPE_SUCCESS_URL ??
+          (import.meta.env.BETTER_AUTH_URL ?? 'https://omf-therapie.fr') +
+            '/rdv/merci/?source=payment-success';
         const description = `Séance ${getTypeLabel(appointment.appointment_type)} — OMF Thérapie (${appointment.duration} min)`;
         const paymentLink = await createAppointmentPaymentLink({
           appointmentId: appointment.id,
           patientEmail: appointment.patient_email,
           patientName: appointment.patient_name,
-          amount: typeof updateData.final_price === 'number' ? updateData.final_price : appointment.final_price,
+          amount:
+            typeof updateData.final_price === 'number'
+              ? updateData.final_price
+              : appointment.final_price,
           description,
           successUrl,
         });
         updateData.stripe_payment_link_id = paymentLink.id;
         updateData.stripe_payment_link_url = paymentLink.url;
       } catch (stripeErr) {
-        logger.error('appointments/patch: Stripe Payment Link generation failed (confirm)', { appointmentId: id }, stripeErr);
-        return errorResponse(500, 'Erreur lors de la génération du lien de paiement Stripe');
+        logger.error(
+          'appointments/patch: Stripe Payment Link generation failed (confirm)',
+          { appointmentId: id },
+          stripeErr,
+        );
+        return errorResponse(
+          500,
+          'Erreur lors de la génération du lien de paiement Stripe',
+        );
       }
     }
 
     // Génération automatique du lien Google Meet pour les séances vidéo directement confirmées (edge case)
-    if (appointment.appointment_mode === 'video' && newStatus === 'confirmed' && !updateData.video_link) {
+    if (
+      appointment.appointment_mode === 'video' &&
+      newStatus === 'confirmed' &&
+      !updateData.video_link
+    ) {
       try {
         const start = new Date(appointment.scheduled_at);
-        const end = new Date(start.getTime() + appointment.duration * 60 * 1000);
+        const end = new Date(
+          start.getTime() + appointment.duration * 60 * 1000,
+        );
         // Idempotency: skip if event already exists
         if (!appointment.google_calendar_event_id) {
           const meetResult = await createCalendarEvent({
@@ -258,7 +360,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         }
       } catch (meetErr) {
         // Dégradation gracieuse : fallback visio non bloquant
-        logger.error('appointments/patch: Google Meet link generation failed (confirm video)', { appointmentId: id }, meetErr);
+        logger.error(
+          'appointments/patch: Google Meet link generation failed (confirm video)',
+          { appointmentId: id },
+          meetErr,
+        );
         updateData.video_link = buildFallbackVideoLink(appointment.id);
       }
     }
@@ -271,7 +377,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       .single();
 
     if (updateError || !updated) {
-      logger.error('appointments/patch: Supabase update failed (confirm)', { appointmentId: id }, updateError);
+      logger.error(
+        'appointments/patch: Supabase update failed (confirm)',
+        { appointmentId: id },
+        updateError,
+      );
       return errorResponse(500, 'Erreur lors de la mise à jour');
     }
 
@@ -279,7 +389,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     await invalidateAvailabilityCache().catch(onCacheInvalidateError);
 
-    if (newStatus === 'confirmed' && updatedAppt.appointment_mode === 'in-person' && !updatedAppt.google_calendar_event_id) {
+    if (
+      newStatus === 'confirmed' &&
+      updatedAppt.appointment_mode === 'in-person' &&
+      !updatedAppt.google_calendar_event_id
+    ) {
       const start = new Date(updatedAppt.scheduled_at);
       const end = new Date(start.getTime() + updatedAppt.duration * 60 * 1000);
       try {
@@ -305,18 +419,28 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           .update({ google_calendar_event_id: calResult.eventId })
           .eq('id', updatedAppt.id);
       } catch (calendarErr) {
-        logger.error('appointments/patch: calendar event creation failed (confirm in-person)', { appointmentId: id }, calendarErr);
+        logger.error(
+          'appointments/patch: calendar event creation failed (confirm in-person)',
+          { appointmentId: id },
+          calendarErr,
+        );
       }
     }
 
     // Envoyer email de demande de paiement si payment_pending (séance vidéo)
-    if (newStatus === 'payment_pending' && updatedAppt.stripe_payment_link_url) {
+    if (
+      newStatus === 'payment_pending' &&
+      updatedAppt.stripe_payment_link_url
+    ) {
       const emailResult = await sendEmail({
         to: updatedAppt.patient_email,
         threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
           `Prépaiement de votre séance — ${new Intl.DateTimeFormat('fr-FR', {
-            day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+            timeZone: 'Europe/Paris',
           }).format(new Date(updatedAppt.scheduled_at))}`,
           updatedAppt.id,
         ),
@@ -344,14 +468,21 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         expiresInSeconds: 60 * 60 * 24 * 180,
         nonce: updatedAppt.scheduled_at,
       });
-      const appleCalendarLink = generateAppleCalendarInviteLink(baseUrl, updatedAppt.id, inviteToken);
+      const appleCalendarLink = generateAppleCalendarInviteLink(
+        baseUrl,
+        updatedAppt.id,
+        inviteToken,
+      );
 
       const emailResult = await sendEmail({
         to: updatedAppt.patient_email,
         threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
           `Votre rendez-vous est confirmé — ${new Intl.DateTimeFormat('fr-FR', {
-            day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+            timeZone: 'Europe/Paris',
           }).format(new Date(updatedAppt.scheduled_at))}`,
           updatedAppt.id,
         ),
@@ -366,14 +497,23 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           googleCalendarLink,
           appleCalendarLink,
           outlookCalendarLink,
-          cabinetAddress: updatedAppt.appointment_mode === 'in-person' ? CABINET_ADDRESS : undefined,
+          cabinetAddress:
+            updatedAppt.appointment_mode === 'in-person'
+              ? CABINET_ADDRESS
+              : undefined,
         }),
       });
       // C5 : invitation partie par cette voie — drapeau L2 set-once (non fatal).
       await markInvitationSent(id, emailResult.success === true);
     }
 
-    return jsonResponse({ appointment: updatedAppt, message: newStatus === 'confirmed' ? 'Rendez-vous confirmé.' : 'Lien de paiement à envoyer au patient.' });
+    return jsonResponse({
+      appointment: updatedAppt,
+      message:
+        newStatus === 'confirmed'
+          ? 'Rendez-vous confirmé.'
+          : 'Lien de paiement à envoyer au patient.',
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -382,13 +522,20 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (action === 'decline') {
     const { data: updated, error: updateError } = await supabaseAdmin
       .from('appointments')
-      .update({ status: 'declined', therapist_notes: therapist_notes ?? appointment.therapist_notes })
+      .update({
+        status: 'declined',
+        therapist_notes: therapist_notes ?? appointment.therapist_notes,
+      })
       .eq('id', id)
       .select()
       .single();
 
     if (updateError || !updated) {
-      logger.error('appointments/patch: Supabase update failed (decline)', { appointmentId: id }, updateError);
+      logger.error(
+        'appointments/patch: Supabase update failed (decline)',
+        { appointmentId: id },
+        updateError,
+      );
       return errorResponse(500, 'Erreur lors de la mise à jour');
     }
 
@@ -406,18 +553,28 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       react: createElement(AppointmentDeclined, {
         patientName: updatedAppt.patient_name,
         scheduledAt: updatedAppt.scheduled_at,
-        therapistNote: typeof therapist_notes === 'string' ? therapist_notes : undefined,
+        therapistNote:
+          typeof therapist_notes === 'string' ? therapist_notes : undefined,
       }),
     });
 
     // Delete calendar event if exists (non-blocking — don't fail the decline if calendar fails)
     if (appointment.google_calendar_event_id) {
-      await deleteCalendarEvent(appointment.google_calendar_event_id).catch((calendarErr: unknown) => {
-        logger.error('appointments/patch: calendar event deletion failed (decline)', { appointmentId: id }, calendarErr);
-      });
+      await deleteCalendarEvent(appointment.google_calendar_event_id).catch(
+        (calendarErr: unknown) => {
+          logger.error(
+            'appointments/patch: calendar event deletion failed (decline)',
+            { appointmentId: id },
+            calendarErr,
+          );
+        },
+      );
     }
 
-    return jsonResponse({ appointment: updatedAppt, message: 'Rendez-vous refusé.' });
+    return jsonResponse({
+      appointment: updatedAppt,
+      message: 'Rendez-vous refusé.',
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -434,7 +591,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // ---------------------------------------------------------------------------
   if (action === 'cancel') {
     if (!isCancellableByTherapist(appointment))
-      return errorResponse(409, 'Ce rendez-vous ne peut pas être annulé (hors fenêtre ou statut terminal).');
+      return errorResponse(
+        409,
+        'Ce rendez-vous ne peut pas être annulé (hors fenêtre ou statut terminal).',
+      );
 
     // 1. Restituer l'avoir consommé par ce RDV (avant toute autre écriture).
     let restoredAmount = 0;
@@ -444,8 +604,12 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         restoredAmount = appointment.credit_applied;
       } catch (restoreErr) {
         // La cohérence du ledger prime : on bloque l'annulation si la restitution échoue.
-        logger.error('appointments/patch: credit restoration failed (cancel)', { appointmentId: id }, restoreErr);
-        return errorResponse(500, 'Erreur lors de la restitution de l\'avoir');
+        logger.error(
+          'appointments/patch: credit restoration failed (cancel)',
+          { appointmentId: id },
+          restoreErr,
+        );
+        return errorResponse(500, "Erreur lors de la restitution de l'avoir");
       }
     }
 
@@ -459,8 +623,12 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           await issueCreditForCancellation(appointment, creditCashAmount);
           issuedCredit = true;
         } catch (creditErr) {
-          logger.error('appointments/patch: credit issuance failed (cancel)', { appointmentId: id }, creditErr);
-          return errorResponse(500, 'Erreur lors de l\'émission de l\'avoir');
+          logger.error(
+            'appointments/patch: credit issuance failed (cancel)',
+            { appointmentId: id },
+            creditErr,
+          );
+          return errorResponse(500, "Erreur lors de l'émission de l'avoir");
         }
       }
     }
@@ -477,8 +645,12 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       .single();
 
     if (updateError || !updated) {
-      logger.error('appointments/patch: Supabase update failed (cancel)', { appointmentId: id }, updateError);
-      return errorResponse(500, 'Erreur lors de l\'annulation');
+      logger.error(
+        'appointments/patch: Supabase update failed (cancel)',
+        { appointmentId: id },
+        updateError,
+      );
+      return errorResponse(500, "Erreur lors de l'annulation");
     }
 
     const updatedAppt = updated as Appointment;
@@ -487,9 +659,15 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     // 4. Supprimer l'événement Google Calendar (non-bloquant).
     if (appointment.google_calendar_event_id) {
-      await deleteCalendarEvent(appointment.google_calendar_event_id).catch((calendarErr: unknown) => {
-        logger.error('appointments/patch: calendar event deletion failed (cancel)', { appointmentId: id }, calendarErr);
-      });
+      await deleteCalendarEvent(appointment.google_calendar_event_id).catch(
+        (calendarErr: unknown) => {
+          logger.error(
+            'appointments/patch: calendar event deletion failed (cancel)',
+            { appointmentId: id },
+            calendarErr,
+          );
+        },
+      );
     }
 
     // 5. Notifier le patient par email (non-bloquant).
@@ -507,17 +685,27 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         appointmentMode: updatedAppt.appointment_mode,
         hasCredit: issuedCredit,
         creditAmount: issuedCredit ? creditCashAmount : undefined,
-        therapistNote: typeof therapist_notes === 'string' ? therapist_notes : undefined,
+        therapistNote:
+          typeof therapist_notes === 'string' ? therapist_notes : undefined,
       }),
     }).catch((emailErr: unknown) => {
-      logger.error('appointments/patch: patient notification email failed (cancel)', { appointmentId: id }, emailErr);
+      logger.error(
+        'appointments/patch: patient notification email failed (cancel)',
+        { appointmentId: id },
+        emailErr,
+      );
     });
 
     const messageParts = ['Rendez-vous annulé.'];
-    if (issuedCredit) messageParts.push(`Avoir de ${creditCashAmount / 100}€ émis.`);
-    if (restoredAmount > 0) messageParts.push(`Avoir de ${restoredAmount / 100}€ restitué.`);
+    if (issuedCredit)
+      messageParts.push(`Avoir de ${creditCashAmount / 100}€ émis.`);
+    if (restoredAmount > 0)
+      messageParts.push(`Avoir de ${restoredAmount / 100}€ restitué.`);
 
-    return jsonResponse({ appointment: updatedAppt, message: messageParts.join(' ') });
+    return jsonResponse({
+      appointment: updatedAppt,
+      message: messageParts.join(' '),
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -534,13 +722,21 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // déjà confirmé (confirmed). La thérapeute déplace le créneau sans re-validation
     // du patient. Pour les RDV vidéo, le paiement Stripe est conservé.
     if (!(
-      (appointment.appointment_mode === 'video' && appointment.status === 'payment_received') ||
-      (appointment.appointment_mode === 'in-person' && appointment.status === 'confirmed')
+      (appointment.appointment_mode === 'video' &&
+        appointment.status === 'payment_received') ||
+      (appointment.appointment_mode === 'in-person' &&
+        appointment.status === 'confirmed')
     )) {
-      return errorResponse(409, 'Le report direct ne s\'applique qu\'aux rendez-vous vidéo déjà payés ou en présentiel déjà confirmés.');
+      return errorResponse(
+        409,
+        "Le report direct ne s'applique qu'aux rendez-vous vidéo déjà payés ou en présentiel déjà confirmés.",
+      );
     }
     if (!isCancellableByTherapist(appointment))
-      return errorResponse(409, 'Ce rendez-vous ne peut pas être reporté (hors fenêtre).');
+      return errorResponse(
+        409,
+        'Ce rendez-vous ne peut pas être reporté (hors fenêtre).',
+      );
 
     if (!rescheduled_to || typeof rescheduled_to !== 'string')
       return errorResponse(422, 'Nouveau créneau requis pour un report');
@@ -554,21 +750,36 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // Présentiel : contrainte cabinet (mercredi), cohérent avec la création admin.
     // Pas de garde isWithinBusinessHours : action thérapeute, même flexibilité
     // que la création manuelle admin.
-    if (appointment.appointment_mode === 'in-person' && !(await isCabinetEligibleSlot(rescheduled_to as string)))
-      return errorResponse(422, 'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.');
+    if (
+      appointment.appointment_mode === 'in-person' &&
+      !(await isCabinetEligibleSlot(rescheduled_to as string))
+    )
+      return errorResponse(
+        422,
+        'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.',
+      );
 
     try {
-      const slotEnd = new Date(newDate.getTime() + appointment.duration * 60 * 1000);
+      const slotEnd = new Date(
+        newDate.getTime() + appointment.duration * 60 * 1000,
+      );
       const hasConflict = await hasAppointmentConflict({
         slotStartIso: newDate.toISOString(),
         slotEndIso: slotEnd.toISOString(),
         excludeAppointmentId: appointment.id,
       });
       if (hasConflict) {
-        return errorResponse(409, 'Ce créneau n\'est plus disponible. Veuillez sélectionner un autre horaire.');
+        return errorResponse(
+          409,
+          "Ce créneau n'est plus disponible. Veuillez sélectionner un autre horaire.",
+        );
       }
     } catch (conflictError) {
-      logger.error('appointments/patch: slot conflict check failed (reschedule_paid)', { appointmentId: id }, conflictError);
+      logger.error(
+        'appointments/patch: slot conflict check failed (reschedule_paid)',
+        { appointmentId: id },
+        conflictError,
+      );
       return errorResponse(500, 'Erreur lors de la vérification du créneau');
     }
 
@@ -584,7 +795,17 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       .single();
 
     if (updateError || !updated) {
-      logger.error('appointments/patch: Supabase update failed (reschedule_paid)', { appointmentId: id }, updateError);
+      if (isSchedulingConflictError(updateError)) {
+        return errorResponse(
+          409,
+          "Ce créneau n'est plus disponible. Veuillez sélectionner un autre horaire.",
+        );
+      }
+      logger.error(
+        'appointments/patch: Supabase update failed (reschedule_paid)',
+        { appointmentId: id },
+        updateError,
+      );
       return errorResponse(500, 'Erreur lors du report');
     }
 
@@ -596,8 +817,15 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (appointment.google_calendar_event_id) {
       const start = new Date(updatedAppt.scheduled_at);
       const end = new Date(start.getTime() + updatedAppt.duration * 60 * 1000);
-      await updateCalendarEvent(appointment.google_calendar_event_id, { start, end }).catch((calendarErr: unknown) => {
-        logger.error('appointments/patch: calendar event update failed (reschedule_paid)', { appointmentId: id }, calendarErr);
+      await updateCalendarEvent(appointment.google_calendar_event_id, {
+        start,
+        end,
+      }).catch((calendarErr: unknown) => {
+        logger.error(
+          'appointments/patch: calendar event update failed (reschedule_paid)',
+          { appointmentId: id },
+          calendarErr,
+        );
       });
     }
 
@@ -616,21 +844,32 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         appointmentMode: updatedAppt.appointment_mode,
         duration: updatedAppt.duration,
         finalPrice: updatedAppt.final_price,
-        therapistNote: typeof therapist_notes === 'string' ? therapist_notes : undefined,
+        therapistNote:
+          typeof therapist_notes === 'string' ? therapist_notes : undefined,
       }),
     }).catch((emailErr: unknown) => {
-      logger.error('appointments/patch: patient notification email failed (reschedule_paid)', { appointmentId: id }, emailErr);
+      logger.error(
+        'appointments/patch: patient notification email failed (reschedule_paid)',
+        { appointmentId: id },
+        emailErr,
+      );
     });
 
-    return jsonResponse({ appointment: updatedAppt, message: 'Rendez-vous reporté (paiement conservé).' });
+    return jsonResponse({
+      appointment: updatedAppt,
+      message: 'Rendez-vous reporté (paiement conservé).',
+    });
   }
 
   // ---------------------------------------------------------------------------
-  // Action: cancel_reschedule — annule la proposition de report, remet en pending 
+  // Action: cancel_reschedule — annule la proposition de report, remet en pending
   // ---------------------------------------------------------------------------
   if (action === 'cancel_reschedule') {
     if (appointment.status !== 'rescheduled')
-      return errorResponse(409, 'Ce rendez-vous n\'est pas en attente d\'acceptation de report');
+      return errorResponse(
+        409,
+        "Ce rendez-vous n'est pas en attente d'acceptation de report",
+      );
 
     const { data: updated, error: updateError } = await supabaseAdmin
       .from('appointments')
@@ -640,19 +879,37 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       .single();
 
     if (updateError || !updated) {
-      logger.error('appointments/patch: Supabase update failed (cancel_reschedule)', { appointmentId: id }, updateError);
+      logger.error(
+        'appointments/patch: Supabase update failed (cancel_reschedule)',
+        { appointmentId: id },
+        updateError,
+      );
       return errorResponse(500, 'Erreur lors de la mise à jour');
     }
 
-    return jsonResponse({ appointment: updated as Appointment, message: 'Proposition de report annulée.' });
+    return jsonResponse({
+      appointment: updated as Appointment,
+      message: 'Proposition de report annulée.',
+    });
   }
 
   // ---------------------------------------------------------------------------
   // Action: reschedule
   // ---------------------------------------------------------------------------
   if (action === 'reschedule') {
-    if (!['pending', 'payment_pending', 'payment_received', 'confirmed', 'rescheduled'].includes(appointment.status))
-      return errorResponse(409, 'Ce rendez-vous ne peut pas être reporté dans son état actuel');
+    if (
+      ![
+        'pending',
+        'payment_pending',
+        'payment_received',
+        'confirmed',
+        'rescheduled',
+      ].includes(appointment.status)
+    )
+      return errorResponse(
+        409,
+        'Ce rendez-vous ne peut pas être reporté dans son état actuel',
+      );
 
     if (!rescheduled_to || typeof rescheduled_to !== 'string')
       return errorResponse(422, 'Nouveau créneau requis pour un report');
@@ -664,34 +921,59 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (newDate.getTime() < Date.now())
       return errorResponse(422, 'Le nouveau créneau doit être dans le futur');
 
-    if (appointment.appointment_mode === 'in-person' && !(await isCabinetEligibleSlot(rescheduled_to as string)))
-      return errorResponse(422, 'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.');
+    if (
+      appointment.appointment_mode === 'in-person' &&
+      !(await isCabinetEligibleSlot(rescheduled_to as string))
+    )
+      return errorResponse(
+        422,
+        'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.',
+      );
 
     // Note : pas de garde isWithinBusinessHours ici (contrairement aux flux patient).
     // La thérapeute propose un créneau — elle connaît son agenda et peut reporter
     // hors des plages affichées (ex. urgence). Cohérent avec la création manuelle admin.
 
     try {
-      const slotEnd = new Date(newDate.getTime() + appointment.duration * 60 * 1000);
+      const slotEnd = new Date(
+        newDate.getTime() + appointment.duration * 60 * 1000,
+      );
       const hasConflict = await hasAppointmentConflict({
         slotStartIso: newDate.toISOString(),
         slotEndIso: slotEnd.toISOString(),
         excludeAppointmentId: appointment.id,
       });
       if (hasConflict) {
-        return errorResponse(409, 'Ce créneau n\'est plus disponible. Veuillez sélectionner un autre horaire.');
+        return errorResponse(
+          409,
+          "Ce créneau n'est plus disponible. Veuillez sélectionner un autre horaire.",
+        );
       }
     } catch (conflictError) {
-      logger.error('appointments/patch: slot conflict check failed (reschedule)', { appointmentId: id }, conflictError);
+      logger.error(
+        'appointments/patch: slot conflict check failed (reschedule)',
+        { appointmentId: id },
+        conflictError,
+      );
       return errorResponse(500, 'Erreur lors de la vérification du créneau');
     }
 
     // Expire l'ancien Payment Link Stripe s'il existe (évite le double-paiement)
     if (appointment.stripe_payment_link_id) {
       try {
-        await getStripe()?.paymentLinks.update(appointment.stripe_payment_link_id, { active: false });
+        await getStripe()?.paymentLinks.update(
+          appointment.stripe_payment_link_id,
+          { active: false },
+        );
       } catch (stripeErr) {
-        logger.error('appointments/patch: Stripe Payment Link expiry failed (reschedule)', { appointmentId: id, stripePaymentLinkId: appointment.stripe_payment_link_id }, stripeErr);
+        logger.error(
+          'appointments/patch: Stripe Payment Link expiry failed (reschedule)',
+          {
+            appointmentId: id,
+            stripePaymentLinkId: appointment.stripe_payment_link_id,
+          },
+          stripeErr,
+        );
         // Non-bloquant : on continue, le lien expiré est préférable à bloquer le report
       }
     }
@@ -710,7 +992,17 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       .single();
 
     if (updateError || !updated) {
-      logger.error('appointments/patch: Supabase update failed (reschedule)', { appointmentId: id }, updateError);
+      if (isSchedulingConflictError(updateError)) {
+        return errorResponse(
+          409,
+          "Ce créneau n'est plus disponible. Veuillez sélectionner un autre horaire.",
+        );
+      }
+      logger.error(
+        'appointments/patch: Supabase update failed (reschedule)',
+        { appointmentId: id },
+        updateError,
+      );
       return errorResponse(500, 'Erreur lors de la mise à jour');
     }
 
@@ -732,7 +1024,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         appointmentMode: updatedAppt.appointment_mode,
         duration: updatedAppt.duration,
         finalPrice: updatedAppt.final_price,
-        therapistNote: typeof therapist_notes === 'string' ? therapist_notes : undefined,
+        therapistNote:
+          typeof therapist_notes === 'string' ? therapist_notes : undefined,
         acceptUrl: (() => {
           const acceptToken = createSecureLinkToken({
             appointmentId: updatedAppt.id,
@@ -745,7 +1038,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       }),
     });
 
-    return jsonResponse({ appointment: updatedAppt, message: 'Nouveau créneau proposé.' });
+    return jsonResponse({
+      appointment: updatedAppt,
+      message: 'Nouveau créneau proposé.',
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -754,17 +1050,27 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (action === 'save_notes') {
     const { data: updated, error: updateError } = await supabaseAdmin
       .from('appointments')
-      .update({ therapist_notes: typeof therapist_notes === 'string' ? therapist_notes : null })
+      .update({
+        therapist_notes:
+          typeof therapist_notes === 'string' ? therapist_notes : null,
+      })
       .eq('id', id)
       .select()
       .single();
 
     if (updateError || !updated) {
-      logger.error('appointments/patch: Supabase update failed (save_notes)', { appointmentId: id }, updateError);
+      logger.error(
+        'appointments/patch: Supabase update failed (save_notes)',
+        { appointmentId: id },
+        updateError,
+      );
       return errorResponse(500, 'Erreur lors de la mise à jour des notes');
     }
 
-    return jsonResponse({ appointment: updated as Appointment, message: 'Notes sauvegardées.' });
+    return jsonResponse({
+      appointment: updated as Appointment,
+      message: 'Notes sauvegardées.',
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -789,22 +1095,37 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       return errorResponse(409, 'Ce lien a déjà été utilisé ou est invalide');
 
     // Le créneau proposé doit être dans le futur
-    if (!appointment.rescheduled_to || appointment.rescheduled_to <= new Date().toISOString())
-      return errorResponse(410, 'Ce créneau proposé a expiré. Contactez le thérapeute.');
+    if (
+      !appointment.rescheduled_to ||
+      appointment.rescheduled_to <= new Date().toISOString()
+    )
+      return errorResponse(
+        410,
+        'Ce créneau proposé a expiré. Contactez le thérapeute.',
+      );
 
     try {
       const acceptedStart = new Date(appointment.rescheduled_to);
-      const acceptedEnd = new Date(acceptedStart.getTime() + appointment.duration * 60 * 1000);
+      const acceptedEnd = new Date(
+        acceptedStart.getTime() + appointment.duration * 60 * 1000,
+      );
       const hasConflict = await hasAppointmentConflict({
         slotStartIso: acceptedStart.toISOString(),
         slotEndIso: acceptedEnd.toISOString(),
         excludeAppointmentId: appointment.id,
       });
       if (hasConflict) {
-        return errorResponse(409, 'Ce créneau n\'est plus disponible. Contactez la thérapeute pour une nouvelle proposition.');
+        return errorResponse(
+          409,
+          "Ce créneau n'est plus disponible. Contactez la thérapeute pour une nouvelle proposition.",
+        );
       }
     } catch (conflictError) {
-      logger.error('appointments/patch: slot conflict check failed (accept_reschedule)', { appointmentId: id }, conflictError);
+      logger.error(
+        'appointments/patch: slot conflict check failed (accept_reschedule)',
+        { appointmentId: id },
+        conflictError,
+      );
       return errorResponse(500, 'Erreur lors de la vérification du créneau');
     }
 
@@ -824,7 +1145,9 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // Génération du Payment Link Stripe pour les séances vidéo
     if (appointment.appointment_mode === 'video') {
       try {
-        const successUrl = import.meta.env.STRIPE_SUCCESS_URL ?? (`${baseUrl}/rdv/merci/?source=payment-success`);
+        const successUrl =
+          import.meta.env.STRIPE_SUCCESS_URL ??
+          `${baseUrl}/rdv/merci/?source=payment-success`;
         const description = `Séance ${getTypeLabel(appointment.appointment_type)} — OMF Thérapie (${appointment.duration} min)`;
         const paymentLink = await createAppointmentPaymentLink({
           appointmentId: appointment.id,
@@ -837,8 +1160,15 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         updateData.stripe_payment_link_id = paymentLink.id;
         updateData.stripe_payment_link_url = paymentLink.url;
       } catch (stripeErr) {
-        logger.error('appointments/patch: Stripe Payment Link generation failed (accept_reschedule)', { appointmentId: id }, stripeErr);
-        return errorResponse(500, 'Erreur lors de la génération du lien de paiement Stripe');
+        logger.error(
+          'appointments/patch: Stripe Payment Link generation failed (accept_reschedule)',
+          { appointmentId: id },
+          stripeErr,
+        );
+        return errorResponse(
+          500,
+          'Erreur lors de la génération du lien de paiement Stripe',
+        );
       }
     }
 
@@ -846,18 +1176,38 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       .from('appointments')
       .update(updateData)
       .eq('id', id)
-      .select([
-        'id', 'status', 'scheduled_at', 'rescheduled_to',
-        'appointment_mode', 'appointment_type', 'duration',
-        'patient_name', 'patient_email', 'final_price',
-        'video_link', 'stripe_payment_link_url',
-        'google_calendar_event_id',
-        // therapist_notes, stripe_payment_intent_id, stripe_payment_link_id excluded — unauthenticated caller
-      ].join(', '))
+      .select(
+        [
+          'id',
+          'status',
+          'scheduled_at',
+          'rescheduled_to',
+          'appointment_mode',
+          'appointment_type',
+          'duration',
+          'patient_name',
+          'patient_email',
+          'final_price',
+          'video_link',
+          'stripe_payment_link_url',
+          'google_calendar_event_id',
+          // therapist_notes, stripe_payment_intent_id, stripe_payment_link_id excluded — unauthenticated caller
+        ].join(', '),
+      )
       .single();
 
     if (updateError || !updated) {
-      logger.error('appointments/patch: Supabase update failed (accept_reschedule)', { appointmentId: id }, updateError);
+      if (isSchedulingConflictError(updateError)) {
+        return errorResponse(
+          409,
+          "Ce créneau n'est plus disponible. Veuillez sélectionner un autre horaire.",
+        );
+      }
+      logger.error(
+        'appointments/patch: Supabase update failed (accept_reschedule)',
+        { appointmentId: id },
+        updateError,
+      );
       return errorResponse(500, 'Erreur lors de la mise à jour');
     }
 
@@ -869,18 +1219,31 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     await invalidateAvailabilityCache().catch(onCacheInvalidateError);
 
-    if (newStatus === 'confirmed' && updatedAppt.appointment_mode === 'in-person') {
+    if (
+      newStatus === 'confirmed' &&
+      updatedAppt.appointment_mode === 'in-person'
+    ) {
       const start = new Date(updatedAppt.scheduled_at);
       const end = new Date(start.getTime() + updatedAppt.duration * 60 * 1000);
       try {
-        let syncedEventId = appointment.google_calendar_event_id ?? updatedAppt.google_calendar_event_id ?? null;
+        let syncedEventId =
+          appointment.google_calendar_event_id ??
+          updatedAppt.google_calendar_event_id ??
+          null;
 
         if (syncedEventId) {
           // Patch existing event; if orphaned/missing on Google, fallback to create.
           try {
             await updateCalendarEvent(syncedEventId, { start, end });
           } catch (patchErr) {
-            logger.warn('appointments/patch: calendar event patch failed after reschedule accept, falling back to create', { appointmentId: id, calendarEventId: appointment.google_calendar_event_id }, patchErr);
+            logger.warn(
+              'appointments/patch: calendar event patch failed after reschedule accept, falling back to create',
+              {
+                appointmentId: id,
+                calendarEventId: appointment.google_calendar_event_id,
+              },
+              patchErr,
+            );
             syncedEventId = null;
           }
         }
@@ -907,39 +1270,70 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           syncedEventId = calResult.eventId;
         }
 
-        if (syncedEventId && syncedEventId !== updatedAppt.google_calendar_event_id) {
-          const { data: refreshedAfterCalendar, error: refreshError } = await supabaseAdmin
-            .from('appointments')
-            .update({ google_calendar_event_id: syncedEventId })
-            .eq('id', updatedAppt.id)
-            .select([
-              'id', 'status', 'scheduled_at', 'rescheduled_to',
-              'appointment_mode', 'appointment_type', 'duration',
-              'patient_name', 'patient_email', 'final_price',
-              'video_link', 'stripe_payment_link_url',
-              'google_calendar_event_id',
-            ].join(', '))
-            .single();
+        if (
+          syncedEventId &&
+          syncedEventId !== updatedAppt.google_calendar_event_id
+        ) {
+          const { data: refreshedAfterCalendar, error: refreshError } =
+            await supabaseAdmin
+              .from('appointments')
+              .update({ google_calendar_event_id: syncedEventId })
+              .eq('id', updatedAppt.id)
+              .select(
+                [
+                  'id',
+                  'status',
+                  'scheduled_at',
+                  'rescheduled_to',
+                  'appointment_mode',
+                  'appointment_type',
+                  'duration',
+                  'patient_name',
+                  'patient_email',
+                  'final_price',
+                  'video_link',
+                  'stripe_payment_link_url',
+                  'google_calendar_event_id',
+                ].join(', '),
+              )
+              .single();
           if (refreshError || !refreshedAfterCalendar) {
-            logger.error('appointments/patch: failed to persist google_calendar_event_id after reschedule accept', { appointmentId: id }, refreshError);
-            return errorResponse(500, 'Erreur lors de la synchronisation agenda');
+            logger.error(
+              'appointments/patch: failed to persist google_calendar_event_id after reschedule accept',
+              { appointmentId: id },
+              refreshError,
+            );
+            return errorResponse(
+              500,
+              'Erreur lors de la synchronisation agenda',
+            );
           }
           updatedAppt = refreshedAfterCalendar as unknown as Appointment;
         }
       } catch (calendarErr) {
-        logger.error('appointments/patch: calendar event sync failed after reschedule accept', { appointmentId: id }, calendarErr);
+        logger.error(
+          'appointments/patch: calendar event sync failed after reschedule accept',
+          { appointmentId: id },
+          calendarErr,
+        );
         return errorResponse(500, 'Erreur lors de la synchronisation agenda');
       }
     }
 
     // Email : demande de paiement pour les séances vidéo
-    if (newStatus === 'payment_pending' && updatedAppt.stripe_payment_link_url) {
+    if (
+      newStatus === 'payment_pending' &&
+      updatedAppt.stripe_payment_link_url
+    ) {
       const emailResult = await sendEmail({
         to: updatedAppt.patient_email,
         threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
           `Prépaiement de votre séance — ${new Intl.DateTimeFormat('fr-FR', {
-            day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+            timeZone: 'Europe/Paris',
           }).format(new Date(updatedAppt.scheduled_at))}`,
           updatedAppt.id,
         ),
@@ -967,14 +1361,21 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         expiresInSeconds: 60 * 60 * 24 * 180,
         nonce: updatedAppt.scheduled_at,
       });
-      const appleCalendarLink = generateAppleCalendarInviteLink(baseUrl, updatedAppt.id, inviteToken);
+      const appleCalendarLink = generateAppleCalendarInviteLink(
+        baseUrl,
+        updatedAppt.id,
+        inviteToken,
+      );
 
       const emailResult = await sendEmail({
         to: updatedAppt.patient_email,
         threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
           `Votre rendez-vous est confirmé — ${new Intl.DateTimeFormat('fr-FR', {
-            day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+            timeZone: 'Europe/Paris',
           }).format(new Date(updatedAppt.scheduled_at))}`,
           updatedAppt.id,
         ),
@@ -989,7 +1390,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           googleCalendarLink,
           appleCalendarLink,
           outlookCalendarLink,
-          cabinetAddress: updatedAppt.appointment_mode === 'in-person' ? CABINET_ADDRESS : undefined,
+          cabinetAddress:
+            updatedAppt.appointment_mode === 'in-person'
+              ? CABINET_ADDRESS
+              : undefined,
         }),
       });
       // C5 : invitation partie par cette voie — drapeau L2 set-once (non fatal).
@@ -999,7 +1403,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     return jsonResponse({
       appointment: updatedAppt,
       status: newStatus,
-      message: newStatus === 'confirmed' ? 'Rendez-vous confirmé.' : 'Lien de paiement envoyé.',
+      message:
+        newStatus === 'confirmed'
+          ? 'Rendez-vous confirmé.'
+          : 'Lien de paiement envoyé.',
     });
   }
 
