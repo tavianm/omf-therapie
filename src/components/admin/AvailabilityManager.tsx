@@ -1,46 +1,32 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ManualTimeSlot, Period } from '../../types/manual-slots';
 import type { SchedulingBufferMinutes } from '../../types/scheduling-settings';
+import {
+  calendarMonth,
+  calendarMonthBounds,
+  calendarMonthDays,
+  localDateKey,
+  shiftCalendarMonth,
+  type CalendarMonth,
+} from './admin-availability-utils';
 
 const BUFFER_OPTIONS: SchedulingBufferMinutes[] = [0, 15, 20];
 
-function dateKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function monthBounds(month: Date): { from: string; to: string } {
-  const from = new Date(
-    Date.UTC(month.getUTCFullYear(), month.getUTCMonth(), 1),
-  );
-  const to = new Date(
-    Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 0),
-  );
-  return { from: dateKey(from), to: dateKey(to) };
-}
-
-// eslint-disable-next-line react-refresh/only-export-components
-export function monthDays(month: Date): Date[] {
-  const lastDay = new Date(
-    Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 0),
-  ).getUTCDate();
-  return Array.from(
-    { length: lastDay },
-    (_, index) =>
-      new Date(
-        Date.UTC(month.getUTCFullYear(), month.getUTCMonth(), index + 1),
-      ),
-  );
-}
-
 export function AvailabilityManager() {
-  const [month, setMonth] = useState(() => new Date());
+  const [month, setMonth] = useState<CalendarMonth>(() => {
+    const now = new Date();
+    return calendarMonth(now.getFullYear(), now.getMonth());
+  });
   const [slots, setSlots] = useState<ManualTimeSlot[]>([]);
-  const [selectedDate, setSelectedDate] = useState(dateKey(new Date()));
+  const [selectedDate, setSelectedDate] = useState(() =>
+    localDateKey(new Date()),
+  );
   const [buffer, setBuffer] = useState<SchedulingBufferMinutes>(0);
   const [saving, setSaving] = useState(false);
+  const [isMutatingPresence, setIsMutatingPresence] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const bounds = useMemo(() => monthBounds(month), [month]);
+  const bounds = useMemo(() => calendarMonthBounds(month), [month]);
   const selectedSlots = slots.filter(slot => slot.slot_date === selectedDate);
 
   useEffect(() => {
@@ -79,37 +65,54 @@ export function AvailabilityManager() {
   }, []);
 
   async function addPresence(period: Period) {
+    if (isMutatingPresence) return;
+    setIsMutatingPresence(true);
     setMessage(null);
-    const response = await fetch('/api/admin/time-slots/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify({ slot_date: selectedDate, period }),
-    });
-    const data = (await response.json()) as ManualTimeSlot | { error?: string };
-    if (!response.ok) {
-      setMessage(
-        'error' in data
-          ? (data.error ?? 'Présence refusée.')
-          : 'Présence refusée.',
-      );
-      return;
+    try {
+      const response = await fetch('/api/admin/time-slots/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ slot_date: selectedDate, period }),
+      });
+      const data = (await response.json()) as
+        ManualTimeSlot | { error?: string };
+      if (!response.ok) {
+        setMessage(
+          'error' in data
+            ? (data.error ?? 'Présence refusée.')
+            : 'Présence refusée.',
+        );
+        return;
+      }
+      setSlots(current => [...current, data as ManualTimeSlot]);
+      setMessage('Présence enregistrée. Les créneaux sont mis à jour.');
+    } catch {
+      setMessage('Impossible d’enregistrer cette présence.');
+    } finally {
+      setIsMutatingPresence(false);
     }
-    setSlots(current => [...current, data as ManualTimeSlot]);
-    setMessage('Présence enregistrée. Les créneaux sont mis à jour.');
   }
 
   async function removePresence(slot: ManualTimeSlot) {
-    const response = await fetch(`/api/admin/time-slots/${slot.id}/`, {
-      method: 'DELETE',
-      credentials: 'same-origin',
-    });
-    if (!response.ok) {
+    if (isMutatingPresence) return;
+    setIsMutatingPresence(true);
+    try {
+      const response = await fetch(`/api/admin/time-slots/${slot.id}/`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      });
+      if (!response.ok) {
+        setMessage('Impossible de retirer cette présence.');
+        return;
+      }
+      setSlots(current => current.filter(item => item.id !== slot.id));
+      setMessage('Présence retirée.');
+    } catch {
       setMessage('Impossible de retirer cette présence.');
-      return;
+    } finally {
+      setIsMutatingPresence(false);
     }
-    setSlots(current => current.filter(item => item.id !== slot.id));
-    setMessage('Présence retirée.');
   }
 
   async function saveBuffer(value: SchedulingBufferMinutes) {
@@ -174,10 +177,7 @@ export function AvailabilityManager() {
             <button
               type="button"
               onClick={() =>
-                setMonth(
-                  current =>
-                    new Date(current.getFullYear(), current.getMonth() - 1, 1),
-                )
+                setMonth(current => shiftCalendarMonth(current, -1))
               }
               className="min-h-11 rounded-xl border border-sage-200 px-3 text-sm"
             >
@@ -187,15 +187,13 @@ export function AvailabilityManager() {
               {new Intl.DateTimeFormat('fr-FR', {
                 month: 'long',
                 year: 'numeric',
-              }).format(month)}
+                timeZone: 'UTC',
+              }).format(new Date(Date.UTC(month.year, month.monthIndex, 1)))}
             </h3>
             <button
               type="button"
               onClick={() =>
-                setMonth(
-                  current =>
-                    new Date(current.getFullYear(), current.getMonth() + 1, 1),
-                )
+                setMonth(current => shiftCalendarMonth(current, 1))
               }
               className="min-h-11 rounded-xl border border-sage-200 px-3 text-sm"
             >
@@ -203,8 +201,8 @@ export function AvailabilityManager() {
             </button>
           </div>
           <div className="mt-4 grid grid-cols-7 gap-1">
-            {monthDays(month).map(day => {
-              const key = dateKey(day);
+            {calendarMonthDays(month).map(day => {
+              const key = day.key;
               const periods = slots
                 .filter(slot => slot.slot_date === key)
                 .map(slot => slot.period);
@@ -216,7 +214,7 @@ export function AvailabilityManager() {
                   aria-pressed={selectedDate === key}
                   className={`min-h-11 rounded-lg border p-1 text-left text-xs focus:outline-none focus:ring-2 focus:ring-mint-400 ${selectedDate === key ? 'border-mint-700 bg-mint-50' : 'border-sage-100 hover:bg-sage-50'}`}
                 >
-                  <span className="block font-medium">{day.getUTCDate()}</span>
+                  <span className="block font-medium">{day.day}</span>
                   {periods.length > 0 && (
                     <span className="block text-[10px] text-mint-800">
                       {periods.includes('all_day')
@@ -243,6 +241,7 @@ export function AvailabilityManager() {
             <button
               type="button"
               onClick={() => void addPresence('morning')}
+              disabled={isMutatingPresence}
               className="min-h-11 rounded-xl border border-sage-200 px-3 text-sm text-sage-700"
             >
               Ajouter matin
@@ -250,6 +249,7 @@ export function AvailabilityManager() {
             <button
               type="button"
               onClick={() => void addPresence('afternoon')}
+              disabled={isMutatingPresence}
               className="min-h-11 rounded-xl border border-sage-200 px-3 text-sm text-sage-700"
             >
               Ajouter après-midi
@@ -257,6 +257,7 @@ export function AvailabilityManager() {
             <button
               type="button"
               onClick={() => void addPresence('all_day')}
+              disabled={isMutatingPresence}
               className="min-h-11 rounded-xl bg-mint-700 px-3 text-sm font-semibold text-white"
             >
               Ajouter journée
@@ -278,6 +279,7 @@ export function AvailabilityManager() {
                 <button
                   type="button"
                   onClick={() => void removePresence(slot)}
+                  disabled={isMutatingPresence}
                   className="min-h-11 rounded-xl px-3 text-sm text-red-700 hover:bg-red-50"
                 >
                   Retirer

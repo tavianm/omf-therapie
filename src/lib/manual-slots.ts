@@ -12,6 +12,15 @@ export class ManualSlotDuplicateError extends Error {
   }
 }
 
+function isUniqueConstraintViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === '23505'
+  );
+}
+
 /**
  * Fetch manual time slots for a date range
  * @param from - Start date (inclusive)
@@ -68,6 +77,9 @@ export async function createManualSlot(
     .single();
 
   if (error) {
+    if (isUniqueConstraintViolation(error)) {
+      throw new ManualSlotDuplicateError();
+    }
     throw new Error(`Failed to create manual slot: ${error.message}`);
   }
 
