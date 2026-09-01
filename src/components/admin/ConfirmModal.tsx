@@ -143,14 +143,14 @@ export function ConfirmModal({
         <button
           onClick={onClose}
           disabled={actionLoading}
-          className="px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 transition-colors disabled:opacity-60 min-h-[40px]"
+          className="min-h-11 rounded-xl border border-sage-300 px-4 py-2 text-sm font-medium font-sans text-sage-700 transition-colors hover:bg-sage-50 disabled:opacity-60"
         >
           Annuler
         </button>
         <button
           onClick={() => onConfirm(overrideFirstSession, isSolidarity)}
           disabled={actionLoading}
-          className="px-4 py-2 text-sm font-medium font-sans rounded-xl bg-mint-600 text-white hover:bg-mint-700 transition-colors disabled:opacity-60 min-h-[40px]"
+          className="min-h-11 rounded-xl bg-mint-600 px-4 py-2 text-sm font-medium font-sans text-white transition-colors hover:bg-mint-700 disabled:opacity-60"
         >
           {actionLoading ? 'En cours…' : 'Confirmer'}
         </button>
