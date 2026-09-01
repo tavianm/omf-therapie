@@ -57,7 +57,7 @@ export function ConfirmModal({
           Tarification
         </p>
         <div className="space-y-2">
-          <label className="flex items-center gap-3 cursor-pointer group">
+          <label className="group flex min-h-11 cursor-pointer items-center gap-3">
             <input
               type="checkbox"
               checked={overrideFirstSession && !isSolidarity}
@@ -76,7 +76,7 @@ export function ConfirmModal({
               <span className="text-sage-400">(−15€ première séance)</span>
             </span>
           </label>
-          <label className="flex items-center gap-3 cursor-pointer group">
+          <label className="group flex min-h-11 cursor-pointer items-center gap-3">
             <input
               type="checkbox"
               checked={isSolidarity}
