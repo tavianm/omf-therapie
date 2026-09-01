@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { calculatePrice } from '../../utils/pricing';
 import type {
   Appointment,
@@ -86,6 +86,7 @@ export function AppointmentComposer({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const patientNameInputRef = useRef<HTMLInputElement>(null);
 
   const matchingPatients = useMemo(() => {
     const query = form.patient_name.trim().toLocaleLowerCase('fr-FR');
@@ -199,6 +200,10 @@ export function AppointmentComposer({
       );
       setForm(EMPTY_FORM);
       setShowAdvanced(false);
+      requestAnimationFrame(() => {
+        patientNameInputRef.current?.focus();
+        patientNameInputRef.current?.scrollIntoView({ block: 'nearest' });
+      });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Erreur inconnue.');
     } finally {
@@ -212,11 +217,21 @@ export function AppointmentComposer({
         Un seul rendez-vous est créé à chaque validation. Le formulaire reste
         ouvert pour le patient suivant.
       </p>
+      {success && (
+        <p
+          role="status"
+          aria-live="polite"
+          className="rounded-xl border border-mint-200 bg-mint-50 p-3 text-sm text-mint-900"
+        >
+          {success}
+        </p>
+      )}
       <fieldset className="space-y-3">
         <legend className="font-semibold text-sage-900">1. Patient</legend>
         <label className="block text-sm text-sage-700">
           Nom
           <input
+            ref={patientNameInputRef}
             required
             value={form.patient_name}
             onChange={event => update('patient_name', event.target.value)}
@@ -438,15 +453,6 @@ export function AppointmentComposer({
           className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800"
         >
           {error}
-        </p>
-      )}
-      {success && (
-        <p
-          role="status"
-          aria-live="polite"
-          className="rounded-xl border border-mint-200 bg-mint-50 p-3 text-sm text-mint-900"
-        >
-          {success}
         </p>
       )}
       <div className="flex gap-3">

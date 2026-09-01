@@ -38,7 +38,7 @@ function readDestination(): AdminWorkspaceDestination {
 export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
   const [appointmentList, setAppointmentList] = useState(appointments);
   const [destination, setDestination] =
-    useState<AdminWorkspaceDestination>(readDestination);
+    useState<AdminWorkspaceDestination>('overview');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerPatient, setComposerPatient] = useState<Patient | null>(null);
@@ -47,6 +47,7 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
   );
   const [notice, setNotice] = useState<string | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const destinationHydratedRef = useRef(false);
 
   const summary = useMemo(
     () => getWorkspaceSummary(appointmentList),
@@ -60,6 +61,14 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
   }, [appointments]);
 
   useEffect(() => {
+    setDestination(readDestination());
+  }, []);
+
+  useEffect(() => {
+    if (!destinationHydratedRef.current) {
+      destinationHydratedRef.current = true;
+      return;
+    }
     window.sessionStorage.setItem(DESTINATION_STORAGE_KEY, destination);
   }, [destination]);
 
