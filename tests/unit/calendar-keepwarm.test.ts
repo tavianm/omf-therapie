@@ -608,6 +608,12 @@ describe('warm-up fall-through contract (B1/B2/W2)', () => {
 
     // Non-tautological precondition: the alert path was really taken.
     expect(resendSend).toHaveBeenCalledTimes(1);
+    // The cron monitor stays green here — the every-run Sentry capture is
+    // the only durable signal if the alert email itself fails.
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('refresh_token is null'),
+      'error',
+    );
     expect(googleMocks.refreshAccessToken).not.toHaveBeenCalled();
     expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
   });

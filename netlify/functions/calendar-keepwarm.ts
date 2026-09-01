@@ -435,7 +435,12 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<TokenKeepwarmStatus
   }
 
   if (!tokens.refresh_token) {
-    logger.error('calendar-keepwarm: token row exists but refresh_token is null — re-authorization required');
+    const msg = 'calendar-keepwarm: token row exists but refresh_token is null — re-authorization required';
+    logger.error(msg);
+    // Same every-run capture as the invalid_grant branch — the cron monitor
+    // stays green here, so Sentry is the only durable signal if the alert
+    // email itself fails (e.g. Resend down).
+    Sentry.captureMessage(msg, 'error');
     await sendInvalidGrantAlert(env.adminEmail, env.siteUrl, env.resendApiKey, env.fromEmail);
     return 'auth-broken';
   }
