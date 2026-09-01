@@ -440,7 +440,7 @@ export function AppointmentCard({
                   setActionError(null);
                 }}
                 disabled={actionLoading}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl bg-mint-600 text-white hover:bg-mint-700 active:bg-mint-800 focus:outline-none focus:ring-2 focus:ring-mint-400 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                className="inline-flex min-h-11 items-center rounded-xl bg-mint-600 px-4 py-2 text-sm font-medium font-sans text-white transition-colors hover:bg-mint-700 active:bg-mint-800 focus:outline-none focus:ring-2 focus:ring-mint-400 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Confirmer
               </button>
@@ -450,7 +450,7 @@ export function AppointmentCard({
                   setActionError(null);
                 }}
                 disabled={actionLoading}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                className="inline-flex min-h-11 items-center rounded-xl border border-sage-300 px-4 py-2 text-sm font-medium font-sans text-sage-700 transition-colors hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Reporter
               </button>
@@ -460,7 +460,7 @@ export function AppointmentCard({
                   setActionError(null);
                 }}
                 disabled={actionLoading}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-red-300 text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                className="inline-flex min-h-11 items-center rounded-xl border border-red-300 px-4 py-2 text-sm font-medium font-sans text-red-700 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Refuser
               </button>
@@ -473,7 +473,7 @@ export function AppointmentCard({
               <button
                 onClick={() => callPatch({ action: 'cancel_reschedule' })}
                 disabled={actionLoading}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-red-300 text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                className="inline-flex min-h-11 items-center rounded-xl border border-red-300 px-4 py-2 text-sm font-medium font-sans text-red-700 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {actionLoading ? 'En cours…' : 'Annuler la proposition'}
               </button>
@@ -486,7 +486,7 @@ export function AppointmentCard({
                   href={appointment.stripe_payment_link_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl bg-mint-600 text-white hover:bg-mint-700 transition-colors min-h-[40px]"
+                  className="inline-flex min-h-11 items-center rounded-xl bg-mint-600 px-4 py-2 text-sm font-medium font-sans text-white transition-colors hover:bg-mint-700"
                 >
                   Voir lien paiement
                 </a>
@@ -501,7 +501,7 @@ export function AppointmentCard({
                   setActionError(null);
                 }}
                 disabled={actionLoading}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-red-300 text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                className="inline-flex min-h-11 items-center rounded-xl border border-red-300 px-4 py-2 text-sm font-medium font-sans text-red-700 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Refuser
               </button>
@@ -513,7 +513,7 @@ export function AppointmentCard({
               <button
                 onClick={handleSendReview}
                 disabled={actionLoading}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                className="inline-flex min-h-11 items-center rounded-xl border border-sage-300 px-4 py-2 text-sm font-medium font-sans text-sage-700 transition-colors hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {actionLoading ? 'Envoi…' : 'Envoyer rappel avis'}
               </button>
@@ -546,7 +546,7 @@ export function AppointmentCard({
                     setActionError(null);
                   }}
                   disabled={actionLoading}
-                  className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                  className="inline-flex min-h-11 items-center rounded-xl border border-sage-300 px-4 py-2 text-sm font-medium font-sans text-sage-700 transition-colors hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Reporter
                 </button>
@@ -559,7 +559,7 @@ export function AppointmentCard({
                     setActionError(null);
                   }}
                   disabled={actionLoading}
-                  className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-red-300 text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                  className="inline-flex min-h-11 items-center rounded-xl border border-red-300 px-4 py-2 text-sm font-medium font-sans text-red-700 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Annuler
                 </button>
@@ -599,7 +599,7 @@ export function AppointmentCard({
                   <button
                     onClick={handleRegenerateCalendar}
                     disabled={isRegenerating}
-                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 transition-colors disabled:opacity-60 min-h-[36px]"
+                    className="flex min-h-11 items-center gap-1.5 rounded-xl border border-sage-300 px-3 py-2 text-xs font-medium font-sans text-sage-700 transition-colors hover:bg-sage-50 disabled:opacity-60"
                     title={regenLabel}
                     aria-label={
                       isRegenerating ? 'Régénération en cours…' : regenLabel
@@ -761,14 +761,14 @@ export function AppointmentCard({
                 setModal(null);
               }}
               disabled={actionLoading}
-              className="px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 transition-colors disabled:opacity-60 min-h-[40px]"
+              className="min-h-11 rounded-xl border border-sage-300 px-4 py-2 text-sm font-medium font-sans text-sage-700 transition-colors hover:bg-sage-50 disabled:opacity-60"
             >
               Annuler
             </button>
             <button
               onClick={handleDecline}
               disabled={actionLoading}
-              className="px-4 py-2 text-sm font-medium font-sans rounded-xl bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-60 min-h-[40px]"
+              className="min-h-11 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium font-sans text-white transition-colors hover:bg-red-700 disabled:opacity-60"
             >
               {actionLoading ? 'En cours…' : 'Refuser'}
             </button>
@@ -837,14 +837,14 @@ export function AppointmentCard({
                 setModal(null);
               }}
               disabled={actionLoading}
-              className="px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 transition-colors disabled:opacity-60 min-h-[40px]"
+              className="min-h-11 rounded-xl border border-sage-300 px-4 py-2 text-sm font-medium font-sans text-sage-700 transition-colors hover:bg-sage-50 disabled:opacity-60"
             >
               Fermer
             </button>
             <button
               onClick={handleCancel}
               disabled={actionLoading}
-              className="px-4 py-2 text-sm font-medium font-sans rounded-xl bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-60 min-h-[40px]"
+              className="min-h-11 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium font-sans text-white transition-colors hover:bg-red-700 disabled:opacity-60"
             >
               {actionLoading ? 'En cours…' : 'Annuler le rendez-vous'}
             </button>
@@ -920,14 +920,14 @@ export function AppointmentCard({
                 setModal(null);
               }}
               disabled={actionLoading}
-              className="px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 transition-colors disabled:opacity-60 min-h-[40px]"
+              className="min-h-11 rounded-xl border border-sage-300 px-4 py-2 text-sm font-medium font-sans text-sage-700 transition-colors hover:bg-sage-50 disabled:opacity-60"
             >
               Annuler
             </button>
             <button
               onClick={handleReschedule}
               disabled={actionLoading}
-              className="px-4 py-2 text-sm font-medium font-sans rounded-xl bg-mint-600 text-white hover:bg-mint-700 transition-colors disabled:opacity-60 min-h-[40px]"
+              className="min-h-11 rounded-xl bg-mint-600 px-4 py-2 text-sm font-medium font-sans text-white transition-colors hover:bg-mint-700 disabled:opacity-60"
             >
               {actionLoading ? 'En cours…' : 'Reporter'}
             </button>
