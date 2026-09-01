@@ -180,15 +180,23 @@ export const POST: APIRoute = async ({ request, locals }) => {
       'scheduled_at',
     );
 
-  if (
-    appointment_mode === 'in-person' &&
-    !(await isCabinetEligibleSlot(scheduled_at))
-  )
-    return errorResponse(
-      400,
-      'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.',
-      'scheduled_at',
-    );
+  if (appointment_mode === 'in-person') {
+    try {
+      if (!(await isCabinetEligibleSlot(scheduled_at))) {
+        return errorResponse(
+          400,
+          'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.',
+          'scheduled_at',
+        );
+      }
+    } catch (cabinetError) {
+      console.error(
+        '[admin/appointments] Erreur vérification éligibilité cabinet:',
+        cabinetError,
+      );
+      return errorResponse(500, 'Erreur lors de la vérification du créneau');
+    }
+  }
 
   try {
     const slotEnd = new Date(

@@ -20,6 +20,7 @@ import {
 } from '@/lib/google-calendar';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getSchedulingSettings } from '@/lib/scheduling-settings';
+import type { SchedulingSettings } from '@/types/scheduling-settings';
 import {
   getCachedAvailability,
   setCachedAvailability,
@@ -76,7 +77,18 @@ async function fetchDbBusyPeriods(
           `and(rescheduled_to.gte.${from.toISOString()},rescheduled_to.lte.${to.toISOString()})`,
         ].join(','),
       ),
-    getSchedulingSettings(),
+    // Même dégradation gracieuse que la branche appointments ci-dessous : un
+    // échec settings (ex. migration 015 non appliquée) ne doit pas faire
+    // tomber toute la liste de créneaux — repli sur marge nulle.
+    getSchedulingSettings().catch(
+      (error): SchedulingSettings => {
+        console.error(
+          '[api/availability] Erreur scheduling settings (repli marge 0) :',
+          error instanceof Error ? error.message : error,
+        );
+        return { bufferMinutes: 0, updatedAt: new Date(0).toISOString() };
+      },
+    ),
   ]);
 
   const { data, error } = appointmentsResult;
@@ -89,18 +101,30 @@ async function fetchDbBusyPeriods(
   return (data ?? []).flatMap(row => {
     if (typeof row.duration !== 'number') return [];
 
-    // For rescheduled appointments, reserve proposed slot (rescheduled_to)
-    // so it cannot be double-booked before patient accepts.
+    // Pour un RDV reporté en attente, les DEUX fenêtres restent réservées :
+    // le créneau d'origine (scheduled_at → blocked_until) tant que le patient
+    // n'a pas accepté, et la proposition (rescheduled_to). Le trigger 015
+    // refuse un chevauchement sur l'une ou l'autre — l'offre de créneaux doit
+    // refléter les deux, sinon le patient choisit un créneau affiché libre
+    // et reçoit un 409 au submit.
     if (
       row.status === 'rescheduled' &&
       typeof row.rescheduled_to === 'string'
     ) {
+      const windows: Array<{ start: string; end: string }> = [];
+      if (
+        typeof row.scheduled_at === 'string' &&
+        typeof row.blocked_until === 'string'
+      ) {
+        windows.push({ start: row.scheduled_at, end: row.blocked_until });
+      }
       const start = new Date(row.rescheduled_to);
       const end = new Date(
         start.getTime() +
           (row.duration + schedulingSettings.bufferMinutes) * 60 * 1000,
       );
-      return [{ start: start.toISOString(), end: end.toISOString() }];
+      windows.push({ start: start.toISOString(), end: end.toISOString() });
+      return windows;
     }
 
     if (

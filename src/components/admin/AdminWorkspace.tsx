@@ -227,6 +227,7 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
             onClose={closePanel}
           >
             <AppointmentCard
+              key={selectedAppointment.id}
               appointment={selectedAppointment}
               onAppointmentUpdated={handleAppointmentUpdated}
             />

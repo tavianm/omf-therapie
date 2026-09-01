@@ -76,6 +76,23 @@ function formatSlot(iso: string): string {
   }).format(new Date(iso));
 }
 
+/**
+ * Value for a datetime-local input from a slot instant. These inputs carry no
+ * timezone and the submit path re-parses them in the device timezone (Paris
+ * for the practitioner), so the instant must be rendered in Europe/Paris wall
+ * time — toISOString() would shift the appointment 1–2 h early.
+ */
+function toDatetimeLocal(iso: string): string {
+  // sv-SE formats as YYYY-MM-DD HH:mm — one replace away from the input format.
+  return new Intl.DateTimeFormat('sv-SE', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'Europe/Paris',
+  })
+    .format(new Date(iso))
+    .replace(' ', 'T');
+}
+
 export function AppointmentComposer({
   initialPatient,
   onCreated,
@@ -399,13 +416,8 @@ export function AppointmentComposer({
             <button
               key={slot}
               type="button"
-              onClick={() =>
-                update(
-                  'scheduled_at',
-                  new Date(slot).toISOString().slice(0, 16),
-                )
-              }
-              className={`min-h-11 rounded-xl border px-3 text-sm ${form.scheduled_at && new Date(form.scheduled_at).toISOString() === new Date(slot).toISOString() ? 'border-mint-700 bg-mint-50 text-mint-900' : 'border-sage-200 text-sage-700'}`}
+              onClick={() => update('scheduled_at', toDatetimeLocal(slot))}
+              className={`min-h-11 rounded-xl border px-3 text-sm ${form.scheduled_at === toDatetimeLocal(slot) ? 'border-mint-700 bg-mint-50 text-mint-900' : 'border-sage-200 text-sage-700'}`}
             >
               {formatSlot(slot)}
             </button>

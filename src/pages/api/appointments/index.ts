@@ -186,14 +186,22 @@ export const POST: APIRoute = async ({ request }) => {
   // 3. Règles métier
   // Éligibilité cabinet réutilisée avec le moteur de génération des créneaux :
   // mercredi par défaut OU plages manuelles (manual_time_slots).
-  if (
-    appointment_mode === 'in-person' &&
-    !(await isCabinetEligibleSlot(scheduled_at as string))
-  )
-    return errorResponse(
-      422,
-      'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.',
-    );
+  if (appointment_mode === 'in-person') {
+    try {
+      if (!(await isCabinetEligibleSlot(scheduled_at as string))) {
+        return errorResponse(
+          422,
+          'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.',
+        );
+      }
+    } catch (cabinetError) {
+      console.error(
+        '[appointments] Erreur vérification éligibilité cabinet:',
+        cabinetError,
+      );
+      return errorResponse(500, 'Erreur lors de la vérification du créneau');
+    }
+  }
 
   if (!isWithinBusinessHours(scheduled_at as string, duration as number))
     return errorResponse(

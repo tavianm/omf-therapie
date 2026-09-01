@@ -750,14 +750,23 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // Présentiel : contrainte cabinet (mercredi), cohérent avec la création admin.
     // Pas de garde isWithinBusinessHours : action thérapeute, même flexibilité
     // que la création manuelle admin.
-    if (
-      appointment.appointment_mode === 'in-person' &&
-      !(await isCabinetEligibleSlot(rescheduled_to as string))
-    )
-      return errorResponse(
-        422,
-        'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.',
-      );
+    if (appointment.appointment_mode === 'in-person') {
+      try {
+        if (!(await isCabinetEligibleSlot(rescheduled_to as string))) {
+          return errorResponse(
+            422,
+            'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.',
+          );
+        }
+      } catch (cabinetError) {
+        logger.error(
+          'appointments/patch: cabinet eligibility check failed (reschedule_paid)',
+          { appointmentId: id },
+          cabinetError,
+        );
+        return errorResponse(500, 'Erreur lors de la vérification du créneau');
+      }
+    }
 
     try {
       const slotEnd = new Date(
@@ -921,14 +930,23 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (newDate.getTime() < Date.now())
       return errorResponse(422, 'Le nouveau créneau doit être dans le futur');
 
-    if (
-      appointment.appointment_mode === 'in-person' &&
-      !(await isCabinetEligibleSlot(rescheduled_to as string))
-    )
-      return errorResponse(
-        422,
-        'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.',
-      );
+    if (appointment.appointment_mode === 'in-person') {
+      try {
+        if (!(await isCabinetEligibleSlot(rescheduled_to as string))) {
+          return errorResponse(
+            422,
+            'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.',
+          );
+        }
+      } catch (cabinetError) {
+        logger.error(
+          'appointments/patch: cabinet eligibility check failed (reschedule)',
+          { appointmentId: id },
+          cabinetError,
+        );
+        return errorResponse(500, 'Erreur lors de la vérification du créneau');
+      }
+    }
 
     // Note : pas de garde isWithinBusinessHours ici (contrairement aux flux patient).
     // La thérapeute propose un créneau — elle connaît son agenda et peut reporter

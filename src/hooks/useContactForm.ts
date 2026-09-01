@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import type { FormData } from "../types/contact";
-import { trackEvent } from '../lib/analytics';
+import { trackEvent } from '../utils/analytics';
 
 interface FormStatus {
   message: string;

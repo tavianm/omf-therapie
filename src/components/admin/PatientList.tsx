@@ -1,5 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import type { Patient } from '../../types/patient';
+import { STATUS_LABELS } from './AppointmentCard';
 import { paginateAppointments } from './admin-workspace-utils';
 
 interface PatientListProps {
@@ -160,7 +161,8 @@ export function PatientList({ onStartAppointment }: PatientListProps) {
                     dateStyle: 'medium',
                     timeZone: 'Europe/Paris',
                   }).format(new Date(appointment.scheduledAt))}{' '}
-                  · {appointment.duration} min · {appointment.status}
+                  · {appointment.duration} min ·{' '}
+                  {STATUS_LABELS[appointment.status] ?? appointment.status}
                 </li>
               ))}
             </ul>

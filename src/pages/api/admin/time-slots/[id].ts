@@ -7,6 +7,8 @@ import {
   updateManualSlot,
   deleteManualSlot,
   invalidateSlotCache,
+  ManualSlotDuplicateError,
+  ManualSlotNotFoundError,
 } from '../../../../lib/manual-slots';
 import type { UpdateManualSlotData } from '@/types/manual-slots';
 
@@ -73,11 +75,10 @@ export const PATCH: APIRoute = async ({ params, request }) => {
       error,
     );
 
-    // Check if it's a "not found" error from the database
-    if (
-      error instanceof Error &&
-      error.message.includes('Failed to update manual slot')
-    ) {
+    if (error instanceof ManualSlotDuplicateError) {
+      return errorResponse(409, error.message);
+    }
+    if (error instanceof ManualSlotNotFoundError) {
       return errorResponse(404, 'Créneau introuvable');
     }
 
@@ -120,11 +121,7 @@ export const DELETE: APIRoute = async ({ params, request }) => {
       error,
     );
 
-    // Check if it's a "not found" error from the database
-    if (
-      error instanceof Error &&
-      error.message.includes('Failed to delete manual slot')
-    ) {
+    if (error instanceof ManualSlotNotFoundError) {
       return errorResponse(404, 'Créneau introuvable');
     }
 

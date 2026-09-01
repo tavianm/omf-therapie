@@ -12,6 +12,13 @@ export class ManualSlotDuplicateError extends Error {
   }
 }
 
+export class ManualSlotNotFoundError extends Error {
+  constructor() {
+    super('Créneau introuvable.');
+    this.name = 'ManualSlotNotFoundError';
+  }
+}
+
 function isUniqueConstraintViolation(error: unknown): boolean {
   return (
     typeof error === 'object' &&
@@ -108,6 +115,15 @@ export async function updateManualSlot(
     .single();
 
   if (error) {
+    // A period change or deleted_at restoration can collide with the partial
+    // unique index (slot_date, period) WHERE deleted_at IS NULL (migration 016).
+    if (isUniqueConstraintViolation(error)) {
+      throw new ManualSlotDuplicateError();
+    }
+    // PGRST116: .single() matched no row with this id.
+    if (error.code === 'PGRST116') {
+      throw new ManualSlotNotFoundError();
+    }
     throw new Error(`Failed to update manual slot: ${error.message}`);
   }
 
@@ -119,16 +135,21 @@ export async function updateManualSlot(
  * @param id - Slot ID to delete
  */
 export async function deleteManualSlot(id: string): Promise<void> {
-  const { error } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from('manual_time_slots')
     .update({
       deleted_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
-    .eq('id', id);
+    .eq('id', id)
+    .select('id');
 
   if (error) {
     throw new Error(`Failed to delete manual slot: ${error.message}`);
+  }
+  // Without a row-count check a DELETE on an unknown id would report success.
+  if (!data || data.length === 0) {
+    throw new ManualSlotNotFoundError();
   }
 }
 

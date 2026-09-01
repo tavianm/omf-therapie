@@ -7,7 +7,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { calculatePrice } from '../utils/pricing';
 import type { PricingResult } from '../utils/pricing';
-import { APPOINTMENT_ESTIMATED_VALUE, trackEvent } from '../lib/analytics';
+import { APPOINTMENT_ESTIMATED_VALUE, trackEvent } from '../utils/analytics';
 
 // ---------------------------------------------------------------------------
 // Types

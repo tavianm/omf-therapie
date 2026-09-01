@@ -46,10 +46,14 @@ export async function updateSchedulingBuffer(
 
 export function isSchedulingConflictError(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
-  const candidate = error as { code?: unknown; message?: unknown };
+  const candidate = error as { message?: unknown };
+  // Matcher uniquement les messages levés par les triggers de la migration
+  // 015 : P0001 seul est le code par défaut de tout RAISE EXCEPTION (ex.
+  // CREDIT_NO_OP dans 008) et ferait afficher « créneau plus disponible »
+  // pour des erreurs sans rapport.
   return (
-    candidate.code === 'P0001' ||
-    (typeof candidate.message === 'string' &&
-      candidate.message.includes('scheduling_'))
+    typeof candidate.message === 'string' &&
+    (candidate.message.includes('scheduling_conflict') ||
+      candidate.message.includes('scheduling_buffer_conflict'))
   );
 }

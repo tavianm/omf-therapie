@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useBooking } from '../../hooks/useBooking';
 import type { BookingState, BookingStep } from '../../hooks/useBooking';
 import { getTypeLabel, getModeLabel } from '../../utils/pricing';
-import { trackEvent } from '../../lib/analytics';
+import { trackEvent } from '../../utils/analytics';
 
 // ---------------------------------------------------------------------------
 // Types locaux
