@@ -1,6 +1,6 @@
 ---
 objective: "Transformer /mes-rdvs en un poste de travail iPad lisible à grande échelle, rapide pour les créations successives et cohérent avec une marge globale entre séances."
-status: implemented
+status: reviewed
 ---
 
 # Plan: Refonte du poste de travail administrateur
