@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { formForPatient } from '@/components/admin/AppointmentComposer';
+import {
+  isCustomDurationValid,
+  requiresManualPrice,
+} from '@/components/admin/admin-composer-utils';
 import type { Patient } from '@/types/patient';
 
 const patient = {
@@ -30,5 +34,23 @@ describe('appointment composer state', () => {
       appointment_mode: 'in-person',
       scheduled_at: '',
     });
+  });
+});
+
+describe('appointment composer duration contract', () => {
+  it('accepts custom durations only between 15 and 240 whole minutes', () => {
+    expect(isCustomDurationValid(15)).toBe(true);
+    expect(isCustomDurationValid(240)).toBe(true);
+    expect(isCustomDurationValid(14)).toBe(false);
+    expect(isCustomDurationValid(241)).toBe(false);
+    expect(isCustomDurationValid(45.5)).toBe(false);
+  });
+
+  it('requires a manual price for every non-standard duration', () => {
+    expect(requiresManualPrice(60)).toBe(false);
+    expect(requiresManualPrice(90)).toBe(false);
+    expect(requiresManualPrice(45)).toBe(true);
+    expect(requiresManualPrice(120)).toBe(true);
+    expect(requiresManualPrice(75)).toBe(true);
   });
 });

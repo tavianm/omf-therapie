@@ -6,6 +6,11 @@ import type {
   AppointmentType,
 } from '../../types/appointment';
 import type { Patient } from '../../types/patient';
+import {
+  EXPOSED_CUSTOM_DURATIONS,
+  isCustomDurationValid,
+  requiresManualPrice,
+} from './admin-composer-utils';
 
 interface AppointmentComposerProps {
   initialPatient?: Patient | null;
@@ -81,6 +86,7 @@ export function AppointmentComposer({
   );
   const [patients, setPatients] = useState<Patient[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [usesCustomDuration, setUsesCustomDuration] = useState(false);
   const [slots, setSlots] = useState<string[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -101,7 +107,7 @@ export function AppointmentComposer({
   }, [form.patient_name, patients]);
 
   const price = useMemo(() => {
-    if (![60, 90].includes(form.duration) && !form.override_price) {
+    if (requiresManualPrice(form.duration) && !form.override_price) {
       return { finalPrice: 0, label: 'Tarif manuel requis' };
     }
     return calculatePrice(
@@ -127,6 +133,11 @@ export function AppointmentComposer({
   }, []);
 
   useEffect(() => {
+    if (requiresManualPrice(form.duration)) {
+      setSlots([]);
+      setLoadingSlots(false);
+      return;
+    }
     const controller = new AbortController();
     setLoadingSlots(true);
     fetch(
@@ -174,6 +185,16 @@ export function AppointmentComposer({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!isCustomDurationValid(form.duration)) {
+      setError(
+        'La durée personnalisée doit être comprise entre 15 et 240 minutes.',
+      );
+      return;
+    }
+    if (requiresManualPrice(form.duration) && !form.override_price) {
+      setError('Un tarif manuel est requis pour cette durée personnalisée.');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -199,6 +220,7 @@ export function AppointmentComposer({
         `Rendez-vous créé pour ${payload.appointment.patient_name}. Vous pouvez créer le suivant.`,
       );
       setForm(EMPTY_FORM);
+      setUsesCustomDuration(false);
       setShowAdvanced(false);
       requestAnimationFrame(() => {
         patientNameInputRef.current?.focus();
@@ -313,17 +335,62 @@ export function AppointmentComposer({
         <label className="block text-sm text-sage-700">
           Durée
           <select
-            value={form.duration}
-            onChange={event => update('duration', Number(event.target.value))}
+            value={usesCustomDuration ? 'custom' : form.duration}
+            onChange={event => {
+              if (event.target.value === 'custom') {
+                setUsesCustomDuration(true);
+                update(
+                  'duration',
+                  requiresManualPrice(form.duration) ? form.duration : 45,
+                );
+                return;
+              }
+              setUsesCustomDuration(false);
+              update('duration', Number(event.target.value));
+            }}
             className="mt-1 min-h-11 w-full rounded-xl border border-sage-200 px-3"
           >
             <option value={60}>60 minutes</option>
             <option value={90}>90 minutes</option>
-            <option value={45}>45 minutes</option>
-            <option value={120}>120 minutes</option>
+            {EXPOSED_CUSTOM_DURATIONS.map(duration => (
+              <option key={duration} value={duration}>
+                {duration} minutes (tarif manuel)
+              </option>
+            ))}
+            <option value="custom">Personnalisée…</option>
           </select>
         </label>
+        {usesCustomDuration && (
+          <label className="block text-sm text-sage-700">
+            Durée personnalisée (15 à 240 minutes)
+            <input
+              required
+              type="number"
+              min="15"
+              max="240"
+              step="1"
+              value={form.duration}
+              onChange={event => update('duration', Number(event.target.value))}
+              className="mt-1 min-h-11 w-full rounded-xl border border-sage-200 px-3"
+            />
+          </label>
+        )}
       </fieldset>
+
+      {requiresManualPrice(form.duration) && (
+        <label className="block text-sm text-sage-700">
+          Tarif manuel (€)
+          <input
+            required
+            type="number"
+            min="0"
+            max="500"
+            value={form.override_price}
+            onChange={event => update('override_price', event.target.value)}
+            className="mt-1 min-h-11 w-full rounded-xl border border-sage-200 px-3"
+          />
+        </label>
+      )}
 
       <fieldset className="space-y-3">
         <legend className="font-semibold text-sage-900">3. Créneau</legend>
@@ -421,17 +488,19 @@ export function AppointmentComposer({
               />
             </label>
           )}
-          <label className="block text-sm text-sage-700">
-            Tarif manuel (€)
-            <input
-              type="number"
-              min="0"
-              max="500"
-              value={form.override_price}
-              onChange={event => update('override_price', event.target.value)}
-              className="mt-1 min-h-11 w-full rounded-xl border border-sage-200 px-3"
-            />
-          </label>
+          {!requiresManualPrice(form.duration) && (
+            <label className="block text-sm text-sage-700">
+              Tarif manuel (€)
+              <input
+                type="number"
+                min="0"
+                max="500"
+                value={form.override_price}
+                onChange={event => update('override_price', event.target.value)}
+                className="mt-1 min-h-11 w-full rounded-xl border border-sage-200 px-3"
+              />
+            </label>
+          )}
         </fieldset>
       )}
 
