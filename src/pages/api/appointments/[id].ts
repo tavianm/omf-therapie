@@ -24,6 +24,8 @@ import {
   getTypeLabel,
   getModeLabel,
   calculatePrice,
+  FIRST_SESSION_DISCOUNT,
+  SOLIDARITY_DISCOUNT,
 } from '../../../lib/pricing';
 import { createAppointmentPaymentLink, getStripe } from '../../../lib/stripe';
 import {
@@ -47,6 +49,7 @@ import {
   restoreCredits,
 } from '../../../lib/credits';
 import { isCancellableByTherapist } from '../../../lib/appointment-eligibility';
+import { formatParisDate } from '../../../utils/datetime';
 
 function errorResponse(status: number, message: string): Response {
   return new Response(JSON.stringify({ error: message }), {
@@ -60,6 +63,18 @@ function jsonResponse(data: unknown, status = 200): Response {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+/**
+ * True when a conditional (compare-and-swap) UPDATE matched no row: PostgREST
+ * surfaces `.single()` over 0 rows as PGRST116. Used by the token-guarded
+ * actions (accept/cancel_reschedule) to detect a double-use of the secure
+ * link between the initial read and the write (TOCTOU).
+ */
+function isNoRowMatched(error: unknown): boolean {
+  return (
+    (error as { code?: string } | null)?.code === 'PGRST116' || error == null
+  );
 }
 
 /**
@@ -242,15 +257,75 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         typeof override_first_session === 'boolean'
           ? override_first_session
           : appointment.is_first_session;
-      const pricing = calculatePrice(
-        appointment.appointment_type,
-        appointment.duration,
-        resolvedFirstSession,
-        typeof is_solidarity === 'boolean' ? is_solidarity : false,
-      );
-      updateData.is_first_session = resolvedFirstSession;
-      updateData.discount = pricing.discount * 100; // → centimes
-      updateData.final_price = pricing.finalPrice * 100; // → centimes
+      const resolvedSolidarity =
+        typeof is_solidarity === 'boolean' ? is_solidarity : false;
+
+      // Manual-price detection: the stored row may carry a price set manually
+      // at creation (admin override_price, e.g. 60 min at 30€) or a custom
+      // duration (15–240 min) outside the 60/90 grid. Recomputing from the
+      // grid here would either throw (custom duration → uncaught HTML 500)
+      // or silently replace the manual price — and the recomputed value
+      // propagates to the Stripe Payment Link below. Compare the stored basis
+      // against the grid recomputation; on divergence, keep the stored
+      // base_price and only re-apply the relative discount change requested
+      // by this action.
+      let manualPrice = false;
+      try {
+        const storedGrid = calculatePrice(
+          appointment.appointment_type,
+          appointment.duration,
+          appointment.is_first_session,
+        );
+        manualPrice =
+          storedGrid.basePrice * 100 !== appointment.base_price ||
+          storedGrid.finalPrice * 100 !== appointment.final_price;
+      } catch {
+        // Duration outside the 60/90 grid → the price can only be a manual one.
+        manualPrice = true;
+      }
+
+      try {
+        if (manualPrice) {
+          // Stored basis wins: re-apply only the discount change on top of the
+          // stored base_price, via calculatePrice's overridePrice parameter.
+          // The discount is capped at the base so final_price stays >= 0.
+          const remiseEuros = resolvedSolidarity
+            ? SOLIDARITY_DISCOUNT
+            : resolvedFirstSession
+              ? FIRST_SESSION_DISCOUNT
+              : 0;
+          const appliedRemise = Math.min(
+            remiseEuros,
+            appointment.base_price / 100,
+          );
+          const pricing = calculatePrice(
+            appointment.appointment_type,
+            appointment.duration,
+            resolvedFirstSession,
+            resolvedSolidarity,
+            appointment.base_price / 100 - appliedRemise,
+          );
+          updateData.discount = appliedRemise * 100; // → centimes
+          updateData.final_price = pricing.finalPrice * 100; // → centimes
+        } else {
+          const pricing = calculatePrice(
+            appointment.appointment_type,
+            appointment.duration,
+            resolvedFirstSession,
+            resolvedSolidarity,
+          );
+          updateData.discount = pricing.discount * 100; // → centimes
+          updateData.final_price = pricing.finalPrice * 100; // → centimes
+        }
+        updateData.is_first_session = resolvedFirstSession;
+      } catch (pricingErr) {
+        logger.error(
+          'appointments/patch: price recalculation failed (confirm)',
+          { appointmentId: id },
+          pricingErr,
+        );
+        return errorResponse(500, 'Erreur lors du recalcul du tarif');
+      }
     }
 
     // Validation URL vidéo
@@ -436,12 +511,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         to: updatedAppt.patient_email,
         threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
-          `Prépaiement de votre séance — ${new Intl.DateTimeFormat('fr-FR', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-            timeZone: 'Europe/Paris',
-          }).format(new Date(updatedAppt.scheduled_at))}`,
+          `Prépaiement de votre séance — ${formatParisDate(updatedAppt.scheduled_at)}`,
           updatedAppt.id,
         ),
         react: createElement(PaymentRequest, {
@@ -478,12 +548,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         to: updatedAppt.patient_email,
         threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
-          `Votre rendez-vous est confirmé — ${new Intl.DateTimeFormat('fr-FR', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-            timeZone: 'Europe/Paris',
-          }).format(new Date(updatedAppt.scheduled_at))}`,
+          `Votre rendez-vous est confirmé — ${formatParisDate(updatedAppt.scheduled_at)}`,
           updatedAppt.id,
         ),
         react: createElement(AppointmentConfirmed, {
@@ -602,6 +667,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       try {
         await restoreCredits(appointment.id);
         restoredAmount = appointment.credit_applied;
+        logger.info('appointments/patch: consumed credit restored (cancel)', {
+          appointmentId: id,
+          restoredAmount,
+        });
       } catch (restoreErr) {
         // La cohérence du ledger prime : on bloque l'annulation si la restitution échoue.
         logger.error(
@@ -620,8 +689,19 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       creditCashAmount = appointment.final_price - appointment.credit_applied;
       if (creditCashAmount > 0) {
         try {
-          await issueCreditForCancellation(appointment, creditCashAmount);
+          const issuedCreditRow = await issueCreditForCancellation(
+            appointment,
+            creditCashAmount,
+          );
           issuedCredit = true;
+          logger.info(
+            'appointments/patch: credit issued for cancelled appointment',
+            {
+              appointmentId: id,
+              creditId: issuedCreditRow?.id ?? null,
+              amount: creditCashAmount,
+            },
+          );
         } catch (creditErr) {
           logger.error(
             'appointments/patch: credit issuance failed (cancel)',
@@ -645,6 +725,22 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       .single();
 
     if (updateError || !updated) {
+      // No transaction spans steps 1-3 (Supabase + RPC): if credits were
+      // already written and this final UPDATE fails, the ledger and the
+      // appointment row diverge — loud, explicit signal for manual
+      // reconciliation.
+      if (restoredAmount > 0 || issuedCredit) {
+        logger.error(
+          'appointments/patch: credits emitted but appointment update failed — manual reconciliation needed',
+          {
+            appointmentId: id,
+            restoredAmount,
+            issuedCredit,
+            issuedAmount: creditCashAmount,
+          },
+          updateError,
+        );
+      }
       logger.error(
         'appointments/patch: Supabase update failed (cancel)',
         { appointmentId: id },
@@ -880,14 +976,22 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         "Ce rendez-vous n'est pas en attente d'acceptation de report",
       );
 
+    // TOCTOU guard (same pattern as accept_reschedule): the UPDATE is a
+    // compare-and-swap on status — if a parallel accept_reschedule consumed
+    // the proposal between our read and this write, 0 rows match (PGRST116)
+    // and we return 409 instead of resetting an already-accepted RDV.
     const { data: updated, error: updateError } = await supabaseAdmin
       .from('appointments')
       .update({ status: 'pending', rescheduled_to: null })
       .eq('id', id)
+      .eq('status', 'rescheduled')
       .select()
       .single();
 
     if (updateError || !updated) {
+      if (isNoRowMatched(updateError)) {
+        return errorResponse(409, 'Ce lien de report a déjà été utilisé.');
+      }
       logger.error(
         'appointments/patch: Supabase update failed (cancel_reschedule)',
         { appointmentId: id },
@@ -1154,67 +1258,46 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       newStatus = 'confirmed';
     }
 
-    const updateData: Record<string, unknown> = {
-      status: newStatus,
-      scheduled_at: appointment.rescheduled_to,
-      rescheduled_to: null,
-    };
+    // Columns returned to an unauthenticated caller (the patient):
+    // therapist_notes, stripe_payment_intent_id, stripe_payment_link_id
+    // excluded.
+    const publicColumns = [
+      'id',
+      'status',
+      'scheduled_at',
+      'rescheduled_to',
+      'appointment_mode',
+      'appointment_type',
+      'duration',
+      'patient_name',
+      'patient_email',
+      'final_price',
+      'video_link',
+      'stripe_payment_link_url',
+      'google_calendar_event_id',
+    ].join(', ');
 
-    // Génération du Payment Link Stripe pour les séances vidéo
-    if (appointment.appointment_mode === 'video') {
-      try {
-        const successUrl =
-          import.meta.env.STRIPE_SUCCESS_URL ??
-          `${baseUrl}/rdv/merci/?source=payment-success`;
-        const description = `Séance ${getTypeLabel(appointment.appointment_type)} — OMF Thérapie (${appointment.duration} min)`;
-        const paymentLink = await createAppointmentPaymentLink({
-          appointmentId: appointment.id,
-          patientEmail: appointment.patient_email,
-          patientName: appointment.patient_name,
-          amount: appointment.final_price,
-          description,
-          successUrl,
-        });
-        updateData.stripe_payment_link_id = paymentLink.id;
-        updateData.stripe_payment_link_url = paymentLink.url;
-      } catch (stripeErr) {
-        logger.error(
-          'appointments/patch: Stripe Payment Link generation failed (accept_reschedule)',
-          { appointmentId: id },
-          stripeErr,
-        );
-        return errorResponse(
-          500,
-          'Erreur lors de la génération du lien de paiement Stripe',
-        );
-      }
-    }
-
+    // TOCTOU guard: claim the reschedule with a compare-and-swap UPDATE
+    // (`.eq('status', 'rescheduled')`) BEFORE any Stripe side-effect. On a
+    // double-click or parallel replay of the same token, exactly one request
+    // flips the row; the loser matches 0 rows (PGRST116) and gets a 409
+    // without ever creating a second Payment Link.
     const { data: updated, error: updateError } = await supabaseAdmin
       .from('appointments')
-      .update(updateData)
+      .update({
+        status: newStatus,
+        scheduled_at: appointment.rescheduled_to,
+        rescheduled_to: null,
+      })
       .eq('id', id)
-      .select(
-        [
-          'id',
-          'status',
-          'scheduled_at',
-          'rescheduled_to',
-          'appointment_mode',
-          'appointment_type',
-          'duration',
-          'patient_name',
-          'patient_email',
-          'final_price',
-          'video_link',
-          'stripe_payment_link_url',
-          'google_calendar_event_id',
-          // therapist_notes, stripe_payment_intent_id, stripe_payment_link_id excluded — unauthenticated caller
-        ].join(', '),
-      )
+      .eq('status', 'rescheduled')
+      .select(publicColumns)
       .single();
 
     if (updateError || !updated) {
+      if (isNoRowMatched(updateError)) {
+        return errorResponse(409, 'Ce lien de report a déjà été utilisé.');
+      }
       if (isSchedulingConflictError(updateError)) {
         return errorResponse(
           409,
@@ -1229,11 +1312,83 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       return errorResponse(500, 'Erreur lors de la mise à jour');
     }
 
-    // `let`, not `const`: re-bound after google_calendar_event_id persistence
-    // in the reschedule-accept sync below (`updatedAppt = refreshedAfterCalendar`).
-    // `as unknown as` bridges the Supabase GenericStringError→Appointment
-    // boundary (non-overlapping types).
+    // `let`, not `const`: re-bound after Stripe Payment Link persistence and
+    // google_calendar_event_id persistence in the reschedule-accept sync
+    // below. `as unknown as` bridges the Supabase
+    // GenericStringError→Appointment boundary (non-overlapping types).
     let updatedAppt = updated as unknown as Appointment;
+
+    // Génération du Payment Link Stripe pour les séances vidéo — uniquement
+    // APRÈS le claim atomique ci-dessus (anti double-usage du lien signé).
+    if (appointment.appointment_mode === 'video') {
+      try {
+        const successUrl =
+          import.meta.env.STRIPE_SUCCESS_URL ??
+          `${baseUrl}/rdv/merci/?source=payment-success`;
+        const description = `Séance ${getTypeLabel(appointment.appointment_type)} — OMF Thérapie (${appointment.duration} min)`;
+        const paymentLink = await createAppointmentPaymentLink({
+          appointmentId: appointment.id,
+          patientEmail: appointment.patient_email,
+          patientName: appointment.patient_name,
+          amount: appointment.final_price,
+          description,
+          successUrl,
+        });
+        const { data: updatedWithLink, error: linkUpdateError } =
+          await supabaseAdmin
+            .from('appointments')
+            .update({
+              stripe_payment_link_id: paymentLink.id,
+              stripe_payment_link_url: paymentLink.url,
+            })
+            .eq('id', id)
+            .select(publicColumns)
+            .single();
+        if (linkUpdateError || !updatedWithLink) {
+          logger.error(
+            'appointments/patch: failed to persist Stripe Payment Link (accept_reschedule)',
+            { appointmentId: id, stripePaymentLinkId: paymentLink.id },
+            linkUpdateError,
+          );
+          return errorResponse(
+            500,
+            'Erreur lors de la génération du lien de paiement Stripe',
+          );
+        }
+        updatedAppt = updatedWithLink as unknown as Appointment;
+      } catch (stripeErr) {
+        logger.error(
+          'appointments/patch: Stripe Payment Link generation failed (accept_reschedule)',
+          { appointmentId: id },
+          stripeErr,
+        );
+        // Compensating rollback: the claim above consumed the `rescheduled`
+        // state (clearing rescheduled_to invalidates the token nonce), so a
+        // bare 500 would burn the link for a retry. Restore the pre-accept
+        // state; if the rollback itself fails, log the divergence loudly for
+        // manual reconciliation.
+        const { error: rollbackError } = await supabaseAdmin
+          .from('appointments')
+          .update({
+            status: 'rescheduled',
+            scheduled_at: appointment.scheduled_at,
+            rescheduled_to: appointment.rescheduled_to,
+          })
+          .eq('id', id)
+          .eq('status', newStatus);
+        if (rollbackError) {
+          logger.error(
+            'appointments/patch: rollback after Stripe failure failed — appointment stuck in accepted state, manual reconciliation needed',
+            { appointmentId: id },
+            rollbackError,
+          );
+        }
+        return errorResponse(
+          500,
+          'Erreur lors de la génération du lien de paiement Stripe',
+        );
+      }
+    }
 
     await invalidateAvailabilityCache().catch(onCacheInvalidateError);
 
@@ -1347,12 +1502,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         to: updatedAppt.patient_email,
         threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
-          `Prépaiement de votre séance — ${new Intl.DateTimeFormat('fr-FR', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-            timeZone: 'Europe/Paris',
-          }).format(new Date(updatedAppt.scheduled_at))}`,
+          `Prépaiement de votre séance — ${formatParisDate(updatedAppt.scheduled_at)}`,
           updatedAppt.id,
         ),
         react: createElement(PaymentRequest, {
@@ -1389,12 +1539,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         to: updatedAppt.patient_email,
         threadKey: `appointment:${updatedAppt.id}:patient`,
         subject: buildAppointmentConversationSubject(
-          `Votre rendez-vous est confirmé — ${new Intl.DateTimeFormat('fr-FR', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-            timeZone: 'Europe/Paris',
-          }).format(new Date(updatedAppt.scheduled_at))}`,
+          `Votre rendez-vous est confirmé — ${formatParisDate(updatedAppt.scheduled_at)}`,
           updatedAppt.id,
         ),
         react: createElement(AppointmentConfirmed, {

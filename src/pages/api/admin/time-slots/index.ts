@@ -10,6 +10,7 @@ import {
   ManualSlotDuplicateError,
 } from '../../../../lib/manual-slots';
 import type { CreateManualSlotData } from '@/types/manual-slots';
+import { VALID_PERIODS } from '@/utils/domain';
 
 function errorResponse(status: number, message: string): Response {
   return new Response(JSON.stringify({ error: message }), {
@@ -97,8 +98,7 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     // Validate period value
-    const validPeriods = ['morning', 'afternoon', 'all_day'];
-    if (!validPeriods.includes(data.period)) {
+    if (!VALID_PERIODS.includes(data.period)) {
       return errorResponse(
         400,
         'Period invalide (valeurs acceptées: morning, afternoon, all_day)',

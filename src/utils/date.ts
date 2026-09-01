@@ -181,12 +181,3 @@ export function formatDayHeader(iso: string): string {
     timeZone: 'Europe/Paris',
   }).format(new Date(iso));
 }
-
-/** Heure courte HH:mm en fuseau Paris. */
-export function formatTimeParis(iso: string): string {
-  return new Intl.DateTimeFormat('fr-FR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Paris',
-  }).format(new Date(iso));
-}

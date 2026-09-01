@@ -1,6 +1,7 @@
 import type { Appointment } from '../../types/appointment';
 import { getModeLabel, getTypeLabel } from '../../utils/pricing';
-import { STATUS_LABELS } from './AppointmentCard';
+import { STATUS_LABELS } from '../../utils/domain';
+import { formatParisTime } from '../../utils/datetime';
 import type { WorkspaceSummary } from './admin-workspace-utils';
 
 interface AdminOverviewProps {
@@ -8,20 +9,14 @@ interface AdminOverviewProps {
   onSelectAppointment: (appointment: Appointment) => void;
 }
 
-function formatAppointmentTime(iso: string): string {
-  return new Intl.DateTimeFormat('fr-FR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Paris',
-  }).format(new Date(iso));
-}
-
 function AppointmentLink({
   appointment,
   onSelect,
+  isOverdue = false,
 }: {
   appointment: Appointment;
   onSelect: () => void;
+  isOverdue?: boolean;
 }) {
   return (
     <button
@@ -30,7 +25,7 @@ function AppointmentLink({
       className="grid w-full grid-cols-[4.5rem_1fr_auto] items-center gap-3 rounded-xl border border-sage-200 bg-white px-3 py-3 text-left text-sm transition-colors hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-mint-400"
     >
       <span className="font-medium text-sage-800">
-        {formatAppointmentTime(appointment.scheduled_at)}
+        {formatParisTime(appointment.scheduled_at)}
       </span>
       <span>
         <span className="block font-medium text-sage-900">
@@ -41,8 +36,13 @@ function AppointmentLink({
           {getModeLabel(appointment.appointment_mode)}
         </span>
       </span>
-      <span className="text-xs text-sage-600">
-        {STATUS_LABELS[appointment.status]}
+      <span className="flex flex-col items-end gap-1 text-xs text-sage-600">
+        {isOverdue && (
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+            En retard
+          </span>
+        )}
+        <span>{STATUS_LABELS[appointment.status]}</span>
       </span>
     </button>
   );
@@ -52,6 +52,8 @@ export function AdminOverview({
   summary,
   onSelectAppointment,
 }: AdminOverviewProps) {
+  const overdueIds = new Set(summary.overdue.map(item => item.id));
+
   return (
     <section className="space-y-5" aria-labelledby="workspace-overview-title">
       <div>
@@ -83,6 +85,7 @@ export function AdminOverview({
                 key={appointment.id}
                 appointment={appointment}
                 onSelect={() => onSelectAppointment(appointment)}
+                isOverdue={overdueIds.has(appointment.id)}
               />
             ))}
             {summary.actionable.length === 0 && (

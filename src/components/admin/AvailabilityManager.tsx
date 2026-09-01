@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ManualTimeSlot, Period } from '../../types/manual-slots';
-import type { SchedulingBufferMinutes } from '../../types/scheduling-settings';
+import {
+  SCHEDULING_BUFFER_VALUES,
+  type SchedulingBufferMinutes,
+} from '../../types/scheduling-settings';
 import {
   calendarMonth,
   calendarMonthBounds,
@@ -10,7 +13,18 @@ import {
   type CalendarMonth,
 } from './admin-availability-utils';
 
-const BUFFER_OPTIONS: SchedulingBufferMinutes[] = [0, 15, 20];
+const BUFFER_OPTIONS = SCHEDULING_BUFFER_VALUES;
+
+const PERIOD_OPTIONS: { period: Period; label: string }[] = [
+  { period: 'morning', label: 'Ajouter matin' },
+  { period: 'afternoon', label: 'Ajouter après-midi' },
+  { period: 'all_day', label: 'Ajouter journée' },
+];
+
+// Tracks which presence mutation is in flight so the acting button can show
+// its own pending hint; one mutation at a time (server-side uniqueness).
+type PresenceMutation =
+  { kind: 'add'; period: Period } | { kind: 'remove'; slotId: string };
 
 export function AvailabilityManager() {
   const [month, setMonth] = useState<CalendarMonth>(() => {
@@ -23,8 +37,10 @@ export function AvailabilityManager() {
   );
   const [buffer, setBuffer] = useState<SchedulingBufferMinutes>(0);
   const [saving, setSaving] = useState(false);
-  const [isMutatingPresence, setIsMutatingPresence] = useState(false);
+  const [presenceMutation, setPresenceMutation] =
+    useState<PresenceMutation | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const bounds = useMemo(() => calendarMonthBounds(month), [month]);
   const selectedSlots = slots.filter(slot => slot.slot_date === selectedDate);
@@ -40,10 +56,14 @@ export function AvailabilityManager() {
           ? (response.json() as Promise<{ slots?: ManualTimeSlot[] }>)
           : Promise.reject(new Error('Chargement impossible')),
       )
-      .then(data => setSlots(data.slots ?? []))
+      .then(data => {
+        setSlots(data.slots ?? []);
+        setLoadError(null);
+      })
       .catch(() => {
+        // Keep the load failure distinct from a genuinely empty month.
         if (!controller.signal.aborted)
-          setMessage('Impossible de charger les présences.');
+          setLoadError('Impossible de charger les présences.');
       });
     return () => controller.abort();
   }, [bounds]);
@@ -55,18 +75,20 @@ export function AvailabilityManager() {
           ? (response.json() as Promise<{
               settings?: { bufferMinutes?: SchedulingBufferMinutes };
             }>)
-          : null,
+          : Promise.reject(new Error('Chargement impossible')),
       )
       .then(data => {
         if (data?.settings?.bufferMinutes !== undefined)
           setBuffer(data.settings.bufferMinutes);
       })
-      .catch(() => undefined);
+      .catch(() =>
+        setLoadError('Impossible de charger la marge entre les séances.'),
+      );
   }, []);
 
   async function addPresence(period: Period) {
-    if (isMutatingPresence) return;
-    setIsMutatingPresence(true);
+    if (presenceMutation) return;
+    setPresenceMutation({ kind: 'add', period });
     setMessage(null);
     try {
       const response = await fetch('/api/admin/time-slots/', {
@@ -90,13 +112,13 @@ export function AvailabilityManager() {
     } catch {
       setMessage('Impossible d’enregistrer cette présence.');
     } finally {
-      setIsMutatingPresence(false);
+      setPresenceMutation(null);
     }
   }
 
   async function removePresence(slot: ManualTimeSlot) {
-    if (isMutatingPresence) return;
-    setIsMutatingPresence(true);
+    if (presenceMutation) return;
+    setPresenceMutation({ kind: 'remove', slotId: slot.id });
     try {
       const response = await fetch(`/api/admin/time-slots/${slot.id}/`, {
         method: 'DELETE',
@@ -111,7 +133,7 @@ export function AvailabilityManager() {
     } catch {
       setMessage('Impossible de retirer cette présence.');
     } finally {
-      setIsMutatingPresence(false);
+      setPresenceMutation(null);
     }
   }
 
@@ -162,6 +184,14 @@ export function AvailabilityManager() {
           les règles de l’agenda externe.
         </p>
       </div>
+      {loadError && (
+        <p
+          role="alert"
+          className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+        >
+          {loadError}
+        </p>
+      )}
       {message && (
         <p
           role="status"
@@ -238,30 +268,30 @@ export function AvailabilityManager() {
             }).format(new Date(`${selectedDate}T00:00:00Z`))}
           </h3>
           <div className="mt-4 grid gap-2 sm:grid-cols-3">
-            <button
-              type="button"
-              onClick={() => void addPresence('morning')}
-              disabled={isMutatingPresence}
-              className="min-h-11 rounded-xl border border-sage-200 px-3 text-sm text-sage-700"
-            >
-              Ajouter matin
-            </button>
-            <button
-              type="button"
-              onClick={() => void addPresence('afternoon')}
-              disabled={isMutatingPresence}
-              className="min-h-11 rounded-xl border border-sage-200 px-3 text-sm text-sage-700"
-            >
-              Ajouter après-midi
-            </button>
-            <button
-              type="button"
-              onClick={() => void addPresence('all_day')}
-              disabled={isMutatingPresence}
-              className="min-h-11 rounded-xl bg-mint-700 px-3 text-sm font-semibold text-white"
-            >
-              Ajouter journée
-            </button>
+            {PERIOD_OPTIONS.map(option => {
+              const isAdded = selectedSlots.some(
+                slot => slot.period === option.period,
+              );
+              const isAddingThis =
+                presenceMutation?.kind === 'add' &&
+                presenceMutation.period === option.period;
+              return (
+                <button
+                  key={option.period}
+                  type="button"
+                  onClick={() => void addPresence(option.period)}
+                  disabled={presenceMutation !== null}
+                  aria-pressed={isAdded}
+                  className={`min-h-11 rounded-xl border px-3 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-mint-400 disabled:cursor-not-allowed disabled:opacity-60 ${
+                    isAdded
+                      ? 'border-mint-700 bg-mint-700 text-white'
+                      : 'border-sage-200 text-sage-700 hover:bg-sage-50'
+                  }`}
+                >
+                  {isAddingThis ? 'Ajout…' : option.label}
+                </button>
+              );
+            })}
           </div>
           <ul className="mt-4 space-y-2">
             {selectedSlots.map(slot => (
@@ -279,10 +309,13 @@ export function AvailabilityManager() {
                 <button
                   type="button"
                   onClick={() => void removePresence(slot)}
-                  disabled={isMutatingPresence}
-                  className="min-h-11 rounded-xl px-3 text-sm text-red-700 hover:bg-red-50"
+                  disabled={presenceMutation !== null}
+                  className="min-h-11 rounded-xl px-3 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Retirer
+                  {presenceMutation?.kind === 'remove' &&
+                  presenceMutation.slotId === slot.id
+                    ? 'Suppression…'
+                    : 'Retirer'}
                 </button>
               </li>
             ))}

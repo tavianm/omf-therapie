@@ -22,6 +22,11 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getSchedulingSettings } from '@/lib/scheduling-settings';
 import type { SchedulingSettings } from '@/types/scheduling-settings';
 import {
+  BLOCKING_STATUSES,
+  VALID_DURATIONS,
+  VALID_MODES,
+} from '@/utils/domain';
+import {
   getCachedAvailability,
   setCachedAvailability,
   buildAvailabilityCacheKey,
@@ -33,23 +38,6 @@ export const prerender = false;
 // ---------------------------------------------------------------------------
 // Constantes de validation
 // ---------------------------------------------------------------------------
-
-const VALID_MODES: ReadonlySet<string> = new Set<AppointmentMode>([
-  'in-person',
-  'video',
-]);
-
-const VALID_DURATIONS: ReadonlySet<number> = new Set<AppointmentDuration>([
-  60, 90,
-]);
-
-const BLOCKING_STATUSES = [
-  'pending',
-  'confirmed',
-  'payment_pending',
-  'payment_received',
-  'rescheduled',
-] as const;
 
 const MIN_WEEKS = 1;
 const MAX_WEEKS = 8;

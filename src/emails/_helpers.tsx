@@ -5,6 +5,11 @@
 
 import type { CSSProperties } from 'react';
 import { Hr, Text } from '@react-email/components';
+import {
+  formatParisTime,
+  formatParisWeekdayDate,
+  formatParisWeekdayDateTime,
+} from '../utils/datetime';
 
 // ---------------------------------------------------------------------------
 // Palette (miroir de tailwind.config.js + BaseLayout)
@@ -30,17 +35,8 @@ export const COLORS = {
  * Ex: "Lundi 14 juillet 2025 à 10h00"
  */
 export function formatDateFR(isoString: string): string {
-  const date = new Date(isoString);
-  const formatted = new Intl.DateTimeFormat('fr-FR', {
-    weekday: 'long',
-    day:     'numeric',
-    month:   'long',
-    year:    'numeric',
-    hour:    '2-digit',
-    minute:  '2-digit',
-    timeZone: 'Europe/Paris',
-  }).format(date);
   // Capitalise la première lettre (fr-FR retourne en minuscules)
+  const formatted = formatParisWeekdayDateTime(isoString);
   return formatted.charAt(0).toUpperCase() + formatted.slice(1);
 }
 
@@ -49,14 +45,7 @@ export function formatDateFR(isoString: string): string {
  * Ex: "Lundi 14 juillet 2025"
  */
 export function formatDateOnlyFR(isoString: string): string {
-  const date = new Date(isoString);
-  const formatted = new Intl.DateTimeFormat('fr-FR', {
-    weekday: 'long',
-    day:     'numeric',
-    month:   'long',
-    year:    'numeric',
-    timeZone: 'Europe/Paris',
-  }).format(date);
+  const formatted = formatParisWeekdayDate(isoString);
   return formatted.charAt(0).toUpperCase() + formatted.slice(1);
 }
 
@@ -65,11 +54,7 @@ export function formatDateOnlyFR(isoString: string): string {
  * Ex: "10h00"
  */
 export function formatTimeFR(isoString: string): string {
-  return new Intl.DateTimeFormat('fr-FR', {
-    hour:     '2-digit',
-    minute:   '2-digit',
-    timeZone: 'Europe/Paris',
-  }).format(new Date(isoString));
+  return formatParisTime(isoString);
 }
 
 // ---------------------------------------------------------------------------

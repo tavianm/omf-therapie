@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import type { Patient } from '../../types/patient';
-import { STATUS_LABELS } from './AppointmentCard';
+import { STATUS_LABELS } from '../../utils/domain';
+import { formatParisMediumDate } from '../../utils/datetime';
 import { paginateAppointments } from './admin-workspace-utils';
 
 interface PatientListProps {
@@ -157,11 +158,8 @@ export function PatientList({ onStartAppointment }: PatientListProps) {
                   key={appointment.id}
                   className="rounded-xl bg-sage-50 p-2 text-xs text-sage-700"
                 >
-                  {new Intl.DateTimeFormat('fr-FR', {
-                    dateStyle: 'medium',
-                    timeZone: 'Europe/Paris',
-                  }).format(new Date(appointment.scheduledAt))}{' '}
-                  · {appointment.duration} min ·{' '}
+                  {formatParisMediumDate(appointment.scheduledAt)} ·{' '}
+                  {appointment.duration} min ·{' '}
                   {STATUS_LABELS[appointment.status] ?? appointment.status}
                 </li>
               ))}

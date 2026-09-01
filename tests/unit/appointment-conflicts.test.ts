@@ -55,7 +55,9 @@ vi.mock('@/lib/supabase', () => ({
           filters.push({ method: 'neq', args });
           return chain;
         },
-        limit: async () => ({ data: rows, error: null }),
+        // Real postgrest-js keeps filter methods callable after .limit(), so
+        // the excludeAppointmentId branch can append .neq() post-limit.
+        limit: () => chain,
         then: (
           resolve: (value: { data: unknown[]; error: null }) => unknown,
           reject: (reason: unknown) => unknown,
@@ -110,5 +112,73 @@ describe('hasAppointmentConflict', () => {
         slotEndIso: '2026-09-01T12:15:00.000Z',
       }),
     ).resolves.toBe(true);
+  });
+
+  it('reports a conflict when an overlapping appointment row matches the direct query', async () => {
+    h.directRows = [{ id: 'apt-existing' }];
+
+    await expect(
+      hasAppointmentConflict({
+        slotStartIso: '2026-09-01T09:00:00.000Z',
+        slotEndIso: '2026-09-01T10:00:00.000Z',
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it('excludes the given appointment id from both conflict queries', async () => {
+    await expect(
+      hasAppointmentConflict({
+        slotStartIso: '2026-09-01T09:00:00.000Z',
+        slotEndIso: '2026-09-01T10:00:00.000Z',
+        excludeAppointmentId: 'apt-self',
+      }),
+    ).resolves.toBe(false);
+
+    expect(h.directFilters).toContainEqual({
+      method: 'neq',
+      args: ['id', 'apt-self'],
+    });
+    expect(h.rescheduledFilters).toContainEqual({
+      method: 'neq',
+      args: ['id', 'apt-self'],
+    });
+  });
+
+  it('keeps the conflict window equal to the slot when the buffer is 0', async () => {
+    h.bufferMinutes = 0;
+
+    await expect(
+      hasAppointmentConflict({
+        slotStartIso: '2026-09-01T09:00:00.000Z',
+        slotEndIso: '2026-09-01T10:00:00.000Z',
+      }),
+    ).resolves.toBe(false);
+
+    expect(h.directFilters).toContainEqual({
+      method: 'lt',
+      args: ['scheduled_at', '2026-09-01T10:00:00.000Z'],
+    });
+  });
+
+  it('widens the conflict window by a 20-minute buffer and keeps the lookback constant', async () => {
+    h.bufferMinutes = 20;
+
+    await expect(
+      hasAppointmentConflict({
+        slotStartIso: '2026-09-01T09:00:00.000Z',
+        slotEndIso: '2026-09-01T10:00:00.000Z',
+      }),
+    ).resolves.toBe(false);
+
+    expect(h.directFilters).toContainEqual({
+      method: 'lt',
+      args: ['scheduled_at', '2026-09-01T10:20:00.000Z'],
+    });
+    // The reschedule lookback derives from the max duration/buffer constants,
+    // not from the configured buffer: 09:00 - (240 + 20) minutes.
+    expect(h.rescheduledFilters).toContainEqual({
+      method: 'gte',
+      args: ['rescheduled_to', '2026-09-01T04:40:00.000Z'],
+    });
   });
 });

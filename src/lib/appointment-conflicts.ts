@@ -1,16 +1,10 @@
 import { supabaseAdmin } from './supabase';
 import { getSchedulingSettings } from './scheduling-settings';
-
-const BLOCKING_STATUSES = [
-  'pending',
-  'confirmed',
-  'payment_pending',
-  'payment_received',
-  'rescheduled',
-] as const;
-
-const MAX_APPOINTMENT_DURATION_MINUTES = 240;
-const MAX_SCHEDULING_BUFFER_MINUTES = 20;
+import {
+  BLOCKING_STATUSES,
+  MAX_APPOINTMENT_DURATION_MINUTES,
+  MAX_SCHEDULING_BUFFER_MINUTES,
+} from '../utils/domain';
 
 interface ConflictCheckInput {
   slotStartIso: string;

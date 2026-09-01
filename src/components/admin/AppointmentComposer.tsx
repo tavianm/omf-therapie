@@ -6,8 +6,11 @@ import type {
   AppointmentType,
 } from '../../types/appointment';
 import type { Patient } from '../../types/patient';
+import { formatParisSlot, toParisDatetimeLocal } from '../../utils/datetime';
 import {
+  computeCreditEstimate,
   EXPOSED_CUSTOM_DURATIONS,
+  formatEuros,
   isCustomDurationValid,
   requiresManualPrice,
 } from './admin-composer-utils';
@@ -65,34 +68,6 @@ export function formForPatient(patient?: Patient | null): FormState {
   };
 }
 
-function formatSlot(iso: string): string {
-  return new Intl.DateTimeFormat('fr-FR', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Paris',
-  }).format(new Date(iso));
-}
-
-/**
- * Value for a datetime-local input from a slot instant. These inputs carry no
- * timezone and the submit path re-parses them in the device timezone (Paris
- * for the practitioner), so the instant must be rendered in Europe/Paris wall
- * time — toISOString() would shift the appointment 1–2 h early.
- */
-function toDatetimeLocal(iso: string): string {
-  // sv-SE formats as YYYY-MM-DD HH:mm — one replace away from the input format.
-  return new Intl.DateTimeFormat('sv-SE', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-    timeZone: 'Europe/Paris',
-  })
-    .format(new Date(iso))
-    .replace(' ', 'T');
-}
-
 export function AppointmentComposer({
   initialPatient,
   onCreated,
@@ -102,10 +77,13 @@ export function AppointmentComposer({
     formForPatient(initialPatient),
   );
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [patientsError, setPatientsError] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [usesCustomDuration, setUsesCustomDuration] = useState(false);
   const [slots, setSlots] = useState<string[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [slotsError, setSlotsError] = useState(false);
+  const [creditBalance, setCreditBalance] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -125,34 +103,107 @@ export function AppointmentComposer({
 
   const price = useMemo(() => {
     if (requiresManualPrice(form.duration) && !form.override_price) {
-      return { finalPrice: 0, label: 'Tarif manuel requis' };
+      return {
+        finalPrice: 0,
+        label: 'Tarif manuel requis',
+        manualPriceRequired: true,
+      };
     }
-    return calculatePrice(
-      form.appointment_type,
-      form.duration,
-      form.override_first_session,
-      form.is_solidarity,
-      form.override_price ? Number(form.override_price) : undefined,
-    );
+    return {
+      ...calculatePrice(
+        form.appointment_type,
+        form.duration,
+        form.override_first_session,
+        form.is_solidarity,
+        form.override_price ? Number(form.override_price) : undefined,
+      ),
+      manualPriceRequired: false,
+    };
   }, [form]);
+
+  // Mirrors the server-side avoir math so the estimate matches what
+  // POST /api/admin/appointments/ will actually charge.
+  const creditEstimate = useMemo(
+    () =>
+      form.use_credit && creditBalance > 0
+        ? computeCreditEstimate(price.finalPrice, creditBalance)
+        : null,
+    [form.use_credit, creditBalance, price.finalPrice],
+  );
 
   useEffect(() => {
     fetch('/api/admin/patients/?includeArchived=true', {
       credentials: 'same-origin',
     })
-      .then(response =>
-        response.ok
-          ? (response.json() as Promise<{ patients?: Patient[] }>)
-          : null,
-      )
+      .then(response => {
+        if (!response.ok)
+          throw new Error(`patients unavailable: ${response.status}`);
+        return response.json() as Promise<{ patients?: Patient[] }>;
+      })
       .then(data => setPatients(data?.patients ?? []))
-      .catch(() => undefined);
+      .catch(reason => {
+        console.warn(
+          '[AppointmentComposer] patients list unavailable:',
+          reason,
+        );
+        setPatientsError(true);
+      });
   }, []);
+
+  // Debounced avoir lookup: only when the typed email resolves to a known
+  // patient, mirroring GET /api/admin/credits/?email= (balance in cents).
+  // A failed lookup hides the avoir option without blocking the form.
+  useEffect(() => {
+    const clearUseCredit = () =>
+      setForm(current =>
+        current.use_credit ? { ...current, use_credit: false } : current,
+      );
+    const email = form.patient_email.trim().toLowerCase();
+    const isKnownPatient = patients.some(
+      patient => patient.email.trim().toLowerCase() === email,
+    );
+    if (!isKnownPatient) {
+      setCreditBalance(0);
+      clearUseCredit();
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      fetch(`/api/admin/credits/?email=${encodeURIComponent(email)}`, {
+        credentials: 'same-origin',
+        signal: controller.signal,
+      })
+        .then(response => {
+          if (!response.ok)
+            throw new Error(`credits unavailable: ${response.status}`);
+          return response.json() as Promise<{ balance?: number }>;
+        })
+        .then(data => {
+          const balance = data?.balance ?? 0;
+          setCreditBalance(balance);
+          if (balance <= 0) clearUseCredit();
+        })
+        .catch(reason => {
+          if (controller.signal.aborted) return;
+          console.warn(
+            '[AppointmentComposer] credit balance unavailable:',
+            reason,
+          );
+          setCreditBalance(0);
+          clearUseCredit();
+        });
+    }, 400);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [form.patient_email, patients]);
 
   useEffect(() => {
     if (requiresManualPrice(form.duration)) {
       setSlots([]);
       setLoadingSlots(false);
+      setSlotsError(false);
       return;
     }
     const controller = new AbortController();
@@ -163,16 +214,23 @@ export function AppointmentComposer({
         signal: controller.signal,
       },
     )
-      .then(response =>
-        response.ok
-          ? (response.json() as Promise<{ slots?: Array<{ start: string }> }>)
-          : null,
-      )
-      .then(data =>
-        setSlots((data?.slots ?? []).slice(0, 8).map(slot => slot.start)),
-      )
-      .catch(() => {
-        if (!controller.signal.aborted) setSlots([]);
+      .then(response => {
+        if (!response.ok)
+          throw new Error(`availability unavailable: ${response.status}`);
+        return response.json() as Promise<{ slots?: Array<{ start: string }> }>;
+      })
+      .then(data => {
+        setSlots((data?.slots ?? []).slice(0, 8).map(slot => slot.start));
+        setSlotsError(false);
+      })
+      .catch(reason => {
+        if (controller.signal.aborted) return;
+        console.warn(
+          '[AppointmentComposer] suggested slots unavailable:',
+          reason,
+        );
+        setSlots([]);
+        setSlotsError(true);
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoadingSlots(false);
@@ -277,6 +335,14 @@ export function AppointmentComposer({
             className="mt-1 min-h-11 w-full rounded-xl border border-sage-200 px-3 focus:outline-none focus:ring-2 focus:ring-mint-400"
           />
         </label>
+        {patientsError && (
+          <p
+            role="alert"
+            className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+          >
+            Impossible de charger les patients existants.
+          </p>
+        )}
         {matchingPatients.length > 0 && (
           <ul className="rounded-xl border border-sage-200 bg-sage-50 p-1">
             {matchingPatients.map(patient => (
@@ -416,10 +482,10 @@ export function AppointmentComposer({
             <button
               key={slot}
               type="button"
-              onClick={() => update('scheduled_at', toDatetimeLocal(slot))}
-              className={`min-h-11 rounded-xl border px-3 text-sm ${form.scheduled_at === toDatetimeLocal(slot) ? 'border-mint-700 bg-mint-50 text-mint-900' : 'border-sage-200 text-sage-700'}`}
+              onClick={() => update('scheduled_at', toParisDatetimeLocal(slot))}
+              className={`min-h-11 rounded-xl border px-3 text-sm ${form.scheduled_at === toParisDatetimeLocal(slot) ? 'border-mint-700 bg-mint-50 text-mint-900' : 'border-sage-200 text-sage-700'}`}
             >
-              {formatSlot(slot)}
+              {formatParisSlot(slot)}
             </button>
           ))}
           {loadingSlots && (
@@ -427,6 +493,22 @@ export function AppointmentComposer({
               Chargement des créneaux…
             </span>
           )}
+          {slotsError && (
+            <p
+              role="alert"
+              className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+            >
+              Impossible de charger les créneaux suggérés.
+            </p>
+          )}
+          {!loadingSlots &&
+            !slotsError &&
+            slots.length === 0 &&
+            !requiresManualPrice(form.duration) && (
+              <span className="text-sm text-sage-500">
+                Aucun créneau suggéré pour ce mode et cette durée.
+              </span>
+            )}
         </div>
         <label className="block text-sm text-sage-700">
           Créneau exceptionnel
@@ -473,14 +555,16 @@ export function AppointmentComposer({
             />{' '}
             Tarif solidaire
           </label>
-          <label className="flex min-h-11 items-center gap-2 text-sm text-sage-700">
-            <input
-              type="checkbox"
-              checked={form.use_credit}
-              onChange={event => update('use_credit', event.target.checked)}
-            />{' '}
-            Utiliser un avoir
-          </label>
+          {creditBalance > 0 && (
+            <label className="flex min-h-11 items-center gap-2 text-sm text-sage-700">
+              <input
+                type="checkbox"
+                checked={form.use_credit}
+                onChange={event => update('use_credit', event.target.checked)}
+              />{' '}
+              Utiliser un avoir ({formatEuros(creditBalance / 100)} disponibles)
+            </label>
+          )}
           <label className="flex min-h-11 items-center gap-2 text-sm text-sage-700">
             <input
               type="checkbox"
@@ -526,7 +610,16 @@ export function AppointmentComposer({
         />
       </label>
       <p className="rounded-xl bg-sage-50 p-3 text-sm text-sage-700">
-        Tarif estimé : {price.finalPrice} €
+        {price.manualPriceRequired ? (
+          price.label
+        ) : (
+          <>
+            Tarif estimé : {formatEuros(price.finalPrice)}
+            {creditEstimate && (
+              <span> ({formatEuros(creditEstimate.dueEuros)} après avoir)</span>
+            )}
+          </>
+        )}
       </p>
       {error && (
         <p

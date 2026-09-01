@@ -11,6 +11,7 @@ import {
   ManualSlotNotFoundError,
 } from '../../../../lib/manual-slots';
 import type { UpdateManualSlotData } from '@/types/manual-slots';
+import { VALID_PERIODS } from '@/utils/domain';
 
 function errorResponse(status: number, message: string): Response {
   return new Response(JSON.stringify({ error: message }), {
@@ -39,8 +40,7 @@ export const PATCH: APIRoute = async ({ params, request }) => {
 
     // Validate period if provided
     if (data.period !== undefined) {
-      const validPeriods = ['morning', 'afternoon', 'all_day'];
-      if (!validPeriods.includes(data.period)) {
+      if (!VALID_PERIODS.includes(data.period)) {
         return errorResponse(
           400,
           'Period invalide (valeurs acceptées: morning, afternoon, all_day)',
@@ -56,6 +56,17 @@ export const PATCH: APIRoute = async ({ params, request }) => {
     }
 
     if (data.deleted_at !== undefined) {
+      // Only null (restoration) or an ISO 8601 date string may reach the DB.
+      if (
+        data.deleted_at !== null &&
+        (typeof data.deleted_at !== 'string' ||
+          Number.isNaN(Date.parse(data.deleted_at)))
+      ) {
+        return errorResponse(
+          400,
+          'Valeur invalide pour deleted_at (null ou date ISO attendue)',
+        );
+      }
       updateData.deleted_at = data.deleted_at;
     }
 

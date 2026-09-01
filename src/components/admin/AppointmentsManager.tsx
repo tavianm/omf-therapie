@@ -1,7 +1,8 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import type { Appointment, AppointmentStatus } from '../../types/appointment';
 import { getModeLabel } from '../../utils/pricing';
-import { STATUS_LABELS } from './AppointmentCard';
+import { STATUS_LABELS } from '../../utils/domain';
+import { formatParisShortDateTime } from '../../utils/datetime';
 import {
   isUpcomingAppointment,
   paginateAppointments,
@@ -27,16 +28,6 @@ const FILTERS: Array<{ key: FilterKey; label: string }> = [
   { key: 'declined', label: 'Refusés' },
   { key: 'cancelled', label: 'Annulés' },
 ];
-
-function formatDateTime(iso: string): string {
-  return new Intl.DateTimeFormat('fr-FR', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Paris',
-  }).format(new Date(iso));
-}
 
 function matchesSearch(appointment: Appointment, query: string): boolean {
   return [
@@ -173,7 +164,7 @@ export function AppointmentsManager({
                 className={`grid min-h-14 w-full grid-cols-[5.5rem_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-mint-400 sm:grid-cols-[8rem_minmax(0,1fr)_7rem_5rem] ${selectedId === appointment.id ? 'bg-mint-50' : 'hover:bg-sage-50'}`}
               >
                 <span className="text-xs font-medium text-sage-700">
-                  {formatDateTime(appointment.scheduled_at)}
+                  {formatParisShortDateTime(appointment.scheduled_at)}
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium text-sage-900">

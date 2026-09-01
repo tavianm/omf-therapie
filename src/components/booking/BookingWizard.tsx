@@ -5,11 +5,14 @@
  * Étapes : Type & Mode → Date & Heure → Informations → Récapitulatif → Confirmation
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useBooking } from '../../hooks/useBooking';
 import type { BookingState, BookingStep } from '../../hooks/useBooking';
 import { getTypeLabel, getModeLabel } from '../../utils/pricing';
 import { trackEvent } from '../../utils/analytics';
+import { STANDARD_DURATIONS } from '../../utils/domain';
+import { toParisDateString } from '../../utils/date';
+import { formatParisTime, formatParisWeekdayDate } from '../../utils/datetime';
 
 // ---------------------------------------------------------------------------
 // Types locaux
@@ -31,24 +34,6 @@ interface SlotGroup {
 // Helpers de formatage (heure Paris)
 // ---------------------------------------------------------------------------
 
-function formatDateLabel(isoString: string): string {
-  return new Intl.DateTimeFormat('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'Europe/Paris',
-  }).format(new Date(isoString));
-}
-
-function formatTime(isoString: string): string {
-  return new Intl.DateTimeFormat('fr-FR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Paris',
-  }).format(new Date(isoString));
-}
-
 function capitalize(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
@@ -58,23 +43,13 @@ function groupSlotsByDay(slots: TimeSlot[]): SlotGroup[] {
 
   for (const slot of slots) {
     if (!slot.available) continue;
-    const date = new Date(slot.start);
     // Clé YYYY-MM-DD en heure Paris
-    const key = new Intl.DateTimeFormat('fr-FR', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      timeZone: 'Europe/Paris',
-    })
-      .format(date)
-      .split('/')
-      .reverse()
-      .join('-');
+    const key = toParisDateString(new Date(slot.start));
 
     if (!groups.has(key)) {
       groups.set(key, {
         dateKey: key,
-        dateLabel: capitalize(formatDateLabel(slot.start)),
+        dateLabel: capitalize(formatParisWeekdayDate(slot.start)),
         slots: [],
       });
     }
@@ -85,7 +60,7 @@ function groupSlotsByDay(slots: TimeSlot[]): SlotGroup[] {
 }
 
 function formatScheduledAt(isoString: string): string {
-  return `${capitalize(formatDateLabel(isoString))} à ${formatTime(isoString)}`;
+  return `${capitalize(formatParisWeekdayDate(isoString))} à ${formatParisTime(isoString)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -423,7 +398,7 @@ function TypeModeStep({
           Durée de la séance
         </legend>
         <div className="flex gap-3">
-          {([60, 90] as const).map(dur => (
+          {STANDARD_DURATIONS.map(dur => (
             <label
               key={dur}
               className={`
@@ -550,11 +525,16 @@ function DatetimeStep({
   useEffect(() => {
     if (!state.appointment_mode || !state.duration) return;
 
+    // Abort the in-flight request when mode/duration changes or the step
+    // unmounts, so a stale response never overwrites the current list.
+    const controller = new AbortController();
+
     setIsLoading(true);
     setFetchError(null);
 
     fetch(
       `/api/availability/?mode=${state.appointment_mode}&duration=${state.duration}&weeks=4`,
+      { signal: controller.signal },
     )
       .then(res => {
         if (!res.ok)
@@ -566,13 +546,45 @@ function DatetimeStep({
         setIsLoading(false);
       })
       .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
         const message = err instanceof Error ? err.message : 'Erreur inconnue.';
         setFetchError(message);
         setIsLoading(false);
       });
+    return () => controller.abort();
   }, [state.appointment_mode, state.duration]);
 
   const groups = groupSlotsByDay(slots);
+
+  // WAI-ARIA radiogroup: arrow keys move the selection (and focus) between
+  // the slot buttons of a day, with wrap-around; if nothing is selected yet,
+  // Down/Right start at the first slot, Up/Left at the last.
+  function handleSlotGroupKeyDown(
+    event: KeyboardEvent<HTMLDivElement>,
+    groupSlots: TimeSlot[],
+  ) {
+    const delta =
+      event.key === 'ArrowDown' || event.key === 'ArrowRight'
+        ? 1
+        : event.key === 'ArrowUp' || event.key === 'ArrowLeft'
+          ? -1
+          : 0;
+    if (delta === 0) return;
+    event.preventDefault();
+    const currentIndex = groupSlots.findIndex(
+      slot => slot.start === state.scheduled_at,
+    );
+    const nextIndex =
+      currentIndex === -1
+        ? delta === 1
+          ? 0
+          : groupSlots.length - 1
+        : (currentIndex + delta + groupSlots.length) % groupSlots.length;
+    updateField('scheduled_at', groupSlots[nextIndex].start);
+    const radioButtons =
+      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]');
+    radioButtons[nextIndex]?.focus();
+  }
 
   return (
     <div className="space-y-6">
@@ -649,6 +661,9 @@ function DatetimeStep({
                   className="flex flex-wrap gap-2"
                   role="radiogroup"
                   aria-label={group.dateLabel}
+                  onKeyDown={event =>
+                    handleSlotGroupKeyDown(event, group.slots)
+                  }
                 >
                   {group.slots.map(slot => {
                     const isSelected = state.scheduled_at === slot.start;
@@ -658,7 +673,7 @@ function DatetimeStep({
                         type="button"
                         role="radio"
                         aria-checked={isSelected}
-                        aria-label={`${formatTime(slot.start)}, ${group.dateLabel}`}
+                        aria-label={`${formatParisTime(slot.start)}, ${group.dateLabel}`}
                         onClick={() => updateField('scheduled_at', slot.start)}
                         className={`
                          rounded-lg border-2 px-3 py-2 text-sm font-medium transition-all duration-150
@@ -675,7 +690,7 @@ function DatetimeStep({
                             : undefined
                         }
                       >
-                        {formatTime(slot.start)}
+                        {formatParisTime(slot.start)}
                       </button>
                     );
                   })}

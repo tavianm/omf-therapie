@@ -17,6 +17,8 @@ import { useState } from 'react';
 import { getModeLabel, getTypeLabel } from '../../utils/pricing';
 import type { Appointment, AppointmentStatus } from '../../types/appointment';
 import { isCancellableByTherapist } from '../../utils/date';
+import { STATUS_LABELS } from '../../utils/domain';
+import { formatParisDateTime } from '../../utils/datetime';
 import { ConfirmModal } from './ConfirmModal';
 import { Modal } from './Modal';
 
@@ -36,17 +38,7 @@ type ModalType =
 // Constantes statut
 // ---------------------------------------------------------------------------
 
-export const STATUS_LABELS: Record<AppointmentStatus, string> = {
-  pending: 'En attente',
-  confirmed: 'Confirmé',
-  declined: 'Refusé',
-  rescheduled: 'Reporté',
-  payment_pending: 'Paiement en attente',
-  payment_received: 'Paiement reçu',
-  cancelled: 'Annulé',
-};
-
-export const STATUS_BADGE: Record<AppointmentStatus, string> = {
+const STATUS_BADGE: Record<AppointmentStatus, string> = {
   pending: 'bg-amber-100 text-amber-800',
   confirmed: 'bg-green-100 text-green-800',
   declined: 'bg-red-100 text-red-800',
@@ -59,17 +51,6 @@ export const STATUS_BADGE: Record<AppointmentStatus, string> = {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat('fr-FR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Paris',
-  }).format(new Date(iso));
-}
 
 function formatPrice(centimes: number): string {
   return `${Math.round(centimes / 100)}€`;
@@ -184,10 +165,13 @@ export function AppointmentCard({
   }
 
   async function handleCancel() {
-    await callPatch({
+    const success = await callPatch({
       action: 'cancel',
       ...(cancelMessage ? { therapist_notes: cancelMessage } : {}),
     });
+    // Close the cancel modal only once the cancellation went through; on
+    // failure it stays open with the error already displayed above.
+    if (success) setModal(null);
   }
 
   async function handleSendReview() {
@@ -244,7 +228,7 @@ export function AppointmentCard({
     setActionError(null);
     try {
       const res = await fetch(
-        `/api/admin/appointments/${appointment.id}/regenerate-calendar`,
+        `/api/admin/appointments/${appointment.id}/regenerate-calendar/`,
         {
           method: 'POST',
           credentials: 'include',
@@ -344,7 +328,7 @@ export function AppointmentCard({
             Date prévue
           </span>
           <span className="font-medium text-sage-800">
-            {formatDate(appointment.scheduled_at)}
+            {formatParisDateTime(appointment.scheduled_at)}
           </span>
         </div>
         <div>
@@ -378,7 +362,7 @@ export function AppointmentCard({
               Reporté au
             </span>
             <span className="font-medium text-blue-700">
-              {formatDate(appointment.rescheduled_to)}
+              {formatParisDateTime(appointment.rescheduled_to)}
             </span>
           </div>
         )}

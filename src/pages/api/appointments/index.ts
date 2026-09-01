@@ -17,6 +17,11 @@ import type {
 } from '../../../types/appointment';
 import { checkRateLimit, rateLimitResponse } from '../../../lib/rate-limit';
 import { isWithinBusinessHours } from '../../../utils/date';
+import {
+  VALID_DURATIONS,
+  VALID_MODES,
+  VALID_TYPES,
+} from '../../../utils/domain';
 import { hasAppointmentConflict } from '../../../lib/appointment-conflicts';
 import { isSchedulingConflictError } from '../../../lib/scheduling-settings';
 import { isCabinetEligibleSlot } from '../../../lib/appointment-eligibility';
@@ -28,10 +33,6 @@ import { isCabinetEligibleSlot } from '../../../lib/appointment-eligibility';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^(?:\+33|0033|0)[1-9](?:[0-9]{8})$/;
 const POSTAL_RE = /^[0-9]{5}$/;
-
-const VALID_TYPES = new Set<string>(['individual', 'couple', 'family']);
-const VALID_MODES = new Set<string>(['in-person', 'video']);
-const VALID_DURATIONS = new Set<number>([60, 90]);
 
 function errorResponse(
   status: number,

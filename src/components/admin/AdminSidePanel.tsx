@@ -46,13 +46,20 @@ export function AdminSidePanel({
   }, []);
 
   useEffect(() => {
+    // Move focus into the panel whenever it opens, modal or docked, so
+    // keyboard and screen-reader users land in it. Docked mode stays
+    // non-modal: no focus trap, Escape only closes the modal sheet.
+    const timer = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
     if (isDocked) return;
 
     const bodyOverflow = document.body.style.overflow;
     const documentOverflow = document.documentElement.style.overflow;
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
-    const timer = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
@@ -82,7 +89,6 @@ export function AdminSidePanel({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.clearTimeout(timer);
       document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = bodyOverflow;
       document.documentElement.style.overflow = documentOverflow;
@@ -132,7 +138,11 @@ export function AdminSidePanel({
         ref={panelRef}
         role="complementary"
         aria-labelledby={titleId}
-        className="sticky top-24 flex max-h-[calc(100dvh-7rem)] flex-col rounded-2xl border border-sage-200 bg-white shadow-xl"
+        // The docked panel starts below the page header + nav (~13rem from the
+        // viewport top before sticky engages): the height cap must fit the
+        // natural position, otherwise the bottom is unreachable on short
+        // viewports (1280×720) where the page itself cannot scroll.
+        className="sticky top-24 flex max-h-[calc(100dvh-13rem)] flex-col rounded-2xl border border-sage-200 bg-white shadow-xl"
       >
         {header}
         {content}

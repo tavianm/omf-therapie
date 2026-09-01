@@ -45,7 +45,9 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
   const [calendarStatus, setCalendarStatus] = useState(
     'Vérification de l’agenda…',
   );
+  const [calendarNeedsReconnect, setCalendarNeedsReconnect] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const destinationHydratedRef = useRef(false);
 
@@ -86,15 +88,18 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
         }>;
       })
       .then(status => {
+        const connected =
+          status.connected === true && status.tokenValid === true;
         setCalendarStatus(
-          status.connected && status.tokenValid
-            ? 'Agenda connecté'
-            : 'Agenda à reconnecter',
+          connected ? 'Agenda connecté' : 'Agenda à reconnecter',
         );
+        setCalendarNeedsReconnect(!connected);
       })
       .catch(() => {
-        if (!controller.signal.aborted)
+        if (!controller.signal.aborted) {
           setCalendarStatus('Agenda indisponible');
+          setCalendarNeedsReconnect(false);
+        }
       });
     return () => controller.abort();
   }, []);
@@ -137,11 +142,22 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
   }
 
   async function handleSignOut() {
-    await fetch('/api/auth/sign-out/', {
-      method: 'POST',
-      credentials: 'same-origin',
-    }).catch(() => undefined);
-    window.location.href = '/login/';
+    setSignOutError(null);
+    try {
+      const response = await fetch('/api/auth/sign-out/', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      if (!response.ok)
+        throw new Error(`sign-out failed with status ${response.status}`);
+      window.location.href = '/login/';
+    } catch (reason) {
+      console.warn('[AdminWorkspace] sign-out failed:', reason);
+      // Shared iPad: never pretend the session ended while it is still valid.
+      setSignOutError(
+        'La déconnexion a échoué. La session est toujours active — réessayez avant de quitter l’appareil.',
+      );
+    }
   }
 
   return (
@@ -156,6 +172,14 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {calendarNeedsReconnect && (
+            <a
+              href="/api/admin/google-oauth/"
+              className="min-h-11 rounded-xl border border-sage-300 px-4 text-sm font-medium text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-mint-400"
+            >
+              Reconnecter l’agenda
+            </a>
+          )}
           <button
             type="button"
             onClick={() => openComposer()}
@@ -172,6 +196,15 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
           </button>
         </div>
       </header>
+
+      {signOutError && (
+        <p
+          role="alert"
+          className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+        >
+          {signOutError}
+        </p>
+      )}
 
       <nav
         className="flex gap-2 overflow-x-auto rounded-2xl border border-sage-200 bg-white p-2"

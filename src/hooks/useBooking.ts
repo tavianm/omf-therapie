@@ -8,6 +8,11 @@ import { useCallback, useMemo, useState } from 'react';
 import { calculatePrice } from '../utils/pricing';
 import type { PricingResult } from '../utils/pricing';
 import { APPOINTMENT_ESTIMATED_VALUE, trackEvent } from '../utils/analytics';
+import type {
+  AppointmentDuration,
+  AppointmentMode,
+  AppointmentType,
+} from '../types/appointment';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -20,9 +25,9 @@ export interface BookingState {
   step: BookingStep;
 
   // Étape 1 — Type & Mode
-  appointment_type: 'individual' | 'couple' | 'family' | null;
-  appointment_mode: 'in-person' | 'video' | null;
-  duration: 60 | 90 | null;
+  appointment_type: AppointmentType | null;
+  appointment_mode: AppointmentMode | null;
+  duration: AppointmentDuration | null;
   is_first_session: boolean;
 
   // Étape 2 — Créneau
