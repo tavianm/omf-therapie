@@ -138,11 +138,12 @@ export function AdminSidePanel({
         ref={panelRef}
         role="complementary"
         aria-labelledby={titleId}
-        // The docked panel starts below the page header + nav (~13rem from the
-        // viewport top before sticky engages): the height cap must fit the
-        // natural position, otherwise the bottom is unreachable on short
-        // viewports (1280×720) where the page itself cannot scroll.
-        className="sticky top-24 flex max-h-[calc(100dvh-13rem)] flex-col rounded-2xl border border-sage-200 bg-white shadow-xl"
+        // Measured natural top of the panel: ~19rem below the viewport top
+        // (site header + workspace header + nav), up to ~22.5rem when the
+        // workspace header wraps near the lg breakpoint. Reserving 22rem
+        // keeps the panel bottom above the fold at its natural position, so
+        // the form never requires a page scroll on top of its internal one.
+        className="sticky top-24 flex max-h-[calc(100dvh-22rem)] flex-col rounded-2xl border border-sage-200 bg-white shadow-xl"
       >
         {header}
         {content}

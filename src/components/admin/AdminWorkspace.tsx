@@ -104,6 +104,14 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
     return () => controller.abort();
   }, []);
 
+  // Transient feedback: if the notice never cleared, it would sit above the
+  // workspace forever and mask subsequent notices. Auto-dismiss after 8s.
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
   function selectAppointment(appointment: Appointment) {
     returnFocusRef.current = document.activeElement as HTMLElement;
     setSelectedId(appointment.id);
@@ -175,7 +183,7 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
           {calendarNeedsReconnect && (
             <a
               href="/api/admin/google-oauth/"
-              className="min-h-11 rounded-xl border border-sage-300 px-4 text-sm font-medium text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-mint-400"
+              className="inline-flex min-h-11 items-center justify-center rounded-xl border border-sage-300 px-4 text-sm font-medium text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-mint-400"
             >
               Reconnecter l’agenda
             </a>
@@ -233,7 +241,16 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
         </p>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,0.75fr)]">
+      {/* The side column only exists when a panel occupies it: reserved
+          unconditionally, it leaves ~40% of the workspace empty on wide
+          screens (iPad landscape included). */}
+      <div
+        className={
+          selectedAppointment || composerOpen
+            ? 'grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,0.75fr)]'
+            : 'grid gap-5'
+        }
+      >
         <main className="min-w-0 rounded-2xl border border-sage-200 bg-sage-50 p-4 sm:p-5">
           {destination === 'overview' && (
             <AdminOverview
