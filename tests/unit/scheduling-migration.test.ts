@@ -47,6 +47,7 @@ function extractFunctionBody(sql: string, functionName: string): string {
 
 const migration015 = readMigration('015_scheduling_settings.sql');
 const migration016 = readMigration('016_manual_time_slot_uniqueness.sql');
+const migration018 = readMigration('018_scheduling_fail_closed.sql');
 
 const advisoryLockStatement = `PERFORM pg_advisory_xact_lock(hashtext('omf-therapie:appointment-schedule'));`;
 
@@ -153,5 +154,118 @@ describe('016 manual time slot uniqueness migration', () => {
         ON public.manual_time_slots (slot_date, period)
         WHERE deleted_at IS NULL;`),
     );
+  });
+});
+
+describe('018 scheduling fail-closed migration', () => {
+  const sql = normalizeSql(migration018);
+
+  describe('fail-closed conflict guard', () => {
+    it('raises scheduling_guard_violation after the lock and the early return, before the first EXISTS check', () => {
+      const body = extractFunctionBody(
+        migration018,
+        'appointments_enforce_schedule_conflict',
+      );
+
+      expect(body).toMatch(
+        sqlPattern(
+          `DETAIL = 'blocked_until is NULL when the conflict guard runs; appointments_apply_scheduling_policy must fire first (alphabetical trigger order).'`,
+        ),
+      );
+
+      // Ordering, not just presence: the guard must sit between the early
+      // return and the first overlap check to fail closed on trigger inversion.
+      const lockIndex = body.search(sqlPattern(advisoryLockStatement));
+      const earlyReturnIndex = body.search(
+        sqlPattern(`IF NOT (NEW.status = ANY (blocking_statuses)) OR NEW.deleted_at IS NOT NULL THEN
+          RETURN NEW;
+        END IF;`),
+      );
+      const guardIndex = body.search(
+        sqlPattern(`IF NEW.blocked_until IS NULL THEN
+          RAISE EXCEPTION 'scheduling_guard_violation'`),
+      );
+      const firstExistsIndex = body.search(sqlPattern(`IF EXISTS (`));
+
+      expect(lockIndex).toBeGreaterThanOrEqual(0);
+      expect(earlyReturnIndex).toBeGreaterThanOrEqual(0);
+      expect(guardIndex).toBeGreaterThanOrEqual(0);
+      expect(firstExistsIndex).toBeGreaterThanOrEqual(0);
+      expect(lockIndex).toBeLessThan(guardIndex);
+      expect(earlyReturnIndex).toBeLessThan(guardIndex);
+      expect(guardIndex).toBeLessThan(firstExistsIndex);
+    });
+
+    it('wraps the proposal-branch buffer call in COALESCE so a NULL buffer cannot disable the check', () => {
+      const body = extractFunctionBody(
+        migration018,
+        'appointments_enforce_schedule_conflict',
+      );
+
+      expect(body).toMatch(
+        sqlPattern(`proposal.rescheduled_to
+          + proposal.duration * interval '1 minute'
+          + COALESCE(public.scheduling_buffer_minutes(), 0) * interval '1 minute'
+          > NEW.scheduled_at`),
+      );
+    });
+
+    it('keeps the original 015 guards intact in the re-declared body', () => {
+      const body = extractFunctionBody(
+        migration018,
+        'appointments_enforce_schedule_conflict',
+      );
+
+      expect(body).toMatch(
+        sqlPattern(`blocking_statuses TEXT[] := ARRAY[
+          'pending', 'confirmed', 'payment_pending', 'payment_received', 'rescheduled'
+        ];`),
+      );
+      expect(body).toMatch(
+        sqlPattern(`existing.scheduled_at < NEW.blocked_until
+          AND existing.blocked_until > NEW.scheduled_at`),
+      );
+      expect(body).toMatch(sqlPattern(`RAISE EXCEPTION 'scheduling_conflict'`));
+    });
+  });
+
+  describe('serialized credit restore', () => {
+    it('takes the per-appointment advisory lock before the credits UPDATE', () => {
+      const body = extractFunctionBody(migration018, 'restore_credits');
+
+      const lockIndex = body.search(
+        sqlPattern(
+          `PERFORM pg_advisory_xact_lock(hashtext('omf-therapie:credits:' || p_appointment_id::TEXT));`,
+        ),
+      );
+      const updateIndex = body.search(
+        sqlPattern(
+          `UPDATE credits c SET remaining = c.remaining + cu.consumed`,
+        ),
+      );
+
+      expect(lockIndex).toBeGreaterThanOrEqual(0);
+      expect(updateIndex).toBeGreaterThanOrEqual(0);
+      expect(lockIndex).toBeLessThan(updateIndex);
+    });
+  });
+
+  describe('append-only migration shape', () => {
+    it('replaces functions without creating, altering or dropping triggers', () => {
+      expect(sql).not.toMatch(/\bCREATE\s+TRIGGER\b/i);
+      expect(sql).not.toMatch(/\bALTER\s+TRIGGER\b/i);
+      expect(sql).not.toMatch(/\bDROP\s+TRIGGER\b/i);
+    });
+
+    it('keeps restore_credits executable only by service_role', () => {
+      expect(sql).toMatch(
+        sqlPattern(`REVOKE ALL ON FUNCTION restore_credits(UUID) FROM PUBLIC;`),
+      );
+      expect(sql).toMatch(
+        sqlPattern(
+          `GRANT EXECUTE ON FUNCTION restore_credits(UUID) TO service_role;`,
+        ),
+      );
+    });
   });
 });

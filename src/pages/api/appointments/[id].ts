@@ -120,6 +120,112 @@ async function markInvitationSent(
   }
 }
 
+/**
+ * CAS claim shared by the status-mutating admin actions: the UPDATE matches
+ * only while the status is still the one this handler read, so a concurrent
+ * transition yields 0 rows (PGRST116) instead of silently clobbering it.
+ * Callers treat `isNoRowMatched(error)` as a 409 "status changed".
+ */
+async function claimAppointment(
+  id: string,
+  fromStatus: Appointment['status'],
+  patch: Record<string, unknown>,
+): Promise<{ data: unknown; error: unknown }> {
+  return supabaseAdmin
+    .from('appointments')
+    .update(patch)
+    .eq('id', id)
+    .eq('status', fromStatus)
+    .select()
+    .single();
+}
+
+/**
+ * Compensating rollback for the accept_reschedule CAS claim: the claim
+ * consumed the `rescheduled` state (clearing rescheduled_to invalidates the
+ * token nonce), so a post-claim failure must restore the pre-accept state or
+ * the patient can never retry. The rollback is itself a CAS on the claimed
+ * status and its result is verified: a real error or a 0-row match (concurrent
+ * transition) is logged loudly for manual reconciliation.
+ */
+async function rollbackAcceptRescheduleClaim(
+  id: string,
+  claimedStatus: Appointment['status'],
+  appointment: Appointment,
+): Promise<void> {
+  const { data: rollbackRow, error: rollbackError } = await supabaseAdmin
+    .from('appointments')
+    .update({
+      status: 'rescheduled',
+      scheduled_at: appointment.scheduled_at,
+      rescheduled_to: appointment.rescheduled_to,
+    })
+    .eq('id', id)
+    .eq('status', claimedStatus)
+    .select('id')
+    .single();
+  if (rollbackError && !isNoRowMatched(rollbackError)) {
+    logger.error(
+      'appointments/patch: rollback after Stripe failure failed — appointment stuck in accepted state, manual reconciliation needed',
+      { appointmentId: id, claimedStatus },
+      rollbackError,
+    );
+    return;
+  }
+  if (!rollbackRow) {
+    // 0-row match: the status moved again between claim and rollback.
+    logger.error(
+      'appointments/patch: rollback matched 0 rows — concurrent transition, manual reconciliation needed',
+      { appointmentId: id, claimedStatus },
+    );
+    return;
+  }
+  logger.info('appointments/patch: rollback restored pre-accept state', {
+    appointmentId: id,
+  });
+}
+
+/**
+ * Compensating rollback for the cancel CAS claim: restores the pre-cancel
+ * status and notes after a post-claim credit-write failure. Result verified
+ * like `rollbackAcceptRescheduleClaim` — error or 0-row match (concurrent
+ * transition) is logged loudly for manual reconciliation.
+ */
+async function rollbackCancelClaim(
+  id: string,
+  appointment: Appointment,
+): Promise<void> {
+  const { data: rollbackRow, error: rollbackError } = await supabaseAdmin
+    .from('appointments')
+    .update({
+      status: appointment.status,
+      therapist_notes: appointment.therapist_notes,
+    })
+    .eq('id', id)
+    .eq('status', 'cancelled')
+    .select('id')
+    .single();
+  if (rollbackError && !isNoRowMatched(rollbackError)) {
+    logger.error(
+      'appointments/patch: cancel rollback failed — appointment stuck in cancelled state, manual reconciliation needed',
+      { appointmentId: id, originalStatus: appointment.status },
+      rollbackError,
+    );
+    return;
+  }
+  if (!rollbackRow) {
+    // 0-row match: the status moved again between claim and rollback.
+    logger.error(
+      'appointments/patch: rollback matched 0 rows — concurrent transition, manual reconciliation needed',
+      { appointmentId: id, originalStatus: appointment.status },
+    );
+    return;
+  }
+  logger.info('appointments/patch: rollback restored pre-cancel state', {
+    appointmentId: id,
+  });
+}
+
 /** Construit l'événement ICS pour un rendez-vous confirmé */
 function buildICSEvent(appt: Appointment) {
   const start = new Date(appt.scheduled_at);
@@ -212,15 +318,46 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     );
 
   // 3. Récupérer le rendez-vous
+  // Explicit list of the columns consumed by the actions below — the row is
+  // cast `as Appointment`, so TypeScript cannot catch an omitted-but-read
+  // column; keep this list in sync when a new `appointment.*` read is added.
+  // Intentionally omitted (never read from the fetched row in this handler):
+  // patient_phone, patient_postal_code, patient_city, patient_reason,
+  // discount, video_link, stripe_payment_link_url, stripe_payment_intent_id
+  // (only written from the request body), scheduled_end, blocked_until,
+  // confirmation_sent_at, invitation_sent_at, created_at, updated_at,
+  // deleted_at.
   const { data: appt, error: fetchError } = await supabaseAdmin
     .from('appointments')
-    .select('*')
+    .select(
+      [
+        'id',
+        'patient_name',
+        'patient_email',
+        'appointment_type',
+        'appointment_mode',
+        'duration',
+        'is_first_session',
+        'base_price',
+        'final_price',
+        'credit_applied',
+        'scheduled_at',
+        'status',
+        'stripe_payment_link_id',
+        'google_calendar_event_id',
+        'therapist_notes',
+        'rescheduled_to',
+      ].join(', '),
+    )
     .eq('id', id)
     .single();
 
   if (fetchError || !appt) return errorResponse(404, 'Rendez-vous introuvable');
 
-  const appointment = appt as Appointment;
+  // `as unknown as` bridges the partial selected row → Appointment boundary
+  // (the column list above is a joined string, so supabase-js types it as
+  // GenericStringError — same bridge as the publicColumns selects below).
+  const appointment = appt as unknown as Appointment;
   const baseUrl = import.meta.env.BETTER_AUTH_URL ?? 'https://omf-therapie.fr';
 
   // ---------------------------------------------------------------------------
@@ -457,6 +594,28 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         { appointmentId: id },
         updateError,
       );
+      // Orphaned-link guard: the failed update was supposed to persist the
+      // just-created Payment Link ids — deactivate it (best-effort) so no
+      // live, untracked link stays payable before an admin retry creates a
+      // second one.
+      if (typeof updateData.stripe_payment_link_id === 'string') {
+        try {
+          await getStripe()?.paymentLinks.update(
+            updateData.stripe_payment_link_id,
+            { active: false },
+          );
+        } catch (deactivateErr) {
+          logger.error(
+            'appointments/patch: Stripe Payment Link deactivation failed (confirm)',
+            {
+              appointmentId: id,
+              stripePaymentLinkId: updateData.stripe_payment_link_id,
+            },
+            deactivateErr,
+          );
+          // Non-bloquant : le 500 reste la réponse prioritaire.
+        }
+      }
       return errorResponse(500, 'Erreur lors de la mise à jour');
     }
 
@@ -585,17 +744,22 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // Action: decline
   // ---------------------------------------------------------------------------
   if (action === 'decline') {
-    const { data: updated, error: updateError } = await supabaseAdmin
-      .from('appointments')
-      .update({
+    const { data: updated, error: updateError } = await claimAppointment(
+      id,
+      appointment.status,
+      {
         status: 'declined',
         therapist_notes: therapist_notes ?? appointment.therapist_notes,
-      })
-      .eq('id', id)
-      .select()
-      .single();
+      },
+    );
 
     if (updateError || !updated) {
+      if (isNoRowMatched(updateError)) {
+        return errorResponse(
+          409,
+          'Le statut de ce rendez-vous a changé — rechargez la page.',
+        );
+      }
       logger.error(
         'appointments/patch: Supabase update failed (decline)',
         { appointmentId: id },
@@ -646,10 +810,18 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // Action: cancel — annule un RDV (confirmé/payé/etc.), gère l'avoir
   // ---------------------------------------------------------------------------
   // Règle consolidée :
-  //   1. Toujours restituer l'avoir consommé par ce RDV (si credit_applied > 0).
-  //   2. Émettre un nouvel avoir du cash réellement encaissé (final_price −
+  //   1. Le claim CAS précède les écritures financières : l'UPDATE vers
+  //      `cancelled` ne matche que si le statut est toujours celui lu — deux
+  //      annulations concurrentes → un seul gagnant, le perdant reçoit 409
+  //      sans jamais toucher au ledger.
+  //   2. Toujours restituer l'avoir consommé par ce RDV (si credit_applied > 0).
+  //   3. Émettre un nouvel avoir du cash réellement encaissé (final_price −
   //      credit_applied) UNIQUEMENT si status === 'payment_received' et si ce
   //      montant > 0 (sinon : aucun cash, aucun nouvel avoir).
+  //   En cas d'échec d'une écriture crédit APRÈS le claim : rollback
+  //   compensatoire du statut — et si le rollback lui-même échoue, log
+  //   bruyant de réconciliation manuelle (pas de transaction qui couvre
+  //   Supabase + RPC : la divergence doit rester observable).
   // Aucune exclusion pour les RDV déjà écoulés : la fenêtre d'éligibilité
   // (veille incluse) est validée par isCancellableByTherapist — le jugement
   // de la thérapeute est le garde-fou intentionnel (annulation de dernière minute).
@@ -661,7 +833,34 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         'Ce rendez-vous ne peut pas être annulé (hors fenêtre ou statut terminal).',
       );
 
-    // 1. Restituer l'avoir consommé par ce RDV (avant toute autre écriture).
+    // 1. Claim CAS : passer le RDV en cancelled AVANT toute écriture financière.
+    const { data: updated, error: updateError } = await claimAppointment(
+      id,
+      appointment.status,
+      {
+        status: 'cancelled',
+        therapist_notes: therapist_notes ?? appointment.therapist_notes,
+      },
+    );
+
+    if (updateError || !updated) {
+      if (isNoRowMatched(updateError)) {
+        return errorResponse(
+          409,
+          "Ce rendez-vous vient d'être annulé ou son statut a changé. Rechargez la page.",
+        );
+      }
+      logger.error(
+        'appointments/patch: Supabase update failed (cancel)',
+        { appointmentId: id },
+        updateError,
+      );
+      return errorResponse(500, "Erreur lors de l'annulation");
+    }
+
+    const updatedAppt = updated as Appointment;
+
+    // 2. Restituer l'avoir consommé par ce RDV.
     let restoredAmount = 0;
     if (appointment.credit_applied > 0) {
       try {
@@ -672,17 +871,19 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           restoredAmount,
         });
       } catch (restoreErr) {
-        // La cohérence du ledger prime : on bloque l'annulation si la restitution échoue.
+        // La cohérence du ledger prime : on défait le claim (rollback
+        // compensatoire) si la restitution échoue.
         logger.error(
           'appointments/patch: credit restoration failed (cancel)',
           { appointmentId: id },
           restoreErr,
         );
+        await rollbackCancelClaim(id, appointment);
         return errorResponse(500, "Erreur lors de la restitution de l'avoir");
       }
     }
 
-    // 2. Émettre un nouvel avoir pour le cash encaissé (RDV payé uniquement).
+    // 3. Émettre un nouvel avoir pour le cash encaissé (RDV payé uniquement).
     let issuedCredit = false;
     let creditCashAmount = 0;
     if (appointment.status === 'payment_received') {
@@ -708,48 +909,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
             { appointmentId: id },
             creditErr,
           );
+          await rollbackCancelClaim(id, appointment);
           return errorResponse(500, "Erreur lors de l'émission de l'avoir");
         }
       }
     }
-
-    // 3. Passer le RDV en cancelled.
-    const { data: updated, error: updateError } = await supabaseAdmin
-      .from('appointments')
-      .update({
-        status: 'cancelled',
-        therapist_notes: therapist_notes ?? appointment.therapist_notes,
-      })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (updateError || !updated) {
-      // No transaction spans steps 1-3 (Supabase + RPC): if credits were
-      // already written and this final UPDATE fails, the ledger and the
-      // appointment row diverge — loud, explicit signal for manual
-      // reconciliation.
-      if (restoredAmount > 0 || issuedCredit) {
-        logger.error(
-          'appointments/patch: credits emitted but appointment update failed — manual reconciliation needed',
-          {
-            appointmentId: id,
-            restoredAmount,
-            issuedCredit,
-            issuedAmount: creditCashAmount,
-          },
-          updateError,
-        );
-      }
-      logger.error(
-        'appointments/patch: Supabase update failed (cancel)',
-        { appointmentId: id },
-        updateError,
-      );
-      return errorResponse(500, "Erreur lors de l'annulation");
-    }
-
-    const updatedAppt = updated as Appointment;
 
     await invalidateAvailabilityCache().catch(onCacheInvalidateError);
 
@@ -889,17 +1053,22 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     }
 
     // AUCUN appel Stripe, AUCUN changement de status/prix/credit_applied.
-    const { data: updated, error: updateError } = await supabaseAdmin
-      .from('appointments')
-      .update({
+    const { data: updated, error: updateError } = await claimAppointment(
+      id,
+      appointment.status,
+      {
         scheduled_at: newDate.toISOString(),
         therapist_notes: therapist_notes ?? appointment.therapist_notes,
-      })
-      .eq('id', id)
-      .select()
-      .single();
+      },
+    );
 
     if (updateError || !updated) {
+      if (isNoRowMatched(updateError)) {
+        return errorResponse(
+          409,
+          'Le statut de ce rendez-vous a changé — rechargez la page.',
+        );
+      }
       if (isSchedulingConflictError(updateError)) {
         return errorResponse(
           409,
@@ -1100,20 +1269,25 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       }
     }
 
-    const { data: updated, error: updateError } = await supabaseAdmin
-      .from('appointments')
-      .update({
+    const { data: updated, error: updateError } = await claimAppointment(
+      id,
+      appointment.status,
+      {
         status: 'rescheduled',
         rescheduled_to: newDate.toISOString(),
         therapist_notes: therapist_notes ?? appointment.therapist_notes,
         stripe_payment_link_id: null,
         stripe_payment_link_url: null,
-      })
-      .eq('id', id)
-      .select()
-      .single();
+      },
+    );
 
     if (updateError || !updated) {
+      if (isNoRowMatched(updateError)) {
+        return errorResponse(
+          409,
+          'Le statut de ce rendez-vous a changé — rechargez la page.',
+        );
+      }
       if (isSchedulingConflictError(updateError)) {
         return errorResponse(
           409,
@@ -1350,6 +1524,23 @@ export const PATCH: APIRoute = async ({ request, params }) => {
             { appointmentId: id, stripePaymentLinkId: paymentLink.id },
             linkUpdateError,
           );
+          // The claim above already consumed the `rescheduled` state, so a
+          // bare 500 would burn the signed link for a retry: deactivate the
+          // orphaned Payment Link (best-effort, non-blocking), then restore
+          // the pre-accept state via the compensating rollback.
+          try {
+            await getStripe()?.paymentLinks.update(paymentLink.id, {
+              active: false,
+            });
+          } catch (deactivateErr) {
+            logger.error(
+              'appointments/patch: Stripe Payment Link deactivation failed (accept_reschedule)',
+              { appointmentId: id, stripePaymentLinkId: paymentLink.id },
+              deactivateErr,
+            );
+            // Non-bloquant : on continue vers le rollback.
+          }
+          await rollbackAcceptRescheduleClaim(id, newStatus, appointment);
           return errorResponse(
             500,
             'Erreur lors de la génération du lien de paiement Stripe',
@@ -1365,24 +1556,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         // Compensating rollback: the claim above consumed the `rescheduled`
         // state (clearing rescheduled_to invalidates the token nonce), so a
         // bare 500 would burn the link for a retry. Restore the pre-accept
-        // state; if the rollback itself fails, log the divergence loudly for
-        // manual reconciliation.
-        const { error: rollbackError } = await supabaseAdmin
-          .from('appointments')
-          .update({
-            status: 'rescheduled',
-            scheduled_at: appointment.scheduled_at,
-            rescheduled_to: appointment.rescheduled_to,
-          })
-          .eq('id', id)
-          .eq('status', newStatus);
-        if (rollbackError) {
-          logger.error(
-            'appointments/patch: rollback after Stripe failure failed — appointment stuck in accepted state, manual reconciliation needed',
-            { appointmentId: id },
-            rollbackError,
-          );
-        }
+        // state; if the rollback itself fails or matches 0 rows (concurrent
+        // transition), the divergence is logged loudly for manual
+        // reconciliation.
+        await rollbackAcceptRescheduleClaim(id, newStatus, appointment);
         return errorResponse(
           500,
           'Erreur lors de la génération du lien de paiement Stripe',

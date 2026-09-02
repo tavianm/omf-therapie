@@ -1,5 +1,5 @@
 import type { Appointment } from '../../types/appointment';
-import { ACTIONABLE_STATUSES } from '../../utils/domain';
+import { ACTIONABLE_STATUSES, BLOCKING_STATUSES } from '../../utils/domain';
 import { toParisDateString } from '../../utils/date';
 
 export type AdminWorkspaceDestination =
@@ -22,16 +22,27 @@ export function isUpcomingAppointment(
   return new Date(appointment.scheduled_at).getTime() >= now.getTime();
 }
 
-// Overdue rule (kept deliberately simple): a pending request whose slot has
-// already elapsed can no longer be confirmed as booked — it needs a decision
-// (decline or contact the patient), so it stays visible as "En retard"
-// instead of silently dropping out of the synthesis once it becomes past.
+// Overdue rule: a request whose decision window has elapsed stays visible as
+// "En retard" instead of silently dropping out of the synthesis. Three cases:
+//  - `pending` — the elapsed slot can no longer be confirmed as booked;
+//  - `payment_pending` — the payment link was sent but never paid;
+//  - `rescheduled` — the proposed slot (`rescheduled_to`) elapsed without the
+//    patient accepting it.
 export function isOverduePendingRequest(
   appointment: Appointment,
   now = new Date(),
 ): boolean {
+  if (isUpcomingAppointment(appointment, now)) return false;
+  if (
+    appointment.status === 'pending' ||
+    appointment.status === 'payment_pending'
+  ) {
+    return true;
+  }
   return (
-    appointment.status === 'pending' && !isUpcomingAppointment(appointment, now)
+    appointment.status === 'rescheduled' &&
+    appointment.rescheduled_to !== null &&
+    new Date(appointment.rescheduled_to).getTime() < now.getTime()
   );
 }
 
@@ -41,8 +52,15 @@ export function getWorkspaceSummary(
 ): WorkspaceSummary {
   const byScheduledAt = (left: Appointment, right: Appointment) =>
     left.scheduled_at.localeCompare(right.scheduled_at);
+  // Only live appointments count as upcoming: a cancelled or declined slot
+  // must never surface as "Prochain rendez-vous". BLOCKING_STATUSES is exactly
+  // the set of live statuses (every status except declined/cancelled).
   const future = appointments
-    .filter(appointment => isUpcomingAppointment(appointment, now))
+    .filter(
+      appointment =>
+        isUpcomingAppointment(appointment, now) &&
+        BLOCKING_STATUSES.includes(appointment.status),
+    )
     .sort(byScheduledAt);
   // Whole Paris day (past AND future): the therapist must still see this
   // morning's appointments when opening the workspace in the afternoon.

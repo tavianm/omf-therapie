@@ -9,6 +9,7 @@
 import type { Period } from '@/types/manual-slots';
 import { fetchManualSlots } from './manual-slots.js';
 import { getParisISOWeekday, toParisDateString } from '../utils/date.js';
+import { formatParisTime } from '../utils/datetime.js';
 
 // Re-export pour compatibilité des importations serveur existantes.
 // `isCancellableByTherapist` est défini dans `utils/date.ts` (module pur sans I/O)
@@ -69,12 +70,9 @@ export function cabinetEligibility(
  * à cheval sur la pause midi (12h–14h).
  */
 export function dayHalfFor(isoDate: string): DayHalf {
-  const hour = new Intl.DateTimeFormat('fr-FR', {
-    timeZone: 'Europe/Paris',
-    hour: 'numeric',
-    hour12: false,
-  }).format(new Date(isoDate));
-  return parseInt(hour, 10) < 12 ? 'morning' : 'afternoon';
+  // formatParisTime yields "HH:mm" (Paris) — parseInt reads the leading hour.
+  const hour = parseInt(formatParisTime(isoDate), 10);
+  return hour < 12 ? 'morning' : 'afternoon';
 }
 
 /**
