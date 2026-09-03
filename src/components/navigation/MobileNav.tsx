@@ -1,5 +1,5 @@
-import { Menu, X } from "lucide-react";
-import type { NavigationItem } from "../../types/navigation";
+import { Menu, X } from 'lucide-react';
+import type { NavigationItem } from '../../types/navigation';
 
 interface MobileNavProps {
   navigation: NavigationItem[];
@@ -36,7 +36,7 @@ export const MobileNav = ({
       className="text-sage-500 hover:text-sage-600 min-h-[44px] min-w-[44px] flex items-center justify-center"
       aria-expanded={isOpen}
       aria-controls="mobile-menu"
-      aria-label={isOpen ? "Fermer le menu" : "Ouvrir le menu"}
+      aria-label={isOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
     >
       {isOpen ? (
         <X className="h-6 w-6" aria-hidden="true" />
@@ -47,29 +47,29 @@ export const MobileNav = ({
 
     {isOpen && (
       <div
-        className="lg:hidden absolute top-20 left-0 right-0 bg-white shadow-lg z-50"
+        className="lg:hidden absolute top-20 left-0 right-0 z-50 rounded-b-2xl border border-sage-100 bg-white shadow-xl shadow-sage-900/10"
         id="mobile-menu"
         role="menu"
         aria-label="Menu mobile"
       >
         <div
           className="overflow-auto space-y-1 py-1"
-          style={{ maxHeight: "calc(100vh - 5.7rem)" }}
+          style={{ maxHeight: 'calc(100vh - 5.7rem)' }}
         >
-          {navigation.map((item) =>
+          {navigation.map(item =>
             item.external ? null : item.page ? (
               <a
                 key={item.name}
                 href={item.href}
                 className={`${
                   isActive(item.href, item.path)
-                    ? "bg-mint-50 text-mint-600"
-                    : "text-sage-600 hover:bg-sage-50"
+                    ? 'bg-mint-50 text-mint-600'
+                    : 'text-sage-600 hover:bg-sage-50'
                 } block px-4 py-2 text-base font-medium min-h-[44px] flex items-center`}
                 onClick={() => setIsOpen(false)}
                 role="menuitem"
                 aria-current={
-                  isActive(item.href, item.path) ? "page" : undefined
+                  isActive(item.href, item.path) ? 'page' : undefined
                 }
               >
                 {item.name}
@@ -80,27 +80,27 @@ export const MobileNav = ({
                 onClick={() => navigateToSection(item.href)}
                 className={`${
                   isActive(item.href, item.path)
-                    ? "bg-mint-50 text-mint-600"
-                    : "text-sage-600 hover:bg-sage-50"
+                    ? 'bg-mint-50 text-mint-600'
+                    : 'text-sage-600 hover:bg-sage-50'
                 } block px-4 py-2 text-base font-medium min-h-[44px] flex items-center w-full text-left`}
                 role="menuitem"
                 aria-current={
-                  isActive(item.href, item.path) ? "page" : undefined
+                  isActive(item.href, item.path) ? 'page' : undefined
                 }
               >
                 {item.name}
               </button>
-            )
+            ),
           )}
           {isAuthenticated && (
             <a
               href="/mes-rdvs/"
               className={`${
-                typeof window !== "undefined" &&
-                (window.location.pathname === "/mes-rdvs" ||
-                  window.location.pathname === "/mes-rdvs/")
-                  ? "bg-mint-50 text-mint-600"
-                  : "text-sage-600 hover:bg-sage-50"
+                typeof window !== 'undefined' &&
+                (window.location.pathname === '/mes-rdvs' ||
+                  window.location.pathname === '/mes-rdvs/')
+                  ? 'bg-mint-50 text-mint-600'
+                  : 'text-sage-600 hover:bg-sage-50'
               } block px-4 py-2 text-base font-medium min-h-[44px] flex items-center`}
               onClick={() => setIsOpen(false)}
               role="menuitem"

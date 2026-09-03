@@ -14,9 +14,11 @@
  */
 
 import { useState } from 'react';
-import { getModeLabel, getTypeLabel } from '../../lib/pricing';
+import { getModeLabel, getTypeLabel } from '../../utils/pricing';
 import type { Appointment, AppointmentStatus } from '../../types/appointment';
 import { isCancellableByTherapist } from '../../utils/date';
+import { STATUS_LABELS } from '../../utils/domain';
+import { formatParisDateTime } from '../../utils/datetime';
 import { ConfirmModal } from './ConfirmModal';
 import { Modal } from './Modal';
 
@@ -26,25 +28,17 @@ import { Modal } from './Modal';
 
 interface AppointmentCardProps {
   appointment: Appointment;
+  onAppointmentUpdated?: (appointment: Appointment) => void;
 }
 
-type ModalType = 'confirm' | 'decline' | 'cancel' | 'reschedule' | 'reschedule_paid' | null;
+type ModalType =
+  'confirm' | 'decline' | 'cancel' | 'reschedule' | 'reschedule_paid' | null;
 
 // ---------------------------------------------------------------------------
 // Constantes statut
 // ---------------------------------------------------------------------------
 
-export const STATUS_LABELS: Record<AppointmentStatus, string> = {
-  pending: 'En attente',
-  confirmed: 'Confirmé',
-  declined: 'Refusé',
-  rescheduled: 'Reporté',
-  payment_pending: 'Paiement en attente',
-  payment_received: 'Paiement reçu',
-  cancelled: 'Annulé',
-};
-
-export const STATUS_BADGE: Record<AppointmentStatus, string> = {
+const STATUS_BADGE: Record<AppointmentStatus, string> = {
   pending: 'bg-amber-100 text-amber-800',
   confirmed: 'bg-green-100 text-green-800',
   declined: 'bg-red-100 text-red-800',
@@ -58,17 +52,6 @@ export const STATUS_BADGE: Record<AppointmentStatus, string> = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat('fr-FR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Paris',
-  }).format(new Date(iso));
-}
-
 function formatPrice(centimes: number): string {
   return `${Math.round(centimes / 100)}€`;
 }
@@ -77,7 +60,10 @@ function formatPrice(centimes: number): string {
 // Composant principal
 // ---------------------------------------------------------------------------
 
-export function AppointmentCard({ appointment }: AppointmentCardProps) {
+export function AppointmentCard({
+  appointment,
+  onAppointmentUpdated,
+}: AppointmentCardProps) {
   const [modal, setModal] = useState<ModalType>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -111,7 +97,8 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
   // (confirmed) se reporte par move direct admin : la thérapeute déplace le créneau
   // sans re-validation du patient. Pour les RDV vidéo, le paiement Stripe est conservé.
   const isDirectReschedule =
-    (appointment.appointment_mode === 'video' && status === 'payment_received') ||
+    (appointment.appointment_mode === 'video' &&
+      status === 'payment_received') ||
     (appointment.appointment_mode === 'in-person' && status === 'confirmed');
 
   // ── PATCH helper ─────────────────────────────────────────────────────────
@@ -130,7 +117,9 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
         const data = (await res.json()) as { error?: string };
         throw new Error(data.error ?? `Erreur HTTP ${res.status}`);
       }
-      window.location.reload();
+      const data = (await res.json()) as { appointment?: Appointment };
+      if (data.appointment) onAppointmentUpdated?.(data.appointment);
+      setActionLoading(false);
       return true;
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Erreur inconnue');
@@ -176,10 +165,13 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
   }
 
   async function handleCancel() {
-    await callPatch({
+    const success = await callPatch({
       action: 'cancel',
       ...(cancelMessage ? { therapist_notes: cancelMessage } : {}),
     });
+    // Close the cancel modal only once the cancellation went through; on
+    // failure it stays open with the error already displayed above.
+    if (success) setModal(null);
   }
 
   async function handleSendReview() {
@@ -220,6 +212,8 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
         const data = (await res.json()) as { error?: string };
         throw new Error(data.error ?? `Erreur HTTP ${res.status}`);
       }
+      const data = (await res.json()) as { appointment?: Appointment };
+      if (data.appointment) onAppointmentUpdated?.(data.appointment);
       setNotesSaved(true);
       setTimeout(() => setNotesSaved(false), 2000);
     } catch (e) {
@@ -234,7 +228,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
     setActionError(null);
     try {
       const res = await fetch(
-        `/api/admin/appointments/${appointment.id}/regenerate-calendar`,
+        `/api/admin/appointments/${appointment.id}/regenerate-calendar/`,
         {
           method: 'POST',
           credentials: 'include',
@@ -284,14 +278,14 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
           <p className="text-sm text-sage-500 mt-0.5">
             <a
               href={`mailto:${appointment.patient_email}`}
-              className="hover:text-mint-600 transition-colors"
+              className="underline decoration-sage-300 underline-offset-2 transition-colors hover:text-mint-700 hover:decoration-mint-700"
             >
               {appointment.patient_email}
             </a>
             {' · '}
             <a
               href={`tel:${appointment.patient_phone}`}
-              className="hover:text-mint-600 transition-colors"
+              className="underline decoration-sage-300 underline-offset-2 transition-colors hover:text-mint-700 hover:decoration-mint-700"
             >
               {appointment.patient_phone}
             </a>
@@ -334,7 +328,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
             Date prévue
           </span>
           <span className="font-medium text-sage-800">
-            {formatDate(appointment.scheduled_at)}
+            {formatParisDateTime(appointment.scheduled_at)}
           </span>
         </div>
         <div>
@@ -368,7 +362,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
               Reporté au
             </span>
             <span className="font-medium text-blue-700">
-              {formatDate(appointment.rescheduled_to)}
+              {formatParisDateTime(appointment.rescheduled_to)}
             </span>
           </div>
         )}
@@ -430,7 +424,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
                   setActionError(null);
                 }}
                 disabled={actionLoading}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl bg-mint-600 text-white hover:bg-mint-700 active:bg-mint-800 focus:outline-none focus:ring-2 focus:ring-mint-400 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                className="inline-flex min-h-11 items-center rounded-xl bg-mint-600 px-4 py-2 text-sm font-medium font-sans text-white transition-colors hover:bg-mint-700 active:bg-mint-800 focus:outline-none focus:ring-2 focus:ring-mint-400 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Confirmer
               </button>
@@ -440,7 +434,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
                   setActionError(null);
                 }}
                 disabled={actionLoading}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                className="inline-flex min-h-11 items-center rounded-xl border border-sage-300 px-4 py-2 text-sm font-medium font-sans text-sage-700 transition-colors hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Reporter
               </button>
@@ -450,7 +444,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
                   setActionError(null);
                 }}
                 disabled={actionLoading}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-red-300 text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                className="inline-flex min-h-11 items-center rounded-xl border border-red-300 px-4 py-2 text-sm font-medium font-sans text-red-700 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Refuser
               </button>
@@ -463,7 +457,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
               <button
                 onClick={() => callPatch({ action: 'cancel_reschedule' })}
                 disabled={actionLoading}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-red-300 text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                className="inline-flex min-h-11 items-center rounded-xl border border-red-300 px-4 py-2 text-sm font-medium font-sans text-red-700 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {actionLoading ? 'En cours…' : 'Annuler la proposition'}
               </button>
@@ -476,7 +470,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
                   href={appointment.stripe_payment_link_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl bg-mint-600 text-white hover:bg-mint-700 transition-colors min-h-[40px]"
+                  className="inline-flex min-h-11 items-center rounded-xl bg-mint-600 px-4 py-2 text-sm font-medium font-sans text-white transition-colors hover:bg-mint-700"
                 >
                   Voir lien paiement
                 </a>
@@ -491,7 +485,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
                   setActionError(null);
                 }}
                 disabled={actionLoading}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-red-300 text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                className="inline-flex min-h-11 items-center rounded-xl border border-red-300 px-4 py-2 text-sm font-medium font-sans text-red-700 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Refuser
               </button>
@@ -503,7 +497,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
               <button
                 onClick={handleSendReview}
                 disabled={actionLoading}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                className="inline-flex min-h-11 items-center rounded-xl border border-sage-300 px-4 py-2 text-sm font-medium font-sans text-sage-700 transition-colors hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {actionLoading ? 'Envoi…' : 'Envoyer rappel avis'}
               </button>
@@ -536,7 +530,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
                     setActionError(null);
                   }}
                   disabled={actionLoading}
-                  className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                  className="inline-flex min-h-11 items-center rounded-xl border border-sage-300 px-4 py-2 text-sm font-medium font-sans text-sage-700 transition-colors hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Reporter
                 </button>
@@ -549,7 +543,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
                     setActionError(null);
                   }}
                   disabled={actionLoading}
-                  className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-red-300 text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                  className="inline-flex min-h-11 items-center rounded-xl border border-red-300 px-4 py-2 text-sm font-medium font-sans text-red-700 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Annuler
                 </button>
@@ -565,8 +559,10 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
         appointment.final_price - appointment.credit_applied > 0 && (
           <p className="mb-4 text-xs text-amber-700 font-sans">
             L'annulation émettra un avoir de{' '}
-            {Math.round((appointment.final_price - appointment.credit_applied) / 100)}€
-            au profit du patient.
+            {Math.round(
+              (appointment.final_price - appointment.credit_applied) / 100,
+            )}
+            € au profit du patient.
           </p>
         )}
 
@@ -587,7 +583,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
                   <button
                     onClick={handleRegenerateCalendar}
                     disabled={isRegenerating}
-                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 transition-colors disabled:opacity-60 min-h-[36px]"
+                    className="flex min-h-11 items-center gap-1.5 rounded-xl border border-sage-300 px-3 py-2 text-xs font-medium font-sans text-sage-700 transition-colors hover:bg-sage-50 disabled:opacity-60"
                     title={regenLabel}
                     aria-label={
                       isRegenerating ? 'Régénération en cours…' : regenLabel
@@ -664,7 +660,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
         <textarea
           id={`notes-${appointment.id}`}
           value={notes}
-          onChange={(e) => setNotes(e.target.value)}
+          onChange={e => setNotes(e.target.value)}
           rows={2}
           className="w-full px-3 py-2 text-sm text-sage-800 border border-sage-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent resize-none font-sans placeholder-sage-300 transition-colors"
           placeholder="Notes internes…"
@@ -729,7 +725,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
             <textarea
               id="decline-msg-input"
               value={declineMessage}
-              onChange={(e) => setDeclineMessage(e.target.value)}
+              onChange={e => setDeclineMessage(e.target.value)}
               rows={3}
               placeholder="Expliquez la raison du refus…"
               className="w-full px-4 py-2.5 rounded-xl border border-sage-200 bg-sage-50 text-sage-900 placeholder-sage-400 font-sans text-sm focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent resize-none transition-colors"
@@ -749,14 +745,14 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
                 setModal(null);
               }}
               disabled={actionLoading}
-              className="px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 transition-colors disabled:opacity-60 min-h-[40px]"
+              className="min-h-11 rounded-xl border border-sage-300 px-4 py-2 text-sm font-medium font-sans text-sage-700 transition-colors hover:bg-sage-50 disabled:opacity-60"
             >
               Annuler
             </button>
             <button
               onClick={handleDecline}
               disabled={actionLoading}
-              className="px-4 py-2 text-sm font-medium font-sans rounded-xl bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-60 min-h-[40px]"
+              className="min-h-11 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium font-sans text-white transition-colors hover:bg-red-700 disabled:opacity-60"
             >
               {actionLoading ? 'En cours…' : 'Refuser'}
             </button>
@@ -779,14 +775,20 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
         >
           <p className="text-sm text-sage-600 font-sans mb-4">
             Le patient recevra un email d'annulation.
-            {appointment.status === 'payment_received' && appointment.final_price - appointment.credit_applied > 0 && (
-              <>
-                {' '}
-                <span className="text-amber-700 font-medium">
-                  Un avoir de {Math.round((appointment.final_price - appointment.credit_applied) / 100)}€ (montant payé) sera émis au profit du patient.
-                </span>
-              </>
-            )}
+            {appointment.status === 'payment_received' &&
+              appointment.final_price - appointment.credit_applied > 0 && (
+                <>
+                  {' '}
+                  <span className="text-amber-700 font-medium">
+                    Un avoir de{' '}
+                    {Math.round(
+                      (appointment.final_price - appointment.credit_applied) /
+                        100,
+                    )}
+                    € (montant payé) sera émis au profit du patient.
+                  </span>
+                </>
+              )}
           </p>
           <div className="mb-5">
             <label
@@ -799,7 +801,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
             <textarea
               id="cancel-msg-input"
               value={cancelMessage}
-              onChange={(e) => setCancelMessage(e.target.value)}
+              onChange={e => setCancelMessage(e.target.value)}
               rows={3}
               placeholder="Expliquez la raison de l'annulation…"
               className="w-full px-4 py-2.5 rounded-xl border border-sage-200 bg-sage-50 text-sage-900 placeholder-sage-400 font-sans text-sm focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent resize-none transition-colors"
@@ -819,14 +821,14 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
                 setModal(null);
               }}
               disabled={actionLoading}
-              className="px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 transition-colors disabled:opacity-60 min-h-[40px]"
+              className="min-h-11 rounded-xl border border-sage-300 px-4 py-2 text-sm font-medium font-sans text-sage-700 transition-colors hover:bg-sage-50 disabled:opacity-60"
             >
               Fermer
             </button>
             <button
               onClick={handleCancel}
               disabled={actionLoading}
-              className="px-4 py-2 text-sm font-medium font-sans rounded-xl bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-60 min-h-[40px]"
+              className="min-h-11 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium font-sans text-white transition-colors hover:bg-red-700 disabled:opacity-60"
             >
               {actionLoading ? 'En cours…' : 'Annuler le rendez-vous'}
             </button>
@@ -851,7 +853,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
         >
           <p className="text-sm text-sage-600 font-sans mb-4">
             {isDirectReschedule
-              ? 'Le rendez-vous sera déplacé vers le nouveau créneau. Le paiement déjà effectué (ou l\'avoir) est conservé — aucun nouveau paiement ne sera demandé. Le patient sera notifié.'
+              ? "Le rendez-vous sera déplacé vers le nouveau créneau. Le paiement déjà effectué (ou l'avoir) est conservé — aucun nouveau paiement ne sera demandé. Le patient sera notifié."
               : 'Le patient recevra un email avec le nouveau créneau proposé.'}
           </p>
           <div className="mb-4">
@@ -865,7 +867,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
               id="reschedule-date-input"
               type="datetime-local"
               value={rescheduleDate}
-              onChange={(e) => setRescheduleDate(e.target.value)}
+              onChange={e => setRescheduleDate(e.target.value)}
               className="w-full px-4 py-2.5 rounded-xl border border-sage-200 bg-sage-50 text-sage-900 font-sans text-sm focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent transition-colors"
             />
           </div>
@@ -880,7 +882,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
             <textarea
               id="reschedule-msg-input"
               value={rescheduleMessage}
-              onChange={(e) => setRescheduleMessage(e.target.value)}
+              onChange={e => setRescheduleMessage(e.target.value)}
               rows={2}
               placeholder="Expliquez le report…"
               className="w-full px-4 py-2.5 rounded-xl border border-sage-200 bg-sage-50 text-sage-900 placeholder-sage-400 font-sans text-sm focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent resize-none transition-colors"
@@ -902,14 +904,14 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
                 setModal(null);
               }}
               disabled={actionLoading}
-              className="px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 transition-colors disabled:opacity-60 min-h-[40px]"
+              className="min-h-11 rounded-xl border border-sage-300 px-4 py-2 text-sm font-medium font-sans text-sage-700 transition-colors hover:bg-sage-50 disabled:opacity-60"
             >
               Annuler
             </button>
             <button
               onClick={handleReschedule}
               disabled={actionLoading}
-              className="px-4 py-2 text-sm font-medium font-sans rounded-xl bg-mint-600 text-white hover:bg-mint-700 transition-colors disabled:opacity-60 min-h-[40px]"
+              className="min-h-11 rounded-xl bg-mint-600 px-4 py-2 text-sm font-medium font-sans text-white transition-colors hover:bg-mint-700 disabled:opacity-60"
             >
               {actionLoading ? 'En cours…' : 'Reporter'}
             </button>

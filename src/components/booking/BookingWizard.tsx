@@ -5,11 +5,14 @@
  * Étapes : Type & Mode → Date & Heure → Informations → Récapitulatif → Confirmation
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useBooking } from '../../hooks/useBooking';
 import type { BookingState, BookingStep } from '../../hooks/useBooking';
-import { getTypeLabel, getModeLabel } from '../../lib/pricing';
-import { trackEvent } from '../../lib/analytics';
+import { getTypeLabel, getModeLabel } from '../../utils/pricing';
+import { trackEvent } from '../../utils/analytics';
+import { STANDARD_DURATIONS } from '../../utils/domain';
+import { toParisDateString } from '../../utils/date';
+import { formatParisTime, formatParisWeekdayDate } from '../../utils/datetime';
 
 // ---------------------------------------------------------------------------
 // Types locaux
@@ -31,24 +34,6 @@ interface SlotGroup {
 // Helpers de formatage (heure Paris)
 // ---------------------------------------------------------------------------
 
-function formatDateLabel(isoString: string): string {
-  return new Intl.DateTimeFormat('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'Europe/Paris',
-  }).format(new Date(isoString));
-}
-
-function formatTime(isoString: string): string {
-  return new Intl.DateTimeFormat('fr-FR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Paris',
-  }).format(new Date(isoString));
-}
-
 function capitalize(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
@@ -58,23 +43,13 @@ function groupSlotsByDay(slots: TimeSlot[]): SlotGroup[] {
 
   for (const slot of slots) {
     if (!slot.available) continue;
-    const date = new Date(slot.start);
     // Clé YYYY-MM-DD en heure Paris
-    const key = new Intl.DateTimeFormat('fr-FR', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      timeZone: 'Europe/Paris',
-    })
-      .format(date)
-      .split('/')
-      .reverse()
-      .join('-');
+    const key = toParisDateString(new Date(slot.start));
 
     if (!groups.has(key)) {
       groups.set(key, {
         dateKey: key,
-        dateLabel: capitalize(formatDateLabel(slot.start)),
+        dateLabel: capitalize(formatParisWeekdayDate(slot.start)),
         slots: [],
       });
     }
@@ -85,15 +60,16 @@ function groupSlotsByDay(slots: TimeSlot[]): SlotGroup[] {
 }
 
 function formatScheduledAt(isoString: string): string {
-  return `${capitalize(formatDateLabel(isoString))} à ${formatTime(isoString)}`;
+  return `${capitalize(formatParisWeekdayDate(isoString))} à ${formatParisTime(isoString)}`;
 }
 
 // ---------------------------------------------------------------------------
 // Accent color (hors palette Tailwind)
 // ---------------------------------------------------------------------------
 
-const ACCENT = '#d4a96a';
-
+// = mint-700 from tailwind.config.js — keeps the sage/mint palette and
+// passes WCAG AA contrast on white (the previous tan failed at ~2.2:1).
+const ACCENT = '#3c6259';
 
 // ---------------------------------------------------------------------------
 // SVG icon helpers for therapy types and modes (replaces emoji — C2)
@@ -102,21 +78,54 @@ const ACCENT = '#d4a96a';
 function TypeIcon({ value }: { value: 'individual' | 'couple' | 'family' }) {
   if (value === 'individual') {
     return (
-      <svg className="h-6 w-6 text-sage-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+      <svg
+        className="h-6 w-6 text-sage-600"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        aria-hidden="true"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"
+        />
       </svg>
     );
   }
   if (value === 'couple') {
     return (
-      <svg className="h-6 w-6 text-sage-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+      <svg
+        className="h-6 w-6 text-sage-600"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        aria-hidden="true"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"
+        />
       </svg>
     );
   }
   return (
-    <svg className="h-6 w-6 text-sage-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+    <svg
+      className="h-6 w-6 text-sage-600"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"
+      />
     </svg>
   );
 }
@@ -124,15 +133,41 @@ function TypeIcon({ value }: { value: 'individual' | 'couple' | 'family' }) {
 function ModeIcon({ value }: { value: 'in-person' | 'video' }) {
   if (value === 'in-person') {
     return (
-      <svg className="h-6 w-6 text-sage-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+      <svg
+        className="h-6 w-6 text-sage-600"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        aria-hidden="true"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"
+        />
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"
+        />
       </svg>
     );
   }
   return (
-    <svg className="h-6 w-6 text-sage-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+    <svg
+      className="h-6 w-6 text-sage-600"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"
+      />
     </svg>
   );
 }
@@ -161,33 +196,57 @@ function StepIndicator({ currentStep }: { currentStep: BookingStep }) {
           const isActive = index === currentIndex;
 
           return (
-            <li key={step.key} aria-current={isActive ? 'step' : undefined} className="flex flex-1 items-center">
+            <li
+              key={step.key}
+              aria-current={isActive ? 'step' : undefined}
+              className="flex flex-1 items-center"
+            >
               <div className="flex flex-col items-center gap-1">
                 <span
                   className={`
                     flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold
                     transition-all duration-200
                     ${isDone ? 'bg-sage-600 text-white' : ''}
-                    ${isActive ? 'text-white ring-2 ring-offset-2' : ''}
+                    ${isActive ? 'text-white ring-2 ring-mint-700 ring-offset-2' : ''}
                     ${!isDone && !isActive ? 'bg-sage-100 text-sage-400' : ''}
                   `}
-                  style={isActive ? { backgroundColor: ACCENT, outlineColor: ACCENT } : undefined}
+                  style={isActive ? { backgroundColor: ACCENT } : undefined}
                 >
                   {isDone ? (
                     <>
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3} aria-hidden="true">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={3}
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M5 13l4 4L19 7"
+                        />
                       </svg>
-                      <span className="sr-only">Étape {index + 1} sur {WIZARD_STEPS.length}, terminée</span>
+                      <span className="sr-only">
+                        Étape {index + 1} sur {WIZARD_STEPS.length}, terminée
+                      </span>
                     </>
                   ) : (
                     <>
                       <span aria-hidden="true">{index + 1}</span>
-                      {isActive && <span className="sr-only"> sur {WIZARD_STEPS.length}, en cours</span>}
+                      {isActive && (
+                        <span className="sr-only">
+                          {' '}
+                          sur {WIZARD_STEPS.length}, en cours
+                        </span>
+                      )}
                     </>
                   )}
                 </span>
-                <span className={`text-xs font-medium ${isActive ? 'block text-sage-800' : 'hidden sm:block text-sage-400'}`}>
+                <span
+                  className={`text-xs font-medium ${isActive ? 'block text-sage-800' : 'hidden sm:block text-sage-400'}`}
+                >
                   {step.label}
                 </span>
               </div>
@@ -219,31 +278,54 @@ function TypeModeStep({
   pricingLabel,
 }: {
   state: BookingState;
-  updateField: <K extends keyof BookingState>(field: K, value: BookingState[K]) => void;
+  updateField: <K extends keyof BookingState>(
+    field: K,
+    value: BookingState[K],
+  ) => void;
   nextStep: () => void;
   isValid: boolean;
   pricingLabel: string | null;
 }) {
-  const types: { value: 'individual' | 'couple' | 'family'; label: string; desc: string }[] = [
-    { value: 'individual', label: 'Individuelle', desc: 'Séance en tête-à-tête' },
+  const types: {
+    value: 'individual' | 'couple' | 'family';
+    label: string;
+    desc: string;
+  }[] = [
+    {
+      value: 'individual',
+      label: 'Individuelle',
+      desc: 'Séance en tête-à-tête',
+    },
     { value: 'couple', label: 'Couple', desc: 'Thérapie de couple' },
     { value: 'family', label: 'Familiale', desc: 'Thérapie familiale' },
   ];
 
-  const modes: { value: 'in-person' | 'video'; label: string; desc: string }[] = [
-    { value: 'in-person', label: 'Présentiel', desc: 'Mercredi uniquement — au cabinet' },
-    { value: 'video', label: 'Téléconsultation', desc: 'Lundi au vendredi — en ligne' },
-  ];
+  const modes: { value: 'in-person' | 'video'; label: string; desc: string }[] =
+    [
+      {
+        value: 'in-person',
+        label: 'Présentiel',
+        desc: 'Mercredi uniquement — au cabinet',
+      },
+      {
+        value: 'video',
+        label: 'Téléconsultation',
+        desc: 'Lundi au vendredi — en ligne',
+      },
+    ];
 
   return (
     <div className="space-y-8">
-
       {/* Type de thérapie */}
       <fieldset>
         <legend className="mb-4 text-base font-semibold text-sage-800">
           Type de thérapie
         </legend>
-        <div className="grid grid-cols-3 gap-3" role="radiogroup" aria-label="Type de thérapie">
+        <div
+          className="grid grid-cols-3 gap-3"
+          role="radiogroup"
+          aria-label="Type de thérapie"
+        >
           {types.map(type => (
             <button
               key={type.value}
@@ -254,14 +336,17 @@ function TypeModeStep({
               className={`
                 flex flex-col items-center gap-2 rounded-xl border-2 p-4 text-center transition-all duration-150
                 hover:border-sage-400 hover:bg-sage-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sage-600
-                ${state.appointment_type === type.value
-                  ? 'border-sage-600 bg-sage-50 shadow-sm'
-                  : 'border-sage-200 bg-white'
+                ${
+                  state.appointment_type === type.value
+                    ? 'border-sage-600 bg-sage-50 shadow-sm'
+                    : 'border-sage-200 bg-white'
                 }
               `}
             >
               <TypeIcon value={type.value} />
-              <span className="text-sm font-semibold text-sage-800">{type.label}</span>
+              <span className="text-sm font-semibold text-sage-800">
+                {type.label}
+              </span>
               <span className="text-xs text-sage-500">{type.desc}</span>
             </button>
           ))}
@@ -273,7 +358,11 @@ function TypeModeStep({
         <legend className="mb-4 text-base font-semibold text-sage-800">
           Mode de consultation
         </legend>
-        <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Mode de consultation">
+        <div
+          className="grid grid-cols-2 gap-3"
+          role="radiogroup"
+          aria-label="Mode de consultation"
+        >
           {modes.map(mode => (
             <button
               key={mode.value}
@@ -284,14 +373,17 @@ function TypeModeStep({
               className={`
                 flex flex-col items-start gap-1 rounded-xl border-2 p-4 text-left transition-all duration-150
                 hover:border-sage-400 hover:bg-sage-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sage-600
-                ${state.appointment_mode === mode.value
-                  ? 'border-sage-600 bg-sage-50 shadow-sm'
-                  : 'border-sage-200 bg-white'
+                ${
+                  state.appointment_mode === mode.value
+                    ? 'border-sage-600 bg-sage-50 shadow-sm'
+                    : 'border-sage-200 bg-white'
                 }
               `}
             >
               <ModeIcon value={mode.value} />
-              <span className="text-sm font-semibold text-sage-800">{mode.label}</span>
+              <span className="text-sm font-semibold text-sage-800">
+                {mode.label}
+              </span>
               <span className="text-xs text-sage-500">{mode.desc}</span>
             </button>
           ))}
@@ -304,15 +396,16 @@ function TypeModeStep({
           Durée de la séance
         </legend>
         <div className="flex gap-3">
-          {([60, 90] as const).map(dur => (
+          {STANDARD_DURATIONS.map(dur => (
             <label
               key={dur}
               className={`
                 flex flex-1 cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-3 transition-all duration-150
                 hover:border-sage-400 hover:bg-sage-50
-                ${state.duration === dur
-                  ? 'border-sage-600 bg-sage-50'
-                  : 'border-sage-200 bg-white'
+                ${
+                  state.duration === dur
+                    ? 'border-sage-600 bg-sage-50'
+                    : 'border-sage-200 bg-white'
                 }
               `}
             >
@@ -324,7 +417,9 @@ function TypeModeStep({
                 onChange={() => updateField('duration', dur)}
                 className="accent-sage-600"
               />
-              <span className="text-sm font-semibold text-sage-800">{dur} min</span>
+              <span className="text-sm font-semibold text-sage-800">
+                {dur} min
+              </span>
             </label>
           ))}
         </div>
@@ -340,7 +435,9 @@ function TypeModeStep({
         />
         <span className="text-sm text-sage-700">
           C'est ma <span className="font-semibold">première consultation</span>
-          <span className="ml-1 text-xs text-sage-500">(−15€ de réduction)</span>
+          <span className="ml-1 text-xs text-sage-500">
+            (−15€ de réduction)
+          </span>
         </span>
       </label>
 
@@ -348,10 +445,18 @@ function TypeModeStep({
       {pricingLabel && (
         <div
           className="flex items-center justify-between rounded-xl px-5 py-4"
-          style={{ backgroundColor: `${ACCENT}15`, border: `1.5px solid ${ACCENT}40` }}
+          style={{
+            backgroundColor: `${ACCENT}15`,
+            border: `1.5px solid ${ACCENT}40`,
+          }}
         >
-          <span className="text-sm font-medium text-sage-700">Tarif estimé</span>
-          <span className="text-lg font-bold text-sage-800" style={{ color: ACCENT }}>
+          <span className="text-sm font-medium text-sage-700">
+            Tarif estimé
+          </span>
+          <span
+            className="text-lg font-bold text-sage-800"
+            style={{ color: ACCENT }}
+          >
             {pricingLabel}
           </span>
         </div>
@@ -372,8 +477,18 @@ function TypeModeStep({
           style={{ backgroundColor: ACCENT }}
         >
           Choisir un créneau
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9 5l7 7-7 7"
+            />
           </svg>
         </button>
       </div>
@@ -393,7 +508,10 @@ function DatetimeStep({
   isValid,
 }: {
   state: BookingState;
-  updateField: <K extends keyof BookingState>(field: K, value: BookingState[K]) => void;
+  updateField: <K extends keyof BookingState>(
+    field: K,
+    value: BookingState[K],
+  ) => void;
   nextStep: () => void;
   prevStep: () => void;
   isValid: boolean;
@@ -405,6 +523,13 @@ function DatetimeStep({
   useEffect(() => {
     if (!state.appointment_mode || !state.duration) return;
 
+    // Stale-response guard instead of an AbortController: skipping state
+    // updates after mode/duration changes (or unmount) still prevents a late
+    // response from overwriting the current list, and never calling
+    // abort() avoids the "Uncaught (in promise) AbortError" console
+    // artifact some Chromium/WebKit versions attribute to the abort() site.
+    let cancelled = false;
+
     setIsLoading(true);
     setFetchError(null);
 
@@ -412,28 +537,66 @@ function DatetimeStep({
       `/api/availability/?mode=${state.appointment_mode}&duration=${state.duration}&weeks=4`,
     )
       .then(res => {
-        if (!res.ok) throw new Error('Impossible de charger les disponibilités.');
+        if (!res.ok)
+          throw new Error('Impossible de charger les disponibilités.');
         return res.json() as Promise<{ slots: TimeSlot[] }>;
       })
       .then(data => {
+        if (cancelled) return;
         setSlots(data.slots);
         setIsLoading(false);
       })
       .catch((err: unknown) => {
+        if (cancelled) return;
         const message = err instanceof Error ? err.message : 'Erreur inconnue.';
         setFetchError(message);
         setIsLoading(false);
       });
+    return () => {
+      cancelled = true;
+    };
   }, [state.appointment_mode, state.duration]);
 
   const groups = groupSlotsByDay(slots);
+
+  // WAI-ARIA radiogroup: arrow keys move the selection (and focus) between
+  // the slot buttons of a day, with wrap-around; if nothing is selected yet,
+  // Down/Right start at the first slot, Up/Left at the last.
+  function handleSlotGroupKeyDown(
+    event: KeyboardEvent<HTMLDivElement>,
+    groupSlots: TimeSlot[],
+  ) {
+    const delta =
+      event.key === 'ArrowDown' || event.key === 'ArrowRight'
+        ? 1
+        : event.key === 'ArrowUp' || event.key === 'ArrowLeft'
+          ? -1
+          : 0;
+    if (delta === 0) return;
+    event.preventDefault();
+    const currentIndex = groupSlots.findIndex(
+      slot => slot.start === state.scheduled_at,
+    );
+    const nextIndex =
+      currentIndex === -1
+        ? delta === 1
+          ? 0
+          : groupSlots.length - 1
+        : (currentIndex + delta + groupSlots.length) % groupSlots.length;
+    updateField('scheduled_at', groupSlots[nextIndex].start);
+    const radioButtons =
+      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]');
+    radioButtons[nextIndex]?.focus();
+  }
 
   return (
     <div className="space-y-6">
       <p className="text-sm text-sage-600">
         Sélectionnez un créneau disponible pour votre séance en{' '}
         <span className="font-medium">
-          {state.appointment_mode === 'in-person' ? 'présentiel' : 'téléconsultation'}
+          {state.appointment_mode === 'in-person'
+            ? 'présentiel'
+            : 'téléconsultation'}
         </span>{' '}
         ({state.duration} min).
       </p>
@@ -443,7 +606,10 @@ function DatetimeStep({
         {isLoading && (
           <div className="space-y-4" aria-live="polite" aria-busy="true">
             {[0, 1, 2].map(i => (
-              <div key={i} className="animate-pulse rounded-xl border border-sage-200 bg-white p-4">
+              <div
+                key={i}
+                className="animate-pulse rounded-xl border border-sage-200 bg-white p-4"
+              >
                 <div className="mb-3 h-4 w-40 rounded bg-sage-100" />
                 <div className="flex flex-wrap gap-2">
                   {[0, 1, 2, 3].map(j => (
@@ -457,7 +623,10 @@ function DatetimeStep({
 
         {/* Erreur */}
         {!isLoading && fetchError && (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+          <div
+            className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            role="alert"
+          >
             <span className="font-semibold">Erreur :</span> {fetchError}
           </div>
         )}
@@ -469,22 +638,36 @@ function DatetimeStep({
               Aucun créneau disponible dans les 4 prochaines semaines.
             </p>
             <p className="mt-1 text-xs text-sage-500">
-              Vous pouvez nous contacter directement pour trouver un arrangement.
+              Vous pouvez nous contacter directement pour trouver un
+              arrangement.
             </p>
           </div>
         )}
 
         {/* Créneaux groupés par jour */}
         {!isLoading && !fetchError && groups.length > 0 && (
-          <div className="space-y-4" role="list" aria-label="Créneaux disponibles">
+          <div
+            className="space-y-4"
+            role="list"
+            aria-label="Créneaux disponibles"
+          >
             {groups.map(group => (
               <div
                 key={group.dateKey}
                 role="listitem"
                 className="rounded-xl border border-sage-200 bg-white p-4 shadow-sm"
               >
-                <h3 className="mb-3 text-sm font-semibold text-sage-800">{group.dateLabel}</h3>
-                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={group.dateLabel}>
+                <h3 className="mb-3 text-sm font-semibold text-sage-800">
+                  {group.dateLabel}
+                </h3>
+                <div
+                  className="flex flex-wrap gap-2"
+                  role="radiogroup"
+                  aria-label={group.dateLabel}
+                  onKeyDown={event =>
+                    handleSlotGroupKeyDown(event, group.slots)
+                  }
+                >
                   {group.slots.map(slot => {
                     const isSelected = state.scheduled_at === slot.start;
                     return (
@@ -493,19 +676,24 @@ function DatetimeStep({
                         type="button"
                         role="radio"
                         aria-checked={isSelected}
-                        aria-label={`${formatTime(slot.start)}, ${group.dateLabel}`}
+                        aria-label={`${formatParisTime(slot.start)}, ${group.dateLabel}`}
                         onClick={() => updateField('scheduled_at', slot.start)}
                         className={`
                          rounded-lg border-2 px-3 py-2 text-sm font-medium transition-all duration-150
                          focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2
-                         ${isSelected
-                           ? 'text-white shadow-sm'
-                           : 'border-sage-200 bg-white text-sage-700 hover:border-sage-400 hover:bg-sage-50'
+                         ${
+                           isSelected
+                             ? 'text-white shadow-sm'
+                             : 'border-sage-200 bg-white text-sage-700 hover:border-sage-400 hover:bg-sage-50'
                          }
                        `}
-                        style={isSelected ? { backgroundColor: ACCENT, borderColor: ACCENT } : undefined}
+                        style={
+                          isSelected
+                            ? { backgroundColor: ACCENT, borderColor: ACCENT }
+                            : undefined
+                        }
                       >
-                        {formatTime(slot.start)}
+                        {formatParisTime(slot.start)}
                       </button>
                     );
                   })}
@@ -523,8 +711,18 @@ function DatetimeStep({
           onClick={prevStep}
           className="inline-flex items-center gap-2 rounded-xl border-2 border-sage-200 bg-white px-5 py-2.5 text-sm font-semibold text-sage-700 transition-colors hover:border-sage-400 hover:bg-sage-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sage-600"
         >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M15 19l-7-7 7-7"
+            />
           </svg>
           Retour
         </button>
@@ -536,8 +734,18 @@ function DatetimeStep({
           style={{ backgroundColor: ACCENT }}
         >
           Continuer
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9 5l7 7-7 7"
+            />
           </svg>
         </button>
       </div>
@@ -557,7 +765,10 @@ function PatientInfoStep({
   isValid,
 }: {
   state: BookingState;
-  updateField: <K extends keyof BookingState>(field: K, value: BookingState[K]) => void;
+  updateField: <K extends keyof BookingState>(
+    field: K,
+    value: BookingState[K],
+  ) => void;
   nextStep: () => void;
   prevStep: () => void;
   isValid: boolean;
@@ -573,12 +784,16 @@ function PatientInfoStep({
   return (
     <div className="space-y-5">
       <p className="text-sm text-sage-600">
-        Ces informations resteront confidentielles et ne seront utilisées que pour la prise en charge de votre rendez-vous.
+        Ces informations resteront confidentielles et ne seront utilisées que
+        pour la prise en charge de votre rendez-vous.
       </p>
 
       {/* Nom complet */}
       <div>
-        <label htmlFor="patient_name" className="mb-1.5 block text-sm font-medium text-sage-700">
+        <label
+          htmlFor="patient_name"
+          className="mb-1.5 block text-sm font-medium text-sage-700"
+        >
           Nom complet <span className="text-red-500">*</span>
         </label>
         <input
@@ -595,7 +810,10 @@ function PatientInfoStep({
 
       {/* Email */}
       <div>
-        <label htmlFor="patient_email" className="mb-1.5 block text-sm font-medium text-sage-700">
+        <label
+          htmlFor="patient_email"
+          className="mb-1.5 block text-sm font-medium text-sage-700"
+        >
           Adresse email <span className="text-red-500">*</span>
         </label>
         <input
@@ -612,7 +830,10 @@ function PatientInfoStep({
 
       {/* Téléphone */}
       <div>
-        <label htmlFor="patient_phone" className="mb-1.5 block text-sm font-medium text-sage-700">
+        <label
+          htmlFor="patient_phone"
+          className="mb-1.5 block text-sm font-medium text-sage-700"
+        >
           Téléphone <span className="text-red-500">*</span>
         </label>
         <input
@@ -625,13 +846,18 @@ function PatientInfoStep({
           placeholder="06 12 34 56 78"
           className={inputClass(state.patient_phone)}
         />
-        <p className="mt-1 text-xs text-sage-500">Format français : 06 xx xx xx xx ou +33 6 xx xx xx xx</p>
+        <p className="mt-1 text-xs text-sage-500">
+          Format français : 06 xx xx xx xx ou +33 6 xx xx xx xx
+        </p>
       </div>
 
       {/* Code postal + Ville (sur 2 colonnes) */}
       <div className="grid grid-cols-5 gap-3">
         <div className="col-span-2">
-          <label htmlFor="patient_postal_code" className="mb-1.5 block text-sm font-medium text-sage-700">
+          <label
+            htmlFor="patient_postal_code"
+            className="mb-1.5 block text-sm font-medium text-sage-700"
+          >
             Code postal <span className="text-red-500">*</span>
           </label>
           <input
@@ -641,13 +867,21 @@ function PatientInfoStep({
             required
             maxLength={5}
             value={state.patient_postal_code}
-            onChange={e => updateField('patient_postal_code', e.target.value.replace(/\D/g, ''))}
+            onChange={e =>
+              updateField(
+                'patient_postal_code',
+                e.target.value.replace(/\D/g, ''),
+              )
+            }
             placeholder="75001"
             className={inputClass(state.patient_postal_code)}
           />
         </div>
         <div className="col-span-3">
-          <label htmlFor="patient_city" className="mb-1.5 block text-sm font-medium text-sage-700">
+          <label
+            htmlFor="patient_city"
+            className="mb-1.5 block text-sm font-medium text-sage-700"
+          >
             Ville <span className="text-red-500">*</span>
           </label>
           <input
@@ -665,7 +899,10 @@ function PatientInfoStep({
 
       {/* Motif */}
       <div>
-        <label htmlFor="patient_reason" className="mb-1.5 block text-sm font-medium text-sage-700">
+        <label
+          htmlFor="patient_reason"
+          className="mb-1.5 block text-sm font-medium text-sage-700"
+        >
           Motif de consultation <span className="text-red-500">*</span>
         </label>
         <textarea
@@ -685,7 +922,9 @@ function PatientInfoStep({
           </span>
         </div>
         <p className="mt-2 text-xs leading-relaxed text-sage-400">
-          Si vous traversez une période financière difficile (RSA, ASS, études, chômage…), n'hésitez pas à le mentionner ici — un tarif adapté peut être proposé.
+          Si vous traversez une période financière difficile (RSA, ASS, études,
+          chômage…), n'hésitez pas à le mentionner ici — un tarif adapté peut
+          être proposé.
         </p>
       </div>
 
@@ -696,8 +935,18 @@ function PatientInfoStep({
           onClick={prevStep}
           className="inline-flex items-center gap-2 rounded-xl border-2 border-sage-200 bg-white px-5 py-2.5 text-sm font-semibold text-sage-700 transition-colors hover:border-sage-400 hover:bg-sage-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sage-600"
         >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M15 19l-7-7 7-7"
+            />
           </svg>
           Retour
         </button>
@@ -709,8 +958,18 @@ function PatientInfoStep({
           style={{ backgroundColor: ACCENT }}
         >
           Vérifier
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9 5l7 7-7 7"
+            />
           </svg>
         </button>
       </div>
@@ -759,13 +1018,22 @@ function ReviewStep({
         </h3>
         <div className="divide-y divide-sage-100">
           {state.appointment_type && (
-            <ReviewRow label="Type" value={getTypeLabel(state.appointment_type)} />
+            <ReviewRow
+              label="Type"
+              value={getTypeLabel(state.appointment_type)}
+            />
           )}
           {state.appointment_mode && (
-            <ReviewRow label="Mode" value={getModeLabel(state.appointment_mode)} />
+            <ReviewRow
+              label="Mode"
+              value={getModeLabel(state.appointment_mode)}
+            />
           )}
           {state.scheduled_at && (
-            <ReviewRow label="Date & heure" value={formatScheduledAt(state.scheduled_at)} />
+            <ReviewRow
+              label="Date & heure"
+              value={formatScheduledAt(state.scheduled_at)}
+            />
           )}
           {state.duration && (
             <ReviewRow label="Durée" value={`${state.duration} minutes`} />
@@ -776,8 +1044,13 @@ function ReviewStep({
           />
           {pricingLabel && (
             <div className="flex items-center gap-3 py-2.5 text-sm">
-              <span className="w-36 shrink-0 font-medium text-sage-600">Tarif</span>
-              <span className="font-semibold text-sage-800" style={{ color: ACCENT }}>
+              <span className="w-36 shrink-0 font-medium text-sage-600">
+                Tarif
+              </span>
+              <span
+                className="font-semibold text-sage-800"
+                style={{ color: ACCENT }}
+              >
                 {pricingLabel}
               </span>
             </div>
@@ -800,7 +1073,9 @@ function ReviewStep({
           />
           <div className="py-2.5 text-sm">
             <span className="font-medium text-sage-600">Motif</span>
-            <p className="mt-1 whitespace-pre-wrap text-sage-800">{state.patient_reason}</p>
+            <p className="mt-1 whitespace-pre-wrap text-sage-800">
+              {state.patient_reason}
+            </p>
           </div>
         </div>
       </section>
@@ -811,12 +1086,14 @@ function ReviewStep({
           🔒 Vos données sont traitées conformément à notre{' '}
           <a href="/confidentialite/" className="underline hover:text-sage-800">
             politique de confidentialité
-          </a>.
+          </a>
+          .
         </p>
         {state.appointment_mode === 'video' && (
           <p className="text-xs text-sage-600">
             💳 Pour les séances en téléconsultation, un{' '}
-            <strong>prépaiement sécurisé</strong> vous sera demandé après confirmation.
+            <strong>prépaiement sécurisé</strong> vous sera demandé après
+            confirmation.
           </p>
         )}
       </div>
@@ -839,8 +1116,18 @@ function ReviewStep({
           disabled={state.isSubmitting}
           className="inline-flex items-center gap-2 rounded-xl border-2 border-sage-200 bg-white px-5 py-2.5 text-sm font-semibold text-sage-700 transition-colors hover:border-sage-400 hover:bg-sage-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sage-600 disabled:opacity-40"
         >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M15 19l-7-7 7-7"
+            />
           </svg>
           Modifier
         </button>
@@ -853,17 +1140,42 @@ function ReviewStep({
         >
           {state.isSubmitting ? (
             <>
-              <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              <svg
+                className="h-4 w-4 animate-spin"
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
               </svg>
               Envoi en cours…
             </>
           ) : (
             <>
               Envoyer ma demande
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9 5l7 7-7 7"
+                />
               </svg>
             </>
           )}
@@ -891,7 +1203,11 @@ function SubmittedStep() {
           stroke={ACCENT}
           strokeWidth={2}
         >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M5 13l4 4L19 7"
+          />
         </svg>
       </div>
 
@@ -903,15 +1219,26 @@ function SubmittedStep() {
         Votre demande de rendez-vous a bien été transmise.
       </p>
       <p className="mx-auto mb-8 max-w-sm text-sm text-sage-600">
-        Vous recevrez un <strong>email de confirmation</strong> sous 24–48 h après validation par Oriane.
+        Vous recevrez un <strong>email de confirmation</strong> sous 24–48 h
+        après validation par Oriane.
       </p>
 
       <a
         href="/"
         className="inline-flex items-center gap-2 rounded-xl border-2 border-sage-200 bg-white px-6 py-2.5 text-sm font-semibold text-sage-700 transition-colors hover:border-sage-400 hover:bg-sage-50"
       >
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+        <svg
+          className="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2.5}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M15 19l-7-7 7-7"
+          />
         </svg>
         Retour à l'accueil
       </a>
@@ -924,8 +1251,15 @@ function SubmittedStep() {
 // ---------------------------------------------------------------------------
 
 export default function BookingWizard() {
-  const { state, updateField, nextStep, prevStep, submitBooking, pricing, isStepValid } =
-    useBooking();
+  const {
+    state,
+    updateField,
+    nextStep,
+    prevStep,
+    submitBooking,
+    pricing,
+    isStepValid,
+  } = useBooking();
   const wizardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -937,7 +1271,11 @@ export default function BookingWizard() {
   }, [state.step]);
 
   return (
-    <div ref={wizardRef} tabIndex={-1} className="rounded-2xl border border-sage-200 bg-white p-6 shadow-md sm:p-8 focus:outline-none">
+    <div
+      ref={wizardRef}
+      tabIndex={-1}
+      className="rounded-2xl border border-sage-200 bg-white p-6 shadow-md sm:p-8 focus:outline-none"
+    >
       <StepIndicator currentStep={state.step} />
 
       {state.step === 'type-mode' && (

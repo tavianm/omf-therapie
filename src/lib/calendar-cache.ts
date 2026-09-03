@@ -10,6 +10,7 @@
 
 import type { TimeSlot } from './google-calendar.js';
 import { isCalendarMockEnabled } from './mock-mode.server.js';
+import { getParisISOWeekday } from '../utils/date.js';
 
 const STORE_NAME = 'calendar-availability';
 const DEFAULT_TTL_SECONDS = 600; // 10 minutes
@@ -107,27 +108,8 @@ export function buildAvailabilityCacheKey(
   fromDate: Date,
 ): string {
   // Get Monday of the week containing fromDate in Paris timezone
-  const parisDayStr = fromDate.toLocaleDateString('fr-FR', {
-    timeZone: 'Europe/Paris',
-    weekday: 'short',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  // Parse day-of-week offset (fr-FR abbreviated weekdays: dim, lun, mar, mer, jeu, ven, sam)
-  const weekdayMap: Record<string, number> = {
-    dim: 0,
-    lun: 1,
-    mar: 2,
-    mer: 3,
-    jeu: 4,
-    ven: 5,
-    sam: 6,
-  };
-  const parts = parisDayStr.split(' ');
-  const dayAbbr = parts[0].replace('.', '').toLowerCase();
-  const dayOfWeek = weekdayMap[dayAbbr] ?? 1;
-  const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  // (ISO weekday: 1 = Monday … 7 = Sunday, so days back to Monday = 1 - weekday)
+  const daysToMonday = 1 - getParisISOWeekday(fromDate);
   const monday = new Date(fromDate);
   monday.setDate(monday.getDate() + daysToMonday);
   const weekStart = monday.toISOString().slice(0, 10);

@@ -14,20 +14,20 @@ export type {
   AppointmentType,
   AppointmentDuration,
   AppointmentMode,
-} from '../lib/pricing';
+} from '../utils/pricing';
 
 // ---------------------------------------------------------------------------
 // Statut du rendez-vous
 // ---------------------------------------------------------------------------
 
 export type AppointmentStatus =
-  | 'pending'           // soumis, en attente de confirmation
-  | 'confirmed'         // confirmé par la thérapeute
-  | 'declined'          // refusé par la thérapeute
-  | 'rescheduled'       // reporté (voir rescheduled_to)
-  | 'payment_pending'   // lien Stripe envoyé, paiement attendu
-  | 'payment_received'  // paiement Stripe confirmé
-  | 'cancelled';        // annulé (par le patient ou la thérapeute)
+  | 'pending' // soumis, en attente de confirmation
+  | 'confirmed' // confirmé par la thérapeute
+  | 'declined' // refusé par la thérapeute
+  | 'rescheduled' // reporté (voir rescheduled_to)
+  | 'payment_pending' // lien Stripe envoyé, paiement attendu
+  | 'payment_received' // paiement Stripe confirmé
+  | 'cancelled'; // annulé (par le patient ou la thérapeute)
 
 // ---------------------------------------------------------------------------
 // Entité complète (image 1:1 de la table DB)
@@ -58,6 +58,9 @@ export interface Appointment {
 
   // Planification
   scheduled_at: string; // ISO 8601
+  scheduled_end: string;
+  /** Technical end of the blocked interval; it includes the global buffer. */
+  blocked_until: string;
 
   // Workflow
   status: AppointmentStatus;
@@ -96,8 +99,8 @@ export interface Appointment {
   rescheduled_to: string | null; // ISO 8601
 
   // Horodatages RGPD
-  created_at: string;  // ISO 8601
-  updated_at: string;  // ISO 8601
+  created_at: string; // ISO 8601
+  updated_at: string; // ISO 8601
   deleted_at: string | null; // null = actif, soft delete
 }
 
@@ -116,6 +119,8 @@ export type CreateAppointmentData = Omit<
   | 'created_at'
   | 'updated_at'
   | 'deleted_at'
+  | 'scheduled_end'
+  | 'blocked_until'
   | 'status'
   | 'stripe_payment_link_id'
   | 'stripe_payment_link_url'

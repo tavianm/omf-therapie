@@ -19,6 +19,13 @@ import {
   type TimeSlot,
 } from '@/lib/google-calendar';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getSchedulingSettings } from '@/lib/scheduling-settings';
+import type { SchedulingSettings } from '@/types/scheduling-settings';
+import {
+  BLOCKING_STATUSES,
+  VALID_DURATIONS,
+  VALID_MODES,
+} from '@/utils/domain';
 import {
   getCachedAvailability,
   setCachedAvailability,
@@ -32,24 +39,6 @@ export const prerender = false;
 // Constantes de validation
 // ---------------------------------------------------------------------------
 
-const VALID_MODES: ReadonlySet<string> = new Set<AppointmentMode>([
-  'in-person',
-  'video',
-]);
-
-const VALID_DURATIONS: ReadonlySet<number> = new Set<AppointmentDuration>([
-  60,
-  90,
-]);
-
-const BLOCKING_STATUSES = [
-  'pending',
-  'confirmed',
-  'payment_pending',
-  'payment_received',
-  'rescheduled',
-] as const;
-
 const MIN_WEEKS = 1;
 const MAX_WEEKS = 8;
 const DEFAULT_WEEKS = 4;
@@ -62,38 +51,78 @@ async function fetchDbBusyPeriods(
   from: Date,
   to: Date,
 ): Promise<Array<{ start: string; end: string }>> {
-  const { data, error } = await supabaseAdmin
-    .from('appointments')
-    .select('status, duration, scheduled_at, scheduled_end, rescheduled_to')
-    .in('status', BLOCKING_STATUSES)
-    .is('deleted_at', null)
-    .or([
-      `and(scheduled_at.gte.${from.toISOString()},scheduled_at.lte.${to.toISOString()})`,
-      `and(rescheduled_to.gte.${from.toISOString()},rescheduled_to.lte.${to.toISOString()})`,
-    ].join(','));
+  const [appointmentsResult, schedulingSettings] = await Promise.all([
+    supabaseAdmin
+      .from('appointments')
+      .select(
+        'status, duration, scheduled_at, scheduled_end, blocked_until, rescheduled_to',
+      )
+      .in('status', BLOCKING_STATUSES)
+      .is('deleted_at', null)
+      .or(
+        [
+          `and(scheduled_at.gte.${from.toISOString()},scheduled_at.lte.${to.toISOString()})`,
+          `and(rescheduled_to.gte.${from.toISOString()},rescheduled_to.lte.${to.toISOString()})`,
+        ].join(','),
+      ),
+    // Même dégradation gracieuse que la branche appointments ci-dessous : un
+    // échec settings (ex. migration 015 non appliquée) ne doit pas faire
+    // tomber toute la liste de créneaux — repli sur marge nulle.
+    getSchedulingSettings().catch(
+      (error): SchedulingSettings => {
+        console.error(
+          '[api/availability] Erreur scheduling settings (repli marge 0) :',
+          error instanceof Error ? error.message : error,
+        );
+        return { bufferMinutes: 0, updatedAt: new Date(0).toISOString() };
+      },
+    ),
+  ]);
+
+  const { data, error } = appointmentsResult;
 
   if (error) {
     console.error('[api/availability] Erreur DB busy periods :', error.message);
     return []; // dégradation gracieuse — pas pire qu'avant ce fix (AC-5)
   }
 
-  return (data ?? [])
-    .flatMap((row) => {
-      if (typeof row.duration !== 'number') return [];
+  return (data ?? []).flatMap(row => {
+    if (typeof row.duration !== 'number') return [];
 
-      // For rescheduled appointments, reserve proposed slot (rescheduled_to)
-      // so it cannot be double-booked before patient accepts.
-      if (row.status === 'rescheduled' && typeof row.rescheduled_to === 'string') {
-        const start = new Date(row.rescheduled_to);
-        const end = new Date(start.getTime() + row.duration * 60 * 1000);
-        return [{ start: start.toISOString(), end: end.toISOString() }];
+    // Pour un RDV reporté en attente, les DEUX fenêtres restent réservées :
+    // le créneau d'origine (scheduled_at → blocked_until) tant que le patient
+    // n'a pas accepté, et la proposition (rescheduled_to). Le trigger 015
+    // refuse un chevauchement sur l'une ou l'autre — l'offre de créneaux doit
+    // refléter les deux, sinon le patient choisit un créneau affiché libre
+    // et reçoit un 409 au submit.
+    if (
+      row.status === 'rescheduled' &&
+      typeof row.rescheduled_to === 'string'
+    ) {
+      const windows: Array<{ start: string; end: string }> = [];
+      if (
+        typeof row.scheduled_at === 'string' &&
+        typeof row.blocked_until === 'string'
+      ) {
+        windows.push({ start: row.scheduled_at, end: row.blocked_until });
       }
+      const start = new Date(row.rescheduled_to);
+      const end = new Date(
+        start.getTime() +
+          (row.duration + schedulingSettings.bufferMinutes) * 60 * 1000,
+      );
+      windows.push({ start: start.toISOString(), end: end.toISOString() });
+      return windows;
+    }
 
-      if (typeof row.scheduled_at !== 'string' || typeof row.scheduled_end !== 'string') {
-        return [];
-      }
-      return [{ start: row.scheduled_at, end: row.scheduled_end }];
-    });
+    if (
+      typeof row.scheduled_at !== 'string' ||
+      typeof row.blocked_until !== 'string'
+    ) {
+      return [];
+    }
+    return [{ start: row.scheduled_at, end: row.blocked_until }];
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -123,10 +152,10 @@ function filterSlotsByBusy(
   busyPeriods: Array<{ start: string; end: string }>,
 ): TimeSlot[] {
   if (busyPeriods.length === 0) return slots;
-  return slots.filter((slot) => {
+  return slots.filter(slot => {
     const slotStart = new Date(slot.start).getTime();
     const slotEnd = new Date(slot.end).getTime();
-    return !busyPeriods.some((busy) => {
+    return !busyPeriods.some(busy => {
       const busyStart = new Date(busy.start).getTime();
       const busyEnd = new Date(busy.end).getTime();
       return slotStart < busyEnd && slotEnd > busyStart;
@@ -220,9 +249,17 @@ export const GET: APIRoute = async ({ request }) => {
         '[api/availability] GoogleCalendarError :',
         err.message,
         // err.cause intentionally NOT logged — may contain OAuth credentials via GaxiosError
-        err.cause instanceof Error ? err.cause.message : typeof err.cause === 'object' && err.cause !== null ? (err.cause as Record<string, unknown>)['googleErrorCode'] ?? 'unknown' : String(err.cause ?? ''),
+        err.cause instanceof Error
+          ? err.cause.message
+          : typeof err.cause === 'object' && err.cause !== null
+            ? ((err.cause as Record<string, unknown>)['googleErrorCode'] ??
+              'unknown')
+            : String(err.cause ?? ''),
       );
-      return jsonError('Le service de disponibilités est temporairement indisponible.', 503);
+      return jsonError(
+        'Le service de disponibilités est temporairement indisponible.',
+        503,
+      );
     }
 
     // Erreur inattendue

@@ -1,27 +1,27 @@
-import { motion } from "framer-motion";
-import { GraduationCap } from "lucide-react";
-import { useMotionVariants } from "../../hooks/useMotionVariants";
+import { motion } from 'framer-motion';
+import { GraduationCap } from 'lucide-react';
+import { useMotionVariants } from '../../hooks/useMotionVariants';
 
 const QualificationsSection = () => {
   const { fadeInUp, fadeInLeft } = useMotionVariants();
 
   const qualifications = [
     {
-      year: "2021",
-      title: "Licence en Psychologie",
-      institution: "Université de Nîmes",
-      description: "Formation aux fondamentaux de la psychologie",
+      year: '2021',
+      title: 'Licence en Psychologie',
+      institution: 'Université de Nîmes',
+      description: 'Formation aux fondamentaux de la psychologie',
     },
     {
-      year: "2022",
-      title: "Certification aux thérapies conjugales et familiales",
-      institution: "Centre de formation - Ifort",
-      description: "Spécialisation en thérapies conjugales et familiales",
+      year: '2022',
+      title: 'Certification aux thérapies conjugales et familiales',
+      institution: 'Centre de formation - Ifort',
+      description: 'Spécialisation en thérapies conjugales et familiales',
     },
     {
-      year: "2024",
-      title: "Formation nutrition et psyché",
-      institution: "Centre de Formation à Distance",
+      year: '2024',
+      title: 'Formation nutrition et psyché',
+      institution: 'Centre de Formation à Distance',
       description: "Etude de l'impact de l'alimentation sur la santé mentale",
     },
   ];
@@ -30,7 +30,7 @@ const QualificationsSection = () => {
     <div className="py-8 md:py-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div {...fadeInUp()} className="text-center mb-8">
-          <h2 className="section-title">Formations et Qualifications</h2>
+          <h2 className="section-title">Formations et qualifications</h2>
           <p className="section-subtitle">
             Un parcours académique et professionnel riche au service de votre
             bien-être
@@ -45,15 +45,12 @@ const QualificationsSection = () => {
             <div className="flex items-center gap-4 mb-8">
               <GraduationCap className="h-8 w-8 text-mint-600" />
               <h3 className="text-3xl font-serif font-semibold text-sage-800">
-                Parcours Académique & Certifications
+                Parcours académique & certifications
               </h3>
             </div>
             <div className="space-y-8 ">
               {qualifications.map((qual, index) => (
-                <div
-                  key={index}
-                  className="bg-white p-6 rounded-lg shadow-sm"
-                >
+                <div key={index} className="bg-white p-6 rounded-lg shadow-sm">
                   <div className="text-mint-600 font-medium mb-2">
                     {qual.year}
                   </div>

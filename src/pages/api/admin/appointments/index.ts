@@ -7,9 +7,17 @@ import { supabaseAdmin } from '../../../../lib/supabase';
 import { calculatePrice } from '../../../../lib/pricing';
 import { getAvailableCredit, consumeCredits } from '../../../../lib/credits';
 import { hasAppointmentConflict } from '../../../../lib/appointment-conflicts';
+import { isSchedulingConflictError } from '../../../../lib/scheduling-settings';
 import type { AppointmentType } from '../../../../types/appointment';
 import { invalidateAvailabilityCache } from '../../../../lib/calendar-cache.js';
 import { isCabinetEligibleSlot } from '../../../../lib/appointment-eligibility';
+import {
+  MAX_APPOINTMENT_DURATION_MINUTES,
+  MIN_APPOINTMENT_DURATION_MINUTES,
+  VALID_DURATIONS,
+  VALID_MODES,
+  VALID_TYPES,
+} from '../../../../utils/domain';
 import {
   claimInvitationProcessing,
   processAppointmentSideEffects,
@@ -21,9 +29,6 @@ import {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^(?:\+33|0033|0)[1-9](?:[0-9]{8})$/;
-
-const VALID_TYPES = new Set<string>(['individual', 'couple', 'family']);
-const VALID_MODES = new Set<string>(['in-person', 'video']);
 
 function errorResponse(
   status: number,
@@ -119,8 +124,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
   if (
     !duration ||
     !Number.isInteger(Number(duration)) ||
-    Number(duration) < 15 ||
-    Number(duration) > 240
+    Number(duration) < MIN_APPOINTMENT_DURATION_MINUTES ||
+    Number(duration) > MAX_APPOINTMENT_DURATION_MINUTES
   )
     return errorResponse(
       400,
@@ -128,8 +133,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
       'duration',
     );
 
-  const GRID_DURATIONS = new Set([60, 90]);
-  if (!GRID_DURATIONS.has(Number(duration)) && override_price === undefined)
+  if (!VALID_DURATIONS.has(Number(duration)) && override_price === undefined)
     return errorResponse(
       400,
       'Durée personnalisée : le tarif manuel est obligatoire',
@@ -179,15 +183,23 @@ export const POST: APIRoute = async ({ request, locals }) => {
       'scheduled_at',
     );
 
-  if (
-    appointment_mode === 'in-person' &&
-    !(await isCabinetEligibleSlot(scheduled_at))
-  )
-    return errorResponse(
-      400,
-      'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.',
-      'scheduled_at',
-    );
+  if (appointment_mode === 'in-person') {
+    try {
+      if (!(await isCabinetEligibleSlot(scheduled_at))) {
+        return errorResponse(
+          400,
+          'Les rendez-vous en présentiel ne sont pas disponibles sur ce créneau.',
+          'scheduled_at',
+        );
+      }
+    } catch (cabinetError) {
+      console.error(
+        '[admin/appointments] Erreur vérification éligibilité cabinet:',
+        cabinetError,
+      );
+      return errorResponse(500, 'Erreur lors de la vérification du créneau');
+    }
+  }
 
   try {
     const slotEnd = new Date(
@@ -298,6 +310,13 @@ export const POST: APIRoute = async ({ request, locals }) => {
     .single();
 
   if (dbError || !appointment) {
+    if (isSchedulingConflictError(dbError)) {
+      return errorResponse(
+        409,
+        "Ce créneau n'est plus disponible. Veuillez sélectionner un autre horaire.",
+        'scheduled_at',
+      );
+    }
     console.error('[admin/appointments] DB insert error:', dbError);
     return errorResponse(500, 'Erreur lors de la création du rendez-vous');
   }
@@ -315,10 +334,23 @@ export const POST: APIRoute = async ({ request, locals }) => {
         '[admin/appointments] Erreur consommation avoir:',
         creditErr,
       );
-      await supabaseAdmin
+      // Compensating DELETE (no transaction spanning INSERT + RPC): check the
+      // result — a failed rollback leaves an orphan appointment row that must
+      // be reconciled manually, so it must not fail silently.
+      const { error: rollbackError } = await supabaseAdmin
         .from('appointments')
         .delete()
         .eq('id', appointment.id);
+      if (rollbackError) {
+        console.error(
+          '[admin/appointments] Rollback failed after credit consumption error — orphan appointment left behind, manual reconciliation needed:',
+          { appointmentId: appointment.id, rollbackError },
+        );
+        return errorResponse(
+          500,
+          "Erreur lors de la consommation de l'avoir et échec de la suppression du rendez-vous — intervention manuelle requise.",
+        );
+      }
       return errorResponse(
         409,
         "Avoir insuffisant ou erreur lors de la consommation de l'avoir.",

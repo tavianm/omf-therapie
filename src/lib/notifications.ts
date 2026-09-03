@@ -27,6 +27,7 @@ import {
   buildAppointmentConversationSubject,
   type SendEmailParams,
 } from './resend';
+import { formatParisDate } from '../utils/datetime';
 import {
   generateGoogleCalendarLink,
   generateOutlookCalendarLink,
@@ -169,12 +170,7 @@ export async function buildAndSendConfirmationEmails(
     to: appointment.patient_email,
     threadKey: `appointment:${appointment.id}:patient`,
     subject: buildAppointmentConversationSubject(
-      `Votre rendez-vous est confirmé — ${new Intl.DateTimeFormat('fr-FR', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-        timeZone: 'Europe/Paris',
-      }).format(new Date(appointment.scheduled_at))}`,
+      `Votre rendez-vous est confirmé — ${formatParisDate(appointment.scheduled_at)}`,
       appointment.id,
     ),
     react: createElement(AppointmentConfirmed, {

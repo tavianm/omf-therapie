@@ -1,244 +1,182 @@
-import { useEffect, useState } from "react";
-import { toast, Toaster } from "react-hot-toast";
-import { getModeLabel, getTypeLabel } from "../../lib/pricing";
-import { AdminCreateButton } from "./AdminCreateButton";
-import type { Patient, PrefillData, AppointmentStatus } from "../../types/patient";
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import type { Patient } from '../../types/patient';
+import { STATUS_LABELS } from '../../utils/domain';
+import { formatParisMediumDate } from '../../utils/datetime';
+import { paginateAppointments } from './admin-workspace-utils';
 
-const STATUS_LABELS: Record<AppointmentStatus, string> = {
-  pending: "En attente",
-  confirmed: "Confirmé",
-  declined: "Refusé",
-  rescheduled: "Reporté",
-  payment_pending: "Paiement en attente",
-  payment_received: "Paiement reçu",
-  cancelled: "Annulé",
-};
-
-function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat("fr-FR", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Europe/Paris",
-  }).format(new Date(iso));
+interface PatientListProps {
+  onStartAppointment: (patient: Patient) => void;
 }
 
-function formatPrice(cents: number): string {
-  return `${Math.round(cents / 100)}€`;
+function matches(patient: Patient, query: string): boolean {
+  return `${patient.name} ${patient.email} ${patient.phone}`
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLocaleLowerCase('fr-FR')
+    .includes(
+      query
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .toLocaleLowerCase('fr-FR'),
+    );
 }
 
-function getPanelId(email: string): string {
-  return `patient-panel-${email.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-}
-
-function getReviewableAppointmentId(patient: Patient): string | null {
-  const reviewableAppointment = patient.appointments.find(
-    (appointment) =>
-      appointment.status === "confirmed" || appointment.status === "payment_received",
-  );
-  return reviewableAppointment?.id ?? null;
-}
-
-export function PatientList() {
+export function PatientList({ onStartAppointment }: PatientListProps) {
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
   const [includeArchived, setIncludeArchived] = useState(false);
-  const [expandedPatientEmail, setExpandedPatientEmail] = useState<string | null>(null);
-  const [reviewLoadingEmail, setReviewLoadingEmail] = useState<string | null>(null);
+  const [selectedEmail, setSelectedEmail] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const deferredQuery = useDeferredValue(query.trim());
 
+  // Stale-response guard instead of an AbortController: aborting a monitored
+  // fetch makes some Chromium/WebKit versions log an "Uncaught (in promise)
+  // AbortError" pointing at the abort() call site even though the rejection
+  // is handled. Skipping state updates once the effect re-runs keeps the
+  // same race safety without ever creating that DOMException.
   useEffect(() => {
-    const controller = new AbortController();
-
-    async function fetchPatients() {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await fetch(`/api/admin/patients?includeArchived=${String(includeArchived)}`, {
-          method: "GET",
-          credentials: "same-origin",
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          const body = (await response.json()) as { error?: string };
-          throw new Error(body.error ?? "Erreur lors du chargement des patients");
-        }
-
-        const body = (await response.json()) as { patients: Patient[] };
-        setPatients(body.patients ?? []);
-        setExpandedPatientEmail((current) =>
-          body.patients?.some((patient) => patient.email === current) ? current : null,
-        );
-      } catch (err) {
-        if (controller.signal.aborted) return;
-        setError(err instanceof Error ? err.message : "Erreur inconnue");
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      }
-    }
-
-    fetchPatients();
-
-    return () => controller.abort();
+    let cancelled = false;
+    fetch(`/api/admin/patients/?includeArchived=${String(includeArchived)}`, {
+      credentials: 'same-origin',
+    })
+      .then(async response => {
+        if (!response.ok)
+          throw new Error(
+            ((await response.json()) as { error?: string }).error ??
+              'Chargement impossible',
+          );
+        return response.json() as Promise<{ patients?: Patient[] }>;
+      })
+      .then(data => {
+        if (!cancelled) setPatients(data.patients ?? []);
+      })
+      .catch(reason => {
+        if (!cancelled)
+          setError(
+            reason instanceof Error ? reason.message : 'Erreur inconnue',
+          );
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [includeArchived]);
 
-  async function handleSendReviewReminder(patient: Patient) {
-    const appointmentId = getReviewableAppointmentId(patient);
-    if (!appointmentId) {
-      toast.error("Aucun rendez-vous confirmé à relancer pour ce patient.", { duration: 4000 });
-      return;
-    }
-
-    setReviewLoadingEmail(patient.email);
-    try {
-      const response = await fetch("/api/send-review-email/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({ appointmentId }),
-      });
-
-      if (!response.ok) {
-        const body = (await response.json()) as { error?: string };
-        throw new Error(body.error ?? "Erreur lors de l'envoi du rappel d'avis");
-      }
-
-      toast.success(`Relance d'avis envoyée à ${patient.name}.`, { duration: 4000 });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erreur inconnue", { duration: 4000 });
-    } finally {
-      setReviewLoadingEmail((current) => (current === patient.email ? null : current));
-    }
-  }
+  const filtered = useMemo(
+    () =>
+      patients.filter(
+        patient => !deferredQuery || matches(patient, deferredQuery),
+      ),
+    [deferredQuery, patients],
+  );
+  const selected =
+    filtered.find(patient => patient.email === selectedEmail) ?? null;
+  const history = selected
+    ? paginateAppointments(selected.appointments, 0, 10).items
+    : [];
 
   return (
-    <section className="space-y-4">
-      <Toaster position="top-right" />
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-sage-500 font-sans">
-          {loading ? "Chargement..." : `${patients.length} patient${patients.length > 1 ? "s" : ""}`}
-        </p>
-        <label className="inline-flex items-center gap-2 text-sm text-sage-700 font-sans">
+    <section className="space-y-4" aria-labelledby="patients-title">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2
+            id="patients-title"
+            className="font-serif text-2xl font-semibold text-sage-900"
+          >
+            Patients
+          </h2>
+          <p className="mt-1 text-sm text-sage-600">
+            {filtered.length} patient{filtered.length > 1 ? 's' : ''}
+          </p>
+        </div>
+        <label className="flex min-h-11 items-center gap-2 text-sm text-sage-700">
           <input
             type="checkbox"
             checked={includeArchived}
-            onChange={(event) => setIncludeArchived(event.target.checked)}
-            className="h-4 w-4 rounded border-sage-300 text-mint-700 focus:ring-mint-400"
-          />
-          Afficher les patients inactifs
+            onChange={event => setIncludeArchived(event.target.checked)}
+            className="h-5 w-5 cursor-pointer accent-mint-700"
+          />{' '}
+          Inclure les inactifs
         </label>
       </div>
-
+      <label className="block">
+        <span className="sr-only">Rechercher un patient</span>
+        <input
+          type="search"
+          value={query}
+          onChange={event => setQuery(event.target.value)}
+          placeholder="Nom, email ou téléphone…"
+          className="min-h-11 w-full rounded-xl border border-sage-200 px-3 focus:outline-none focus:ring-2 focus:ring-mint-400"
+        />
+      </label>
       {error && (
-        <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 font-sans" role="alert">
+        <p
+          role="alert"
+          className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+        >
           {error}
         </p>
       )}
-
-      {loading && (
-        <p className="text-sm text-sage-500 font-sans" role="status" aria-live="polite">
-          Chargement des patients...
-        </p>
-      )}
-
-      {!loading && !error && patients.length === 0 && (
-        <p className="rounded-2xl border border-sage-200 bg-white px-5 py-6 text-center text-sage-500 font-sans">
-          Aucun patient trouvé pour ce filtre.
-        </p>
-      )}
-
-      {!loading && !error && patients.length > 0 && (
-        <ul className="space-y-3">
-          {patients.map((patient) => {
-            const isExpanded = expandedPatientEmail === patient.email;
-            const panelId = getPanelId(patient.email);
-            const prefillData: PrefillData = {
-              patient_name: patient.name,
-              patient_email: patient.email,
-              patient_phone: patient.phone,
-              appointment_type: patient.lastAppointmentType,
-            };
-            const reviewableAppointmentId = getReviewableAppointmentId(patient);
-            const isReviewActionDisabled = !reviewableAppointmentId || reviewLoadingEmail === patient.email;
-
-            return (
-              <li key={patient.email} className="rounded-2xl border border-sage-200 bg-white">
-                <button
-                  type="button"
-                  className="w-full px-4 py-4 text-left hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-mint-400 rounded-2xl"
-                  aria-expanded={isExpanded}
-                  aria-controls={panelId}
-                  aria-label={`${isExpanded ? "Masquer" : "Afficher"} l'historique de ${patient.name}`}
-                  onClick={() => setExpandedPatientEmail(isExpanded ? null : patient.email)}
-                >
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                    <div>
-                      <p className="text-xs text-sage-500 font-sans">Nom</p>
-                      <p className="text-sm text-sage-900 font-medium font-sans">{patient.name}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-sage-500 font-sans">Email</p>
-                      <p className="text-sm text-sage-900 font-sans break-all">{patient.email}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-sage-500 font-sans">Téléphone</p>
-                      <p className="text-sm text-sage-900 font-sans">{patient.phone || "—"}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-sage-500 font-sans">Nombre de séances</p>
-                      <p className="text-sm text-sage-900 font-sans">{patient.sessionCount}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-sage-500 font-sans">Dernier RDV</p>
-                      <p className="text-sm text-sage-900 font-sans">{formatDate(patient.lastAppointmentAt)}</p>
-                    </div>
-                  </div>
-                </button>
-
-                {isExpanded && (
-                  <div id={panelId} className="border-t border-sage-200 px-4 py-4 space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <h3 className="font-serif text-lg text-sage-800">Historique des rendez-vous</h3>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleSendReviewReminder(patient)}
-                          disabled={isReviewActionDisabled}
-                          className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
-                        >
-                          {reviewLoadingEmail === patient.email ? "Envoi..." : "Relancer avis"}
-                        </button>
-                        <AdminCreateButton prefillData={prefillData} />
-                      </div>
-                    </div>
-                    <ul className="space-y-2">
-                      {patient.appointments.map((appointment) => (
-                        <li
-                          key={appointment.id}
-                          className="rounded-xl border border-sage-200 bg-sage-50 px-3 py-3"
-                        >
-                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5 text-sm font-sans text-sage-700">
-                            <p><span className="text-sage-500">Date :</span> {formatDate(appointment.scheduledAt)}</p>
-                            <p><span className="text-sage-500">Type :</span> {getTypeLabel(appointment.appointmentType)}</p>
-                            <p><span className="text-sage-500">Mode :</span> {getModeLabel(appointment.appointmentMode)}</p>
-                            <p><span className="text-sage-500">Statut :</span> {STATUS_LABELS[appointment.status]}</p>
-                            <p><span className="text-sage-500">Montant :</span> {formatPrice(appointment.finalPrice)}</p>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </li>
-            );
-          })}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.7fr)]">
+        <ul className="divide-y divide-sage-100 overflow-hidden rounded-2xl border border-sage-200 bg-white">
+          {filtered.map(patient => (
+            <li key={patient.email}>
+              <button
+                type="button"
+                onClick={() => setSelectedEmail(patient.email)}
+                aria-pressed={selectedEmail === patient.email}
+                className={`grid min-h-14 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 text-left hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-mint-400 ${selectedEmail === patient.email ? 'bg-mint-50' : ''}`}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium text-sage-900">
+                    {patient.name}
+                  </span>
+                  <span className="block truncate text-xs text-sage-500">
+                    {patient.email} · {patient.phone || 'sans téléphone'}
+                  </span>
+                </span>
+                <span className="text-xs text-sage-600">
+                  {patient.sessionCount}{' '}
+                  {patient.sessionCount > 1 ? 'séances' : 'séance'}
+                </span>
+              </button>
+            </li>
+          ))}
         </ul>
-      )}
+        {selected && (
+          <aside className="rounded-2xl border border-sage-200 bg-white p-4">
+            <h3 className="font-serif text-xl font-semibold text-sage-900">
+              {selected.name}
+            </h3>
+            <p className="mt-1 text-sm text-sage-600">
+              {selected.email}
+              <br />
+              {selected.phone || 'Téléphone non renseigné'}
+            </p>
+            <button
+              type="button"
+              onClick={() => onStartAppointment(selected)}
+              className="mt-4 min-h-11 w-full rounded-xl bg-mint-700 px-3 text-sm font-semibold text-white"
+            >
+              Nouveau rendez-vous
+            </button>
+            <h4 className="mt-5 text-sm font-semibold text-sage-900">
+              Historique récent
+            </h4>
+            <ul className="mt-2 space-y-2">
+              {history.map(appointment => (
+                <li
+                  key={appointment.id}
+                  className="rounded-xl bg-sage-50 p-2 text-xs text-sage-700"
+                >
+                  {formatParisMediumDate(appointment.scheduledAt)} ·{' '}
+                  {appointment.duration} min ·{' '}
+                  {STATUS_LABELS[appointment.status] ?? appointment.status}
+                </li>
+              ))}
+            </ul>
+          </aside>
+        )}
+      </div>
     </section>
   );
 }

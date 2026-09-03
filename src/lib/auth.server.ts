@@ -122,7 +122,15 @@ export const auth = betterAuth({
   rateLimit: {
     enabled: true,
     window: 10 * 60, // 10 minutes (secondes)
-    max: 5,          // tentatives maximum par fenêtre
+    max: 5, // tentatives maximum par fenêtre
+    // window/max ci-dessus s'applique aussi à /get-session (appelé par la
+    // navbar à chaque chargement de page) → 429 fantômes dès ~6 pages vues
+    // en 10 minutes, avec un lien "Mes RDV" fantôme via le flag localStorage.
+    // Règle dédiée plus large pour les lectures de session ; /sign-in/* garde
+    // sa règle interne plus stricte (3 essais / 10 s).
+    customRules: {
+      '/get-session': { window: 10 * 60, max: 100 },
+    },
   },
 
   // ── Hook : bloquer toute inscription supplémentaire ───────────────────────
@@ -131,7 +139,7 @@ export const auth = betterAuth({
   //
   // BetterAuth v1.6.11 : hooks.before = single function (not array of {matcher,handler}).
   hooks: {
-    before: async (context) => {
+    before: async context => {
       // better-auth v1.6.23 (declared ^1.6.11): MiddlewareInputContext does not
       // expose `.path` or `.context.adapter` on its public type, but the runtime
       // fields are present (see better-auth hooks/middleware docs). Narrow-cast
@@ -141,7 +149,10 @@ export const auth = betterAuth({
         path: string;
         context: {
           adapter: {
-            findMany: (opts: { model: string; limit: number }) => Promise<unknown[]>;
+            findMany: (opts: {
+              model: string;
+              limit: number;
+            }) => Promise<unknown[]>;
           };
         };
       };
@@ -159,7 +170,8 @@ export const auth = betterAuth({
         if (users.length > 0) {
           return new Response(
             JSON.stringify({
-              error: 'Inscription désactivée. Ce site n\'accepte pas de nouveaux comptes.',
+              error:
+                "Inscription désactivée. Ce site n'accepte pas de nouveaux comptes.",
             }),
             { status: 403, headers: { 'Content-Type': 'application/json' } },
           );

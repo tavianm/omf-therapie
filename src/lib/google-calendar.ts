@@ -16,6 +16,7 @@ import {
   cabinetEligibility,
   type DayHalf,
 } from './appointment-eligibility.js';
+import { getParisISOWeekday, toParisDateString } from '../utils/date.js';
 import { isCalendarMockEnabled } from './mock-mode.server.js';
 
 // ---------------------------------------------------------------------------
@@ -275,7 +276,7 @@ async function resolveCalendarAuth(): Promise<Auth.OAuth2Client> {
 // ---------------------------------------------------------------------------
 
 /**
- * Hoisted Intl formatters — allocated once, reused across every slot.
+ * Hoisted Intl formatter — allocated once, reused across every slot.
  *
  * Performance: Intl.DateTimeFormat construction is the dominant cost in the
  * slot-generation loop (previously ~1 allocation per candidate slot). Module
@@ -290,11 +291,6 @@ const PARIS_PARTS_FORMATTER = new Intl.DateTimeFormat('fr-FR', {
   hour: '2-digit',
   minute: '2-digit',
   hour12: false,
-});
-
-const PARIS_WEEKDAY_FORMATTER = new Intl.DateTimeFormat('en-US', {
-  timeZone: TIMEZONE,
-  weekday: 'short',
 });
 
 /**
@@ -348,30 +344,11 @@ function parisLocalToUTC(
 }
 
 /**
- * Retourne le numéro de jour ISO (1=lundi, …, 7=dimanche) en heure Paris.
- */
-function getParisISOWeekday(date: Date): number {
-  const wd = PARIS_WEEKDAY_FORMATTER.format(date);
-  const map: Record<string, number> = {
-    Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7,
-  };
-  return map[wd] ?? 7;
-}
-
-/**
  * Retourne minuit UTC du jour Paris correspondant à `date`.
  */
 function startOfParisDay(date: Date): Date {
   const { year, month, day } = toParisLocalParts(date);
   return parisLocalToUTC(year, month, day, 0, 0);
-}
-
-/**
- * Formate une date au format YYYY-MM-DD (heure locale Paris)
- */
-function formatDate(date: Date): string {
-  const { year, month, day } = toParisLocalParts(date);
-  return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -419,7 +396,7 @@ export function generateSlotsForRange(input: GenerateSlotsInput): TimeSlot[] {
     // Jours ouvrés uniquement (lundi–vendredi)
     if (weekday >= 1 && weekday <= 5) {
       const isWednesday = weekday === 3;
-      const dateKey = formatDate(currentDay);
+      const dateKey = toParisDateString(currentDay);
       const manualPeriods = input.manualSlots.get(dateKey) ?? EMPTY_PERIOD_SET;
       const cabinet = cabinetEligibility(isWednesday, manualPeriods);
 
