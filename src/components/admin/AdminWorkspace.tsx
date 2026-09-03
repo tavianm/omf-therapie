@@ -35,6 +35,13 @@ function readDestination(): AdminWorkspaceDestination {
     : 'overview';
 }
 
+// French elision: "de Alice" → "d'Alice" before a vowel or a mute h.
+function rendezVousTitle(patientName: string): string {
+  return /^[aàâeéèêëiîïoôuûùyœh]/i.test(patientName)
+    ? `Rendez-vous d'${patientName}`
+    : `Rendez-vous de ${patientName}`;
+}
+
 export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
   const [appointmentList, setAppointmentList] = useState(appointments);
   const [destination, setDestination] =
@@ -278,7 +285,7 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
 
         {selectedAppointment && (
           <AdminSidePanel
-            title={`Rendez-vous de ${selectedAppointment.patient_name}`}
+            title={rendezVousTitle(selectedAppointment.patient_name)}
             onClose={closePanel}
           >
             <AppointmentCard

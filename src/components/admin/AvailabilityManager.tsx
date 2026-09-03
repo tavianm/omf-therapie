@@ -21,6 +21,16 @@ const PERIOD_OPTIONS: { period: Period; label: string }[] = [
   { period: 'all_day', label: 'Ajouter journée' },
 ];
 
+const WEEKDAY_LABELS = ['lun', 'mar', 'mer', 'jeu', 'ven', 'sam', 'dim'];
+
+// Monday-first column offset so day 1 lands under its weekday header
+// (day keys are UTC-based, matching calendarMonthDays).
+function firstWeekdayOffset(month: CalendarMonth): number {
+  return (
+    (new Date(Date.UTC(month.year, month.monthIndex, 1)).getUTCDay() + 6) % 7
+  );
+}
+
 // Tracks which presence mutation is in flight so the acting button can show
 // its own pending hint; one mutation at a time (server-side uniqueness).
 type PresenceMutation =
@@ -234,7 +244,17 @@ export function AvailabilityManager() {
               Mois suivant
             </button>
           </div>
-          <div className="mt-4 grid grid-cols-7 gap-1">
+          <div className="mt-4 grid grid-cols-7 gap-1 text-center text-xs font-medium uppercase tracking-wide text-sage-500">
+            {WEEKDAY_LABELS.map(label => (
+              <div key={label} className="pb-1">
+                {label}
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {Array.from({ length: firstWeekdayOffset(month) }, (_, index) => (
+              <div key={`pad-${index}`} aria-hidden="true" />
+            ))}
             {calendarMonthDays(month).map(day => {
               const key = day.key;
               const periods = slots
@@ -248,7 +268,15 @@ export function AvailabilityManager() {
                   aria-pressed={selectedDate === key}
                   className={`min-h-11 rounded-lg border p-1 text-left text-xs focus:outline-none focus:ring-2 focus:ring-mint-400 ${selectedDate === key ? 'border-mint-700 bg-mint-50' : 'border-sage-100 hover:bg-sage-50'}`}
                 >
-                  <span className="block font-medium">{day.day}</span>
+                  <span className="flex items-center justify-between font-medium">
+                    {day.day}
+                    {periods.length > 0 && (
+                      <span
+                        className="h-1.5 w-1.5 rounded-full bg-mint-600"
+                        aria-hidden="true"
+                      />
+                    )}
+                  </span>
                   {periods.length > 0 && (
                     <span className="block text-[10px] text-mint-800">
                       {periods.includes('all_day')

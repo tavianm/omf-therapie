@@ -67,7 +67,9 @@ function formatScheduledAt(isoString: string): string {
 // Accent color (hors palette Tailwind)
 // ---------------------------------------------------------------------------
 
-const ACCENT = '#d4a96a';
+// = mint-700 from tailwind.config.js — keeps the sage/mint palette and
+// passes WCAG AA contrast on white (the previous tan failed at ~2.2:1).
+const ACCENT = '#3c6259';
 
 // ---------------------------------------------------------------------------
 // SVG icon helpers for therapy types and modes (replaces emoji — C2)
@@ -205,7 +207,7 @@ function StepIndicator({ currentStep }: { currentStep: BookingStep }) {
                     flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold
                     transition-all duration-200
                     ${isDone ? 'bg-sage-600 text-white' : ''}
-                    ${isActive ? 'text-white ring-2 ring-[#d4a96a] ring-offset-2' : ''}
+                    ${isActive ? 'text-white ring-2 ring-mint-700 ring-offset-2' : ''}
                     ${!isDone && !isActive ? 'bg-sage-100 text-sage-400' : ''}
                   `}
                   style={isActive ? { backgroundColor: ACCENT } : undefined}

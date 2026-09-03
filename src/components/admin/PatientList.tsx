@@ -93,6 +93,7 @@ export function PatientList({ onStartAppointment }: PatientListProps) {
             type="checkbox"
             checked={includeArchived}
             onChange={event => setIncludeArchived(event.target.checked)}
+            className="h-5 w-5 cursor-pointer accent-mint-700"
           />{' '}
           Inclure les inactifs
         </label>

@@ -1,6 +1,6 @@
-import { motion } from "framer-motion";
-import { Apple, Brain, Home, Users, Wind } from "lucide-react";
-import { useMotionVariants } from "../../hooks/useMotionVariants";
+import { motion } from 'framer-motion';
+import { Apple, Brain, Home, Users, Wind } from 'lucide-react';
+import { useMotionVariants } from '../../hooks/useMotionVariants';
 
 const ServicesSection = () => {
   const { fadeInUp, fadeIn } = useMotionVariants();
@@ -8,12 +8,12 @@ const ServicesSection = () => {
   const services = [
     {
       icon: Brain,
-      title: "Problématiques personnelles",
-      href: "/services/therapie-individuelle",
+      title: 'Problématiques personnelles',
+      href: '/services/therapie-individuelle',
       descriptions: [
-        "Mal-être psychologique, perte de repères",
-        "États dépressifs, tristesse persistante",
-        "Hypersensibilité et gestion des émotions",
+        'Mal-être psychologique, perte de repères',
+        'États dépressifs, tristesse persistante',
+        'Hypersensibilité et gestion des émotions',
         "Difficultés à s'affirmer, peur du jugement",
         "Conflits internes, indécision, sentiment d'être bloqué(e)",
         "Manque de confiance et d'estime de soi",
@@ -21,56 +21,56 @@ const ServicesSection = () => {
     },
     {
       icon: Apple,
-      title: "Problématiques alimentaires",
-      href: "/services/troubles-alimentaires",
+      title: 'Problématiques alimentaires',
+      href: '/services/troubles-alimentaires',
       descriptions: [
-        "Alimentation émotionnelle, compulsions alimentaires",
-        "Alimentation désordonnée, relation conflictuelle avec la nourriture",
-        "Difficulté à perdre du poids ou à maintenir un équilibre alimentaire",
-        "Troubles du comportement alimentaire (TCA)",
-        "Rééquilibrage alimentaire et bien-être nutritionnel",
+        'Alimentation émotionnelle, compulsions alimentaires',
+        'Alimentation désordonnée, relation conflictuelle avec la nourriture',
+        'Difficulté à perdre du poids ou à maintenir un équilibre alimentaire',
+        'Troubles du comportement alimentaire (TCA)',
+        'Rééquilibrage alimentaire et bien-être nutritionnel',
         "Mal-être physique lié à l'image de soi",
-        "Dysmorphophobie (perception altérée de son corps)",
+        'Dysmorphophobie (perception altérée de son corps)',
       ],
     },
     {
       icon: Wind,
-      title: "Anxiété & Bien-être",
-      href: "/services/anxiete-montpellier",
+      title: 'Anxiété & Bien-être',
+      href: '/services/anxiete-montpellier',
       descriptions: [
-        "Anxiété généralisée, inquiétudes envahissantes",
-        "Phobies sociales et peur du regard des autres",
-        "Attaques de panique et stress chronique",
-        "Anxiété de performance et perfectionnisme",
-        "Hypocondrie et anxiété de santé",
-        "Techniques TCCE adaptées à votre situation",
+        'Anxiété généralisée, inquiétudes envahissantes',
+        'Phobies sociales et peur du regard des autres',
+        'Attaques de panique et stress chronique',
+        'Anxiété de performance et perfectionnisme',
+        'Hypocondrie et anxiété de santé',
+        'Techniques TCCE adaptées à votre situation',
       ],
     },
     {
       icon: Users,
-      title: "Problématiques conjugales",
-      href: "/services/therapie-de-couple",
+      title: 'Problématiques conjugales',
+      href: '/services/therapie-de-couple',
       descriptions: [
-        "Communication difficile entre partenaires",
-        "Conflits conjugaux récurrents ou rupture de confiance",
-        "Problématiques sexuelles et intimes",
-        "Jalousie, dépendance affective ou distance émotionnelle",
-        "Crise de couple, séparation ou divorce en cours",
-        "Projet de vie commun et prise de décision à deux",
-        "Préparation à la parentalité, transition vers la vie de parent",
+        'Communication difficile entre partenaires',
+        'Conflits conjugaux récurrents ou rupture de confiance',
+        'Problématiques sexuelles et intimes',
+        'Jalousie, dépendance affective ou distance émotionnelle',
+        'Crise de couple, séparation ou divorce en cours',
+        'Projet de vie commun et prise de décision à deux',
+        'Préparation à la parentalité, transition vers la vie de parent',
       ],
     },
     {
       icon: Home,
-      title: "Thérapie familiale",
-      href: "/services/therapie-familiale",
+      title: 'Thérapie familiale',
+      href: '/services/therapie-familiale',
       descriptions: [
-        "Tensions intergénérationnelles chroniques ou conflits durables",
-        "Adolescents en crise ou en opposition avec les parents",
+        'Tensions intergénérationnelles chroniques ou conflits durables',
+        'Adolescents en crise ou en opposition avec les parents',
         "Familles recomposées en phase d'adaptation",
-        "Deuil familial, maladie grave ou traumatisme partagé",
-        "Conflits entre parents et enfants adultes",
-        "Fratrie en conflit ou dynamique familiale dysfonctionnelle",
+        'Deuil familial, maladie grave ou traumatisme partagé',
+        'Conflits entre parents et enfants adultes',
+        'Fratrie en conflit ou dynamique familiale dysfonctionnelle',
         "Annonce d'un diagnostic impactant toute la famille",
       ],
     },
@@ -82,7 +82,8 @@ const ServicesSection = () => {
         <motion.div {...fadeInUp()} className="text-center mb-8">
           <h2 className="section-title">Choisissez votre accompagnement</h2>
           <p className="section-subtitle">
-            Chaque parcours est unique. Découvrez le domaine qui correspond à votre situation.
+            Chaque parcours est unique. Découvrez le domaine qui correspond à
+            votre situation.
           </p>
         </motion.div>
 
@@ -118,7 +119,7 @@ const ServicesSection = () => {
           className="mt-5 md:mt-10 bg-sage-50 p-8 rounded-lg text-center"
         >
           <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-4">
-            Une Approche Sur Mesure
+            Une approche sur mesure
           </h3>
           <p className="text-sage-600 max-w-3xl mx-auto">
             Chaque personne est unique, c'est pourquoi j'adapte mes méthodes et

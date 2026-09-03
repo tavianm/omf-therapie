@@ -278,14 +278,14 @@ export function AppointmentCard({
           <p className="text-sm text-sage-500 mt-0.5">
             <a
               href={`mailto:${appointment.patient_email}`}
-              className="hover:text-mint-600 transition-colors"
+              className="underline decoration-sage-300 underline-offset-2 transition-colors hover:text-mint-700 hover:decoration-mint-700"
             >
               {appointment.patient_email}
             </a>
             {' · '}
             <a
               href={`tel:${appointment.patient_phone}`}
-              className="hover:text-mint-600 transition-colors"
+              className="underline decoration-sage-300 underline-offset-2 transition-colors hover:text-mint-700 hover:decoration-mint-700"
             >
               {appointment.patient_phone}
             </a>

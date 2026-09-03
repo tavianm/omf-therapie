@@ -1,5 +1,5 @@
-import { motion } from "framer-motion";
-import { useMotionVariants } from "../../hooks/useMotionVariants";
+import { motion } from 'framer-motion';
+import { useMotionVariants } from '../../hooks/useMotionVariants';
 
 const AboutSection = () => {
   const { fadeInUp, fadeInLeft, fadeInRight } = useMotionVariants();
@@ -8,7 +8,7 @@ const AboutSection = () => {
     <div className="py-8 md:py-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div {...fadeInUp()} className="text-center mb-8">
-          <h2 className="section-title">À Propos de Moi</h2>
+          <h2 className="section-title">À propos de moi</h2>
           <p className="section-subtitle">
             Thérapeute passionnée, je vous accompagne dans votre parcours vers
             le mieux-être
@@ -59,7 +59,7 @@ const AboutSection = () => {
               rendez-vous.
             </p>
             <h3 className="text-3xl font-serif font-semibold text-sage-800">
-              Mon Parcours
+              Mon parcours
             </h3>
             <p className="text-sage-600">
               Passionnée par le bien-être psychologique, j'accompagne celles et
@@ -83,24 +83,24 @@ const AboutSection = () => {
 
         <motion.div {...fadeInUp()} className="bg-sage-50 p-8 rounded-lg">
           <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-6 text-center">
-            Mes Valeurs
+            Mes valeurs
           </h3>
           <div className="grid md:grid-cols-3 gap-6 md:gap-8">
             {[
               {
-                title: "Bienveillance",
+                title: 'Bienveillance',
                 description:
-                  "Un accompagnement sans jugement, dans le respect de chaque individu.",
+                  'Un accompagnement sans jugement, dans le respect de chaque individu.',
               },
               {
-                title: "Professionnalisme",
+                title: 'Professionnalisme',
                 description:
-                  "Une approche rigoureuse basée sur des méthodes éprouvées.",
+                  'Une approche rigoureuse basée sur des méthodes éprouvées.',
               },
               {
-                title: "Engagement",
+                title: 'Engagement',
                 description:
-                  "Un suivi personnalisé et adapté à vos besoins spécifiques.",
+                  'Un suivi personnalisé et adapté à vos besoins spécifiques.',
               },
             ].map((value, index) => (
               <div key={index} className="text-center">

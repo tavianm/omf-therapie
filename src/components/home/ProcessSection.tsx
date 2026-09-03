@@ -1,13 +1,13 @@
-import { motion } from "framer-motion";
-import { Clock, MessageCircle, Sparkles, Target } from "lucide-react";
-import { useMotionVariants } from "../../hooks/useMotionVariants";
+import { motion } from 'framer-motion';
+import { Clock, MessageCircle, Sparkles, Target } from 'lucide-react';
+import { useMotionVariants } from '../../hooks/useMotionVariants';
 
 const ProcessSection = () => {
   const { fadeInUp, fadeIn } = useMotionVariants();
   const steps = [
     {
       icon: MessageCircle,
-      title: "Comprendre et identifier vos besoins (Séance 1 à 2)",
+      title: 'Comprendre et identifier vos besoins (Séance 1 à 2)',
       description:
         "Lors des premières séances, nous explorons ensemble ce qui vous amène, vos ressentis et les difficultés que vous rencontrez. L'objectif est de clarifier vos besoins et de poser des bases solides pour la suite de l'accompagnement.",
     },
@@ -20,14 +20,14 @@ const ProcessSection = () => {
     },
     {
       icon: Target,
-      title: "Mettre en place des actions concrètes (Séance 3 à 4)",
+      title: 'Mettre en place des actions concrètes (Séance 3 à 4)',
       description:
         "À votre rythme, vous commencez à appliquer les outils et stratégies définis ensemble. Ces mises en pratique vous permettent d'observer les premiers changements et de renforcer votre évolution.",
     },
     {
       icon: Sparkles,
       title:
-        "Ajuster et affiner votre cheminement (Séance 4 à 5 et au-delà si besoin)",
+        'Ajuster et affiner votre cheminement (Séance 4 à 5 et au-delà si besoin)',
       description:
         "Nous faisons régulièrement le point sur votre progression afin d'ajuster les actions mises en place. Ce suivi vous assure un accompagnement dynamique, adapté à vos ressentis et vos avancées.",
     },
@@ -37,7 +37,7 @@ const ProcessSection = () => {
     <div className="py-8 md:py-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div {...fadeInUp()} className="text-center mb-8">
-          <h2 className="section-title">Le Processus Thérapeutique</h2>
+          <h2 className="section-title">Le processus thérapeutique</h2>
           <p className="section-subtitle">
             Un accompagnement structuré et bienveillant pour votre développement
             personnel
@@ -53,8 +53,8 @@ const ProcessSection = () => {
                 key={index}
                 className={`flex flex-col md:flex-row gap-8 ${
                   index % 2 === 0
-                    ? "md:pr-1/2"
-                    : "md:pl-1/2 md:flex-row-reverse"
+                    ? 'md:pr-1/2'
+                    : 'md:pl-1/2 md:flex-row-reverse'
                 }`}
               >
                 <div className="flex-1">
@@ -81,7 +81,7 @@ const ProcessSection = () => {
           className="mt-5 md:mt-10 bg-sage-50 p-8 rounded-lg"
         >
           <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-6 text-center">
-            Informations Pratiques
+            Informations pratiques
           </h3>
           <div className="grid md:grid-cols-2 gap-6 md:gap-8">
             <div>
