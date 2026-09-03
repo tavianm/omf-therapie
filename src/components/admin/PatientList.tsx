@@ -134,7 +134,8 @@ export function PatientList({ onStartAppointment }: PatientListProps) {
                   </span>
                 </span>
                 <span className="text-xs text-sage-600">
-                  {patient.sessionCount} séances
+                  {patient.sessionCount}{' '}
+                  {patient.sessionCount > 1 ? 'séances' : 'séance'}
                 </span>
               </button>
             </li>

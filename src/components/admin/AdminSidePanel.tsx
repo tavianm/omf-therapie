@@ -153,7 +153,7 @@ export function AdminSidePanel({
 
   return (
     <div className="fixed inset-0 z-50">
-      <div className="absolute inset-0 bg-sage-950/40" aria-hidden="true" />
+      <div className="absolute inset-0 bg-sage-900/40" aria-hidden="true" />
       <section
         ref={panelRef}
         role="dialog"

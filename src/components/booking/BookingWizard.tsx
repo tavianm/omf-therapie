@@ -205,14 +205,10 @@ function StepIndicator({ currentStep }: { currentStep: BookingStep }) {
                     flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold
                     transition-all duration-200
                     ${isDone ? 'bg-sage-600 text-white' : ''}
-                    ${isActive ? 'text-white ring-2 ring-offset-2' : ''}
+                    ${isActive ? 'text-white ring-2 ring-[#d4a96a] ring-offset-2' : ''}
                     ${!isDone && !isActive ? 'bg-sage-100 text-sage-400' : ''}
                   `}
-                  style={
-                    isActive
-                      ? { backgroundColor: ACCENT, outlineColor: ACCENT }
-                      : undefined
-                  }
+                  style={isActive ? { backgroundColor: ACCENT } : undefined}
                 >
                   {isDone ? (
                     <>
