@@ -1,0 +1,151 @@
+---
+title: "Cron Netlify calendar-keepwarm — token OAuth chaud + pré-remplissage du cache de disponibilités"
+description: "Scheduled function */10 min : refresh conditionnel du token Google + warm-up des 4 clés de cache de créneaux"
+issue: 132
+status: approved
+tier: F-lite
+date: 2026-08-30
+---
+
+## Context
+
+**Promoted from:** [Frame #132](../frames/132-cron-netlify-token-cache-warmup-frame.mdx)
+
+Le trafic insuffisant du site laisse expirer les deux états dont dépend la consultation des créneaux : le token d'accès Google OAuth (~1 h de validité) et le cache de disponibilités Netlify Blobs (TTL 10 min). Le premier patient après une période d'inactivité paie le chemin complet — refresh OAuth + Freebusy + écriture cache — sur un cold start Lambda, d'où un premier chargement de plusieurs secondes.
+
+Trois mécanismes coexistent aujourd'hui : l'heartbeat hebdomadaire `calendar-token-heartbeat.ts` (anti-révocation du refresh_token uniquement), le bouton « Reconnecter » de /mes-rdvs (palliatif des pannes #75/#113/#114), et le refresh à la volée dans `getPersistedOAuthClient` (< 5 min). Cette issue remplace le premier par un cron `*/10` qui maintient les **deux** états chauds, les deux autres mécanismes restant respectivement filet de sécurité et dernier recours.
+
+Décision d'architecture (interview 2026-08-30) : **fusion + renommage** — `calendar-token-heartbeat.ts` est supprimé, remplacé par `calendar-keepwarm.ts`, une seule scheduled function.
+
+## Goal
+
+Un patient consultant les créneaux obtient une réponse < 1 s en régime normal, sans qu'aucun appel OAuth n'ait lieu dans le chemin patient, et sans intervention manuelle de la thérapeute sur 6 mois (hors révocation réelle du consentement Google).
+
+## Users & Use Cases
+
+- **Patient** — parcourt /rendez-vous, étape créneaux (BookingWizard → `GET /api/availability/?mode=…&duration=…&weeks=4`). Attend une réponse immédiate ; ne doit jamais subir de 503 dû à un token froid.
+- **Thérapeute (admin)** — ne touche plus au bouton « Reconnecter » en régime normal ; reçoit un e-mail d'alerte uniquement si le consentement Google est révoqué (`invalid_grant`).
+- **Ops (implicite)** — un seul cron à opérer, monitoré Sentry (missed-run détecté).
+
+## Expected Behavior
+
+### Happy path — cycle du cron (toutes les 10 minutes)
+
+1. **Validation d'environnement** — vars requises lues via `process.env` : `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `SUPABASE_DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (+ `ADMIN_EMAIL`, `RESEND_API_KEY` pour l'alerte N4 ; fallbacks : `GOOGLE_OAUTH_REDIRECT_URI`, `SITE_URL`, `RESEND_FROM_EMAIL`, `PUBLIC_SENTRY_DSN` optionnel). Si une requise manque : log warn + `Sentry.captureMessage(..., 'error')` + return — le monitor cron reste vert (check-in ok), la capture d'erreur est donc le seul signal alertable. `GOOGLE_CALENDAR_ID` est **conditionnel** (warm-up uniquement) : absent → warn + le maintien du token continue, le warm-up est ignoré (voir edge cases).
+2. **Lecture du token** — ligne `google_oauth_tokens` (`id='therapist'`). Absente → log warn "Connect Google Calendar first" + return. `refresh_token` absent/vide (colonne `NOT NULL` — garde défensive) → alerte e-mail admin + return.
+3. **Refresh conditionnel** — si `expiry_date − now < 15 min` : `refreshAccessToken()`, persistance `{access_token, refresh_token tourné si fourni, expiry_date, updated_at}`. Sinon : skip (token assez frais).
+4. **Warm-up du cache** — pour chacune des 4 combinaisons `{in-person, video} × {60, 90}` :
+   - `key = buildAvailabilityCacheKey(mode, duration, 4, new Date())` (module `src/lib/calendar-cache.ts` réutilisé tel quel) ;
+   - `slots = getAvailableSlots(now, now + 4 semaines, duration, mode, [])` (réutilisation directe — les modules `google-calendar.ts` et `supabase.ts` gèrent déjà le fallback `process.env`, pattern #126/T12) ;
+   - `setCachedAvailability(key, slots, 900)` — TTL 15 min, garantissant le recouvrement entre deux runs.
+   Les 4 clés sont traitées en `Promise.allSettled` : l'échec d'une clé n'empêche pas les autres.
+5. **Observabilité** — un résumé structuré par run (refresh: oui/non, clés écrites/échouées) via le logger `./_lib/logger`.
+
+### Happy path — côté patient (inchangé, mais désormais chaud)
+
+`/api/availability` hit sur le cache pré-rempli → filtre les occupations DB live (`filterSlotsByBusy`) → réponse 200. Aucun appel OAuth ni Freebusy. Le refresh proactif `< 5 min` de `getPersistedOAuthClient` reste en place mais ne se déclenche plus en régime nominal (le cron garantit > 5 min de validité restante avec une marge de 10 min).
+
+### Edge cases
+
+| Cas | Comportement attendu |
+|---|---|
+| `invalid_grant` au refresh | E-mail `CalendarAuthAlert` à ADMIN_EMAIL (via Resend, comme le heartbeat actuel), **skip du warm-up**, return propre. Pas de throw bruyant. **Cooldown e-mail 24 h** (voir rangée dédiée) ; la capture Sentry reste émise à chaque run. |
+| Échec réseau au refresh (non `invalid_grant`) | Log erreur (capture assainie — jamais le GaxiosError brut, qui peut embarquer `client_secret`/`refresh_token`), puis tentative de warm-up quand même — `getAvailableSlots` retombera sur le token existant s'il est encore valide ; sinon l'échec par clé est isolé par `allSettled` et capturé Sentry. |
+| Échec de persistance du token (update DB) | Vérification d'écriture via `.select('id').single()` (un PATCH PostgREST renvoie 2xx même à 0 ligne) → erreur ou 0 ligne : log erreur + **poursuite du warm-up** (le token fraîchement obtenu reste utilisable via le fallback `≥ 5 min` ; le run suivant auto-répare, pas de retry dans le même run). |
+| Échec Freebusy sur une clé | Clé isolée (`allSettled`), autres clés écrites ; erreur capturée via `captureAndFlush`. |
+| Netlify Blobs indisponible | Le store résout null en interne (`setCachedAvailability` no-op) → warm-up silencieusement inopérant ; le chemin patient bascule sur le calcul direct (jamais pire qu'aujourd'hui). Détecté par la vérification post-déploiement (entrées attendues dans le store), pas par une erreur de run. |
+| `GOOGLE_CALENDAR_ID` absent | Skip préventif du **seul warm-up** (warn) — le maintien du token continue ; sinon `resolveCalendarId` ferait échouer les 4 clés à chaque run (4 erreurs Sentry / 10 min). |
+| Alertes `invalid_grant` répétées | Cooldown e-mail 24 h (store Blobs `calendar-keepwarm-state`, clé `invalid-grant-alert`, comparaison d'horodatage à la lecture — l'API `@netlify/blobs` n'a pas d'option TTL) : à la cadence */10, un `invalid_grant` persistant enverrait sinon ~144 e-mails/jour. Blobs indisponible → envoi quand même (fail open). |
+| Resend indisponible (alerte) | Log erreur, le run continue et se termine proprement. |
+| `GOOGLE_CALENDAR_MOCK=true` (dev) | Store Blobs désactivé en mock → warm-up no-op naturel ; logs seulement. |
+| Race cron ↔ patient (refresh simultané) | Deux access tokens valides émis par Google ; dernier écrivain gagne en DB ; bénin — aucun verrou nécessaire (voir Technical Decisions). |
+| Patient pendant la fenêtre TTL expiré / cron pas encore passé | Miss cache → chemin complet existant (dégradation égale à l'état actuel). |
+| Plus de ligne token (reconnexion jamais faite) | Warm-up sans objet : alerte + return, comme aujourd'hui. |
+
+## Data Model & Consumers
+
+**Data structure :** [Modèle de données — token + cache](../visuals/132-cron-netlify-token-cache-warmup-data-model.html)
+**Consumer map :** [calendar-keepwarm — producteur et consommateurs](../visuals/132-cron-netlify-token-cache-warmup-consumers.html)
+
+Aucun nouveau schéma persistant : la fonction écrit dans les deux stores existants. `CacheEntry` reste `{slots: TimeSlot[], expiresAt: number}` — seul le TTL d'écriture passe à 900 s pour les entrées warm-up (paramètre déjà exposé par `setCachedAvailability`; le chemin patient conserve le défaut 600 s).
+
+| Consumer | Champs consommés | Quand | Statut |
+|---|---|---|---|
+| `/api/availability` (route SSR) | `slots[]`, `expiresAt` (Blobs) ; `access_token`, `expiry_date` (DB) | Chaque requête patient | Cette issue — hit garanti |
+| BookingWizard (île React) | Réponse JSON `slots` | Étape créneaux | Existant, non modifié |
+| `reconcile-invitations` (cron :20) | `access_token` via `getPersistedOAuthClient` | Chaque run | Existant — bénéficiaire passif du token chaud |
+| `GoogleCalendarStatus` (/mes-rdvs) | `connected`, `tokenValid`, `updatedAt` | Dashboard admin | Existant, non modifié |
+
+## Breadboard
+
+Pas de nouvel élément UI. Le breadboard est purement code/infra.
+
+### Code Affordances
+
+| ID | Handler | Wiring | Logique |
+|----|---------|--------|---------|
+| N1 | `handler` — `netlify/functions/calendar-keepwarm.ts` | scheduler Netlify (`*/10`) → N1 → N2 → N3 | `initSentry()` avant `Sentry.withMonitor('calendar-keepwarm', …)` ; `config.schedule` **littéral inline** `*/10 * * * *` |
+| N2 | refresh conditionnel du token | N1 → S1 (lecture) → Google OAuth2 → S1 (écriture) | Seuil 15 min de validité restante ; `invalid_grant` → N4 |
+| N3 | warm-up du cache | N1 → S2 (via `getAvailableSlots` ×4 + `setCachedAvailability`) | 4 clés `{mode}×{duration}`, `weeks=4`, TTL 900 s, `Promise.allSettled` |
+| N4 | alerte e-mail `invalid_grant` | N2 → Resend → ADMIN_EMAIL | Template `CalendarAuthAlert` existant, `reauthorizeUrl = {SITE_URL}/api/admin/google-oauth` |
+
+### Data Stores
+
+| ID | Store | Type | Accédé par |
+|----|-------|------|------------|
+| S1 | `google_oauth_tokens` (Supabase) | Persistant | N2 (R/W), `/api/availability`, `reconcile-invitations` (R) |
+| S2 | Netlify Blobs — store `calendar-availability` | Dérivé, jetable | N3 (W), `/api/availability` (R) |
+
+## Slices
+
+| Slice | Description | Affordances | Démo |
+|-------|-------------|-------------|------|
+| V1 — Token chaud | `calendar-keepwarm.ts` remplace le heartbeat : schedule `*/10`, refresh conditionnel < 15 min, alerte `invalid_grant` préservée, Sentry monitor | N1, N2, N4, S1 | Tests unitaires (seuil 14/16 min, alerte) + invocation manuelle locale (`netlify functions:invoke calendar-keepwarm`) : `expiry_date`/`updated_at` avancent en DB |
+| V2 — Créneaux chauds | Warm-up des 4 clés de cache (TTL 900 s) + résumé de run | N3, S2 | Tests unitaires (4 clés, TTL, isolation d'échec) ; vérification en **prod uniquement** après déploiement (le mock local désactive Blobs) : hit < 1 s après idle > TTL, sans appel Google dans les logs |
+
+> Note : le CLI Netlify n'exécute pas les crons localement — les runs locaux se font par invocation manuelle, et la démo V2 (latence patient) n'est observable qu'en production (voir critères post-déploiement).
+
+## Constraints
+
+- **Littéral `schedule` inline obligatoire** dans `config` — l'extracteur statique Netlify (`@netlify/zip-it-ship-it`, `parsePrimitive`) ne résout que les `StringLiteral` ; un `Identifier` produit `schedule: null` et le cron ne se déclenque plus (régression #113). La const partagée avec Sentry reste autorisée en parallèle, mais le littéral doit être dupliqué inline.
+- Runtime Node pur : `process.env` uniquement ; clients Supabase instanciés dans la fonction (précédent `reconcile-invitations`).
+- `initSentry()` doit précéder `Sentry.withMonitor()` (le check-in `in_progress` porte le `monitor_config` — régression #113) ; `withMonitor` wrappé dans un vrai handler.
+- Quotas : seuil 15 min observé → ~30 refresh/jour (~900/mois) ; ~4 320 invocations/mois — négligeables face aux limites Netlify (125 k) et Google.
+- Vérification WSL : tests en `--maxWorkers=1` sur fichiers ciblés ; gates complets (`test:low`, lint, build) séquentiels par le lead.
+- Langue : code/commentaires EN, libellés user-facing (e-mails) FR, commits FR présent.
+
+## Non-goals
+
+- Supprimer le refresh à la volée `< 5 min` (`getPersistedOAuthClient`) — filet de sécurité.
+- Supprimer le bouton « Reconnecter » (`GoogleCalendarStatus`) — dernier recours sur révocation.
+- Optimiser le cold start Lambda (bundle `googleapis`) — problème distinct.
+- Pré-remplir les combinaisons `weeks ≠ 4` (l'API accepte 1–8 mais seul le wizard `weeks=4` existe) — YAGNI.
+- Invalider le cache sur mutation de RDV — mécanisme existant (`invalidateAvailabilityCache`) inchangé.
+
+## Technical Decisions
+
+1. **Fusion + renommage** (décision interview) — une seule fonction `calendar-keepwarm` : le warm-up nécessite de toute façon un token frais ; séparer reviendrait à dupliquer le refresh. L'ancien monitor Sentry `calendar-token-heartbeat` devient orphelin — à archiver manuellement dans le dashboard Sentry (action one-shot notée dans la PR).
+2. **Seuil refresh 15 min** — équilibre : ~30 refresh/jour max (loin des limites Google) tout en garantissant ≥ 5 min de validité restante au moment où un patient arrive (marge 10 min au-dessus du seuil proactif patient), donc zéro refresh dans le chemin patient.
+3. **TTL warm-up 900 s vs cadence 600 s** — le recouvrement élimine la fenêtre de miss entre expiration d'une entrée et réécriture par le run suivant ; le chemin patient garde le défaut 600 s (aucun changement de comportement au miss).
+4. **Warm-up sans occupations DB** — le hit patient ré-applique toujours `filterSlotsByBusy` (busy DB live) ; écrire les slots Google-only évite de figer des busy périodes dans le cache (plus sûr vis-à-vis des mutations récentes).
+5. **Pas de verrou cron ↔ patient** — deux refreshs concurrents avec le même refresh_token produisent deux access tokens valides ; last-write-wins en DB, bénin. *Précision (revue PR #134)* : `google-auth-library` `refreshAccessToken()` renvoie toujours le refresh_token qui lui a été fourni via `setCredentials` — il ne révèle jamais un token tourné côté serveur ; la race ne peut donc pas régresser le refresh_token persisté tant que ce comportement tient. Si Google active une rotation réelle, ce chemin persisterait silencieusement l'original — à reconsidérer si une alerte `invalid_grant` récurrente apparaît.
+6. **`getAvailableSlots` réutilisé sans DI** — le module gère déjà `process.env` au premier accès (#126/T12) ; le seam `CalendarClientOptions` reste disponible si un jour le cron doit injecter son propre client, mais n'est pas nécessaire ici (le refresh de N2 précède et rend le token frais pour les 4 appels).
+
+## Success Criteria
+
+- [ ] `netlify/functions/calendar-keepwarm.ts` existe avec `schedule: '*/10 * * * *'` en **littéral inline** dans `config`, et `netlify/functions/calendar-token-heartbeat.ts` est supprimé.
+- [ ] Test unitaire : refresh déclenché à 14 min de validité restante, skippé à 16 min (bornes du seuil).
+- [ ] Test unitaire : chaque run écrit les 4 clés `available:{mode}:{duration}:4w:{lundi-Paris}` avec TTL 900 s (store mocké), et l'échec d'une clé n'empêche pas l'écriture des 3 autres.
+- [ ] Test unitaire : `invalid_grant` → e-mail d'alerte envoyé à ADMIN_EMAIL et warm-up non exécuté.
+- [ ] Le chemin patient reste inchangé : seuil proactif `< 5 min` intact, busy DB ré-appliquées au hit (diff vide sur `src/pages/api/availability.ts`).
+- [ ] Sentry : `withMonitor('calendar-keepwarm', …)` avec `checkInMargin: 2`, `maxRuntime: 5`, init avant le premier check-in, handler réellement exporté.
+- [ ] `netlify.toml` : section « Fonctions programmées » documente `calendar-keepwarm` avec la liste **complète** des vars (`GOOGLE_OAUTH_CLIENT_ID/SECRET`, `GOOGLE_CALENDAR_ID`, `SUPABASE_DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_EMAIL`, `RESEND_API_KEY` ; fallbacks `GOOGLE_OAUTH_REDIRECT_URI`, `SITE_URL`, `RESEND_FROM_EMAIL`, `PUBLIC_SENTRY_DSN`) et retire la ligne `calendar-token-heartbeat`.
+- [ ] Gates locaux : `npm run test:low`, `npm run lint`, `npm run build` passent (typecheck advisory #68).
+- [ ] Post-déploiement : schedule `*/10` visible dans l'UI Netlify pour `calendar-keepwarm` (et disparition du schedule `calendar-token-heartbeat`), premier check-in Sentry reçu, entrées `available:*:4w:*` présentes dans le store Blobs après ~10 min, monitor Sentry orphelin `calendar-token-heartbeat` archivé manuellement.
+
+## Open Questions
+
+- Archive manuelle du monitor Sentry `calendar-token-heartbeat` orphelin — à faire côté dashboard une fois le nouveau cron déployé (noté dans la PR, aucune action code).
+- Confirmer en production que `expiry_date` retourné par Google reste ~3 600 s (si Google changeait la durée d'un access token, le seuil de 15 min resterait valable mais le compte de refresh/jour varierait — cosmétique).
+- **Dette axiale (2-strikes, non bloquant)** — le flux « refresh + persistance token » existera en 2 sites après cette PR (`getPersistedOAuthClient` dans `src/lib/google-calendar.ts`, N2 dans le cron). Sous le seuil 3-strikes de l'ADR-001 ; extraire un primitif `refreshAndPersistToken()` dans le domaine calendar si un 3ᵉ consommateur apparaît. À noter aussi : `google-calendar.ts` approche le seuil de split (878 lignes / trigger 1000) — rien à faire dans cette PR (réutilisation seule).
+- `maxRuntime: 5` (monitor Sentry) doit couvrir cold start + refresh + 4 Freebusy — à vérifier sur les premiers check-ins en prod ; ajuster si dépassé.

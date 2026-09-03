@@ -311,11 +311,25 @@ le logger dégrade vers `console.*` uniquement.
 Les cron functions sont enveloppées par `Sentry.withMonitor()`. Dans Sentry :
 
 1. **Alerts → Monitors** : vérifier que `send-reminders` (crontab
-   `0 18 * * *`, checkInMargin 5 min) et `calendar-token-heartbeat` (crontab
-   `0 0 * * 0`, checkInMargin 5 min) apparaissent après le premier
-   déclenchement.
+   `0 18 * * *`, checkInMargin 5 min) et `calendar-keepwarm` (crontab
+   `*/10 * * * *`, checkInMargin 2 min, maxRuntime 5 min) apparaissent après
+   le premier déclenchement. L'ancien monitor `calendar-token-heartbeat`
+   (remplacé par `calendar-keepwarm` en #132) est orphelin — l'archiver (ou
+   le muter) **au moment du merge**, sans attendre la vérification du
+   nouveau cron : il émet une alerte « missed check-in » dès le premier
+   dimanche 00h00 UTC suivant le déploiement. Note budget d'exécution : les
+   fonctions programmées Netlify sont synchrones (timeout 10 s par défaut,
+   ~26 s max — non configuré dans ce repo) ; `maxRuntime: 5` est une fenêtre
+   de classification Sentry, pas un budget exécutoire.
 2. Configurer une alerte email/Slack sur **No check-ins** (mauvais fire) et
    **Execution duration** (timeout).
+3. Après les premières 24 h d'exécution de `calendar-keepwarm` (#132) :
+   confirmer que `expiry_date` de la ligne `google_oauth_tokens` avance
+   d'≈ 3600 s à chaque refresh (durée de vie réelle des tokens Google en
+   prod — l'implémentation retombe sur `now + 3600 s` si Google ne renvoie
+   pas le champ), et vérifier la durée réelle des premiers check-ins dans
+   Sentry (Details → check-in duration) : la run doit rester nettement sous
+   le timeout de 10 s des fonctions programmées Netlify.
 
 Netlify scheduler n'ayant pas d'alerting natif, les monitors Sentry sont le
 seul canal de détection des ratés.
