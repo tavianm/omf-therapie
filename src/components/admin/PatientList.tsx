@@ -29,11 +29,15 @@ export function PatientList({ onStartAppointment }: PatientListProps) {
   const [error, setError] = useState<string | null>(null);
   const deferredQuery = useDeferredValue(query.trim());
 
+  // Stale-response guard instead of an AbortController: aborting a monitored
+  // fetch makes some Chromium/WebKit versions log an "Uncaught (in promise)
+  // AbortError" pointing at the abort() call site even though the rejection
+  // is handled. Skipping state updates once the effect re-runs keeps the
+  // same race safety without ever creating that DOMException.
   useEffect(() => {
-    const controller = new AbortController();
+    let cancelled = false;
     fetch(`/api/admin/patients/?includeArchived=${String(includeArchived)}`, {
       credentials: 'same-origin',
-      signal: controller.signal,
     })
       .then(async response => {
         if (!response.ok)
@@ -43,14 +47,18 @@ export function PatientList({ onStartAppointment }: PatientListProps) {
           );
         return response.json() as Promise<{ patients?: Patient[] }>;
       })
-      .then(data => setPatients(data.patients ?? []))
+      .then(data => {
+        if (!cancelled) setPatients(data.patients ?? []);
+      })
       .catch(reason => {
-        if (!controller.signal.aborted)
+        if (!cancelled)
           setError(
             reason instanceof Error ? reason.message : 'Erreur inconnue',
           );
       });
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+    };
   }, [includeArchived]);
 
   const filtered = useMemo(

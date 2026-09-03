@@ -45,11 +45,13 @@ export function AvailabilityManager() {
   const bounds = useMemo(() => calendarMonthBounds(month), [month]);
   const selectedSlots = slots.filter(slot => slot.slot_date === selectedDate);
 
+  // Stale-response guard instead of an AbortController — see PatientList for
+  // the rationale (abort() itself triggers the engine's unhandled
+  // AbortError console artifact).
   useEffect(() => {
-    const controller = new AbortController();
+    let cancelled = false;
     fetch(`/api/admin/time-slots/?from=${bounds.from}&to=${bounds.to}`, {
       credentials: 'same-origin',
-      signal: controller.signal,
     })
       .then(response =>
         response.ok
@@ -57,15 +59,17 @@ export function AvailabilityManager() {
           : Promise.reject(new Error('Chargement impossible')),
       )
       .then(data => {
+        if (cancelled) return;
         setSlots(data.slots ?? []);
         setLoadError(null);
       })
       .catch(() => {
         // Keep the load failure distinct from a genuinely empty month.
-        if (!controller.signal.aborted)
-          setLoadError('Impossible de charger les présences.');
+        if (!cancelled) setLoadError('Impossible de charger les présences.');
       });
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+    };
   }, [bounds]);
 
   useEffect(() => {

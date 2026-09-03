@@ -74,11 +74,13 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
     window.sessionStorage.setItem(DESTINATION_STORAGE_KEY, destination);
   }, [destination]);
 
+  // Stale-response guard instead of an AbortController — see PatientList for
+  // the rationale (abort() itself triggers the engine's unhandled
+  // AbortError console artifact).
   useEffect(() => {
-    const controller = new AbortController();
+    let cancelled = false;
     fetch('/api/admin/google-oauth/status/', {
       credentials: 'same-origin',
-      signal: controller.signal,
     })
       .then(async response => {
         if (!response.ok) throw new Error('status unavailable');
@@ -88,6 +90,7 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
         }>;
       })
       .then(status => {
+        if (cancelled) return;
         const connected =
           status.connected === true && status.tokenValid === true;
         setCalendarStatus(
@@ -96,12 +99,14 @@ export function AdminWorkspace({ appointments }: AdminWorkspaceProps) {
         setCalendarNeedsReconnect(!connected);
       })
       .catch(() => {
-        if (!controller.signal.aborted) {
+        if (!cancelled) {
           setCalendarStatus('Agenda indisponible');
           setCalendarNeedsReconnect(false);
         }
       });
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Transient feedback: if the notice never cleared, it would sit above the

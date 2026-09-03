@@ -525,16 +525,18 @@ function DatetimeStep({
   useEffect(() => {
     if (!state.appointment_mode || !state.duration) return;
 
-    // Abort the in-flight request when mode/duration changes or the step
-    // unmounts, so a stale response never overwrites the current list.
-    const controller = new AbortController();
+    // Stale-response guard instead of an AbortController: skipping state
+    // updates after mode/duration changes (or unmount) still prevents a late
+    // response from overwriting the current list, and never calling
+    // abort() avoids the "Uncaught (in promise) AbortError" console
+    // artifact some Chromium/WebKit versions attribute to the abort() site.
+    let cancelled = false;
 
     setIsLoading(true);
     setFetchError(null);
 
     fetch(
       `/api/availability/?mode=${state.appointment_mode}&duration=${state.duration}&weeks=4`,
-      { signal: controller.signal },
     )
       .then(res => {
         if (!res.ok)
@@ -542,16 +544,19 @@ function DatetimeStep({
         return res.json() as Promise<{ slots: TimeSlot[] }>;
       })
       .then(data => {
+        if (cancelled) return;
         setSlots(data.slots);
         setIsLoading(false);
       })
       .catch((err: unknown) => {
-        if (controller.signal.aborted) return;
+        if (cancelled) return;
         const message = err instanceof Error ? err.message : 'Erreur inconnue.';
         setFetchError(message);
         setIsLoading(false);
       });
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+    };
   }, [state.appointment_mode, state.duration]);
 
   const groups = groupSlotsByDay(slots);

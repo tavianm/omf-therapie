@@ -167,11 +167,10 @@ export function AppointmentComposer({
       clearUseCredit();
       return;
     }
-    const controller = new AbortController();
+    let cancelled = false;
     const timer = window.setTimeout(() => {
       fetch(`/api/admin/credits/?email=${encodeURIComponent(email)}`, {
         credentials: 'same-origin',
-        signal: controller.signal,
       })
         .then(response => {
           if (!response.ok)
@@ -179,12 +178,13 @@ export function AppointmentComposer({
           return response.json() as Promise<{ balance?: number }>;
         })
         .then(data => {
+          if (cancelled) return;
           const balance = data?.balance ?? 0;
           setCreditBalance(balance);
           if (balance <= 0) clearUseCredit();
         })
         .catch(reason => {
-          if (controller.signal.aborted) return;
+          if (cancelled) return;
           console.warn(
             '[AppointmentComposer] credit balance unavailable:',
             reason,
@@ -194,8 +194,8 @@ export function AppointmentComposer({
         });
     }, 400);
     return () => {
+      cancelled = true;
       window.clearTimeout(timer);
-      controller.abort();
     };
   }, [form.patient_email, patients]);
 
@@ -206,13 +206,10 @@ export function AppointmentComposer({
       setSlotsError(false);
       return;
     }
-    const controller = new AbortController();
+    let cancelled = false;
     setLoadingSlots(true);
     fetch(
       `/api/availability/?mode=${form.appointment_mode}&duration=${form.duration}&weeks=4`,
-      {
-        signal: controller.signal,
-      },
     )
       .then(response => {
         if (!response.ok)
@@ -220,11 +217,12 @@ export function AppointmentComposer({
         return response.json() as Promise<{ slots?: Array<{ start: string }> }>;
       })
       .then(data => {
+        if (cancelled) return;
         setSlots((data?.slots ?? []).slice(0, 8).map(slot => slot.start));
         setSlotsError(false);
       })
       .catch(reason => {
-        if (controller.signal.aborted) return;
+        if (cancelled) return;
         console.warn(
           '[AppointmentComposer] suggested slots unavailable:',
           reason,
@@ -233,9 +231,11 @@ export function AppointmentComposer({
         setSlotsError(true);
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoadingSlots(false);
+        if (!cancelled) setLoadingSlots(false);
       });
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+    };
   }, [form.appointment_mode, form.duration]);
 
   function update<Key extends keyof FormState>(
