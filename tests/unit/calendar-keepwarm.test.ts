@@ -333,6 +333,20 @@ function invalidGrantError(): Error {
   });
 }
 
+/**
+ * Gaxios-like transient refresh error carrying raw config/response payloads
+ * (fake secrets): pins that only err.message — never the payload objects —
+ * reaches Sentry on the transient path.
+ */
+function transientRefreshError(): Error {
+  return Object.assign(new Error('network glitch'), {
+    config: {
+      data: 'client_secret=RAW_CLIENT_SECRET&refresh_token=RAW_REFRESH_TOKEN',
+    },
+    response: { status: 503, data: 'RAW_CLIENT_SECRET must not leak' },
+  });
+}
+
 /** Keys written to the 'calendar-keepwarm-state' store during this test. */
 function stateStoreWriteKeys(): string[] {
   return [
@@ -487,6 +501,34 @@ describe('calendar-keepwarm handler wiring', () => {
       }),
     );
   });
+
+  it('runs initSentry() BEFORE Sentry.withMonitor() (regression #113)', async () => {
+    // The in_progress check-in — the only one carrying monitor_config —
+    // requires an initialized client, so init must precede withMonitor.
+    // Unlike reconcile-invitations (local initSentry on every invocation),
+    // this cron uses the SHARED idempotent initSentry from _lib/sentry —
+    // its module-level `initialized` flag was already consumed by the wiring
+    // test above (and any earlier handler run), so re-import the cron module
+    // with a fresh module registry to observe a first-ever invocation. The
+    // vi.mock registrations survive resetModules, so the re-imported graph
+    // still lands on the hoisted sentry spies.
+    vi.resetModules();
+    const { default: freshHandler } = await import(
+      '../../netlify/functions/calendar-keepwarm'
+    );
+    sentry.init.mockClear();
+    sentry.withMonitor.mockClear();
+    // Still-valid token → the wrapped work function resolves cleanly.
+    seedTokenRow(Date.now() + 16 * 60_000);
+
+    await freshHandler();
+
+    expect(sentry.init).toHaveBeenCalled();
+    expect(sentry.withMonitor).toHaveBeenCalled();
+    expect(sentry.init.mock.invocationCallOrder[0]).toBeLessThan(
+      sentry.withMonitor.mock.invocationCallOrder[0],
+    );
+  });
 });
 
 // ===========================================================================
@@ -540,6 +582,12 @@ describe('calendar-keepwarm invalid_grant handling', () => {
     };
     expect(call.to).toEqual([ADMIN_EMAIL_TEST]);
     expect(call.html, 'alert email must carry rendered HTML body').toBeTruthy();
+    // Sanitized capture contract: only the static sanitized Error reaches
+    // captureException — the raw GaxiosError (whose response/config payloads
+    // embed client_secret / refresh_token) must never be captured.
+    expect(sentry.captureException).toHaveBeenCalledWith(
+      new Error('Google OAuth token refresh failed: invalid_grant'),
+    );
   });
 
   it('does not run the availability warm-up after invalid_grant', async () => {
@@ -592,6 +640,13 @@ describe('warm-up fall-through contract (B1/B2/W2)', () => {
     expect(googleMocks.refreshAccessToken).not.toHaveBeenCalled();
     expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
     expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
+    // Auth-broken on EVERY run while the cron monitor stays green — the
+    // capture is the durable signal (same invariant as the env guards).
+    expectErrorLevelCaptureMessage();
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('no token row'),
+      'error',
+    );
   });
 
   it('sends the alert and skips the warm-up when the token row has a null refresh_token', async () => {
@@ -622,9 +677,7 @@ describe('warm-up fall-through contract (B1/B2/W2)', () => {
     // Spec edge-case row 2: a transient refresh failure must not disable the
     // warm-up — log + proceed. RED-until-impl: the pre-rework code returns.
     seedTokenRow(Date.now() - 60_000); // expired → refresh is attempted
-    googleMocks.refreshAccessToken.mockRejectedValueOnce(
-      new Error('network glitch'),
-    );
+    googleMocks.refreshAccessToken.mockRejectedValueOnce(transientRefreshError());
 
     await expect(keepwarmHandler()).resolves.toBeUndefined();
 
@@ -634,6 +687,18 @@ describe('warm-up fall-through contract (B1/B2/W2)', () => {
     expect(resendSend).not.toHaveBeenCalled();
     expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
     expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
+    // Sanitized capture contract: exactly one capture, a plain Error whose
+    // message starts with the static prefix and never embeds the raw payload
+    // fields the mock error carries (client_secret / refresh_token).
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    const captured = sentry.captureException.mock.calls[0][0];
+    expect(captured).toBeInstanceOf(Error);
+    const capturedMessage = (captured as Error).message;
+    expect(
+      capturedMessage.startsWith('Google OAuth token refresh failed (transient): '),
+    ).toBe(true);
+    expect(capturedMessage).not.toContain('RAW_CLIENT_SECRET');
+    expect(capturedMessage).not.toContain('RAW_REFRESH_TOKEN');
   });
 
   it('still runs the warm-up when the refreshed token persist verification matches zero rows (W2)', async () => {
@@ -648,6 +713,12 @@ describe('warm-up fall-through contract (B1/B2/W2)', () => {
     expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
     expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
     expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
+    // W2 observability: the run still succeeds ('ok'), so the monitor stays
+    // green — the recurring persist failure must surface in Sentry.
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('NOT confirmed persisted'),
+      'warning',
+    );
   });
 
   it('still runs the warm-up when persisting the refreshed token errors (W2)', async () => {
@@ -666,6 +737,12 @@ describe('warm-up fall-through contract (B1/B2/W2)', () => {
     expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
     expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
     expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
+    // W2 observability: same contract as the zero-rows case above — the
+    // failed persist is captured at 'warning' despite the green run.
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('NOT confirmed persisted'),
+      'warning',
+    );
   });
 
   it('runs the warm-up (4 writes) after a successful refresh AND persist — pins the refresh-branch coupling', async () => {
@@ -816,6 +893,14 @@ describe('warmAvailabilityCache (V2 warm-up)', () => {
       key => key !== buildAvailabilityCacheKey('video', 90, 4, new Date()),
     );
     expect(writtenKeys.sort()).toEqual(survivors.sort());
+    // Per-key failure capture: exactly the failing key, at 'warning'
+    // (beforeEach's resetMocks cleared the spy; the token step emitted no
+    // capture on this still-valid-token path).
+    expect(sentry.captureMessage).toHaveBeenCalledTimes(1);
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('video/90'),
+      'warning',
+    );
   });
 });
 
@@ -894,6 +979,12 @@ describe('invalid_grant alert cooldown (B4)', () => {
 
     await expect(keepwarmHandler()).resolves.toBeUndefined();
     expect(resendSend).toHaveBeenCalledTimes(1);
+    // Fail-open must stay alertable: a broken state store means repeat
+    // emails (up to 144/day), not silence.
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('failed to record alert send'),
+      'warning',
+    );
   });
 
   it('still sends the alert when the blobs store is unavailable (fail open)', async () => {
@@ -904,6 +995,12 @@ describe('invalid_grant alert cooldown (B4)', () => {
 
     await expect(keepwarmHandler()).resolves.toBeUndefined();
     expect(resendSend).toHaveBeenCalledTimes(1);
+    // Fail-open must stay alertable (read-side failure — and the write side
+    // fails the same way once the alert is sent, see the test above).
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('cooldown state unavailable'),
+      'warning',
+    );
   });
 });
 

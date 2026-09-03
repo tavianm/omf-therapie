@@ -180,6 +180,8 @@ async function invalidGrantAlertDue(): Promise<boolean> {
     return true;
   } catch {
     logger.warn('calendar-keepwarm: alert cooldown state unavailable — sending anyway (fail open)');
+    // The cooldown is best-effort, but a broken state store escalates to repeat emails — it must be alertable.
+    Sentry.captureMessage('calendar-keepwarm: alert cooldown state unavailable — failing open', 'warning');
     return true;
   }
 }
@@ -195,6 +197,8 @@ async function markInvalidGrantAlertSent(): Promise<void> {
     await store.set(INVALID_GRANT_ALERT_KEY, new Date().toISOString());
   } catch {
     logger.warn('calendar-keepwarm: failed to record alert send — cooldown may not apply on the next run');
+    // The cooldown is best-effort, but a broken state store escalates to repeat emails — it must be alertable.
+    Sentry.captureMessage('calendar-keepwarm: failed to record alert send — cooldown may not apply', 'warning');
   }
 }
 
@@ -430,7 +434,9 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<TokenKeepwarmStatus
   // No token row = definitively broken: nothing to keep warm, and the warm-up
   // has no credentials to authenticate its Freebusy calls with either.
   if (fetchError || !tokens) {
-    logger.warn('calendar-keepwarm: no token row in DB — nothing to keep warm. Connect Google Calendar first.', { fetchError });
+    const msg = 'calendar-keepwarm: no token row in DB — nothing to keep warm. Connect Google Calendar first.';
+    logger.warn(msg, { fetchError });
+    Sentry.captureMessage(msg, 'error');
     return 'auth-broken';
   }
 
@@ -485,6 +491,13 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<TokenKeepwarmStatus
         logger.error('calendar-keepwarm: refreshed token NOT confirmed persisted', {
           persistError: updateError?.message ?? 'zero rows matched',
         });
+        // The run still succeeds ('ok' → warm-up proceeds), so the Sentry
+        // monitor stays green: a persist failure recurring every 10 min
+        // would otherwise never surface. Sanitized fields only.
+        Sentry.captureMessage(
+          'calendar-keepwarm: refreshed token NOT confirmed persisted — warm-up proceeds on the persisted token',
+          'warning',
+        );
         return 'ok';
       }
 

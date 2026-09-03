@@ -323,6 +323,13 @@ Les cron functions sont enveloppées par `Sentry.withMonitor()`. Dans Sentry :
    de classification Sentry, pas un budget exécutoire.
 2. Configurer une alerte email/Slack sur **No check-ins** (mauvais fire) et
    **Execution duration** (timeout).
+3. Après les premières 24 h d'exécution de `calendar-keepwarm` (#132) :
+   confirmer que `expiry_date` de la ligne `google_oauth_tokens` avance
+   d'≈ 3600 s à chaque refresh (durée de vie réelle des tokens Google en
+   prod — l'implémentation retombe sur `now + 3600 s` si Google ne renvoie
+   pas le champ), et vérifier la durée réelle des premiers check-ins dans
+   Sentry (Details → check-in duration) : la run doit rester nettement sous
+   le timeout de 10 s des fonctions programmées Netlify.
 
 Netlify scheduler n'ayant pas d'alerting natif, les monitors Sentry sont le
 seul canal de détection des ratés.

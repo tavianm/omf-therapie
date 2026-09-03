@@ -212,7 +212,12 @@ async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | null> {
       const { credentials } = await oauth2Client.refreshAccessToken();
       const updated = {
         access_token: credentials.access_token ?? '',
-        // Persist rotated refresh_token if Google returns one (token rotation policy)
+        // google-auth-library's refreshAccessToken() never surfaces a
+        // server-rotated refresh token: it echoes back the credential it was
+        // given, so this persists the same refresh_token we loaded. Google
+        // does not currently rotate refresh tokens out-of-band; if it ever
+        // does, this path will keep persisting the ORIGINAL token and needs
+        // revisiting.
         refresh_token: credentials.refresh_token ?? tokens.refresh_token,
         expiry_date: credentials.expiry_date ?? (Date.now() + 3600 * 1000),
         updated_at: new Date().toISOString(),
