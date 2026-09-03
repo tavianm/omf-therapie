@@ -146,6 +146,7 @@ Project docs, memory, specs, and plans live in `aidd_docs/`.
 @aidd_docs/memory/architecture.md
 @aidd_docs/memory/auth.md
 @aidd_docs/memory/backlog.md
+@aidd_docs/memory/browser-automation.md
 @aidd_docs/memory/codebase-map.md
 @aidd_docs/memory/coding-assertions.md
 @aidd_docs/memory/database.md

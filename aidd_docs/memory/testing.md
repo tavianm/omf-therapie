@@ -55,6 +55,7 @@
 ## Browser QA
 
 - Entry: `http://localhost:4321` after `npm run dev`.
+- For scripted browser automation from WSL (browser-use plugin workaround), see `aidd_docs/memory/browser-automation.md`.
 - State: local Docker services and the documented Google Calendar and Stripe mocks support deterministic development.
 
 - Subagents and other parallel contexts (implement/fix/review agents) must run only
