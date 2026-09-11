@@ -10,6 +10,7 @@ import {
   getTriageItems,
   getTodaySessions,
   isActiveAppointment,
+  isReschedulable,
   describeSlot,
 } from '../../src/utils/workbench';
 
@@ -313,4 +314,23 @@ describe('aggregatePatients activity cutoff (3 calendar months, API parity)', ()
       expect(justBefore[0]?.isActive).toBe(false);
     },
   );
+});
+
+describe('isReschedulable', () => {
+  it('allows unpaid and pending statuses — the unpaid-video reschedule flow', () => {
+    for (const status of [
+      'pending',
+      'payment_pending',
+      'confirmed',
+      'payment_received',
+      'rescheduled',
+    ] as const) {
+      expect(isReschedulable(makeAppointment({ status }))).toBe(true);
+    }
+  });
+
+  it('rejects terminal statuses', () => {
+    expect(isReschedulable(makeAppointment({ status: 'declined' }))).toBe(false);
+    expect(isReschedulable(makeAppointment({ status: 'cancelled' }))).toBe(false);
+  });
 });

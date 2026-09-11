@@ -315,3 +315,27 @@ export function describeSlot(
     timeLabel: `${formatTimeParis(startIso)} – ${formatTimeParis(endIso)}`,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Reschedule eligibility (mirrors the PATCH `reschedule` action contract)
+// ---------------------------------------------------------------------------
+
+/** Statuses from which a reschedule proposal can be made (PATCH `reschedule`). */
+const RESCHEDULABLE_STATUSES: ReadonlySet<AppointmentStatus> = new Set([
+  'pending',
+  'payment_pending',
+  'payment_received',
+  'confirmed',
+  'rescheduled',
+]);
+
+/**
+ * Un report peut être proposé depuis tout statut non terminal — y compris une
+ * téléconsultation impayée, même en retard (port de 43fb1ac, #133) : l'API
+ * `reschedule` expire le Payment Link d'origine et en régénère un à
+ * l'acceptation, plutôt qu'un refus + re-création. La date d'origine ne
+ * bloque pas ; seule la NOUVELLE date doit être future (contrôle côté API).
+ */
+export function isReschedulable(appointment: Pick<Appointment, 'status'>): boolean {
+  return RESCHEDULABLE_STATUSES.has(appointment.status);
+}

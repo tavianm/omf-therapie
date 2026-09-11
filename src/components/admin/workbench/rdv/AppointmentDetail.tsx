@@ -23,7 +23,7 @@ import {
   isCancellableByTherapist,
   isUpcoming,
 } from '../../../../utils/date';
-import type { PatientAggregate } from '../../../../utils/workbench';
+import { isReschedulable, type PatientAggregate } from '../../../../utils/workbench';
 import { Avatar, StatusChip, WB_STATUS_LABELS } from '../ui';
 
 /** Minimal patient context for the subtitle — derived by the caller. */
@@ -81,8 +81,12 @@ export function AppointmentDetail({ appointment, patient, variant, onClose }: Ap
   const isVideo = appointment.appointment_mode === 'video';
   const isDirectReschedule =
     appointment.status === 'confirmed' || appointment.status === 'payment_received';
-  const canReschedule =
-    isCancellableByTherapist(appointment) && isUpcoming(appointment.scheduled_at);
+  // Report possible depuis tout statut non terminal — y compris une
+  // téléconsultation impayée, même en retard (port de 43fb1ac, #133) :
+  // l'API `reschedule` expire le Payment Link d'origine et en régénère un
+  // à l'acceptation, plutôt qu'un refus + re-création. La date d'origine
+  // ne bloque pas ; seule la NOUVELLE date doit être future (contrôle API).
+  const canReschedule = isReschedulable(appointment);
   const canCancel = isCancellableByTherapist(appointment);
 
   async function callPatch(payload: Record<string, unknown>, key: string) {
@@ -498,6 +502,15 @@ export function AppointmentDetail({ appointment, patient, variant, onClose }: Ap
             <label htmlFor={`${instanceId}-reschedule`} className="block text-sm font-medium font-sans text-sage-700">
               Nouveau créneau
             </label>
+            {appointment.status === 'payment_pending' && (
+              <p className="flex items-start gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs font-sans text-amber-800">
+                <svg className="w-3.5 h-3.5 shrink-0 mt-px" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+                Séance impayée : le lien de paiement du créneau d'origine sera expiré, un nouveau
+                sera envoyé lorsque le patient acceptera la proposition.
+              </p>
+            )}
             <input
               id={`${instanceId}-reschedule`}
               type="datetime-local"
