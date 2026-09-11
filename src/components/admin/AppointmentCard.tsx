@@ -3,7 +3,7 @@
  *
  * Actions disponibles selon le statut (un seul conteneur, hiérarchie principale→dangereux) :
  *   pending          → Confirmer · Reporter · Refuser
- *   payment_pending  → Voir lien paiement · Refuser
+ *   payment_pending  → Voir lien paiement · Reporter · Refuser
  *   confirmed/payé   → Envoyer rappel avis · Reporter · Annuler (+ avertissement avoir si payé)
  *   rescheduled      → Annuler la proposition
  *   declined / cancelled → lecture seule
@@ -480,6 +480,20 @@ export function AppointmentCard({
                   En attente de paiement — lien envoyé par email
                 </span>
               )}
+              {/* Report d'un RDV non payé : proposition au patient (flow
+                  `reschedule`). L'API expire le Payment Link du créneau
+                  d'origine et en régénère un à l'acceptation — pas de
+                  double-paiement, pas de refus + re-création. */}
+              <button
+                onClick={() => {
+                  setModal('reschedule');
+                  setActionError(null);
+                }}
+                disabled={actionLoading}
+                className="inline-flex min-h-11 items-center rounded-xl border border-sage-300 px-4 py-2 text-sm font-medium font-sans text-sage-700 transition-colors hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Reporter
+              </button>
               <button
                 onClick={() => {
                   setModal('decline');
