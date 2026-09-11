@@ -5,6 +5,7 @@
  * ("Réglé" instead of "Paiement reçu") per the mockups.
  */
 
+import { useEffect, useRef } from 'react';
 import type { AppointmentStatus } from '../../../types/appointment';
 
 export const WB_STATUS_LABELS: Record<AppointmentStatus, string> = {
@@ -97,5 +98,78 @@ export function Prochainement({ issue }: { issue: number }) {
     >
       Prochainement · #{issue}
     </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ModalOverlay — accessible dialog shell shared by the drawer and both sheets
+// ---------------------------------------------------------------------------
+
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+interface ModalOverlayProps {
+  label: string;
+  onClose: () => void;
+  /** Classes of the focusable panel (side drawer or bottom sheet). */
+  panelClassName: string;
+  children: React.ReactNode;
+}
+
+/**
+ * Overlay dialog implementing the same keyboard contract as the proposal-A
+ * creation modal (AdminCreateModal): initial focus on the panel, Tab/Shift+Tab
+ * containment, Escape to close, focus restored to the trigger on unmount.
+ * Backdrop click also closes.
+ */
+export function ModalOverlay({ label, onClose, panelClassName, children }: ModalOverlayProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    // Focus the panel itself (not the first control) so Tab starts the cycle.
+    const focusTimer = window.setTimeout(() => panelRef.current?.focus(), 0);
+
+    function trap(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab' || !panelRef.current) return;
+      const focusables = panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener('keydown', trap);
+    return () => {
+      document.removeEventListener('keydown', trap);
+      window.clearTimeout(focusTimer);
+      previousFocusRef.current?.focus();
+    };
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={label}>
+      <button
+        type="button"
+        aria-label="Fermer"
+        onClick={onClose}
+        className="absolute inset-0 w-full h-full bg-black/40 cursor-default"
+      />
+      <div ref={panelRef} tabIndex={-1} className={`focus:outline-none ${panelClassName}`}>
+        {children}
+      </div>
+    </div>
   );
 }

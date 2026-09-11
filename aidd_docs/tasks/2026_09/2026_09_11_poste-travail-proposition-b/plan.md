@@ -12,14 +12,18 @@
 | Synthèse (4 KPI, file « À traiter » avec expander, prochains RDV) | `SyntheseView.tsx` reconstruit | dérivé de `appointments` |
 | Rendez-vous (toggle À venir/Historique, pills fusionnées, recherche, groupes par jour, pagination, split-view iPad + fiche détail) | `rdv/RendezVousView.tsx` + `rdv/AppointmentDetail.tsx` (nouveaux) | PATCH actions existantes (confirm/decline/cancel/reschedule/reschedule_paid/accept_reschedule/cancel_reschedule/save_notes), regenerate-calendar |
 | Patients (annuaire, alpha-jump, dossier, métriques, historique, planifier pré-rempli) | `patients/PatientsView.tsx` (nouveau) | dérivé de `appointments` (`aggregatePatients`) + drawer pré-rempli |
-| Disponibilités (calendrier mois, plages du jour, sur-mesure) | `disponibilites/DisponibilitesView.tsx` (nouveau) | GET/POST/DELETE `/api/admin/time-slots/` + GoogleCalendarStatus |
-| Tiroir Nouveau RDV (recherche patient, créneaux suggérés, options & honoraires) | `CreateAppointmentDrawer.tsx` (nouveau ; drawer ≥sm / bottom sheet mobile) | POST `/api/admin/appointments/` + GET `/api/admin/credits?email=` |
-| Marge entre séances, blocages, demi-journées, Rappel SMS/Mail, note clinique, Exporter/Nouveau patient, REMPLISSAGE | rendus **désactivés** avec badge « Prochainement » + référence d'issue | #142 #143 #144 #145 #146 |
+| Disponibilités (calendrier mois, plages du jour, sur-mesure) | `disponibilites/DisponibilitesView.tsx` (nouveau) | GET/POST/DELETE `/api/admin/time-slots/` + GET/PATCH `/api/admin/scheduling-settings/` (marge, port #133) + GoogleCalendarStatus |
+| Tiroir Nouveau RDV (recherche patient, créneaux suggérés, options & honoraires) | `CreateAppointmentDrawer.tsx` (nouveau ; drawer ≥sm / bottom sheet mobile) | POST `/api/admin/appointments/` + GET `/api/admin/credits/?email=` + GET `/api/availability/?mode=&duration=` (créneaux autoritaires) |
+| Blocages & demi-journées (fermer/bloquer) | carte désactivée + badge « Prochainement · #145 » visible | #145 |
+| Rappel SMS / Mail (fiche RDV) | bouton désactivé (grisé, infobulle) — pas de badge visible, signal faible volontaire | à tracer |
+| Note clinique (dossier patient) | bandeau désactivé + badge « Prochainement · #142 » | #142 |
+| Exporter / Nouveau patient | boutons désactivés, référence #143 en `title` (infobulle) | #143 |
+| REMPLISSAGE (KPI) | carte avec « — » + badge « Prochainement · #146 » | #146 |
 | Doctolib | absent du texte d'interface (affichage mensonger) | #147 |
 
-Helpers purs ajoutés à `src/utils/workbench.ts` : `aggregatePatients` (miroir client de l'agrégation `/api/admin/patients/`), `suggestSlots` (prochains créneaux libres dans les heures d'ouverture, à partir des RDV locaux). Tests : `tests/unit/workbench.test.ts`.
+Helpers purs ajoutés à `src/utils/workbench.ts` : `aggregatePatients` (miroir client de l'agrégation `/api/admin/patients/` — cutoff 3 mois civils identique) et `describeSlot` (libellés des créneaux renvoyés par `/api/availability/`). Les créneaux suggérés du tiroir viennent de l'endpoint autoritaire (Google Agenda, plages cabinet, marge, reports réservés), pas d'un recalcul local. Tests : `tests/unit/workbench.test.ts`.
 
-Comportements conservés : `window.location.reload()` après action (pattern `AppointmentCard`, garantit des données SSR fraîches) ; save_notes sans reload ; trailing slash ADR-013 ; cibles tactiles 44px.
+Comportements conservés : `window.location.reload()` après action (pattern `AppointmentCard`, garantit des données SSR fraîches) ; save_notes sans reload ; trailing slash ADR-013 ; cibles tactiles 44px ; overlays (tiroir + 2 sheets) avec focus initial, piège Tab, Escape et restauration du focus (`ModalOverlay`).
 
 ---
 

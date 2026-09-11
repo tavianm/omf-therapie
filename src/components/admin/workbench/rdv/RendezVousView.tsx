@@ -26,7 +26,7 @@ import {
 } from '../../../../utils/date';
 import type { FocusRequest } from '../Workbench';
 import { AppointmentDetail } from './AppointmentDetail';
-import { LateBadge, StatusChip, TimeBlock } from '../ui';
+import { LateBadge, ModalOverlay, StatusChip, TimeBlock } from '../ui';
 
 interface RendezVousViewProps {
   appointments: Appointment[];
@@ -126,14 +126,6 @@ export function RendezVousView({ appointments, focus }: RendezVousViewProps) {
   const { filtered, statusCounts, upcomingCount, historyCount } = useMemo(() => {
     const q = deferredQuery.toLowerCase().trim();
     const searched = q ? appointments.filter((a) => searchableText(a).includes(q)) : appointments;
-    const counts: Record<string, number> = {
-      all: searched.length,
-      cancelled_refused: 0,
-    };
-    for (const a of searched) {
-      counts[a.status] = (counts[a.status] ?? 0) + 1;
-      if (a.status === 'cancelled' || a.status === 'declined') counts.cancelled_refused += 1;
-    }
     const now = Date.now();
     const upcoming = searched
       .filter((a) => isUpcoming(a.scheduled_at, now))
@@ -141,8 +133,20 @@ export function RendezVousView({ appointments, focus }: RendezVousViewProps) {
     const history = searched
       .filter((a) => !isUpcoming(a.scheduled_at, now))
       .sort((a, b) => b.scheduled_at.localeCompare(a.scheduled_at));
+    // Les compteurs des pastilles reflètent la partition affichée (recherche
+    // appliquée, filtre de statut exclu) — sinon « Confirmés » annonce 7
+    // alors que la liste n'en montre que 2 ou 5 (revue #148).
+    const partitionList = partition === 'upcoming' ? upcoming : history;
+    const counts: Record<string, number> = {
+      all: partitionList.length,
+      cancelled_refused: 0,
+    };
+    for (const a of partitionList) {
+      counts[a.status] = (counts[a.status] ?? 0) + 1;
+      if (a.status === 'cancelled' || a.status === 'declined') counts.cancelled_refused += 1;
+    }
     return {
-      filtered: partition === 'upcoming' ? upcoming : history,
+      filtered: partitionList,
       statusCounts: counts,
       upcomingCount: upcoming.length,
       historyCount: history.length,
@@ -406,6 +410,7 @@ export function RendezVousView({ appointments, focus }: RendezVousViewProps) {
           <div className="rounded-2xl border border-sage-200 bg-white p-5 shadow-sm">
             {selected ? (
               <AppointmentDetail
+                key={selected.id}
                 appointment={selected}
                 patient={selectedPatient}
                 variant="pane"
@@ -422,23 +427,20 @@ export function RendezVousView({ appointments, focus }: RendezVousViewProps) {
 
       {/* Fiche détail — bottom sheet < lg */}
       {selected && (
-        <div className="lg:hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={`Détail du rendez-vous de ${selected.patient_name}`}>
-          <button
-            type="button"
-            aria-label="Fermer la fiche"
-            onClick={() => setSelectedId(null)}
-            className="absolute inset-0 w-full h-full bg-black/40 cursor-default"
+        <ModalOverlay
+          label={`Détail du rendez-vous de ${selected.patient_name}`}
+          onClose={() => setSelectedId(null)}
+          panelClassName="absolute inset-x-0 bottom-0 rounded-t-3xl bg-white shadow-xl max-h-[92dvh] overflow-y-auto px-4 pb-8 pt-3"
+        >
+          <span className="mx-auto mb-3 block h-1.5 w-12 rounded-full bg-sage-200" aria-hidden="true" />
+          <AppointmentDetail
+            key={selected.id}
+            appointment={selected}
+            patient={selectedPatient}
+            variant="sheet"
+            onClose={() => setSelectedId(null)}
           />
-          <div className="absolute inset-x-0 bottom-0 rounded-t-3xl bg-white shadow-xl max-h-[92dvh] overflow-y-auto px-4 pb-8 pt-3">
-            <span className="mx-auto mb-3 block h-1.5 w-12 rounded-full bg-sage-200" aria-hidden="true" />
-            <AppointmentDetail
-              appointment={selected}
-              patient={selectedPatient}
-              variant="sheet"
-              onClose={() => setSelectedId(null)}
-            />
-          </div>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

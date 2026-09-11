@@ -13,7 +13,7 @@
  * qui reste locale comme sur la proposition A.
  */
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { Appointment } from '../../../../types/appointment';
 import { getTypeLabel, getModeLabel } from '../../../../lib/pricing';
 import {
@@ -62,6 +62,9 @@ function InfoCard({ label, children }: { label: string; children: React.ReactNod
 }
 
 export function AppointmentDetail({ appointment, patient, variant, onClose }: AppointmentDetailProps) {
+  // IDs uniques par instance : le détail est monté deux fois (panneau ≥ lg + sheet < lg),
+  // des ids fixes dupliqueraient les associations label/contrôle (revue #148).
+  const instanceId = useId();
   const [notes, setNotes] = useState(appointment.therapist_notes ?? '');
   const [notesSaving, setNotesSaving] = useState(false);
   const [notesSaved, setNotesSaved] = useState(false);
@@ -279,11 +282,11 @@ export function AppointmentDetail({ appointment, patient, variant, onClose }: Ap
         <h3 className="text-sm font-semibold font-sans text-sage-800 mb-2">
           Notes internes de consultation
         </h3>
-        <label htmlFor="wb-notes" className="sr-only">
+        <label htmlFor={`${instanceId}-notes`} className="sr-only">
           Notes internes de consultation
         </label>
         <textarea
-          id="wb-notes"
+          id={`${instanceId}-notes`}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
@@ -492,11 +495,11 @@ export function AppointmentDetail({ appointment, patient, variant, onClose }: Ap
         {/* Panneau reprogrammation */}
         {openPanel === 'reschedule' && (
           <div className="rounded-xl border border-sage-200 bg-white p-3 space-y-2.5">
-            <label htmlFor="wb-reschedule" className="block text-sm font-medium font-sans text-sage-700">
+            <label htmlFor={`${instanceId}-reschedule`} className="block text-sm font-medium font-sans text-sage-700">
               Nouveau créneau
             </label>
             <input
-              id="wb-reschedule"
+              id={`${instanceId}-reschedule`}
               type="datetime-local"
               value={rescheduleDate}
               onChange={(e) => setRescheduleDate(e.target.value)}
@@ -505,11 +508,11 @@ export function AppointmentDetail({ appointment, patient, variant, onClose }: Ap
                 focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[44px]
               "
             />
-            <label htmlFor="wb-reschedule-msg" className="sr-only">
+            <label htmlFor={`${instanceId}-reschedule-msg`} className="sr-only">
               Message pour le patient (optionnel)
             </label>
             <input
-              id="wb-reschedule-msg"
+              id={`${instanceId}-reschedule-msg`}
               type="text"
               value={actionMessage}
               onChange={(e) => setActionMessage(e.target.value)}
@@ -547,11 +550,11 @@ export function AppointmentDetail({ appointment, patient, variant, onClose }: Ap
         {/* Panneau refus / annulation (message optionnel) */}
         {(openPanel === 'decline' || openPanel === 'cancel') && (
           <div className="rounded-xl border border-red-200 bg-red-50 p-3 space-y-2.5">
-            <label htmlFor="wb-action-msg" className="block text-sm font-medium font-sans text-red-800">
+            <label htmlFor={`${instanceId}-action-msg`} className="block text-sm font-medium font-sans text-red-800">
               {openPanel === 'decline' ? 'Refuser la demande' : 'Annuler le rendez-vous'}
             </label>
             <input
-              id="wb-action-msg"
+              id={`${instanceId}-action-msg`}
               type="text"
               value={actionMessage}
               onChange={(e) => setActionMessage(e.target.value)}

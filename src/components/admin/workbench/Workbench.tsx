@@ -19,7 +19,7 @@
  * avec la référence de l'issue de suivi — jamais simulées.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { Appointment } from '../../../types/appointment';
 import type { PrefillData } from '../../../types/patient';
 import { CreateAppointmentDrawer } from './CreateAppointmentDrawer';
@@ -55,12 +55,6 @@ const SECTIONS: { key: Section; label: string }[] = [
 
 const SECTION_STORAGE_KEY = 'poste-travail-section';
 
-function readInitialSection(): Section {
-  if (typeof window === 'undefined') return 'synthese';
-  const saved = window.sessionStorage.getItem(SECTION_STORAGE_KEY);
-  return SECTIONS.some((s) => s.key === saved) ? (saved as Section) : 'synthese';
-}
-
 // ---------------------------------------------------------------------------
 // Icons (Heroicons outline, 24 viewBox)
 // ---------------------------------------------------------------------------
@@ -94,14 +88,30 @@ function SectionIcon({ section, className }: { section: Section; className: stri
 // ---------------------------------------------------------------------------
 
 export function Workbench({ appointments, practitionerName }: WorkbenchProps) {
-  const [section, setSection] = useState<Section>(readInitialSection);
+  // État initial identique serveur/client (Synthèse) : la section sauvegardée
+  // est restaurée APRÈS hydratation, sinon React détecte un mismatch et laisse
+  // les attributs `hidden` du rendu serveur en place (revue #148).
+  const [section, setSection] = useState<Section>('synthese');
   const [focus, setFocus] = useState<FocusRequest | null>(null);
   const [createDrawer, setCreateDrawer] = useState<CreateDrawerState>({ open: false, prefill: null });
   const [isSigningOut, setIsSigningOut] = useState(false);
 
+  useEffect(() => {
+    try {
+      const saved = window.sessionStorage.getItem(SECTION_STORAGE_KEY);
+      if (SECTIONS.some((s) => s.key === saved)) setSection(saved as Section);
+    } catch {
+      // sessionStorage indisponible (navigation privée) — Synthèse par défaut.
+    }
+  }, []);
+
   const handleSectionChange = useCallback((next: Section) => {
     setSection(next);
-    window.sessionStorage.setItem(SECTION_STORAGE_KEY, next);
+    try {
+      window.sessionStorage.setItem(SECTION_STORAGE_KEY, next);
+    } catch {
+      // Persistance best-effort — la navigation reste fonctionnelle sans.
+    }
   }, []);
 
   // Synthèse → Rendez-vous : révèle le RDV dans la liste.

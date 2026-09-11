@@ -3,8 +3,14 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { auth } from '../../../../lib/auth';
 import { isAdminSession } from '../../../../lib/authz';
-import { fetchManualSlots, createManualSlot, invalidateSlotCache } from '../../../../lib/manual-slots';
+import {
+  fetchManualSlots,
+  createManualSlot,
+  invalidateSlotCache,
+  ManualSlotDuplicateError,
+} from '../../../../lib/manual-slots';
 import type { CreateManualSlotData } from '@/types/manual-slots';
+import { VALID_PERIODS } from '@/utils/domain';
 
 function errorResponse(status: number, message: string): Response {
   return new Response(JSON.stringify({ error: message }), {
@@ -53,8 +59,14 @@ export const GET: APIRoute = async ({ request, url }) => {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    console.error('[admin/time-slots] Erreur lors de la récupération des créneaux:', error);
-    return errorResponse(500, 'Erreur lors de la récupération des créneaux horaires');
+    console.error(
+      '[admin/time-slots] Erreur lors de la récupération des créneaux:',
+      error,
+    );
+    return errorResponse(
+      500,
+      'Erreur lors de la récupération des créneaux horaires',
+    );
   }
 };
 
@@ -79,13 +91,18 @@ export const POST: APIRoute = async ({ request }) => {
     // Validate slot_date format (YYYY-MM-DD)
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(data.slot_date)) {
-      return errorResponse(400, 'Format de date invalide (attendu: YYYY-MM-DD)');
+      return errorResponse(
+        400,
+        'Format de date invalide (attendu: YYYY-MM-DD)',
+      );
     }
 
     // Validate period value
-    const validPeriods = ['morning', 'afternoon', 'all_day'];
-    if (!validPeriods.includes(data.period)) {
-      return errorResponse(400, 'Period invalide (valeurs acceptées: morning, afternoon, all_day)');
+    if (!VALID_PERIODS.includes(data.period)) {
+      return errorResponse(
+        400,
+        'Period invalide (valeurs acceptées: morning, afternoon, all_day)',
+      );
     }
 
     // Create slot data object
@@ -105,7 +122,13 @@ export const POST: APIRoute = async ({ request }) => {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    console.error('[admin/time-slots] Erreur lors de la création du créneau:', error);
+    if (error instanceof ManualSlotDuplicateError) {
+      return errorResponse(409, error.message);
+    }
+    console.error(
+      '[admin/time-slots] Erreur lors de la création du créneau:',
+      error,
+    );
     return errorResponse(500, 'Erreur lors de la création du créneau horaire');
   }
 };

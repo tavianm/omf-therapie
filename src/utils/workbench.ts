@@ -199,7 +199,12 @@ export function aggregatePatients(
   appointments: Appointment[],
   nowMs: number = Date.now(),
 ): PatientAggregate[] {
-  const activeThreshold = nowMs - 3 * 30 * 24 * 60 * 60 * 1000; // ~3 months, same rule as the API
+  const activeCutoff = new Date(nowMs);
+  // Même règle calendaire que GET /api/admin/patients/ : trois mois civils
+  // (setMonth gère les débordements de fin de mois comme le serveur — une
+  // approximation en 90 jours ferait disparaître des patients actifs).
+  activeCutoff.setMonth(activeCutoff.getMonth() - 3);
+  const activeCutoffMs = activeCutoff.getTime();
   const buckets = new Map<string, Appointment[]>();
   for (const appointment of appointments) {
     const bucket = buckets.get(appointment.patient_email);
@@ -220,7 +225,13 @@ export function aggregatePatients(
       if (appointment.status === 'payment_pending') {
         pendingPaymentCents += appointment.final_price;
       }
-      if (isActiveAppointment(appointment) && !isUpcoming(appointment.scheduled_at, nowMs)) {
+      // Séance « réalisée » : la consultation a bien eu lieu. Une demande
+      // `pending` sans réponse ou un report `rescheduled` proposé ne prouvent
+      // pas qu'une séance s'est tenue (revue #148).
+      if (
+        (appointment.status === 'confirmed' || appointment.status === 'payment_received') &&
+        !isUpcoming(appointment.scheduled_at, nowMs)
+      ) {
         completedCount += 1;
       }
     }
@@ -237,7 +248,7 @@ export function aggregatePatients(
       firstAppointmentAt: sortedAsc[0]?.scheduled_at ?? latest.scheduled_at,
       lastType: latest.appointment_type,
       lastMode: latest.appointment_mode,
-      isActive: new Date(latest.scheduled_at).getTime() >= activeThreshold,
+      isActive: new Date(latest.scheduled_at).getTime() >= activeCutoffMs,
       nextAppointment:
         sortedAsc.find(
           (a) => isActiveAppointment(a) && isUpcoming(a.scheduled_at, nowMs),
@@ -261,39 +272,16 @@ export function getInitials(name: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Suggested slots (drawer — derived from the local appointment list)
+// Slot labels (drawer — slots come from the authoritative /api/availability/)
 // ---------------------------------------------------------------------------
 
-/** Business windows in Paris minutes, matching `isWithinBusinessHours`. */
-const MORNING = { start: 8 * 60, end: 12 * 60 };
-const AFTERNOON = { start: 14 * 60, end: 19 * 60 };
-const SLOT_STEP_MIN = 30;
-
-export interface SuggestedSlot {
+export interface DescribedSlot {
   startIso: string;
   endIso: string;
-  /** « Aujourd'hui », « Demain » or « JEU. 14 SEPT. ». */
+  /** « Aujourd’hui », « Demain » ou « JEU. 14 SEPT. » (Paris). */
   dayLabel: string;
   /** « 09:15 – 10:15 » (Paris). */
   timeLabel: string;
-  /** Short heuristic note: first slot of the day, or right after the lunch break. */
-  hint?: string;
-}
-
-function getParisMinutesOfDay(date: Date): { minutes: number; dayKey: string } {
-  const parts = new Intl.DateTimeFormat('fr-FR', {
-    timeZone: 'Europe/Paris',
-    hour: 'numeric',
-    minute: 'numeric',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour12: false,
-  }).formatToParts(date);
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
-  const h = parseInt(get('hour'), 10);
-  const m = parseInt(get('minute'), 10);
-  return { minutes: h * 60 + m, dayKey: `${get('year')}-${get('month')}-${get('day')}` };
 }
 
 function formatSlotDayLabel(iso: string, nowMs: number): string {
@@ -306,64 +294,24 @@ function formatSlotDayLabel(iso: string, nowMs: number): string {
     timeZone: 'Europe/Paris',
   })
     .format(new Date(iso))
-    .replace('.', '')
+    .replace(/\./g, '')
     .toUpperCase();
 }
 
 /**
- * Next free slots within business hours, stepping 30 min, based only on the
- * local appointment list (no Google Calendar read from the client). A slot is
- * proposed when it starts in the future, fits entirely inside a business
- * window, and does not overlap an active appointment.
+ * Libellés d’un créneau renvoyé par /api/availability/ — pur et testable.
+ * La sélection elle-même vient de l’endpoint autoritaire (Google Agenda,
+ * plages cabinet, marge, reports réservés), jamais d’un recalcul local.
  */
-export function suggestSlots(
-  appointments: Appointment[],
-  options: { nowMs?: number; durationMin?: number; limit?: number; horizonDays?: number } = {},
-): SuggestedSlot[] {
-  const { nowMs = Date.now(), durationMin = 60, limit = 4, horizonDays = 14 } = options;
-  const durationMs = durationMin * 60_000;
-  const busy = appointments
-    .filter(isActiveAppointment)
-    .map((a) => ({ start: new Date(a.scheduled_at).getTime(), end: new Date(a.scheduled_at).getTime() + a.duration * 60_000 }));
-
-  const suggestions: SuggestedSlot[] = [];
-  const stepMs = SLOT_STEP_MIN * 60_000;
-  // Start from the next half-hour boundary.
-  const firstCandidate = Math.ceil(nowMs / stepMs) * stepMs;
-
-  for (let t = firstCandidate; suggestions.length < limit; t += stepMs) {
-    const start = new Date(t);
-    const { minutes, dayKey: startDay } = getParisMinutesOfDay(start);
-    const end = new Date(t + durationMs);
-    const endInfo = getParisMinutesOfDay(end);
-
-    const inMorning = minutes >= MORNING.start && endInfo.minutes <= MORNING.end;
-    const inAfternoon = minutes >= AFTERNOON.start && endInfo.minutes <= AFTERNOON.end;
-    if (!inMorning && !inAfternoon) continue;
-    if (endInfo.dayKey !== startDay) continue; // window must not cross midnight/DST edge
-
-    if (t < nowMs) continue;
-    const overlaps = busy.some((b) => t < b.end && t + durationMs > b.start);
-    if (overlaps) continue;
-
-    const dayLabel = formatSlotDayLabel(start.toISOString(), nowMs);
-    const isFirstOfDay = suggestions.every(
-      (s) => getParisMinutesOfDay(new Date(s.startIso)).dayKey !== startDay,
-    );
-    const hint = isFirstOfDay
-      ? 'Premier créneau du jour'
-      : minutes === AFTERNOON.start
-        ? 'Après la pause'
-        : undefined;
-
-    suggestions.push({
-      startIso: start.toISOString(),
-      endIso: end.toISOString(),
-      dayLabel,
-      timeLabel: `${formatTimeParis(start.toISOString())} – ${formatTimeParis(end.toISOString())}`,
-      hint,
-    });
-    if (t - nowMs > horizonDays * 86_400_000) break; // give up past the horizon
-  }
-  return suggestions;
+export function describeSlot(
+  startIso: string,
+  endIso: string,
+  nowMs: number = Date.now(),
+): DescribedSlot {
+  return {
+    startIso,
+    endIso,
+    dayLabel: formatSlotDayLabel(startIso, nowMs),
+    timeLabel: `${formatTimeParis(startIso)} – ${formatTimeParis(endIso)}`,
+  };
 }

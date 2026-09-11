@@ -13,6 +13,7 @@ import { getTypeLabel, getModeLabel, calculatePrice } from '../../../lib/pricing
 import { createAppointmentPaymentLink, getStripe } from '../../../lib/stripe';
 import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from '../../../lib/google-calendar';
 import { hasAppointmentConflict } from '../../../lib/appointment-conflicts';
+import { isSchedulingConflictError } from '../../../lib/scheduling-settings';
 import { isCabinetEligibleSlot } from '../../../lib/appointment-eligibility';
 import { invalidateAvailabilityCache } from '../../../lib/calendar-cache.js';
 import AppointmentConfirmed from '../../../emails/AppointmentConfirmed';
@@ -585,6 +586,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     if (updateError || !updated) {
       logger.error('appointments/patch: Supabase update failed (reschedule_paid)', { appointmentId: id }, updateError);
+      // Trigger 015 : le nouveau créneau mord sur la marge d'une séance adjacente.
+      if (isSchedulingConflictError(updateError)) {
+        return errorResponse(409, 'Ce créneau chevauche un rendez-vous existant (marge entre les séances incluse). Veuillez sélectionner un autre horaire.');
+      }
       return errorResponse(500, 'Erreur lors du report');
     }
 
@@ -711,6 +716,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     if (updateError || !updated) {
       logger.error('appointments/patch: Supabase update failed (reschedule)', { appointmentId: id }, updateError);
+      // Trigger 015 : la proposition mord sur la marge d'une séance adjacente.
+      if (isSchedulingConflictError(updateError)) {
+        return errorResponse(409, 'Ce créneau n\'est plus disponible. Veuillez sélectionner un autre horaire.');
+      }
       return errorResponse(500, 'Erreur lors de la mise à jour');
     }
 
@@ -858,6 +867,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     if (updateError || !updated) {
       logger.error('appointments/patch: Supabase update failed (accept_reschedule)', { appointmentId: id }, updateError);
+      // Trigger 015 : la proposition acceptée mord sur la marge d'une séance adjacente.
+      if (isSchedulingConflictError(updateError)) {
+        return errorResponse(409, 'Ce créneau n\'est plus disponible. Contactez la thérapeute pour une nouvelle proposition.');
+      }
       return errorResponse(500, 'Erreur lors de la mise à jour');
     }
 

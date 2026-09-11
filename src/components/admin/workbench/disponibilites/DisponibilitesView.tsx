@@ -6,15 +6,23 @@
  *  - panneau du jour : plages présentiel manuelles (GET/POST/DELETE
  *    /api/admin/time-slots/ — même contrat que <TimeSlotManager/> côté
  *    proposition A) + statut de synchronisation Google Agenda
+ *  - marge entre les séances (0/15/20 min) branchée sur
+ *    GET/PATCH /api/admin/scheduling-settings/ — portée de la branche
+ *    codex/fix-ipad-admin-appointments (politique de planification #133)
  *
- * La gestion des demi-journées ouvertes/fermées, des blocages motivés et la
- * marge inter-séances n'ont pas de backend : cartes rendues désactivées avec
- * la référence #145 — jamais simulées. La mention Doctolib de la maquette
- * n'est pas affichée (pas d'intégration — #147).
+ * La fermeture de demi-journées et les blocages motivés restent sans
+ * backend : carte rendue désactivée avec la référence #145 — jamais
+ * simulée. La mention Doctolib de la maquette n'est pas affichée (pas
+ * d'intégration — #147).
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ManualTimeSlot, Period } from '../../../../types/manual-slots';
+import {
+  isSchedulingBufferMinutes,
+  type SchedulingBufferMinutes,
+  type SchedulingSettings,
+} from '../../../../types/scheduling-settings';
 import GoogleCalendarStatus from '../../GoogleCalendarStatus';
 import { Prochainement } from '../ui';
 
@@ -25,6 +33,12 @@ const PERIOD_LABELS: Record<Period, string> = {
 };
 
 const WEEKDAY_LABELS = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'];
+
+const BUFFER_OPTIONS: { value: SchedulingBufferMinutes; label: string; sub: string }[] = [
+  { value: 0, label: 'Aucune', sub: '0 min' },
+  { value: 15, label: '15 min', sub: 'Recommandé' },
+  { value: 20, label: '20 min', sub: 'Respiration' },
+];
 
 const MONTH_FORMAT = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric', timeZone: 'Europe/Paris' });
 const DAY_LONG_FORMAT = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris' });
@@ -56,12 +70,76 @@ export function DisponibilitesView({ initialSlots }: DisponibilitesViewProps) {
   const [newPeriod, setNewPeriod] = useState<Period>('morning');
   const [submitting, setSubmitting] = useState(false);
 
-  const refetch = useCallback(async () => {
+  // ── Marge entre les séances (politique de planification) ─────────────────
+  const [settings, setSettings] = useState<SchedulingSettings | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [bufferSaving, setBufferSaving] = useState(false);
+  const [bufferNotice, setBufferNotice] = useState<string | null>(null);
+  const [bufferError, setBufferError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/admin/scheduling-settings/', {
+      credentials: 'same-origin',
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(body.error ?? 'Erreur lors du chargement de la marge');
+        }
+        const body = (await res.json()) as { settings: SchedulingSettings };
+        if (!body.settings || !isSchedulingBufferMinutes(body.settings.bufferMinutes)) {
+          throw new Error('Valeur de marge invalide renvoyée par le serveur.');
+        }
+        setSettings(body.settings);
+      })
+      .catch((e: unknown) => {
+        if (controller.signal.aborted) return;
+        setBufferError(e instanceof Error ? e.message : 'Erreur inconnue');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setSettingsLoading(false);
+      });
+    return () => controller.abort();
+  }, []);
+
+  async function updateBuffer(next: SchedulingBufferMinutes) {
+    if (!settings || bufferSaving || next === settings.bufferMinutes) return;
+    setBufferSaving(true);
+    setBufferNotice(null);
+    setBufferError(null);
+    try {
+      const res = await fetch('/api/admin/scheduling-settings/', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ bufferMinutes: next }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { settings?: SchedulingSettings; error?: string };
+      if (!res.ok || !body.settings) {
+        throw new Error(body.error ?? 'Impossible d’enregistrer la marge.');
+      }
+      setSettings(body.settings);
+      setBufferNotice(
+        next === 0 ? 'Marge désactivée.' : `Marge de ${next} min appliquée.`,
+      );
+    } catch (e) {
+      setBufferError(e instanceof Error ? e.message : 'Erreur inconnue');
+    } finally {
+      setBufferSaving(false);
+    }
+  }
+
+  // La plage interrogée suit le mois AFFICHÉ : naviguer vers un autre mois
+  // doit charger ses plages, sinon elles paraissent inexistantes et une
+  // création réussie disparaît du calendrier (revue #148).
+  const refetch = useCallback(async (anchor: Date) => {
     setLoading(true);
     setError(null);
     try {
-      const from = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-      const to = new Date(today.getFullYear(), today.getMonth() + 4, 0);
+      const from = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+      const to = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0);
       const res = await fetch(`/api/admin/time-slots/?from=${toISODate(from)}&to=${toISODate(to)}`, {
         credentials: 'same-origin',
       });
@@ -76,11 +154,11 @@ export function DisponibilitesView({ initialSlots }: DisponibilitesViewProps) {
     } finally {
       setLoading(false);
     }
-  }, [today]);
+  }, []);
 
   useEffect(() => {
-    if (!initialSlots) void refetch();
-  }, [initialSlots, refetch]);
+    if (!initialSlots) void refetch(monthAnchor);
+  }, [initialSlots, refetch, monthAnchor]);
 
   const slotsByDate = useMemo(() => {
     const map = new Map<string, ManualTimeSlot[]>();
@@ -121,7 +199,7 @@ export function DisponibilitesView({ initialSlots }: DisponibilitesViewProps) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error ?? 'Erreur lors de l’ajout de la plage');
       }
-      await refetch();
+      await refetch(monthAnchor);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erreur inconnue');
     } finally {
@@ -374,29 +452,67 @@ export function DisponibilitesView({ initialSlots }: DisponibilitesViewProps) {
             </section>
           </div>
 
-          {/* Marge entre les séances — à construire (#145) */}
+          {/* Marge entre les séances — politique de planification (port #133) */}
           <div className="rounded-2xl border border-sage-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <h2 className="font-serif text-base font-semibold text-sage-900">Marge entre les séances</h2>
-              <Prochainement issue={145} />
+              <span className="inline-flex items-center rounded-full bg-mint-100 px-2.5 py-0.5 text-[10px] font-semibold font-sans uppercase tracking-wide text-mint-900">
+                {settingsLoading
+                  ? 'Chargement…'
+                  : bufferSaving
+                    ? 'Enregistrement…'
+                    : settings
+                      ? `Actif · ${settings.bufferMinutes === 0 ? 'aucune' : `${settings.bufferMinutes} min`}`
+                      : 'Indisponible'}
+              </span>
             </div>
             <p className="mt-1.5 text-sm text-sage-500 font-sans">
               Délai de transition automatique appliqué entre chaque rendez-vous.
             </p>
-            <fieldset disabled className="mt-3 opacity-50">
-              <legend className="sr-only">Marge entre les séances (à construire)</legend>
+            <fieldset disabled={settingsLoading || bufferSaving || !settings} className="mt-3">
+              <legend className="sr-only">Marge entre les séances</legend>
               <div className="grid grid-cols-3 gap-2">
-                {['Aucune', '15 min', '20 min'].map((label, idx) => (
-                  <span
-                    key={label}
-                    className={idx === 1 ? 'inline-flex flex-col items-center rounded-xl bg-sage-900 px-2 py-2 text-white' : 'inline-flex flex-col items-center rounded-xl border border-sage-200 px-2 py-2 text-sage-500'}
-                  >
-                    <span className="text-sm font-medium font-sans">{idx === 1 ? `✓ ${label}` : label}</span>
-                    <span className="text-[10px] font-sans">{idx === 0 ? '0 min' : idx === 1 ? 'Recommandé' : 'Respiration'}</span>
-                  </span>
-                ))}
+                {BUFFER_OPTIONS.map((option) => {
+                  const isActive = settings?.bufferMinutes === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => void updateBuffer(option.value)}
+                      aria-pressed={isActive}
+                      className={`
+                        inline-flex flex-col items-center rounded-xl px-2 py-2.5 transition-colors
+                        focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[52px]
+                        ${isActive ? 'bg-sage-900 text-white' : 'border border-sage-200 bg-white text-sage-600 hover:border-mint-400 hover:text-mint-700'}
+                      `}
+                    >
+                      <span className="text-sm font-medium font-sans">
+                        {isActive ? `✓ ${option.label}` : option.label}
+                      </span>
+                      <span className={`text-[10px] font-sans ${isActive ? 'text-sage-300' : 'text-sage-400'}`}>
+                        {option.sub}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </fieldset>
+            <p className="mt-2.5 flex items-start gap-1.5 text-xs text-sage-400 font-sans">
+              <svg className="w-3.5 h-3.5 shrink-0 mt-px" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+              Bloque l'heure de départ suivant sans impacter la durée clinique affichée au patient.
+            </p>
+            {bufferNotice && (
+              <p role="status" className="mt-2 rounded-xl border border-mint-200 bg-mint-50 px-3 py-2 text-xs font-sans text-mint-800">
+                {bufferNotice}
+              </p>
+            )}
+            {bufferError && (
+              <p role="alert" className="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-sans text-red-700">
+                {bufferError}
+              </p>
+            )}
           </div>
 
           {/* Statut Google Agenda (composant réel existant) */}

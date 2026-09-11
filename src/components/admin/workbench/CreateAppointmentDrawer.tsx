@@ -20,8 +20,12 @@ import type { Appointment } from '../../../types/appointment';
 import type { PrefillData } from '../../../types/patient';
 import type { AppointmentType, AppointmentMode } from '../../../lib/pricing';
 import { calculatePrice } from '../../../lib/pricing';
-import { aggregatePatients, suggestSlots } from '../../../utils/workbench';
-import { Avatar } from './ui';
+import {
+  MAX_APPOINTMENT_DURATION_MINUTES,
+  MIN_APPOINTMENT_DURATION_MINUTES,
+} from '../../../utils/domain';
+import { aggregatePatients, describeSlot, type DescribedSlot } from '../../../utils/workbench';
+import { Avatar, ModalOverlay } from './ui';
 
 interface CreateAppointmentDrawerProps {
   open: boolean;
@@ -95,7 +99,10 @@ const DURATION_OPTIONS: { value: number | 'custom'; label: string }[] = [
 export function CreateAppointmentDrawer({ open, appointments, prefill, onClose }: CreateAppointmentDrawerProps) {
   const [form, setForm] = useState<FormState>(INITIAL_STATE);
   const [selectedPatientEmail, setSelectedPatientEmail] = useState<string | null>(null);
+  const [chooserDismissed, setChooserDismissed] = useState(false);
   const [availableCredit, setAvailableCredit] = useState<number | null>(null);
+  const [suggestions, setSuggestions] = useState<DescribedSlot[]>([]);
+  const [suggestionsLoaded, setSuggestionsLoaded] = useState(false);
   const [showManualDate, setShowManualDate] = useState(false);
   const [showOptions, setShowOptions] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -116,6 +123,9 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose }
         : INITIAL_STATE,
     );
     setSelectedPatientEmail(prefill?.patient_email ?? null);
+    setChooserDismissed(false);
+    setSuggestions([]);
+    setSuggestionsLoaded(false);
     setError(null);
     setShowManualDate(false);
   }, [open, prefill]);
@@ -149,24 +159,57 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose }
       .slice(0, 3);
   }, [patients, form.patient_name]);
 
-  const effectiveDuration = form.duration === 'custom' ? form.customDurationMinutes : form.duration;
-  const suggestions = useMemo(
-    () => (open ? suggestSlots(appointments, { durationMin: effectiveDuration, limit: 4 }) : []),
-    [appointments, effectiveDuration, open],
-  );
+  // Choix du patient : ouvert pendant la saisie d'un patient non résolu ;
+  // refermé après sélection (existant ou nouveau) — les créneaux suggérés
+  // restent alors visibles (revue #148 : ils ne devaient plus revenir).
+  const patientChooserVisible =
+    form.patient_name.trim().length >= 2 && !selectedPatientEmail && !chooserDismissed;
 
-  const livePrice = useMemo(() => {
-    if (form.useOverridePrice && form.overridePrice > 0) {
-      return { finalPrice: form.overridePrice };
-    }
-    return calculatePrice(form.appointment_type, effectiveDuration, form.override_first_session, form.is_solidarity);
-  }, [form.useOverridePrice, form.overridePrice, form.appointment_type, effectiveDuration, form.override_first_session, form.is_solidarity]);
+  const effectiveDuration = form.duration === 'custom' ? form.customDurationMinutes : form.duration;
+
+  // Créneaux suggérés : endpoint autoritaire /api/availability/ (Google
+  // Agenda, plages cabinet, marge, reports réservés). La grille publique ne
+  // couvre que 60/90 min — pour une durée personnalisée, la saisie manuelle
+  // s'applique (revue #148 : les suggestions locales ignoraient l'éligibilité
+  // cabinet et les reports réservés).
+  useEffect(() => {
+    if (!open || form.duration === 'custom') return;
+    const controller = new AbortController();
+    fetch(
+      `/api/availability/?mode=${form.appointment_mode}&duration=${effectiveDuration}&weeks=2`,
+      { credentials: 'same-origin', signal: controller.signal },
+    )
+      .then(async (res) => {
+        if (!res.ok) throw new Error('unavailable');
+        const body = (await res.json()) as { slots?: { start: string; end: string }[] };
+        setSuggestions((body.slots ?? []).slice(0, 4).map((slot) => describeSlot(slot.start, slot.end)));
+        setSuggestionsLoaded(true);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setSuggestions([]);
+          setSuggestionsLoaded(true);
+        }
+      });
+    return () => controller.abort();
+  }, [open, form.appointment_mode, form.duration, effectiveDuration]);
+
+  // Estimation : la grille tarifaire ne couvre que 60/90 min. Une durée
+  // personnalisée sans tarif manuel n'a pas d'estimation — calculatePrice
+  // lèverait une exception au rendu et démonterait l'interface (revue #148).
+  const customPriceMissing =
+    form.duration === 'custom' && !(form.useOverridePrice && form.overridePrice > 0);
+  const livePrice = useMemo<number | null>(() => {
+    if (form.useOverridePrice && form.overridePrice > 0) return form.overridePrice;
+    if (form.duration === 'custom') return null;
+    return calculatePrice(form.appointment_type, effectiveDuration, form.override_first_session, form.is_solidarity).finalPrice;
+  }, [form.useOverridePrice, form.overridePrice, form.appointment_type, form.duration, effectiveDuration, form.override_first_session, form.is_solidarity]);
 
   const creditEuros = useMemo(() => {
-    if (!form.use_credit || availableCredit == null || availableCredit <= 0) return 0;
-    return Math.min(availableCredit / 100, livePrice.finalPrice);
-  }, [form.use_credit, availableCredit, livePrice.finalPrice]);
-  const amountDueEuros = Math.max(0, livePrice.finalPrice - creditEuros);
+    if (!form.use_credit || availableCredit == null || availableCredit <= 0 || livePrice == null) return 0;
+    return Math.min(availableCredit / 100, livePrice);
+  }, [form.use_credit, availableCredit, livePrice]);
+  const amountDueEuros = livePrice == null ? null : Math.max(0, livePrice - creditEuros);
 
   if (!open) return null;
 
@@ -197,6 +240,10 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose }
     }
     if (!form.scheduled_at) {
       setError('Choisissez un créneau suggéré ou saisissez une date manuelle.');
+      return;
+    }
+    if (customPriceMissing) {
+      setError('Pour une durée personnalisée, saisissez un tarif manuel dans « Options & honoraires ».');
       return;
     }
     setLoading(true);
@@ -244,22 +291,17 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose }
     }
   }
 
-  const showSuggestions = patientMatches.length === 0;
+  const showSuggestions = !patientChooserVisible;
 
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Nouveau rendez-vous">
-      <button
-        type="button"
-        aria-label="Fermer le tiroir"
-        onClick={onClose}
-        className="absolute inset-0 w-full h-full bg-black/40 cursor-default"
-      />
-      <div
-        className="
+    <ModalOverlay
+      label="Nouveau rendez-vous"
+      onClose={onClose}
+      panelClassName="
           absolute inset-x-0 bottom-0 max-h-[92dvh] overflow-y-auto rounded-t-3xl bg-white shadow-xl
           sm:inset-y-0 sm:left-auto sm:right-0 sm:h-full sm:w-[460px] sm:max-h-none sm:rounded-t-none sm:rounded-l-3xl
         "
-      >
+    >
         <span className="sm:hidden mx-auto mt-3 mb-1 block h-1.5 w-12 rounded-full bg-sage-200" aria-hidden="true" />
         <div className="p-5 sm:p-6">
           {/* En-tête */}
@@ -310,6 +352,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose }
                 onChange={(e) => {
                   update('patient_name', e.target.value);
                   setSelectedPatientEmail(null);
+                  setChooserDismissed(false);
                 }}
                 placeholder="Rechercher ou créer un patient…"
                 autoComplete="off"
@@ -319,7 +362,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose }
                   focus:border-transparent transition-colors min-h-[44px]
                 "
               />
-              {form.patient_name.trim().length >= 2 && (
+              {patientChooserVisible && (
                 <ul className="mt-2 space-y-2">
                   {patientMatches.map((patient) => (
                     <li key={patient.email}>
@@ -353,6 +396,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose }
                         type="button"
                         onClick={() => {
                           setSelectedPatientEmail(null);
+                          setChooserDismissed(true);
                           setForm((prev) => ({ ...prev, patient_email: '', patient_phone: '' }));
                         }}
                         className="w-full rounded-xl border border-dashed border-sage-300 px-3 py-2.5 text-left text-sm font-sans text-sage-600 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-mint-400 transition-colors"
@@ -449,10 +493,18 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose }
                   <input
                     id="wb-create-custom-duration"
                     type="number"
-                    min={15}
-                    max={240}
+                    min={MIN_APPOINTMENT_DURATION_MINUTES}
+                    max={MAX_APPOINTMENT_DURATION_MINUTES}
                     value={form.customDurationMinutes}
-                    onChange={(e) => update('customDurationMinutes', Number(e.target.value))}
+                    onChange={(e) =>
+                      update(
+                        'customDurationMinutes',
+                        Math.min(
+                          MAX_APPOINTMENT_DURATION_MINUTES,
+                          Math.max(MIN_APPOINTMENT_DURATION_MINUTES, Number(e.target.value) || MIN_APPOINTMENT_DURATION_MINUTES),
+                        ),
+                      )
+                    }
                     className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm font-sans text-sage-900 focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[44px]"
                   />
                 </div>
@@ -468,7 +520,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose }
                   </h3>
                   <span className="inline-flex items-center gap-1.5 text-xs font-medium font-sans text-mint-700">
                     <span className="w-1.5 h-1.5 rounded-full bg-mint-500" aria-hidden="true" />
-                    D'après votre agenda
+                    Selon vos disponibilités
                   </span>
                 </div>
                 <ul className="mt-2 grid grid-cols-2 gap-2.5">
@@ -499,19 +551,18 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose }
                           <span className="mt-0.5 block font-serif text-sm font-semibold text-sage-900 tabular-nums">
                             {slot.timeLabel}
                           </span>
-                          {slot.hint && (
-                            <span className="mt-0.5 flex items-center gap-1 text-[10px] font-sans text-mint-700">
-                              <span className="w-1 h-1 rounded-full bg-mint-500" aria-hidden="true" />
-                              {slot.hint}
-                            </span>
-                          )}
                         </button>
                       </li>
                     );
                   })}
-                  {suggestions.length === 0 && (
+                  {!suggestionsLoaded && (
+                    <li className="col-span-2 rounded-xl border border-dashed border-sage-300 px-3 py-2.5 text-sm font-sans text-sage-500" role="status">
+                      Recherche des créneaux…
+                    </li>
+                  )}
+                  {suggestionsLoaded && suggestions.length === 0 && (
                     <li className="col-span-2 rounded-xl border border-dashed border-sage-300 px-3 py-2.5 text-sm font-sans text-sage-500">
-                      Aucun créneau libre trouvé dans les prochains jours — définissez une date manuelle.
+                      Aucun créneau libre trouvé dans les prochaines semaines — définissez une date manuelle.
                     </li>
                   )}
                 </ul>
@@ -610,7 +661,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose }
                       </div>
                     )}
                     <span className="text-xs font-sans text-sage-400">
-                      Défaut : {livePrice.finalPrice} €
+                      Défaut : {livePrice == null ? '—' : `${livePrice} €`}
                     </span>
                   </div>
                   {form.appointment_mode === 'video' && (
@@ -657,9 +708,22 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose }
 
             {/* Tarif estimé */}
             <p className="rounded-xl bg-mint-100 px-4 py-3 text-center text-sm font-sans text-sage-900">
-              Tarif estimé :{' '}
-              <span className="font-serif text-lg font-semibold">{amountDueEuros.toFixed(2).replace(/\.00$/, '')} €</span>
-              {creditEuros > 0 && <span className="text-xs text-mint-700"> (après avoir de {creditEuros.toFixed(2)} €)</span>}
+              {amountDueEuros == null ? (
+                <>
+                  Durée personnalisée :{' '}
+                  <span className="font-serif text-lg font-semibold">tarif manuel requis</span>
+                </>
+              ) : (
+                <>
+                  Tarif estimé :{' '}
+                  <span className="font-serif text-lg font-semibold">
+                    {amountDueEuros.toFixed(2).replace(/\.00$/, '')} €
+                  </span>
+                  {creditEuros > 0 && (
+                    <span className="text-xs text-mint-700"> (après avoir de {creditEuros.toFixed(2)} €)</span>
+                  )}
+                </>
+              )}
             </p>
 
             {error && (
@@ -687,7 +751,6 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose }
             </div>
           </form>
         </div>
-      </div>
-    </div>
+    </ModalOverlay>
   );
 }

@@ -11,6 +11,7 @@ import type { AppointmentType, AppointmentDuration, AppointmentMode } from '../.
 import { checkRateLimit, rateLimitResponse } from '../../../lib/rate-limit';
 import { isWithinBusinessHours } from '../../../utils/date';
 import { hasAppointmentConflict } from '../../../lib/appointment-conflicts';
+import { isSchedulingConflictError } from '../../../lib/scheduling-settings';
 import { isCabinetEligibleSlot } from '../../../lib/appointment-eligibility';
 
 // ---------------------------------------------------------------------------
@@ -172,6 +173,10 @@ export const POST: APIRoute = async ({ request }) => {
 
   if (insertError || !inserted) {
     console.error('[appointments] Erreur insertion:', insertError);
+    // Trigger 015 : le créneau mord sur la marge d'une séance adjacente.
+    if (isSchedulingConflictError(insertError)) {
+      return errorResponse(409, 'undefined');
+    }
     return errorResponse(500, 'Erreur lors de l\'enregistrement du rendez-vous');
   }
 

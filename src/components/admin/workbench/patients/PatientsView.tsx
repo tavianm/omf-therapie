@@ -20,7 +20,7 @@ import type { PrefillData } from '../../../../types/patient';
 import { getTypeLabel, getModeLabel } from '../../../../lib/pricing';
 import { formatTimeParis, isUpcoming } from '../../../../utils/date';
 import { aggregatePatients, type PatientAggregate } from '../../../../utils/workbench';
-import { Avatar, Prochainement, StatusChip } from '../ui';
+import { Avatar, ModalOverlay, Prochainement, StatusChip } from '../ui';
 
 interface PatientsViewProps {
   appointments: Appointment[];
@@ -63,11 +63,13 @@ export function PatientsView({ appointments, onPlanAppointment }: PatientsViewPr
   const activeCount = allPatients.filter((p) => p.isActive).length;
   const inactiveCount = allPatients.length - activeCount;
 
-  const visiblePatients = useMemo(() => {
+  // Filtre de base : recherche + actifs/inactifs (SANS la lettre) — les
+  // lettres disponibles doivent rester visibles quand une lettre est
+  // sélectionnée, sinon on ne peut plus changer de lettre (revue #148).
+  const basePatients = useMemo(() => {
     const q = deferredQuery.toLowerCase().trim();
     return allPatients.filter((p) => {
       if (!includeInactive && !p.isActive) return false;
-      if (letter && !(p.name.toUpperCase().startsWith(letter))) return false;
       if (!q) return true;
       return [p.name, p.email, p.phone, p.city, p.postalCode]
         .filter(Boolean)
@@ -75,11 +77,19 @@ export function PatientsView({ appointments, onPlanAppointment }: PatientsViewPr
         .toLowerCase()
         .includes(q);
     });
-  }, [allPatients, deferredQuery, includeInactive, letter]);
+  }, [allPatients, deferredQuery, includeInactive]);
 
   const availableLetters = useMemo(
-    () => new Set(visiblePatients.map((p) => p.name[0]?.toUpperCase() ?? '')),
-    [visiblePatients],
+    () => new Set(basePatients.map((p) => p.name[0]?.toUpperCase() ?? '')),
+    [basePatients],
+  );
+
+  const visiblePatients = useMemo(
+    () =>
+      letter
+        ? basePatients.filter((p) => p.name.toUpperCase().startsWith(letter))
+        : basePatients,
+    [basePatients, letter],
   );
 
   const selected =
@@ -289,18 +299,14 @@ export function PatientsView({ appointments, onPlanAppointment }: PatientsViewPr
 
       {/* Dossier — bottom sheet < lg */}
       {selected && (
-        <div className="lg:hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={`Dossier de ${selected.name}`}>
-          <button
-            type="button"
-            aria-label="Fermer le dossier"
-            onClick={() => setSelectedEmail(null)}
-            className="absolute inset-0 w-full h-full bg-black/40 cursor-default"
-          />
-          <div className="absolute inset-x-0 bottom-0 rounded-t-3xl bg-white shadow-xl max-h-[92dvh] overflow-y-auto px-4 pb-8 pt-3">
-            <span className="mx-auto mb-3 block h-1.5 w-12 rounded-full bg-sage-200" aria-hidden="true" />
-            {dossier}
-          </div>
-        </div>
+        <ModalOverlay
+          label={`Dossier de ${selected.name}`}
+          onClose={() => setSelectedEmail(null)}
+          panelClassName="absolute inset-x-0 bottom-0 rounded-t-3xl bg-white shadow-xl max-h-[92dvh] overflow-y-auto px-4 pb-8 pt-3"
+        >
+          <span className="mx-auto mb-3 block h-1.5 w-12 rounded-full bg-sage-200" aria-hidden="true" />
+          {dossier}
+        </ModalOverlay>
       )}
     </div>
   );
