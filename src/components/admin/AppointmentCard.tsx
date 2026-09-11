@@ -268,7 +268,7 @@ export function AppointmentCard({
   // ── Rendu ─────────────────────────────────────────────────────────────────
 
   return (
-    <article className="bg-white rounded-xl border border-sage-100 shadow-sm p-5 sm:p-6">
+    <article className="@container bg-white rounded-xl border border-sage-100 shadow-sm p-5 sm:p-6">
       {/* En-tête : patient + badge statut */}
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div>
@@ -297,14 +297,15 @@ export function AppointmentCard({
           )}
         </div>
         <span
-          className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium font-sans ${STATUS_BADGE[status]}`}
+          className={`inline-flex items-center whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-medium font-sans ${STATUS_BADGE[status]}`}
         >
           {STATUS_LABELS[status]}
         </span>
       </div>
 
-      {/* Détails de la séance */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3 mb-4 text-sm font-sans">
+      {/* Détails de la séance — container queries (pas viewport) : la carte
+          vit dans le panneau latéral, ~28rem de large en iPad paysage. */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3 mb-4 text-sm font-sans @2xl:grid-cols-3">
         <div>
           <span className="block text-xs text-sage-400 mb-0.5">Type</span>
           <span className="font-medium text-sage-800">
@@ -367,7 +368,7 @@ export function AppointmentCard({
           </div>
         )}
         {meetLink && (
-          <div className="col-span-2 sm:col-span-3">
+          <div className="col-span-2 @2xl:col-span-3">
             <span className="block text-xs text-sage-400 mb-0.5">
               Lien visio
             </span>
@@ -382,7 +383,7 @@ export function AppointmentCard({
           </div>
         )}
         {appointment.stripe_payment_link_url && (
-          <div className="col-span-2 sm:col-span-3">
+          <div className="col-span-2 @2xl:col-span-3">
             <span className="block text-xs text-sage-400 mb-0.5">
               Lien Stripe
             </span>

@@ -158,7 +158,7 @@ export function AppointmentsManager({
                 type="button"
                 onClick={() => onSelectAppointment(appointment)}
                 aria-pressed={selectedId === appointment.id}
-                className={`grid min-h-14 w-full grid-cols-[5.5rem_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-mint-400 sm:grid-cols-[8rem_minmax(0,1fr)_7rem_5rem] ${selectedId === appointment.id ? 'bg-mint-50' : 'hover:bg-sage-50'}`}
+                className={`grid min-h-14 w-full grid-cols-[5.5rem_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-mint-400 sm:grid-cols-[7.5rem_minmax(0,1fr)_auto_4.5rem] ${selectedId === appointment.id ? 'bg-mint-50' : 'hover:bg-sage-50'}`}
               >
                 <span className="text-xs font-medium text-sage-700">
                   {formatParisShortDateTime(appointment.scheduled_at)}
@@ -172,7 +172,7 @@ export function AppointmentsManager({
                     {appointment.duration} min
                   </span>
                 </span>
-                <span className="hidden text-xs text-sage-600 sm:block">
+                <span className="hidden whitespace-nowrap text-xs text-sage-600 sm:block">
                   {STATUS_LABELS[appointment.status]}
                 </span>
                 <span className="text-xs text-sage-600">Détail</span>

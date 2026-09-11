@@ -143,7 +143,10 @@ export function AdminSidePanel({
         // workspace header wraps near the lg breakpoint. Reserving 22rem
         // keeps the panel bottom above the fold at its natural position, so
         // the form never requires a page scroll on top of its internal one.
-        className="sticky top-24 flex max-h-[calc(100dvh-22rem)] flex-col rounded-2xl border border-sage-200 bg-white shadow-xl"
+        // vh first: an unsupported dvh unit invalidates the whole max-height
+        // declaration, and an uncapped sticky panel overflows the viewport
+        // with an unreachable bottom (seen on the therapist's iPad).
+        className="sticky top-24 flex max-h-[calc(100vh-22rem)] flex-col rounded-2xl border border-sage-200 bg-white shadow-xl supports-[height:100dvh]:max-h-[calc(100dvh-22rem)]"
       >
         {header}
         {content}
@@ -160,7 +163,7 @@ export function AdminSidePanel({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="absolute inset-0 flex min-h-0 flex-col bg-white shadow-2xl outline-none sm:inset-x-3 sm:bottom-3 sm:top-auto sm:max-h-[min(92dvh,56rem)] sm:rounded-3xl"
+        className="absolute inset-0 flex min-h-0 flex-col bg-white shadow-2xl outline-none sm:inset-x-3 sm:bottom-3 sm:top-auto sm:max-h-[min(92vh,56rem)] sm:rounded-3xl supports-[height:100dvh]:sm:max-h-[min(92dvh,56rem)]"
       >
         {header}
         {content}

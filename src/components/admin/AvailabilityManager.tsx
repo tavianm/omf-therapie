@@ -215,7 +215,10 @@ export function AvailabilityManager() {
           {message}
         </p>
       )}
-      <div className="grid gap-5 lg:grid-cols-2">
+      {/* Container query: on iPad landscape with the side panel open, this
+          column drops below 48rem and the calendar goes full width instead
+          of squeezing two columns. */}
+      <div className="@container grid gap-5 @3xl:grid-cols-2">
         <section className="rounded-2xl border border-sage-200 bg-white p-4">
           <div className="flex items-center justify-between gap-3">
             <button

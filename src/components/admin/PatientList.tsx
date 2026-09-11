@@ -116,7 +116,10 @@ export function PatientList({ onStartAppointment }: PatientListProps) {
           {error}
         </p>
       )}
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.7fr)]">
+      {/* Container query (not lg:): when the workspace side panel is open,
+          this column drops below ~56rem and the patient card moves below
+          the list instead of squeezing three columns. */}
+      <div className="@container grid gap-4 @4xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.7fr)]">
         <ul className="divide-y divide-sage-100 overflow-hidden rounded-2xl border border-sage-200 bg-white">
           {filtered.map(patient => (
             <li key={patient.email}>

@@ -1,8 +1,8 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
-    "./src/**/*.{astro,html,js,jsx,ts,tsx,md,mdx}",
-    "./public/**/*.html",
+    './src/**/*.{astro,html,js,jsx,ts,tsx,md,mdx}',
+    './public/**/*.html',
   ],
   theme: {
     extend: {
@@ -30,13 +30,13 @@ export default {
           700: '#3c6259',
           800: '#345049',
           900: '#2d423d',
-        }
+        },
       },
       fontFamily: {
         sans: ['Inter', 'sans-serif'],
         serif: ['Cormorant Garamond', 'serif'],
       },
-      typography: (theme) => ({
+      typography: theme => ({
         sage: {
           css: {
             '--tw-prose-body': theme('colors.sage.600'),
@@ -62,5 +62,7 @@ export default {
   },
   plugins: [
     require('@tailwindcss/typography'),
+    // Container queries (@container, @3xl:…) — officiel v3 ; cœur uniquement en v4.
+    require('@tailwindcss/container-queries'),
   ],
 };

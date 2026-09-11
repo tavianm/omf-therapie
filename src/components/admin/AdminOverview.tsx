@@ -38,7 +38,7 @@ function AppointmentLink({
       </span>
       <span className="flex flex-col items-end gap-1 text-xs text-sage-600">
         {isOverdue && (
-          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+          <span className="whitespace-nowrap rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
             En retard
           </span>
         )}
@@ -68,7 +68,9 @@ export function AdminOverview({
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      {/* Container query: the two cards sit side by side only when the main
+          column is wide enough (side panel closed). */}
+      <div className="@container grid gap-4 @3xl:grid-cols-2">
         <section
           className="rounded-2xl border border-amber-200 bg-amber-50 p-4"
           aria-labelledby="actionable-title"
