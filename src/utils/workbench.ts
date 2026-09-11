@@ -14,7 +14,13 @@
  */
 
 import type { Appointment, AppointmentStatus } from '../types/appointment';
-import { isSameParisDay, isUpcoming, toParisDateString } from './date';
+import {
+  formatTimeParis,
+  getRelativeDayLabel,
+  isSameParisDay,
+  isUpcoming,
+  toParisDateString,
+} from './date';
 
 /** Statuses that still require a decision from the practitioner. */
 const TRIAGE_STATUSES: ReadonlySet<AppointmentStatus> = new Set([
@@ -152,4 +158,212 @@ export function getMinutesUntil(iso: string, nowMs: number = Date.now()): number
   const deltaMs = new Date(iso).getTime() - nowMs;
   if (deltaMs <= 0) return null;
   return Math.round(deltaMs / 60_000);
+}
+
+// ---------------------------------------------------------------------------
+// Patients directory (client-side mirror of GET /api/admin/patients/)
+// ---------------------------------------------------------------------------
+
+/**
+ * Patient record derived from the appointment list, grouped by
+ * `patient_email` — same rules as the server aggregation:
+ * name/phone/city from the most recent appointment, `isActive` when the last
+ * appointment is within 3 months, history ordered descending.
+ */
+export interface PatientAggregate {
+  email: string;
+  name: string;
+  phone: string;
+  city: string;
+  postalCode: string;
+  /** Total non-soft-deleted appointments (matches the server counter). */
+  sessionCount: number;
+  /** Active sessions already taken place (Paris day compare, status ≠ cancelled/declined). */
+  completedCount: number;
+  lastAppointmentAt: string;
+  firstAppointmentAt: string;
+  lastType: Appointment['appointment_type'];
+  lastMode: Appointment['appointment_mode'];
+  isActive: boolean;
+  /** Next upcoming active appointment, if any. */
+  nextAppointment: Appointment | null;
+  /** Sum of `final_price` for settled sessions (payment_received), in centimes. */
+  paidCents: number;
+  /** Sum of `final_price` awaiting payment (payment_pending), in centimes. */
+  pendingPaymentCents: number;
+  /** Full history, most recent first. */
+  history: Appointment[];
+}
+
+export function aggregatePatients(
+  appointments: Appointment[],
+  nowMs: number = Date.now(),
+): PatientAggregate[] {
+  const activeThreshold = nowMs - 3 * 30 * 24 * 60 * 60 * 1000; // ~3 months, same rule as the API
+  const buckets = new Map<string, Appointment[]>();
+  for (const appointment of appointments) {
+    const bucket = buckets.get(appointment.patient_email);
+    if (bucket) bucket.push(appointment);
+    else buckets.set(appointment.patient_email, [appointment]);
+  }
+
+  const patients: PatientAggregate[] = [];
+  for (const [email, rows] of buckets) {
+    const history = [...rows].sort((a, b) => b.scheduled_at.localeCompare(a.scheduled_at));
+    const latest = history[0];
+    if (!latest) continue;
+    let paidCents = 0;
+    let pendingPaymentCents = 0;
+    let completedCount = 0;
+    for (const appointment of rows) {
+      if (appointment.status === 'payment_received') paidCents += appointment.final_price;
+      if (appointment.status === 'payment_pending') {
+        pendingPaymentCents += appointment.final_price;
+      }
+      if (isActiveAppointment(appointment) && !isUpcoming(appointment.scheduled_at, nowMs)) {
+        completedCount += 1;
+      }
+    }
+    const sortedAsc = [...rows].sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
+    patients.push({
+      email,
+      name: latest.patient_name,
+      phone: latest.patient_phone,
+      city: latest.patient_city,
+      postalCode: latest.patient_postal_code,
+      sessionCount: rows.length,
+      completedCount,
+      lastAppointmentAt: latest.scheduled_at,
+      firstAppointmentAt: sortedAsc[0]?.scheduled_at ?? latest.scheduled_at,
+      lastType: latest.appointment_type,
+      lastMode: latest.appointment_mode,
+      isActive: new Date(latest.scheduled_at).getTime() >= activeThreshold,
+      nextAppointment:
+        sortedAsc.find(
+          (a) => isActiveAppointment(a) && isUpcoming(a.scheduled_at, nowMs),
+        ) ?? null,
+      paidCents,
+      pendingPaymentCents,
+      history,
+    });
+  }
+  return patients.sort((a, b) => b.lastAppointmentAt.localeCompare(a.lastAppointmentAt));
+}
+
+/** Initials for avatar chips: first letter of the two first words. */
+export function getInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
+// ---------------------------------------------------------------------------
+// Suggested slots (drawer — derived from the local appointment list)
+// ---------------------------------------------------------------------------
+
+/** Business windows in Paris minutes, matching `isWithinBusinessHours`. */
+const MORNING = { start: 8 * 60, end: 12 * 60 };
+const AFTERNOON = { start: 14 * 60, end: 19 * 60 };
+const SLOT_STEP_MIN = 30;
+
+export interface SuggestedSlot {
+  startIso: string;
+  endIso: string;
+  /** « Aujourd'hui », « Demain » or « JEU. 14 SEPT. ». */
+  dayLabel: string;
+  /** « 09:15 – 10:15 » (Paris). */
+  timeLabel: string;
+  /** Short heuristic note: first slot of the day, or right after the lunch break. */
+  hint?: string;
+}
+
+function getParisMinutesOfDay(date: Date): { minutes: number; dayKey: string } {
+  const parts = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Europe/Paris',
+    hour: 'numeric',
+    minute: 'numeric',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  const h = parseInt(get('hour'), 10);
+  const m = parseInt(get('minute'), 10);
+  return { minutes: h * 60 + m, dayKey: `${get('year')}-${get('month')}-${get('day')}` };
+}
+
+function formatSlotDayLabel(iso: string, nowMs: number): string {
+  const relative = getRelativeDayLabel(iso, nowMs);
+  if (relative) return relative;
+  return new Intl.DateTimeFormat('fr-FR', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    timeZone: 'Europe/Paris',
+  })
+    .format(new Date(iso))
+    .replace('.', '')
+    .toUpperCase();
+}
+
+/**
+ * Next free slots within business hours, stepping 30 min, based only on the
+ * local appointment list (no Google Calendar read from the client). A slot is
+ * proposed when it starts in the future, fits entirely inside a business
+ * window, and does not overlap an active appointment.
+ */
+export function suggestSlots(
+  appointments: Appointment[],
+  options: { nowMs?: number; durationMin?: number; limit?: number; horizonDays?: number } = {},
+): SuggestedSlot[] {
+  const { nowMs = Date.now(), durationMin = 60, limit = 4, horizonDays = 14 } = options;
+  const durationMs = durationMin * 60_000;
+  const busy = appointments
+    .filter(isActiveAppointment)
+    .map((a) => ({ start: new Date(a.scheduled_at).getTime(), end: new Date(a.scheduled_at).getTime() + a.duration * 60_000 }));
+
+  const suggestions: SuggestedSlot[] = [];
+  const stepMs = SLOT_STEP_MIN * 60_000;
+  // Start from the next half-hour boundary.
+  const firstCandidate = Math.ceil(nowMs / stepMs) * stepMs;
+
+  for (let t = firstCandidate; suggestions.length < limit; t += stepMs) {
+    const start = new Date(t);
+    const { minutes, dayKey: startDay } = getParisMinutesOfDay(start);
+    const end = new Date(t + durationMs);
+    const endInfo = getParisMinutesOfDay(end);
+
+    const inMorning = minutes >= MORNING.start && endInfo.minutes <= MORNING.end;
+    const inAfternoon = minutes >= AFTERNOON.start && endInfo.minutes <= AFTERNOON.end;
+    if (!inMorning && !inAfternoon) continue;
+    if (endInfo.dayKey !== startDay) continue; // window must not cross midnight/DST edge
+
+    if (t < nowMs) continue;
+    const overlaps = busy.some((b) => t < b.end && t + durationMs > b.start);
+    if (overlaps) continue;
+
+    const dayLabel = formatSlotDayLabel(start.toISOString(), nowMs);
+    const isFirstOfDay = suggestions.every(
+      (s) => getParisMinutesOfDay(new Date(s.startIso)).dayKey !== startDay,
+    );
+    const hint = isFirstOfDay
+      ? 'Premier créneau du jour'
+      : minutes === AFTERNOON.start
+        ? 'Après la pause'
+        : undefined;
+
+    suggestions.push({
+      startIso: start.toISOString(),
+      endIso: end.toISOString(),
+      dayLabel,
+      timeLabel: `${formatTimeParis(start.toISOString())} – ${formatTimeParis(end.toISOString())}`,
+      hint,
+    });
+    if (t - nowMs > horizonDays * 86_400_000) break; // give up past the horizon
+  }
+  return suggestions;
 }

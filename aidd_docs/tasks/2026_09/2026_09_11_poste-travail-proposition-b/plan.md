@@ -1,5 +1,31 @@
 # Plan — Poste de travail, proposition B (#148)
 
+> **V2 — 11/09/2026 : reconstruction complète.** Après première livraison (coquille nouvelle + îlots réutilisés), décision de refaire **toutes les pages** fidèlement aux 12 écrans Figma : layouts différents, composants nouveaux ou évolués, textes et comportements propres à la proposition B. Les îlots de la proposition A (AppointmentsManager, PatientList, TimeSlotManager, AdminCreateButton) restent employés par `/mes-rdvs/` uniquement. Le périmètre V2 est décrit dans `## Découpage V2` ci-dessous ; la première version du plan est conservée en bas de document.
+
+**Figma** : [Refonte admin](https://www.figma.com/design/sWgtkuIWsLouuIDbiiZPQR/Refonte-admin?node-id=0-1) — écrans « Poste de travail » (iPad 1280×720 + iPhone 390×844), spec d'interactions node 1001:3952. Rendus de référence : `figma/*.png` (ce dossier).
+
+## Découpage V2
+
+| Élément Figma | Implémentation | Backend |
+|---------------|----------------|---------|
+| Coquille (sidebar claire, nav, FAB, nav basse) | `Workbench.tsx` restylé | — |
+| Synthèse (4 KPI, file « À traiter » avec expander, prochains RDV) | `SyntheseView.tsx` reconstruit | dérivé de `appointments` |
+| Rendez-vous (toggle À venir/Historique, pills fusionnées, recherche, groupes par jour, pagination, split-view iPad + fiche détail) | `rdv/RendezVousView.tsx` + `rdv/AppointmentDetail.tsx` (nouveaux) | PATCH actions existantes (confirm/decline/cancel/reschedule/reschedule_paid/accept_reschedule/cancel_reschedule/save_notes), regenerate-calendar |
+| Patients (annuaire, alpha-jump, dossier, métriques, historique, planifier pré-rempli) | `patients/PatientsView.tsx` (nouveau) | dérivé de `appointments` (`aggregatePatients`) + drawer pré-rempli |
+| Disponibilités (calendrier mois, plages du jour, sur-mesure) | `disponibilites/DisponibilitesView.tsx` (nouveau) | GET/POST/DELETE `/api/admin/time-slots/` + GoogleCalendarStatus |
+| Tiroir Nouveau RDV (recherche patient, créneaux suggérés, options & honoraires) | `CreateAppointmentDrawer.tsx` (nouveau ; drawer ≥sm / bottom sheet mobile) | POST `/api/admin/appointments/` + GET `/api/admin/credits?email=` |
+| Marge entre séances, blocages, demi-journées, Rappel SMS/Mail, note clinique, Exporter/Nouveau patient, REMPLISSAGE | rendus **désactivés** avec badge « Prochainement » + référence d'issue | #142 #143 #144 #145 #146 |
+| Doctolib | absent du texte d'interface (affichage mensonger) | #147 |
+
+Helpers purs ajoutés à `src/utils/workbench.ts` : `aggregatePatients` (miroir client de l'agrégation `/api/admin/patients/`), `suggestSlots` (prochains créneaux libres dans les heures d'ouverture, à partir des RDV locaux). Tests : `tests/unit/workbench.test.ts`.
+
+Comportements conservés : `window.location.reload()` après action (pattern `AppointmentCard`, garantit des données SSR fraîches) ; save_notes sans reload ; trailing slash ADR-013 ; cibles tactiles 44px.
+
+---
+
+# Plan V1 (historique)
+
+
 **Figma** : [Refonte admin](https://www.figma.com/design/sWgtkuIWsLouuIDbiiZPQR/Refonte-admin?node-id=0-1) — écrans « Poste de travail » (iPad 1280×720 + iPhone 390×844), spec d'interactions node 1001:3952.
 
 **Objectif** : livrer la proposition B du tableau de bord admin sur une route dédiée `/poste-travail/` sans modifier `/mes-rdvs/` (proposition A, fusionnée via #65), afin que la thérapeute choisisse entre les deux. Réutilisation stricte du backend existant ; les fonctionnalités projetées du Figma qui n'existent pas sont tracées dans #142–#147.

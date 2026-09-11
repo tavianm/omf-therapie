@@ -18,10 +18,6 @@ import type { PrefillData } from "../../types/patient";
 
 interface AdminCreateButtonProps {
   prefillData?: PrefillData;
-  /** Overrides the trigger button classes (e.g. sidebar CTA, mobile FAB). */
-  className?: string;
-  /** Trigger label text — defaults to "Nouveau rendez-vous". */
-  label?: string;
 }
 
 interface FormState {
@@ -135,19 +131,7 @@ function Input({
 // Main Component
 // ---------------------------------------------------------------------------
 
-const DEFAULT_TRIGGER_CLASS = `
-  inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold font-sans
-  rounded-xl bg-mint-700 text-white shadow-sm
-  hover:bg-mint-800
-  focus:outline-none focus:ring-2 focus:ring-mint-400 focus:ring-offset-1
-  transition-colors min-h-[40px]
-`;
-
-export function AdminCreateButton({
-  prefillData,
-  className,
-  label = "Nouveau rendez-vous",
-}: AdminCreateButtonProps = {}) {
+export function AdminCreateButton({ prefillData }: AdminCreateButtonProps = {}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -155,13 +139,19 @@ export function AdminCreateButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={className ?? DEFAULT_TRIGGER_CLASS}
+        className="
+          inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold font-sans
+          rounded-xl bg-mint-700 text-white shadow-sm
+          hover:bg-mint-800
+          focus:outline-none focus:ring-2 focus:ring-mint-400 focus:ring-offset-1
+          transition-colors min-h-[40px]
+        "
         aria-label="Créer un rendez-vous manuellement"
       >
-        <svg className="w-4 h-4 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
           <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
         </svg>
-        {label}
+        Nouveau rendez-vous
       </button>
       {open && (
         <AdminCreateModal

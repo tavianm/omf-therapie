@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Appointment } from '../../src/types/appointment';
 import {
+  aggregatePatients,
+  getInitials,
   getMinutesUntil,
   getMonthlyVolume,
   getNextSessions,
@@ -8,6 +10,7 @@ import {
   getTriageItems,
   getTodaySessions,
   isActiveAppointment,
+  suggestSlots,
 } from '../../src/utils/workbench';
 
 /**
@@ -194,5 +197,118 @@ describe('getMinutesUntil', () => {
 
   it('returns null for a past session', () => {
     expect(getMinutesUntil(TODAY_0830, NOW)).toBeNull();
+  });
+});
+
+describe('aggregatePatients', () => {
+  it('groups by email and takes identity from the most recent appointment', () => {
+    const patients = aggregatePatients(
+      [
+        makeAppointment({
+          id: 'old',
+          patient_name: 'Anne Roux',
+          patient_phone: '06 30 40 50 60',
+          scheduled_at: LAST_MONTH,
+          status: 'payment_received',
+          final_price: 5000,
+        }),
+        makeAppointment({
+          id: 'recent',
+          patient_name: 'Anne R. updated',
+          patient_phone: '06 11 22 33 44',
+          scheduled_at: TODAY_1630,
+          status: 'confirmed',
+        }),
+      ],
+      NOW,
+    );
+    expect(patients).toHaveLength(1);
+    const anne = patients[0];
+    expect(anne?.name).toBe('Anne R. updated');
+    expect(anne?.phone).toBe('06 11 22 33 44');
+    expect(anne?.sessionCount).toBe(2);
+    expect(anne?.isActive).toBe(true);
+    expect(anne?.paidCents).toBe(5000);
+    expect(anne?.completedCount).toBe(1);
+    expect(anne?.nextAppointment?.id).toBe('recent');
+    expect(anne?.history.map((a) => a.id)).toEqual(['recent', 'old']);
+  });
+
+  it('marks patients inactive after 3 months without appointments', () => {
+    const patients = aggregatePatients(
+      [makeAppointment({ scheduled_at: '2026-04-10T08:00:00.000Z', status: 'payment_received' })],
+      NOW,
+    );
+    expect(patients[0]?.isActive).toBe(false);
+  });
+
+  it('computes completed sessions and pending payments', () => {
+    const patients = aggregatePatients(
+      [
+        makeAppointment({ id: 'done', status: 'payment_received', scheduled_at: YESTERDAY_1000 }),
+        makeAppointment({ id: 'awaiting', status: 'payment_pending', scheduled_at: TODAY_0830 }),
+      ],
+      NOW,
+    );
+    expect(patients[0]?.completedCount).toBe(2);
+    expect(patients[0]?.paidCents).toBe(5000);
+    expect(patients[0]?.pendingPaymentCents).toBe(5000);
+  });
+
+  it('sorts patients by most recent appointment', () => {
+    const patients = aggregatePatients(
+      [
+        makeAppointment({ id: 'a', patient_email: 'a@example.com', scheduled_at: LAST_MONTH }),
+        makeAppointment({ id: 'b', patient_email: 'b@example.com', scheduled_at: TODAY_1630 }),
+      ],
+      NOW,
+    );
+    expect(patients.map((p) => p.email)).toEqual(['b@example.com', 'a@example.com']);
+  });
+});
+
+describe('getInitials', () => {
+  it('takes the first letter of the two first words', () => {
+    expect(getInitials('Anne Roux')).toBe('AR');
+    expect(getInitials('Jean')).toBe('J');
+    expect(getInitials('  ')).toBe('');
+  });
+});
+
+describe('suggestSlots', () => {
+  it('skips busy and past slots, and stops at the business-hours boundary', () => {
+    const slots = suggestSlots(
+      [
+        makeAppointment({ scheduled_at: TODAY_1500, duration: 60 }),
+        makeAppointment({ scheduled_at: TODAY_1630, duration: 60 }),
+      ],
+      { nowMs: NOW, durationMin: 60, limit: 4 },
+    );
+    // 15:00 Paris = NOW (occupé), 17:30 est le premier créneau libre du jour,
+    // 18:00–19:00 tient juste dans la fenêtre après-midi.
+    expect(slots[0]?.timeLabel).toBe('17:30 – 18:30');
+    expect(slots[0]?.dayLabel).toBe("Aujourd'hui");
+    expect(slots[0]?.hint).toBe('Premier créneau du jour');
+    expect(slots[1]?.timeLabel).toBe('18:00 – 19:00');
+    expect(slots[2]?.dayLabel).toBe('Demain');
+    expect(slots[2]?.timeLabel).toBe('08:00 – 09:00');
+  });
+
+  it('respects the requested duration', () => {
+    const slots = suggestSlots([], { nowMs: NOW, durationMin: 120, limit: 1 });
+    // 15:00 + 2h = 17:00 ≤ 19:00 : le créneau de 15:00 est proposé.
+    expect(slots[0]?.timeLabel).toBe('15:00 – 17:00');
+  });
+
+  it('never proposes a slot overlapping an active appointment', () => {
+    const slots = suggestSlots(
+      [makeAppointment({ scheduled_at: '2026-09-12T09:00:00.000Z', duration: 120 })],
+      { nowMs: NOW, durationMin: 60, limit: 3 },
+    );
+    // Demain 11 septembre 12... RDV 11:00–13:00 Paris : 09:00, 10:00 libres,
+    // 11:00 et 11:30 chevauchent, 12:00 aussi (fin 13:00).
+    const labels = slots.map((s) => `${s.dayLabel} ${s.timeLabel}`);
+    expect(labels).not.toContain('Demain 11:00 – 12:00');
+    expect(labels).not.toContain('Demain 12:00 – 13:00');
   });
 });
