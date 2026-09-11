@@ -13,7 +13,7 @@
  * identique au comportement vanilla précédent.
  */
 
-import { useDeferredValue, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import type { Appointment, AppointmentStatus } from '../../types/appointment';
 import {
   AppointmentCard,
@@ -35,6 +35,12 @@ import { getModeLabel } from '../../lib/pricing';
 
 interface AppointmentsManagerProps {
   appointments: Appointment[];
+  /**
+   * Appointment to reveal (used by the Synthèse queue in the workbench):
+   * expands its row, opens the "Passés" section if needed, then scrolls to it.
+   * Bump `nonce` to re-trigger focus for the same appointment id.
+   */
+  focusAppointment?: { id: string; nonce: number } | null;
 }
 
 type FilterKey = 'all' | AppointmentStatus;
@@ -106,6 +112,10 @@ function panelId(apptId: string): string {
   return `appt-panel-${apptId}`;
 }
 
+function rowId(apptId: string): string {
+  return `appt-row-${apptId}`;
+}
+
 function readInitialFilter(): FilterKey {
   if (typeof window === 'undefined') return 'all';
   const saved = window.sessionStorage.getItem(FILTER_STORAGE_KEY);
@@ -116,13 +126,36 @@ function readInitialFilter(): FilterKey {
 // Composant principal
 // ---------------------------------------------------------------------------
 
-export function AppointmentsManager({ appointments }: AppointmentsManagerProps) {
+export function AppointmentsManager({ appointments, focusAppointment }: AppointmentsManagerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterKey>(readInitialFilter);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showPast, setShowPast] = useState(false);
 
   const deferredQuery = useDeferredValue(searchQuery);
+
+  // Focus externe (file « À traiter » de la Synthèse) : déplie la ligne cible,
+  // ouvre la section Passés si le RDV est passé, puis scrolle dessus. Double
+  // rAF : le rendu des lignes suit les setState ci-dessus d'une frame.
+  useEffect(() => {
+    if (!focusAppointment) return;
+    const target = appointments.find((a) => a.id === focusAppointment.id);
+    if (!target) return;
+    if (!isUpcoming(target.scheduled_at)) setShowPast(true);
+    setExpandedId(focusAppointment.id);
+    let innerRaf = 0;
+    const outerRaf = window.requestAnimationFrame(() => {
+      innerRaf = window.requestAnimationFrame(() => {
+        document
+          .getElementById(rowId(focusAppointment.id))
+          ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(outerRaf);
+      window.cancelAnimationFrame(innerRaf);
+    };
+  }, [focusAppointment, appointments]);
 
   // ── 1. Filtrage (recherche + statut) ──────────────────────────────────────
   const filtered = useMemo(() => {
@@ -391,7 +424,8 @@ function DayGroupBlock({ group, expandedId, onToggle }: DayGroupBlockProps) {
           return (
             <li
               key={appt.id}
-              className="rounded-xl border border-sage-200 bg-white overflow-hidden"
+              id={rowId(appt.id)}
+              className="rounded-xl border border-sage-200 bg-white overflow-hidden scroll-mt-24"
             >
               {/* Ligne compacte — bouton toggler */}
               <button
