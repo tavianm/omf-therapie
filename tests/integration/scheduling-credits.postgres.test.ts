@@ -117,13 +117,18 @@ describe.skipIf(unreachableReason !== null)('credits ledger contre PostgreSQL r�
     return rows[0].id;
   }
 
-  /** Avoir de `amount` entièrement consommé par `appointmentId` (remaining 0). */
+  /**
+   * Avoir de `amount` entièrement consommé par `appointmentId` (remaining 0).
+   * Source NULL : l'avoir provient d'une annulation antérieure sans RDV source
+   * (008 autorise plusieurs NULL) — il ne doit PAS partager le
+   * `source_appointment_id` du RDV annulé, réservé à l'avoir d'annulation.
+   */
   async function seedConsumedCredit(appointmentId: string, amount: number): Promise<string> {
     const { rows } = await db.query<{ id: string }>(
       `INSERT INTO credits (patient_email, source_appointment_id, amount, remaining, reason)
-       VALUES ('integration@test.example', $1, $2, 0, 'cancellation')
+       VALUES ('integration@test.example', NULL, $1, 0, 'cancellation')
        RETURNING id`,
-      [appointmentId, amount],
+      [amount],
     );
     await db.query(
       `INSERT INTO credit_usages (credit_id, appointment_id, amount) VALUES ($1, $2, $3)`,
@@ -132,10 +137,10 @@ describe.skipIf(unreachableReason !== null)('credits ledger contre PostgreSQL r�
     return rows[0].id;
   }
 
-  async function creditRemaining(sourceAppointmentId: string): Promise<number> {
+  async function creditRemaining(creditId: string): Promise<number> {
     const { rows } = await db.query<{ remaining: number }>(
-      `SELECT remaining FROM credits WHERE source_appointment_id = $1`,
-      [sourceAppointmentId],
+      `SELECT remaining FROM credits WHERE id = $1`,
+      [creditId],
     );
     return rows[0]?.remaining ?? -1;
   }
@@ -150,7 +155,7 @@ describe.skipIf(unreachableReason !== null)('credits ledger contre PostgreSQL r�
 
   it('restaure exactement une fois sous deux appels restore_credits concurrents', async () => {
     const apptId = await seedAppointment({ credit_applied: 3000, atOffsetDays: 7 });
-    await seedConsumedCredit(apptId, 3000);
+    const creditId = await seedConsumedCredit(apptId, 3000);
 
     const clientA = await db.connect();
     const clientB = await db.connect();
@@ -169,19 +174,19 @@ describe.skipIf(unreachableReason !== null)('credits ledger contre PostgreSQL r�
 
     // Les deux appels réussissent (idempotence) mais la restitution ne
     // s'applique qu'UNE fois : remaining += 3000 une seule fois.
-    await expect(creditRemaining(apptId)).resolves.toBe(3000);
+    await expect(creditRemaining(creditId)).resolves.toBe(3000);
     await expect(usageCount(apptId)).resolves.toBe(0);
   });
 
   it('restore_credits est idempotent séquentiellement', async () => {
     const apptId = await seedAppointment({ credit_applied: 2500, atOffsetDays: 14 });
-    await seedConsumedCredit(apptId, 2500);
+    const creditId = await seedConsumedCredit(apptId, 2500);
 
     await db.query('SELECT public.restore_credits($1)', [apptId]);
     await db.query('SELECT public.restore_credits($1)', [apptId]);
     await db.query('SELECT public.restore_credits($1)', [apptId]);
 
-    await expect(creditRemaining(apptId)).resolves.toBe(2500);
+    await expect(creditRemaining(creditId)).resolves.toBe(2500);
     await expect(usageCount(apptId)).resolves.toBe(0);
   });
 
@@ -218,8 +223,8 @@ describe.skipIf(unreachableReason !== null)('credits ledger contre PostgreSQL r�
     // …et l'avoir cash est émis une seule fois, rattaché au RDV source.
     const { rows: issuedRows } = await db.query<{ amount: number; remaining: number }>(
       `SELECT amount, remaining FROM credits
-        WHERE source_appointment_id = $1 AND id <> $2`,
-      [apptId, originalCreditId],
+        WHERE source_appointment_id = $1`,
+      [apptId],
     );
     expect(issuedRows).toHaveLength(1);
     expect(issuedRows[0]).toMatchObject({ amount: 3000, remaining: 3000 });
