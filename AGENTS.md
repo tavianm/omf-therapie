@@ -2,7 +2,7 @@
 
 Workspace instructions for ZCode agents working on **omf-therapie** — a therapy practice website (Astro 5 SSG + React islands + Tailwind). French-language site for a single practitioner (Oriane Montabonnet), deployed at omf-therapie.fr.
 
-> **Read first for sensitive areas:** `CLAUDE.md` (conventions, commands), `memory-bank/architecture.md` (system design + data flow), `memory-bank/decisions.md` (ADRs), `.claude/stack.yml` (declared stack & commands). This file is a quick-reference layer on top of those.
+> **Read first for sensitive areas:** `CLAUDE.md` (conventions, commands), `memory-bank/architecture.md` (system design + data flow), `memory-bank/decisions.md` (ADRs), `.dev/stack.yml` (declared stack & commands). This file is a quick-reference layer on top of those.
 
 ## Commands
 

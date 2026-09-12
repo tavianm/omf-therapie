@@ -1,4 +1,4 @@
-@.claude/stack.yml
+@.dev/stack.yml
 
 # CLAUDE.md
 
@@ -328,3 +328,13 @@ Potential enhancements (not currently implemented):
 - Automated testing (Playwright e2e)
 - Newsletter subscription system
 - Patient portal (online documents, session history)
+
+## TL;DR
+
+- **Project:** omf-therapie — Astro 5 SSG + React islands site for a solo practitioner (omf-therapie.fr). Monocompte auth, Stripe video-only payments, internal credits (avoirs).
+- **Stack contract:** `.dev/stack.yml` (paths, commands, release model). Fleet instructions: `AGENTS.md`; standards: `docs/standards/`.
+- **Languages:** code, types, comments, docs in English; user-facing text and commit messages in French (present tense — « Ajoute »).
+- **URLs:** every client-side `fetch()` and `window.location` ends with `/` (ADR-013) — missing slash returns an HTML redirect, not JSON.
+- **Appointment statuses:** `payment_received` = séance réglée (Stripe **or** avoir) — it is never `confirmed`; Stripe is video-mode only; in-person is paid on-site.
+- **Gates before any PR:** `npm run lint && npm run test && npm run build`; UI PRs additionally require `npm run audit:a11y` (WCAG 2.1 AA — hard requirement).
+- **Git:** `<type>(<scope>): <description>` in French, present tense. Never force-push, hard-reset or amend pushed commits. A failed hook/CI is fixed with a NEW commit, never a rewrite.
