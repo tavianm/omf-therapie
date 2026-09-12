@@ -1,0 +1,266 @@
+---
+title: "Plan: Cron Netlify calendar-keepwarm — token OAuth chaud + pré-remplissage du cache de disponibilités"
+issue: 132
+spec: artifacts/specs/132-cron-netlify-token-cache-warmup-spec.mdx
+complexity: 3/10
+tier: F-lite
+generated: 2026-08-30
+---
+
+## Summary
+
+Remplacer `calendar-token-heartbeat.ts` (hebdo) par `calendar-keepwarm.ts` (cron `*/10`) qui rafraîchit conditionnellement le token Google (< 15 min de validité restante) puis pré-remplit les 4 clés du cache de disponibilités (TTL 900 s). 9 micro-tâches, 4 vagues, `src/lib/**` inchangé (réutilisation pure des primitifs du domaine calendar).
+
+## Architecture
+
+**Data flow :** [calendar-keepwarm — flux de données d'un run](../visuals/132-cron-netlify-token-cache-warmup-data-flow.html)
+**File map :** [Carte fichiers × fonctions](../visuals/132-cron-netlify-token-cache-warmup-file-map.html)
+
+Points structurants :
+- Une seule nouvelle fonction `netlify/functions/calendar-keepwarm.ts` ; `src/lib/google-calendar.ts` et `src/lib/calendar-cache.ts` sont importés tels quels (fallback `process.env` déjà en place, pattern #126/T12).
+- La décision de refresh est une fonction pure exportée (`shouldRefreshToken`) pour la testabilité des bornes 14/16 min.
+- Le contrat du littéral `schedule` inline reste gardé par `cron-schedule-source.test.ts` (leçon #113) — le test bascule de heartbeat vers keepwarm.
+- `src/pages/api/availability.ts` et `src/components/booking/BookingWizard.tsx` : **aucune modification** (critère SC-5 = diff vide).
+
+## Bootstrap Context
+
+F-lite (analyze sauté). Sources : [frame](../frames/132-cron-netlify-token-cache-warmup-frame.mdx) + [spec](../specs/132-cron-netlify-token-cache-warmup-spec.mdx). Patterns de référence lus et validés :
+- `netlify/functions/calendar-token-heartbeat.ts` — squelette handler/Sentry/alerte à reprendre.
+- `tests/unit/cron-handlers.test.ts` — mocks hoisted `@sentry/node`/supabase/resend/googleapis/ws, contrat `withMonitor` (callback invoqué immédiatement).
+- `tests/unit/cron-schedule-source.test.ts` — lecture texte de la source, extraction du bloc `config`, garde du littéral inline ( commentaires stripés pour éviter les faux positifs).
+- `src/components/booking/BookingWizard.tsx:412` — seul consommateur : `weeks=4` fixe.
+
+## Agents
+
+| Agent | Tasks | Files |
+|-------|-------|-------|
+| backend-dev-A | T2, T6 | netlify/functions/calendar-keepwarm.ts |
+| tester-A | T1, T3, T4 | tests/unit/calendar-keepwarm.test.ts, cron-schedule-source.test.ts, cron-handlers.test.ts |
+| tester-B | T5, T7 | tests/unit/calendar-keepwarm.test.ts (volet warm-up) |
+| devops-A | T8 | netlify.toml, suppression calendar-token-heartbeat.ts |
+| lead | T9 | gates complets (exempt : quality) |
+
+## Wave Structure
+
+4 vagues, max 3 agents parallèles.
+
+| Wave | Trigger | Agents | Tasks |
+|------|---------|--------|-------|
+| 1 | start | 3 ∥ | tester-A: T1 · backend-dev-A: T2 · tester-B: T5 |
+| 2 | Wave 1 done | 2 ∥ + chaîne | tester-A: T3→T4 · backend-dev-A: T6 |
+| 3 | Wave 2 done | 2 ∥ | tester-B: T7 · devops-A: T8 |
+| 4 | Wave 3 done | 1 (lead) | lead: T9 |
+
+### Budget — per task
+
+| Task | Items | Class | Est. ops | Split? |
+|------|-------|-------|----------|--------|
+| T1 tests seuil + wiring | 5 | judgmental | 5 | — |
+| T2 impl keepwarm V1 | 6 | judgmental | 6 | — |
+| T3 étendre tests cron existants | 3 | bounded | 3 | — |
+| T4 RED-GATE V1 | 2 | trivial | 2 | — |
+| T5 tests warm-up | 5 | judgmental | 5 | — |
+| T6 impl warm-up | 4 | judgmental | 4 | — |
+| T7 RED-GATE V2 | 2 | trivial | 2 | — |
+| T8 suppression + netlify.toml | 3 | bounded | 3 | — |
+| T9 gates complets | 2 | bounded | 2 | — |
+
+**Total estimated ops: 32**
+
+### Budget — per agent instance
+
+| Instance | Tasks | Σ ops | Subjects | Split? |
+|----------|-------|-------|----------|--------|
+| backend-dev-A | T2, T6 | 10 | token, cache | — |
+| tester-A | T1, T3, T4 | 10 | token, schedule | — |
+| tester-B | T5, T7 | 7 | cache | — |
+| devops-A | T8 | 3 | config | — |
+| lead | T9 | 2 | quality | — (exempt) |
+
+## Consistency Report
+
+- Covered: 9/9 critères SC-1…SC-9 (SC-9 post-déploiement → étape `/validate`, hors implémentation — noté)
+- Breadboard : N1→T2/T3, N2→T2, N3→T6, N4→T2, S1→T2, S2→T6
+- Uncovered: none
+- Untraced: none (T9 exempt quality/infra)
+- Exemptions: 1 (T9)
+
+## Micro-Tasks
+
+### Slice V1: Token chaud
+
+#### Task 1: RED — tests seuil refresh + wiring handler [P] → tester-A
+- **File:** `tests/unit/calendar-keepwarm.test.ts` (créer)
+- **Snippet:**
+```ts
+import { describe, it, expect } from 'vitest';
+// Mocks hoisted — pattern cron-handlers.test.ts (@sentry/node passthrough,
+// @supabase/supabase-js, resend, googleapis, ws)
+describe('shouldRefreshToken', () => {
+  it('refresh à 14 min restantes', /* now + 14min < threshold → true */);
+  it('skip à 16 min restantes', /* false */);
+  it('expiry absent/passé → true');
+});
+describe('calendar-keepwarm handler', () => {
+  it("withMonitor slug 'calendar-keepwarm' + crontab '*/10 * * * *' + checkInMargin 2 / maxRuntime 5");
+  it('invalid_grant → sendEmail appelée (ADMIN_EMAIL) et warm-up non exécuté');
+});
+```
+- **Verify:** `grep -q "shouldRefreshToken" tests/unit/calendar-keepwarm.test.ts` (ready — structure ; échec attendu pré-impl)
+- **Expected:** structure présente ; suite rouge (module inexistant)
+- **Time:** 5 min | **Difficulty:** 3
+- **Traces:** SC-2, SC-4, N1→N2→S1 | **Phase:** RED | **Subject:** token | **Slice:** V1
+
+#### Task 2: GREEN — implémenter calendar-keepwarm.ts [P] → backend-dev-A
+- **File:** `netlify/functions/calendar-keepwarm.ts` (créer)
+- **Snippet:**
+```ts
+const SCHEDULE = '*/10 * * * *' as const;
+export const config: Config = {
+  // Littéral INLINE obligatoire — régression #113 (zisi parsePrimitive)
+  schedule: '*/10 * * * *',
+};
+export function shouldRefreshToken(
+  expiryDateMs: number | null, nowMs: number,
+  thresholdMs = 15 * 60 * 1000,
+): boolean { /* pure */ }
+// handler(): initSentry() AVANT Sentry.withMonitor('calendar-keepwarm', runKeepwarm,
+//   { schedule: { type: 'crontab', value: SCHEDULE }, checkInMargin: 2, maxRuntime: 5 })
+// work: env validation (CLIENT_ID/SECRET, CALENDAR_ID, SUPABASE_*, ADMIN_EMAIL…)
+//   → read google_oauth_tokens → refresh si shouldRefreshToken → persist
+//   → invalid_grant → sendInvalidGrantAlert (Resend + CalendarAuthAlert) + return
+```
+- **Verify:** `npx vitest run tests/unit/calendar-keepwarm.test.ts --maxWorkers=1` (ready)
+- **Expected:** tests V1 verts (seuil, wiring, alerte)
+- **Time:** 8 min | **Difficulty:** 4
+- **Traces:** SC-1, SC-2, SC-4, SC-6 | **Phase:** GREEN | **Subject:** token | **Slice:** V1
+
+#### Task 3: GREEN — basculer les gardes cron existantes vers keepwarm → tester-A
+- **File:** `tests/unit/cron-schedule-source.test.ts`, `tests/unit/cron-handlers.test.ts`
+- **Snippet:** remplacer les références `calendar-token-heartbeat` par `calendar-keepwarm` (fixtures, listes de crons, attentes schedule `*/10`) ; conserver la garde « littéral inline » intacte.
+- **Verify:** `npx vitest run tests/unit/cron-schedule-source.test.ts tests/unit/cron-handlers.test.ts --maxWorkers=1` (ready)
+- **Expected:** exit 0 — gardes vertes sur keepwarm, plus aucune référence heartbeat
+- **Time:** 4 min | **Difficulty:** 2
+- **Traces:** SC-1, SC-6 | **Phase:** GREEN | **Subject:** schedule | **Slice:** V1
+
+#### Task 4: RED-GATE: V1 complet → tester-A
+- **Verify:** `npx vitest run tests/unit/calendar-keepwarm.test.ts tests/unit/cron-schedule-source.test.ts tests/unit/cron-handlers.test.ts --maxWorkers=1` (deferred → ready au gate)
+- **Expected:** exit 0 — V1 vert (token chaud + gardes)
+- **Time:** 2 min | **Difficulty:** 1
+- **Traces:** SC-1, SC-2, SC-4, SC-6 | **Phase:** RED-GATE | **Subject:** token | **Slice:** V1
+
+### Slice V2: Créneaux chauds
+
+#### Task 5: RED — tests warm-up [P] → tester-B
+- **File:** `tests/unit/calendar-keepwarm.test.ts` (étendre)
+- **Snippet:**
+```ts
+describe('warmAvailabilityCache', () => {
+  it('écrit les 4 clés {in-person,video}×{60,90} avec TTL 900 s');
+  it('getAvailableSlots appelé avec weeks=4 (endDate = now + 28 j)');
+  it('échec d\'une clé → 3 écritures conservées (allSettled)');
+});
+// Mocks: '@/lib/google-calendar' (ou relatif) → getAvailableSlots vi.fn ;
+// calendar-cache capté via mock '@netlify/blobs' getStore
+```
+- **Verify:** `grep -q "warmAvailabilityCache" tests/unit/calendar-keepwarm.test.ts` (ready — structure)
+- **Expected:** structure présente ; volet warm-up rouge pré-impl
+- **Time:** 5 min | **Difficulty:** 3
+- **Traces:** SC-3 | **Phase:** RED | **Subject:** cache | **Slice:** V2
+
+#### Task 6: GREEN — implémenter le warm-up → backend-dev-A
+- **File:** `netlify/functions/calendar-keepwarm.ts` (étendre)
+- **Snippet:**
+```ts
+async function warmAvailabilityCache(): Promise<void> {
+  const modes = ['in-person', 'video'] as const;
+  const durations = [60, 90] as const;
+  const now = new Date();
+  const end = new Date(now.getTime() + 4 * 7 * 24 * 3600 * 1000);
+  await Promise.allSettled(
+    modes.flatMap(m => durations.map(async d => {
+      const slots = await getAvailableSlots(now, end, d, m, []);
+      const key = buildAvailabilityCacheKey(m, d, 4, now);
+      await setCachedAvailability(key, slots, 900);
+    })),
+  ); // + log résumé, captureAndFlush sur rejets
+}
+```
+- **Verify:** `npx vitest run tests/unit/calendar-keepwarm.test.ts --maxWorkers=1` (ready)
+- **Expected:** tests warm-up verts
+- **Time:** 6 min | **Difficulty:** 3
+- **Traces:** SC-3 | **Phase:** GREEN | **Subject:** cache | **Slice:** V2
+
+#### Task 7: RED-GATE: V2 complet → tester-B
+- **Verify:** `npx vitest run tests/unit/calendar-keepwarm.test.ts --maxWorkers=1` (deferred → ready au gate)
+- **Expected:** exit 0 — V2 vert (warm-up complet)
+- **Time:** 2 min | **Difficulty:** 1
+- **Traces:** SC-3 | **Phase:** RED-GATE | **Subject:** cache | **Slice:** V2
+
+### Transverse
+
+#### Task 8: Supprimer heartbeat + documenter netlify.toml → devops-A
+- **Files:** `netlify/functions/calendar-token-heartbeat.ts` (supprimer), `netlify.toml`
+- **Snippet:** bloc `calendar-token-heartbeat` → `calendar-keepwarm` — cadence `*/10 * * * *`, vars : `GOOGLE_OAUTH_CLIENT_ID/SECRET`, `GOOGLE_CALENDAR_ID`, `SUPABASE_DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_EMAIL`, `RESEND_API_KEY` ; fallbacks `GOOGLE_OAUTH_REDIRECT_URI`, `SITE_URL`, `RESEND_FROM_EMAIL`, `PUBLIC_SENTRY_DSN`.
+- **Verify:** `! test -f netlify/functions/calendar-token-heartbeat.ts && grep -q "calendar-keepwarm" netlify.toml` (ready)
+- **Expected:** fichier absent, doc à jour
+- **Time:** 4 min | **Difficulty:** 2
+- **Traces:** SC-1, SC-7 | **Phase:** GREEN | **Subject:** config | **Slice:** transverse
+
+#### Task 9: Gates complets (lead, séquentiel — garde mémoire WSL) → lead
+- **Verify:** `npm run test:low && npm run lint && npm run typecheck ; npm run build` (ready ; typecheck advisory)
+- **Expected:** exit 0 partout (typecheck : pas de NOUVELLE erreur vs baseline #68)
+- **Time:** 10 min | **Difficulty:** 2
+- **Traces:** SC-8 | **Phase:** RED-GATE | **Subject:** quality | **Slice:** transverse — **exempt** (infra/quality)
+
+## Task Seeding Blueprint
+
+<!-- Used by /implement to seed tasks on session start.
+     Format: T{n} | agent-instance | blockedBy | subject
+     blockedBy refs T-numbers within this list (not session task IDs).
+     Seed in wave order; within a wave all rows are parallel (∥). -->
+
+### Wave 1 — no deps, 3 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T1 | tester-A | — | token |
+| T2 | backend-dev-A | — | token |
+| T5 | tester-B | — | cache |
+
+### Wave 2 — after Wave 1, 2 agents ∥ (tester-A chaîne T3→T4)
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T3 | tester-A | T2 | schedule |
+| T6 | backend-dev-A | T2 | cache |
+| T4 | tester-A | T1, T3 | token |
+
+### Wave 3 — after Wave 2, 2 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T7 | tester-B | T5, T6 | cache |
+| T8 | devops-A | T3 | config |
+
+### Wave 4 — after Wave 3, lead séquentiel
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T9 | lead | T4, T7, T8 | quality |
+
+## Task IDs
+
+<!-- Generated by /plan. Used by /implement to resume tasks on session restart.
+     TaskCreate IDs unavailable in this harness — tasks seeded via TodoWrite
+     with stable T-labels below (grep-able in the todo list). -->
+
+- T1: `T1 [RED] tests seuil refresh + wiring — tester-A, V1, ∥W1` — token
+- T2: `T2 [GREEN] impl calendar-keepwarm.ts V1 — backend-dev-A, ∥W1` — token
+- T3: `T3 [GREEN] gardes cron → keepwarm — tester-A, W2` — schedule
+- T4: `T4 [RED-GATE] V1 — tester-A, W2` — token
+- T5: `T5 [RED] tests warm-up — tester-B, ∥W1` — cache
+- T6: `T6 [GREEN] impl warm-up — backend-dev-A, W2` — cache
+- T7: `T7 [RED-GATE] V2 — tester-B, W3` — cache
+- T8: `T8 suppression heartbeat + netlify.toml — devops-A, W3` — config
+- T9: `T9 gates complets — lead, W4` — quality

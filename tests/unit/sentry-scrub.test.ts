@@ -30,7 +30,7 @@ describe('scrubPii', () => {
     'phone',
     'message',
     'notes',
-    // Operator PII (calendar heartbeat logs adminEmail)
+    // Operator PII (calendar keepwarm cron logs adminEmail)
     'adminEmail',
     'admin_email',
     // Video session link (sensitive: meeting URL)

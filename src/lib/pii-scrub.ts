@@ -38,7 +38,7 @@ const PII_KEYS = [
   'phone',
   'message',
   'notes',
-  // Operator PII (therapist/practitioner) — calendar heartbeat logs adminEmail
+  // Operator PII (therapist/practitioner) — calendar keepwarm cron logs adminEmail
   'adminEmail',
   'admin_email',
   // Video session link (sensitive: meeting URL)
