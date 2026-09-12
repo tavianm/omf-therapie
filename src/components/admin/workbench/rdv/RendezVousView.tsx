@@ -16,7 +16,6 @@
 
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import type { Appointment } from '../../../../types/appointment';
-import { getModeLabel } from '../../../../lib/pricing';
 import {
   formatDayHeader,
   formatTimeParis,

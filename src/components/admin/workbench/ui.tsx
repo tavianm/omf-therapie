@@ -8,7 +8,7 @@
 import { useEffect, useRef } from 'react';
 import type { Appointment, AppointmentStatus } from '../../../types/appointment';
 import { getModeLabel, getTypeLabel } from '../../../lib/pricing';
-import { formatTimeParis, isUpcoming } from '../../../utils/date';
+import { formatTimeParis } from '../../../utils/date';
 import { getTriageReasons } from '../../../utils/workbench';
 
 export const WB_STATUS_LABELS: Record<AppointmentStatus, string> = {
