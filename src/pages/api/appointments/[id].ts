@@ -44,10 +44,6 @@ import AppointmentRescheduledPaid from '../../../emails/AppointmentRescheduledPa
 import AppointmentCancelled from '../../../emails/AppointmentCancelled';
 import PaymentRequest from '../../../emails/PaymentRequest';
 import type { Appointment } from '../../../types/appointment';
-import {
-  issueCreditForCancellation,
-  restoreCredits,
-} from '../../../lib/credits';
 import { isCancellableByTherapist } from '../../../lib/appointment-eligibility';
 import { formatParisDate } from '../../../utils/datetime';
 
@@ -181,47 +177,6 @@ async function rollbackAcceptRescheduleClaim(
     return;
   }
   logger.info('appointments/patch: rollback restored pre-accept state', {
-    appointmentId: id,
-  });
-}
-
-/**
- * Compensating rollback for the cancel CAS claim: restores the pre-cancel
- * status and notes after a post-claim credit-write failure. Result verified
- * like `rollbackAcceptRescheduleClaim` — error or 0-row match (concurrent
- * transition) is logged loudly for manual reconciliation.
- */
-async function rollbackCancelClaim(
-  id: string,
-  appointment: Appointment,
-): Promise<void> {
-  const { data: rollbackRow, error: rollbackError } = await supabaseAdmin
-    .from('appointments')
-    .update({
-      status: appointment.status,
-      therapist_notes: appointment.therapist_notes,
-    })
-    .eq('id', id)
-    .eq('status', 'cancelled')
-    .select('id')
-    .single();
-  if (rollbackError && !isNoRowMatched(rollbackError)) {
-    logger.error(
-      'appointments/patch: cancel rollback failed — appointment stuck in cancelled state, manual reconciliation needed',
-      { appointmentId: id, originalStatus: appointment.status },
-      rollbackError,
-    );
-    return;
-  }
-  if (!rollbackRow) {
-    // 0-row match: the status moved again between claim and rollback.
-    logger.error(
-      'appointments/patch: rollback matched 0 rows — concurrent transition, manual reconciliation needed',
-      { appointmentId: id, originalStatus: appointment.status },
-    );
-    return;
-  }
-  logger.info('appointments/patch: rollback restored pre-cancel state', {
     appointmentId: id,
   });
 }
@@ -810,18 +765,19 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // Action: cancel — annule un RDV (confirmé/payé/etc.), gère l'avoir
   // ---------------------------------------------------------------------------
   // Règle consolidée :
-  //   1. Le claim CAS précède les écritures financières : l'UPDATE vers
-  //      `cancelled` ne matche que si le statut est toujours celui lu — deux
+  //   1. Le claim CAS ne matche que si le statut est toujours celui lu — deux
   //      annulations concurrentes → un seul gagnant, le perdant reçoit 409
   //      sans jamais toucher au ledger.
   //   2. Toujours restituer l'avoir consommé par ce RDV (si credit_applied > 0).
   //   3. Émettre un nouvel avoir du cash réellement encaissé (final_price −
-  //      credit_applied) UNIQUEMENT si status === 'payment_received' et si ce
-  //      montant > 0 (sinon : aucun cash, aucun nouvel avoir).
-  //   En cas d'échec d'une écriture crédit APRÈS le claim : rollback
-  //   compensatoire du statut — et si le rollback lui-même échoue, log
-  //   bruyant de réconciliation manuelle (pas de transaction qui couvre
-  //   Supabase + RPC : la divergence doit rester observable).
+  //      credit_applied) UNIQUEMENT si le statut d'origine ===
+  //      'payment_received' et si ce montant > 0.
+  //   Claim, restitution et émission s'exécutent dans UNE transaction (RPC
+  //   `cancel_appointment_with_credits`, migration 019) : l'ancien
+  //   séquencement en trois écritures distinctes laissait, si l'émission
+  //   échouait après la restitution, un RDV réactivé dont l'avoir restitué
+  //   restait dépensable, sans trace au ledger (revue #149). Tout échec de la
+  //   RPC est atomique — plus aucun rollback compensatoire nécessaire.
   // Aucune exclusion pour les RDV déjà écoulés : la fenêtre d'éligibilité
   // (veille incluse) est validée par isCancellableByTherapist — le jugement
   // de la thérapeute est le garde-fou intentionnel (annulation de dernière minute).
@@ -833,91 +789,54 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         'Ce rendez-vous ne peut pas être annulé (hors fenêtre ou statut terminal).',
       );
 
-    // 1. Claim CAS : passer le RDV en cancelled AVANT toute écriture financière.
-    const { data: updated, error: updateError } = await claimAppointment(
-      id,
-      appointment.status,
+    const { data: cancelData, error: cancelError } = await supabaseAdmin.rpc(
+      'cancel_appointment_with_credits',
       {
-        status: 'cancelled',
-        therapist_notes: therapist_notes ?? appointment.therapist_notes,
+        p_appointment_id: id,
+        p_expected_status: appointment.status,
+        p_therapist_notes:
+          typeof therapist_notes === 'string' ? therapist_notes : null,
       },
     );
 
-    if (updateError || !updated) {
-      if (isNoRowMatched(updateError)) {
+    if (cancelError || typeof cancelData !== 'object' || cancelData === null) {
+      if (
+        cancelError &&
+        typeof (cancelError as { message?: unknown }).message === 'string' &&
+        (cancelError as { message: string }).message.includes(
+          'cancel_status_conflict',
+        )
+      ) {
         return errorResponse(
           409,
           "Ce rendez-vous vient d'être annulé ou son statut a changé. Rechargez la page.",
         );
       }
       logger.error(
-        'appointments/patch: Supabase update failed (cancel)',
+        'appointments/patch: atomic cancel RPC failed',
         { appointmentId: id },
-        updateError,
+        cancelError,
       );
       return errorResponse(500, "Erreur lors de l'annulation");
     }
 
-    const updatedAppt = updated as Appointment;
-
-    // 2. Restituer l'avoir consommé par ce RDV.
-    let restoredAmount = 0;
-    if (appointment.credit_applied > 0) {
-      try {
-        await restoreCredits(appointment.id);
-        restoredAmount = appointment.credit_applied;
-        logger.info('appointments/patch: consumed credit restored (cancel)', {
-          appointmentId: id,
-          restoredAmount,
-        });
-      } catch (restoreErr) {
-        // La cohérence du ledger prime : on défait le claim (rollback
-        // compensatoire) si la restitution échoue.
-        logger.error(
-          'appointments/patch: credit restoration failed (cancel)',
-          { appointmentId: id },
-          restoreErr,
-        );
-        await rollbackCancelClaim(id, appointment);
-        return errorResponse(500, "Erreur lors de la restitution de l'avoir");
-      }
-    }
-
-    // 3. Émettre un nouvel avoir pour le cash encaissé (RDV payé uniquement).
-    let issuedCredit = false;
-    let creditCashAmount = 0;
-    if (appointment.status === 'payment_received') {
-      creditCashAmount = appointment.final_price - appointment.credit_applied;
-      if (creditCashAmount > 0) {
-        try {
-          const issuedCreditRow = await issueCreditForCancellation(
-            appointment,
-            creditCashAmount,
-          );
-          issuedCredit = true;
-          logger.info(
-            'appointments/patch: credit issued for cancelled appointment',
-            {
-              appointmentId: id,
-              creditId: issuedCreditRow?.id ?? null,
-              amount: creditCashAmount,
-            },
-          );
-        } catch (creditErr) {
-          logger.error(
-            'appointments/patch: credit issuance failed (cancel)',
-            { appointmentId: id },
-            creditErr,
-          );
-          await rollbackCancelClaim(id, appointment);
-          return errorResponse(500, "Erreur lors de l'émission de l'avoir");
-        }
-      }
-    }
+    // Row (all columns, comme l'ancien claimAppointment) + drapeaux financiers
+    // sous clés `_` posés par la RPC.
+    const cancelResult = cancelData as Appointment & {
+      _restored_amount?: number;
+      _issued_credit?: boolean;
+      _credit_cash_amount?: number;
+    };
+    const {
+      _restored_amount: restoredAmount = 0,
+      _issued_credit: issuedCredit = false,
+      _credit_cash_amount: creditCashAmount = 0,
+      ...updatedAppt
+    } = cancelResult;
 
     await invalidateAvailabilityCache().catch(onCacheInvalidateError);
 
-    // 4. Supprimer l'événement Google Calendar (non-bloquant).
+    // Supprimer l'événement Google Calendar (non-bloquant).
     if (appointment.google_calendar_event_id) {
       await deleteCalendarEvent(appointment.google_calendar_event_id).catch(
         (calendarErr: unknown) => {
@@ -930,7 +849,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       );
     }
 
-    // 5. Notifier le patient par email (non-bloquant).
+    // Notifier le patient par email (non-bloquant).
     //    Wording contract : jamais le mot « remboursement ». L'avoir est interne.
     await sendEmail({
       to: updatedAppt.patient_email,
@@ -1515,9 +1434,40 @@ export const PATCH: APIRoute = async ({ request, params }) => {
               stripe_payment_link_id: paymentLink.id,
               stripe_payment_link_url: paymentLink.url,
             })
+            // CAS: only persist while the claimed status still holds. A
+            // concurrent admin cancel during the Stripe round-trip must never
+            // receive a live Payment Link (revue #149) — the previous id-only
+            // UPDATE attached one to the cancelled row and emailed it.
             .eq('id', id)
+            .eq('status', newStatus)
             .select(publicColumns)
             .single();
+        if (linkUpdateError && isNoRowMatched(linkUpdateError)) {
+          // 0 rows: the status legitimately moved on while Stripe ran. Do NOT
+          // roll back (the row is the source of truth now) — deactivate the
+          // freshly created link and answer 409.
+          logger.warn(
+            'appointments/patch: status changed concurrently during Stripe round-trip (accept_reschedule) — deactivating orphaned Payment Link',
+            { appointmentId: id, stripePaymentLinkId: paymentLink.id },
+          );
+          try {
+            await getStripe()?.paymentLinks.update(paymentLink.id, {
+              active: false,
+            });
+          } catch (deactivateErr) {
+            logger.error(
+              'appointments/patch: Stripe Payment Link deactivation failed (accept_reschedule, concurrent transition)',
+              { appointmentId: id, stripePaymentLinkId: paymentLink.id },
+              deactivateErr,
+            );
+            // Non-bloquant : on répond 409 même si la désactivation échoue —
+            // le lien n'est jamais persisté, il ne sera pas envoyé.
+          }
+          return errorResponse(
+            409,
+            'Ce rendez-vous a été annulé ou modifié entre-temps. Le lien de paiement a été invalidé.',
+          );
+        }
         if (linkUpdateError || !updatedWithLink) {
           logger.error(
             'appointments/patch: failed to persist Stripe Payment Link (accept_reschedule)',

@@ -16,7 +16,7 @@
  * d'intégration — #147).
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ManualTimeSlot, Period } from '../../../../types/manual-slots';
 import {
   isSchedulingBufferMinutes,
@@ -134,7 +134,12 @@ export function DisponibilitesView({ initialSlots }: DisponibilitesViewProps) {
   // La plage interrogée suit le mois AFFICHÉ : naviguer vers un autre mois
   // doit charger ses plages, sinon elles paraissent inexistantes et une
   // création réussie disparaît du calendrier (revue #148).
+  // Chaque requête est numérotée : une réponse qui arrive alors qu'une
+  // navigation plus récente a eu lieu est ignorée, sinon elle écrase les
+  // plages du mois affiché (revue #149).
+  const fetchSeqRef = useRef(0);
   const refetch = useCallback(async (anchor: Date) => {
+    const seq = ++fetchSeqRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -148,11 +153,13 @@ export function DisponibilitesView({ initialSlots }: DisponibilitesViewProps) {
         throw new Error(body.error ?? 'Erreur lors du chargement des plages');
       }
       const body = (await res.json()) as { slots: ManualTimeSlot[] };
+      if (seq !== fetchSeqRef.current) return;
       setSlots(body.slots ?? []);
     } catch (e) {
+      if (seq !== fetchSeqRef.current) return;
       setError(e instanceof Error ? e.message : 'Erreur inconnue');
     } finally {
-      setLoading(false);
+      if (seq === fetchSeqRef.current) setLoading(false);
     }
   }, []);
 

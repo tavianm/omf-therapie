@@ -128,23 +128,42 @@ interface ModalOverlayProps {
 export function ModalOverlay({ label, onClose, panelClassName, children }: ModalOverlayProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  // Consumers pass inline closures: keying the effect on onClose would re-run
+  // the mount effect on every parent render and corrupt previousFocusRef.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     previousFocusRef.current = document.activeElement as HTMLElement | null;
-    // Focus the panel itself (not the first control) so Tab starts the cycle.
-    const focusTimer = window.setTimeout(() => panelRef.current?.focus(), 0);
+    // Focus the first control (fallback: the panel) — the backdrop button sits
+    // outside the panel's Tab cycle, so starting on the panel itself would let
+    // Shift+Tab escape into it (revue #149).
+    const focusTimer = window.setTimeout(() => {
+      const first = panelRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+      (first ?? panelRef.current)?.focus();
+    }, 0);
 
     function trap(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== 'Tab' || !panelRef.current) return;
       const focusables = panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
-      if (focusables.length === 0) return;
+      if (focusables.length === 0) {
+        e.preventDefault();
+        return;
+      }
       const first = focusables[0];
       const last = focusables[focusables.length - 1];
+      if (!panelRef.current.contains(document.activeElement)) {
+        // Focus drifted outside the panel (backdrop, browser chrome) — fold it
+        // back into the cycle instead of letting Tab leave the dialog.
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+        return;
+      }
       if (e.shiftKey && document.activeElement === first) {
         e.preventDefault();
         last.focus();
@@ -160,15 +179,16 @@ export function ModalOverlay({ label, onClose, panelClassName, children }: Modal
       window.clearTimeout(focusTimer);
       previousFocusRef.current?.focus();
     };
-  }, [onClose]);
+  }, []);
 
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={label}>
       <button
         type="button"
         aria-label="Fermer"
+        tabIndex={-1}
         onClick={onClose}
-        className="absolute inset-0 w-full h-full bg-black/40 cursor-default"
+        className="absolute inset-0 w-full h-full bg-black/40 cursor-default focus:outline-none"
       />
       <div ref={panelRef} tabIndex={-1} className={`focus:outline-none ${panelClassName}`}>
         {children}

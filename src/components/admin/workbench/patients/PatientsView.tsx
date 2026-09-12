@@ -97,12 +97,16 @@ export function PatientsView({ appointments, onPlanAppointment }: PatientsViewPr
 
   function handlePlan() {
     if (!selected) return;
-    onPlanAppointment({
+    const prefill = {
       patient_name: selected.name,
       patient_email: selected.email,
       patient_phone: selected.phone,
       appointment_type: selected.lastType,
-    });
+    };
+    // Close the dossier before opening the drawer: two stacked overlays would
+    // register two Escape/focus handlers and close together (revue #149).
+    setSelectedEmail(null);
+    onPlanAppointment(prefill);
   }
 
   const dossier = selected && (

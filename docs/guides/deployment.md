@@ -23,15 +23,16 @@ Before merging to `main`:
 - [ ] **UI/visual change:** `npm run audit:a11y` ✅ (WCAG 2.1 AA)
 - [ ] **E2E-relevant change:** Playwright specs pass locally
 - [ ] New env vars documented in `docs/INFRA.md` + set in Netlify (prod scope)
-- [ ] **DB migration:** new `.sql` in `supabase/migrations/` → **applied manually to prod** (Netlify doesn't run migrations)
+- [ ] **DB migration:** new `.sql` in `supabase/migrations/` → **applied to prod BEFORE the merge** (Netlify auto-deploys `main` the moment the PR merges — see below)
 
 ## Database migrations (manual)
 
-Netlify does **not** run migrations — they're applied manually to the prod Postgres:
+Netlify does **not** run migrations — they're applied manually to the prod Postgres. **Order matters** (revue #149): Netlify auto-deploys `main` on merge, so the migration MUST reach prod **before** the dependent code is published, otherwise the endpoints that read the new tables/columns answer 500 (mutation endpoints fail closed; availability displays wrong data) until the schema catches up:
 
 1. New migration file lands in `supabase/migrations/` (e.g. `008_credits.sql`).
-2. After merge to `main`, apply it to the prod Supabase/Postgres via SQL editor or `psql`.
-3. Verify with a smoke test on the affected flow.
+2. **Before merging the PR** (or in the seconds before the Netlify publish goes live), apply it to the prod Supabase/Postgres via SQL editor or `psql`. The migrations are written idempotently (`IF NOT EXISTS` / `CREATE OR REPLACE`), so applying pre-merge is safe even if the PR is amended later.
+3. Verify: run the checklist queries below, then a smoke test on the affected flow **right after merge** (booking POST, `/api/availability`, admin settings GET/PATCH for the scheduling migrations).
+4. Rollback plan: Netlify deploy rollback reverts the code; the schema additions are backward-tolerant, so a code rollback never requires a schema rollback.
 
 > ⚠️ **`npm run db:reset`** (local) drops the schema and replays **only `001_init.sql`**. Migrations 002–008 must be applied manually after reset. Do not run `db:reset` against prod.
 

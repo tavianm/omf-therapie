@@ -9,6 +9,17 @@
 -- Si deux requêtes ont tout de même créé la même présence, conserver la plus
 -- ancienne et archiver les suivantes avant de poser l'index. L'archivage reste
 -- réversible et évite qu'un déploiement échoue sur des données existantes.
+--
+-- Le verrou ci-dessous (revue #149) bloque les INSERT/UPDATE/DELETE
+-- concurrents (row exclusive) pendant toute la transaction : sans lui,
+-- une présence créée entre le CTE d'archivage et la pose de l'index fait
+-- échouer le CREATE UNIQUE INDEX sur son doublon — et annule la migration
+-- censée justement tolérer les données existantes. À exécuter en UNE
+-- transaction (défaut de `supabase db push` et de l'éditeur SQL) : en psql
+-- autocommit, encapsuler dans BEGIN/COMMIT, sinon le verrou ne porte que sur
+-- l'instruction LOCK.
+LOCK TABLE public.manual_time_slots IN SHARE ROW EXCLUSIVE MODE;
+
 WITH ranked_active_slots AS (
   SELECT
     id,

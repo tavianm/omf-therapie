@@ -14,7 +14,7 @@
  * AppointmentDetail). Aucune donnée supplémentaire : la liste vient du SSR.
  */
 
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import type { Appointment } from '../../../../types/appointment';
 import {
   formatDayHeader,
@@ -98,28 +98,39 @@ export function RendezVousView({ appointments, focus }: RendezVousViewProps) {
   const [partition, setPartition] = useState<Partition>('upcoming');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
   const deferredQuery = useDeferredValue(query);
+  // Une demande de focus ne doit être traitée qu'une fois : les changement
+  // d'identité d'appointments (après action) ne doivent pas écraser une
+  // recherche active.
+  const handledFocusNonceRef = useRef<number | null>(null);
 
-  // Focus venant de la Synthèse : sélectionne le RDV, bascule la partition
-  // si besoin, puis scrolle sur la ligne (double rAF : le rendu suit les
-  // setState d'une frame).
+  // Focus venant de la Synthèse : réconcilie recherche / filtre / pagination
+  // avec le RDV ciblé — une recherche restée active peut le masquer et
+  // « page 1 » peut le laisser hors écran, scrollIntoView ne trouvant alors
+  // aucune ligne montée (revue #149). La page est recalculée sur appointments
+  // brut : deferredQuery ne suit pas encore la réinitialisation.
   useEffect(() => {
-    if (!focus) return;
+    if (!focus || handledFocusNonceRef.current === focus.nonce) return;
     const target = appointments.find((a) => a.id === focus.id);
     if (!target) return;
-    setPartition(isUpcoming(target.scheduled_at) ? 'upcoming' : 'history');
+    handledFocusNonceRef.current = focus.nonce;
+    const targetPartition: Partition = isUpcoming(target.scheduled_at) ? 'upcoming' : 'history';
+    setQuery('');
+    setFilter('all');
+    setPartition(targetPartition);
     setSelectedId(target.id);
-    setPage(1);
-    let innerRaf = 0;
-    const outerRaf = window.requestAnimationFrame(() => {
-      innerRaf = window.requestAnimationFrame(() => {
-        document.getElementById(rowId(target.id))?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      });
-    });
-    return () => {
-      window.cancelAnimationFrame(outerRaf);
-      window.cancelAnimationFrame(innerRaf);
-    };
+    const now = Date.now();
+    const partitionList = appointments
+      .filter((a) => (isUpcoming(a.scheduled_at, now) ? 'upcoming' : 'history') === targetPartition)
+      .sort((a, b) =>
+        targetPartition === 'upcoming'
+          ? a.scheduled_at.localeCompare(b.scheduled_at)
+          : b.scheduled_at.localeCompare(a.scheduled_at),
+      );
+    const index = partitionList.findIndex((a) => a.id === target.id);
+    setPage(index >= 0 ? Math.floor(index / PAGE_SIZE) + 1 : 1);
+    setPendingFocusId(target.id);
   }, [focus, appointments]);
 
   const { filtered, statusCounts, upcomingCount, historyCount } = useMemo(() => {
@@ -164,6 +175,26 @@ export function RendezVousView({ appointments, focus }: RendezVousViewProps) {
     [partitionFiltered, safePage],
   );
   const groups = useMemo(() => groupByDay(paged), [paged]);
+
+  // Scrolle dès que la ligne ciblée est montée : la recherche différée
+  // (useDeferredValue) et la pagination peuvent retarder le rendu de plusieurs
+  // frames — un double rAF unique peut arriver trop tôt.
+  useEffect(() => {
+    if (!pendingFocusId) return;
+    let innerRaf = 0;
+    const outerRaf = window.requestAnimationFrame(() => {
+      innerRaf = window.requestAnimationFrame(() => {
+        const row = document.getElementById(rowId(pendingFocusId));
+        if (!row) return;
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setPendingFocusId(null);
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(outerRaf);
+      window.cancelAnimationFrame(innerRaf);
+    };
+  }, [pendingFocusId, paged]);
 
   const selected = selectedId ? appointments.find((a) => a.id === selectedId) ?? null : null;
   const selectedPatient = useMemo(() => {
