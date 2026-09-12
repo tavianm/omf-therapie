@@ -123,6 +123,14 @@ export const auth = betterAuth({
     enabled: true,
     window: 10 * 60, // 10 minutes (secondes)
     max: 5,          // tentatives maximum par fenêtre
+    // window/max ci-dessus s'applique aussi à /get-session (appelé par la
+    // navbar à chaque chargement de page) → 429 fantômes dès ~6 pages vues
+    // en 10 minutes, avec un lien "Mes RDV" fantôme via le flag localStorage.
+    // Règle dédiée plus large pour les lectures de session ; /sign-in/* garde
+    // sa règle interne plus stricte (3 essais / 10 s). (port #133)
+    customRules: {
+      '/get-session': { window: 10 * 60, max: 100 },
+    },
   },
 
   // ── Hook : bloquer toute inscription supplémentaire ───────────────────────

@@ -175,7 +175,7 @@ export const POST: APIRoute = async ({ request }) => {
     console.error('[appointments] Erreur insertion:', insertError);
     // Trigger 015 : le créneau mord sur la marge d'une séance adjacente.
     if (isSchedulingConflictError(insertError)) {
-      return errorResponse(409, 'undefined');
+      return errorResponse(409, 'Ce créneau vient d\'être pris ou tombe dans la marge entre les séances. Veuillez sélectionner un autre horaire.');
     }
     return errorResponse(500, 'Erreur lors de l\'enregistrement du rendez-vous');
   }

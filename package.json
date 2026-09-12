@@ -25,7 +25,7 @@
     "pretypecheck": "node scripts/generate-build-env.mjs",
     "audit:lighthouse": "lighthouse https://omf-therapie.fr --only-categories=accessibility --output html --output-path ./public/reports/lighthouse.html --chrome-flags='--headless'",
     "db:reset": "docker compose exec postgres psql -U postgres -d omf_therapie -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' && docker compose exec postgres psql -U postgres -d omf_therapie -f /docker-entrypoint-initdb.d/001_init.sql",
-    "db:start": "docker compose up -d postgres mailpit",
+    "db:start": "docker compose up -d postgres postgrest supabase-rest mailpit",
     "db:stop": "docker compose down"
   },
   "dependencies": {

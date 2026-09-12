@@ -302,7 +302,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     console.error('[admin/appointments] DB insert error:', dbError);
     // Trigger 015 : le créneau mord sur la marge d'une séance adjacente.
     if (isSchedulingConflictError(dbError)) {
-      return errorResponse(409, 'undefined');
+      return errorResponse(409, 'Ce créneau chevauche un rendez-vous existant (marge entre les séances incluse). Veuillez sélectionner un autre horaire.');
     }
     return errorResponse(500, 'Erreur lors de la création du rendez-vous');
   }
