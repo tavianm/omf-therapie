@@ -94,6 +94,7 @@ describe.skipIf(unreachableReason !== null)('credits ledger contre PostgreSQL r√
     status?: string;
     credit_applied?: number;
     final_price?: number;
+    atOffsetDays?: number;
   }): Promise<string> {
     const { rows } = await db.query<{ id: string }>(
       `INSERT INTO appointments
@@ -103,13 +104,14 @@ describe.skipIf(unreachableReason !== null)('credits ledger contre PostgreSQL r√
          credit_applied)
        VALUES ('Patient Test', 'integration@test.example', '0600000000',
          '63000', 'Clermont-Ferrand', 'S√©ance de test int√©gration',
-         'individual', 'video', 60, $1, 0, $1, now() + interval '7 days',
-         $2, $3)
+         'individual', 'video', 60, $1, 0, $1,
+         now() + make_interval(days => $4::int), $2, $3)
        RETURNING id`,
       [
         overrides.final_price ?? 6000,
         overrides.status ?? 'payment_received',
         overrides.credit_applied ?? 0,
+        overrides.atOffsetDays ?? 7,
       ],
     );
     return rows[0].id;
@@ -124,8 +126,8 @@ describe.skipIf(unreachableReason !== null)('credits ledger contre PostgreSQL r√
       [appointmentId, amount],
     );
     await db.query(
-      `INSERT INTO credit_usages (credit_id, appointment_id, amount) VALUES ($1, $2, $2)`,
-      [rows[0].id, appointmentId],
+      `INSERT INTO credit_usages (credit_id, appointment_id, amount) VALUES ($1, $2, $3)`,
+      [rows[0].id, appointmentId, amount],
     );
     return rows[0].id;
   }
@@ -147,7 +149,7 @@ describe.skipIf(unreachableReason !== null)('credits ledger contre PostgreSQL r√
   }
 
   it('restaure exactement une fois sous deux appels restore_credits concurrents', async () => {
-    const apptId = await seedAppointment({ credit_applied: 3000 });
+    const apptId = await seedAppointment({ credit_applied: 3000, atOffsetDays: 7 });
     await seedConsumedCredit(apptId, 3000);
 
     const clientA = await db.connect();
@@ -172,7 +174,7 @@ describe.skipIf(unreachableReason !== null)('credits ledger contre PostgreSQL r√
   });
 
   it('restore_credits est idempotent s√©quentiellement', async () => {
-    const apptId = await seedAppointment({ credit_applied: 2500 });
+    const apptId = await seedAppointment({ credit_applied: 2500, atOffsetDays: 14 });
     await seedConsumedCredit(apptId, 2500);
 
     await db.query('SELECT public.restore_credits($1)', [apptId]);
@@ -184,7 +186,7 @@ describe.skipIf(unreachableReason !== null)('credits ledger contre PostgreSQL r√
   });
 
   it('cancel_appointment_with_credits : claim + restitution + √©mission en une transaction', async () => {
-    const apptId = await seedAppointment({ credit_applied: 3000, final_price: 6000 });
+    const apptId = await seedAppointment({ credit_applied: 3000, final_price: 6000, atOffsetDays: 21 });
     const originalCreditId = await seedConsumedCredit(apptId, 3000);
 
     const { rows } = await db.query<Record<string, unknown>>(
@@ -224,7 +226,7 @@ describe.skipIf(unreachableReason !== null)('credits ledger contre PostgreSQL r√
   });
 
   it('deux annulations concurrentes : un seul gagnant, le perdant re√ßoit cancel_status_conflict', async () => {
-    const apptId = await seedAppointment({ credit_applied: 0, final_price: 6000 });
+    const apptId = await seedAppointment({ credit_applied: 0, final_price: 6000, atOffsetDays: 28 });
 
     const clientA = await db.connect();
     const clientB = await db.connect();
@@ -271,7 +273,7 @@ describe.skipIf(unreachableReason !== null)('credits ledger contre PostgreSQL r√
   });
 
   it('statut d√©j√† chang√© : cancel_status_conflict, la ligne reste intacte', async () => {
-    const apptId = await seedAppointment({ status: 'confirmed', final_price: 6000 });
+    const apptId = await seedAppointment({ status: 'confirmed', final_price: 6000, atOffsetDays: 35 });
 
     await expect(
       db.query('SELECT public.cancel_appointment_with_credits($1, $2, $3)', [
