@@ -297,16 +297,19 @@ export function PatientsView({ appointments, onPlanAppointment }: PatientsViewPr
         </aside>
       </div>
 
-      {/* Dossier — bottom sheet < lg */}
+      {/* Dossier — bottom sheet < lg uniquement : sur iPad/desktop le dossier
+          est déjà affiché dans le panneau droit (revue #148). */}
       {selected && (
-        <ModalOverlay
-          label={`Dossier de ${selected.name}`}
-          onClose={() => setSelectedEmail(null)}
-          panelClassName="absolute inset-x-0 bottom-0 rounded-t-3xl bg-white shadow-xl max-h-[92dvh] overflow-y-auto px-4 pb-8 pt-3"
-        >
-          <span className="mx-auto mb-3 block h-1.5 w-12 rounded-full bg-sage-200" aria-hidden="true" />
-          {dossier}
-        </ModalOverlay>
+        <div className="lg:hidden">
+          <ModalOverlay
+            label={`Dossier de ${selected.name}`}
+            onClose={() => setSelectedEmail(null)}
+            panelClassName="absolute inset-x-0 bottom-0 rounded-t-3xl bg-white shadow-xl max-h-[92dvh] overflow-y-auto px-4 pb-8 pt-3"
+          >
+            <span className="mx-auto mb-3 block h-1.5 w-12 rounded-full bg-sage-200" aria-hidden="true" />
+            {dossier}
+          </ModalOverlay>
+        </div>
       )}
     </div>
   );

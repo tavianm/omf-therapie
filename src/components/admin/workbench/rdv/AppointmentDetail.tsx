@@ -434,7 +434,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose }: Ap
                 transition-colors min-h-[44px]
               "
             >
-              Reprogrammer
+              Reporter
             </button>
           )}
           {appointment.status === 'rescheduled' && (
@@ -452,7 +452,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose }: Ap
               Annuler le report
             </button>
           )}
-          {appointment.status === 'pending' && (
+          {(appointment.status === 'pending' || appointment.status === 'payment_pending') && (
             <button
               type="button"
               onClick={() => setOpenPanel(openPanel === 'decline' ? null : 'decline')}

@@ -425,22 +425,25 @@ export function RendezVousView({ appointments, focus }: RendezVousViewProps) {
         </aside>
       </div>
 
-      {/* Fiche détail — bottom sheet < lg */}
+      {/* Fiche détail — bottom sheet < lg uniquement : sur iPad/desktop la
+          fiche est déjà affichée dans le panneau droit (revue #148). */}
       {selected && (
-        <ModalOverlay
-          label={`Détail du rendez-vous de ${selected.patient_name}`}
-          onClose={() => setSelectedId(null)}
-          panelClassName="absolute inset-x-0 bottom-0 rounded-t-3xl bg-white shadow-xl max-h-[92dvh] overflow-y-auto px-4 pb-8 pt-3"
-        >
-          <span className="mx-auto mb-3 block h-1.5 w-12 rounded-full bg-sage-200" aria-hidden="true" />
-          <AppointmentDetail
-            key={selected.id}
-            appointment={selected}
-            patient={selectedPatient}
-            variant="sheet"
+        <div className="lg:hidden">
+          <ModalOverlay
+            label={`Détail du rendez-vous de ${selected.patient_name}`}
             onClose={() => setSelectedId(null)}
-          />
-        </ModalOverlay>
+            panelClassName="absolute inset-x-0 bottom-0 rounded-t-3xl bg-white shadow-xl max-h-[92dvh] overflow-y-auto px-4 pb-8 pt-3"
+          >
+            <span className="mx-auto mb-3 block h-1.5 w-12 rounded-full bg-sage-200" aria-hidden="true" />
+            <AppointmentDetail
+              key={selected.id}
+              appointment={selected}
+              patient={selectedPatient}
+              variant="sheet"
+              onClose={() => setSelectedId(null)}
+            />
+          </ModalOverlay>
+        </div>
       )}
     </div>
   );
