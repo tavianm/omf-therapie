@@ -18,7 +18,7 @@
 
 import { useMemo, useState } from 'react';
 import type { Appointment } from '../../../types/appointment';
-import { getModeLabel, getTypeLabel } from '../../../lib/pricing';
+import { getTypeLabel } from '../../../lib/pricing';
 import { formatTimeParis, isSameParisDay } from '../../../utils/date';
 import {
   getMinutesUntil,
@@ -28,7 +28,7 @@ import {
   getTriageBreakdown,
   getTriageItems,
 } from '../../../utils/workbench';
-import { DarkTimeBadge, LateBadge, Prochainement, StatusChip, TimeBlock } from './ui';
+import { AppointmentRow, DarkTimeBadge, Prochainement } from './ui';
 
 interface SyntheseViewProps {
   appointments: Appointment[];
@@ -216,36 +216,13 @@ export function SyntheseView({ appointments, onFocusAppointment }: SyntheseViewP
         ) : (
           <>
             <ul className="space-y-2">
-              {visibleTriage.map(({ appointment, reasons }) => (
+              {visibleTriage.map(({ appointment }) => (
                 <li key={appointment.id}>
-                  <button
-                    type="button"
+                  <AppointmentRow
+                    appointment={appointment}
                     onClick={() => onFocusAppointment(appointment.id)}
-                    aria-label={`Ouvrir : ${appointment.patient_name}, ${formatTimeParis(appointment.scheduled_at)}`}
-                    className="
-                      w-full flex items-center gap-3 px-3.5 py-2.5 text-left rounded-xl
-                      border border-sage-200 bg-white transition-colors
-                      hover:border-mint-300 hover:bg-mint-50/50
-                      focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[56px]
-                    "
-                  >
-                    <TimeBlock time={formatTimeParis(appointment.scheduled_at)} duration={appointment.duration} />
-                    <span className="flex-1 min-w-0">
-                      <span className="flex flex-wrap items-center gap-1.5">
-                        <span className="font-serif text-base font-semibold text-sage-900 truncate">
-                          {appointment.patient_name}
-                        </span>
-                        {reasons.late && <LateBadge />}
-                      </span>
-                      <span className="block text-xs text-sage-500 font-sans mt-0.5 truncate">
-                        {getTypeLabel(appointment.appointment_type)} · {getModeLabel(appointment.appointment_mode)}
-                      </span>
-                    </span>
-                    <StatusChip status={appointment.status} />
-                    <svg className="w-4 h-4 text-sage-400 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                      <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                    </svg>
-                  </button>
+                    ariaLabel={`Ouvrir : ${appointment.patient_name}, ${formatTimeParis(appointment.scheduled_at)}`}
+                  />
                 </li>
               ))}
             </ul>

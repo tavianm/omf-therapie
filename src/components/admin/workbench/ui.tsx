@@ -6,7 +6,10 @@
  */
 
 import { useEffect, useRef } from 'react';
-import type { AppointmentStatus } from '../../../types/appointment';
+import type { Appointment, AppointmentStatus } from '../../../types/appointment';
+import { getModeLabel, getTypeLabel } from '../../../lib/pricing';
+import { formatTimeParis, isUpcoming } from '../../../utils/date';
+import { getTriageReasons } from '../../../utils/workbench';
 
 export const WB_STATUS_LABELS: Record<AppointmentStatus, string> = {
   pending: 'En attente',
@@ -171,5 +174,67 @@ export function ModalOverlay({ label, onClose, panelClassName, children }: Modal
         {children}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AppointmentRow — carte de rendez-vous partagée
+// ---------------------------------------------------------------------------
+
+interface AppointmentRowProps {
+  appointment: Appointment;
+  onClick: () => void;
+  /** État sélectionné (liste Rendez-vous uniquement). */
+  selected?: boolean;
+  ariaLabel: string;
+}
+
+/**
+ * Carte unique des listes de rendez-vous — même rendu dans la file « À
+ * traiter » (Synthèse) et la liste Rendez-vous, sur iPad comme sur mobile :
+ * bloc horaire (heure + durée), patient + badges, sous-titre type · mode,
+ * statut, accès à la fiche (« Détails » ≥ sm, chevron sur mobile).
+ * Le badge « EN RETARD » est dérivé de la règle de triage unique
+ * (statut actionnable + date passée).
+ */
+export function AppointmentRow({ appointment, onClick, selected = false, ariaLabel }: AppointmentRowProps) {
+  const late = getTriageReasons(appointment)?.late ?? false;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      aria-label={ariaLabel}
+      className={`
+        w-full flex items-center gap-3 px-4 py-3 text-left rounded-2xl
+        border bg-white shadow-sm transition-colors
+        hover:border-mint-300 focus:outline-none focus:ring-2 focus:ring-mint-400
+        min-h-[64px]
+        ${selected ? 'border-l-4 border-l-sage-900 border-sage-200' : late ? 'border-l-4 border-l-amber-400 border-sage-200' : 'border-sage-200'}
+      `}
+    >
+      <TimeBlock time={formatTimeParis(appointment.scheduled_at)} duration={appointment.duration} />
+      <span className="flex-1 min-w-0">
+        <span className="flex flex-wrap items-center gap-1.5">
+          <span className="font-serif text-base font-semibold text-sage-900 truncate">
+            {appointment.patient_name}
+          </span>
+          {late && <LateBadge />}
+          <StatusChip status={appointment.status} />
+        </span>
+        <span className="block text-xs text-sage-500 font-sans mt-0.5 truncate">
+          {getTypeLabel(appointment.appointment_type)} · {getModeLabel(appointment.appointment_mode)}
+        </span>
+      </span>
+      <span className="hidden sm:inline-flex items-center gap-1 text-sm font-medium font-sans text-sage-600 shrink-0">
+        Détails
+        <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+        </svg>
+      </span>
+      <svg className="sm:hidden w-4 h-4 text-sage-400 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+      </svg>
+    </button>
   );
 }

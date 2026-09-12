@@ -26,7 +26,7 @@ import {
 } from '../../../../utils/date';
 import type { FocusRequest } from '../Workbench';
 import { AppointmentDetail } from './AppointmentDetail';
-import { LateBadge, ModalOverlay, StatusChip, TimeBlock } from '../ui';
+import { AppointmentRow, ModalOverlay } from '../ui';
 
 interface RendezVousViewProps {
   appointments: Appointment[];
@@ -327,50 +327,14 @@ export function RendezVousView({ appointments, focus }: RendezVousViewProps) {
                 <ul className="space-y-2.5">
                   {group.appointments.map((appointment) => {
                     const isSelected = selectedId === appointment.id;
-                    const isLate =
-                      !isUpcoming(appointment.scheduled_at) &&
-                      (appointment.status === 'pending' ||
-                        appointment.status === 'payment_pending' ||
-                        appointment.status === 'rescheduled');
                     return (
                       <li key={appointment.id} id={rowId(appointment.id)} className="scroll-mt-24">
-                        <button
-                          type="button"
+                        <AppointmentRow
+                          appointment={appointment}
+                          selected={isSelected}
                           onClick={() => setSelectedId(isSelected ? null : appointment.id)}
-                          aria-pressed={isSelected}
-                          aria-label={`Détails : ${appointment.patient_name}, ${formatTimeParis(appointment.scheduled_at)}`}
-                          className={`
-                            w-full flex items-center gap-3 px-4 py-3 text-left rounded-2xl
-                            border bg-white shadow-sm transition-colors
-                            hover:border-mint-300 focus:outline-none focus:ring-2 focus:ring-mint-400
-                            min-h-[64px]
-                            ${isSelected ? 'border-l-4 border-l-sage-900 border-sage-200' : 'border-sage-200'}
-                            ${isLate ? 'border-l-4 border-l-amber-400' : ''}
-                          `}
-                        >
-                          <TimeBlock time={formatTimeParis(appointment.scheduled_at)} duration={appointment.duration} />
-                          <span className="flex-1 min-w-0">
-                            <span className="flex flex-wrap items-center gap-1.5">
-                              <span className="font-serif text-base font-semibold text-sage-900 truncate">
-                                {appointment.patient_name}
-                              </span>
-                              {isLate && <LateBadge />}
-                              <StatusChip status={appointment.status} />
-                            </span>
-                            <span className="block text-xs text-sage-500 font-sans mt-0.5 truncate">
-                              {getModeLabel(appointment.appointment_mode)}
-                            </span>
-                          </span>
-                          <span className="hidden sm:inline-flex items-center gap-1 text-sm font-medium font-sans text-sage-600 shrink-0">
-                            Détails
-                            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                              <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                            </svg>
-                          </span>
-                          <svg className="sm:hidden w-4 h-4 text-sage-400 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                            <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                          </svg>
-                        </button>
+                          ariaLabel={`Détails : ${appointment.patient_name}, ${formatTimeParis(appointment.scheduled_at)}`}
+                        />
                       </li>
                     );
                   })}
