@@ -1,16 +1,15 @@
-# .claude/stack.yml — dev-core stack configuration
+# .dev/stack.yml — dev-core stack configuration
 # COMMIT this file — it declares project stack conventions (paths, commands,
 # formatter, test runner). No secrets go here; only `.env` stays gitignored.
-# `.claude/dev-core.yml` holds GitHub Project node IDs (public, not secrets) — commit it too.
+# `.dev/dev-core.yml` holds GitHub Project node IDs (public, not secrets) — commit it too.
 #
 # stack.yml.example remains as a reference template for fresh clones.
 #
 # Usage:
-#   1. Copy to your project: cp stack.yml.example .claude/stack.yml
-#   2. Add as first line of CLAUDE.md: @.claude/stack.yml
-#   3. Fill in the values below for your project's stack.
-#   4. Commit .claude/stack.yml alongside code.
-#   5. Run /init to verify setup, /checkup to health-check.
+#   1. Copy to your project: mkdir -p .dev && cp stack.yml.example .dev/stack.yml
+#   2. Fill in the values below for your project's stack.
+#   3. Commit .dev/stack.yml alongside code.
+#   4. Run /init to verify setup, /dev-checkup to health-check.
 
 schema_version: "1.0"
 
@@ -47,7 +46,7 @@ build:
   #     ext: [".py"]
 
 testing:
-  unit: vitest                    # vitest | jest | pytest | none
+  unit: vitest                    # vitest | jest | pytest | bun | none  (bun = native bun:test runner)
   e2e: playwright                 # playwright | cypress | none
 
 hooks:
@@ -63,10 +62,21 @@ deploy:
   platform: vercel                # vercel | railway | fly | aws | none
   secrets_cmd: "vercel env add"   # command to add a secret to the deployment platform
 
+# Release model — /promote reads this block (single-component repos).
+# `class` is grep-derived (by who consumes the tag), never judged:
+#   PRODUCER = another repo pins this one via [tool.uv.sources] → pin-swap resolves SHA→tag
+#   TRIGGER  = this repo has a workflow on.push.tags: ['<component>/v*']
+#   NONE     = neither (9 of 14 repos)
+release:
+  model: staging-train            # staging-train (default) | trunk — trunk releases at merge-to-main via auto-release.yml (#371); absent ⇒ staging-train
+  class: NONE                     # PRODUCER | TRIGGER | NONE
+  component: null                 # tag prefix, e.g. roxabi-live; scopes BASE. REQUIRED — null ⇒ /promote REFUSE
+  version_files: []               # files step 2b stamps, e.g. ["pyproject.toml"]; [] ⇒ no-op. Keep [] until the file is reconciled to the newest tag
+
 docs:
-  framework: fumadocs             # fumadocs | docusaurus | nextra | none
+  framework: none                 # none | docusaurus | nextra (write path is always .md)
   path: docs                      # path to documentation directory
-  format: mdx                     # mdx | md
+  format: md                      # md (write). Legacy .mdx may exist — read only, never verify
 
 # Quality gates — Python code-hygiene contracts (opt-in).
 # When section is absent: all gates OFF (backwards-compatible).
@@ -96,6 +106,7 @@ commands:
   dev: bun run dev
   build: bun run build
   test: bun run test
+  # "test:falsify": bun run test:falsify  # optional — mechanical falsify (/dev-implement 6b, /validate --full)
   lint: bun run lint
   typecheck: bun run typecheck
   format: "bunx biome check --write"
@@ -110,9 +121,32 @@ commands:
 #   reasoning_audit: [implement, plan]  # steps where agent shows reasoning before execution
                                          # Valid steps: spec, plan, implement. Omit to disable.
 
+# /dev-review roster — deterministic oracle (plugins/dev-core/skills/dev-review/roster.sh).
+# All keys optional; absent → defaults below. `always` bypasses the gate; `never` suppresses
+# it. `adversarial` is a floor (`never` ignored + warning). `product-lead` is NOT a roster
+# agent — Phase 2 covers spec compliance.
+review:
+  roster:
+    max_agents: 4                 # cap on the spawn set per chunk lane (excl. recall / finding-verifier); <1 clamps to 1 + warning
+    max_agents_review: 0          # flattened Lane A cap after collapse; floors ¬capped (R-adversarial 1×/chunk, stack:always); forced>value → raise + warn; 0 = off
+    verify_below_confidence: 90   # keep/drop pass over findings below this C; 0 disables the filter
+    recall_min_delta: 50          # recall needs multi-chunk ∧ |Δ| > this
+    agents:                       # per-agent override: default | always | never
+      R-adversarial: default      # floor — always spawned; `never` ignored + warning
+      R-security-auditor: default # path_hit only (claim tags do not spawn)
+      R-tester: default           # Δ test-hit ∧ oracle_ok == false (missing → ¬spawn)
+      R-frontend-dev: default     # Δ ∩ frontend.path/shared.ui, else Δ ∩ FE_EXT
+      R-backend-dev: default      # backend.path non-empty ∧ Δ ∩ that prefix
+      R-devops: default           # τ=F-full ∧ Δ ∩ INFRA — the single infra agent
+      R-architect: default        # τ=F-full ∧ Δ ∩ INFRA = ∅ (mutually exclusive with R-devops)
+      R-axial-adr-review: default # ∃ axial ADR ∧ Δ ∩ AXIAL
+      R-recall: default           # not in agents[] — multi-chunk ∧ |Δ| > recall_min_delta
+      R-finding-verifier: default # not in agents[] — verify_below_confidence > 0
+
 # Directories where dev-core agents write structured artifacts.
 # All paths are relative to the project root.
 artifacts:
+  brainstorms: artifacts/brainstorms  # divergent exploration from /interview — kept out of analyses/ so α resolution needs no filtering
   analyses: artifacts/analyses    # technical analyses produced by product-lead / architect
   specs: artifacts/specs          # solution specs
   frames: artifacts/frames        # problem frames
@@ -122,14 +156,14 @@ artifacts:
 # Each agent reads the relevant doc before implementing to follow project conventions.
 # All paths are relative to the project root.
 standards:
-  backend: docs/standards/backend-patterns.mdx      # used by: backend-dev, fixer, tester
-  frontend: docs/standards/frontend-patterns.mdx    # used by: frontend-dev, fixer, tester
-  testing: docs/standards/testing.mdx              # used by: tester, fixer, backend-dev, frontend-dev
-  code_review: docs/standards/code-review.mdx      # used by: fixer
+  backend: docs/standards/backend-patterns.md      # used by: backend-dev, fixer, tester
+  frontend: docs/standards/frontend-patterns.md    # used by: frontend-dev, fixer, tester
+  testing: docs/standards/testing.md              # used by: tester, fixer, backend-dev, frontend-dev
+  code_review: docs/standards/code-review.md      # used by: fixer
   architecture: docs/architecture/                  # used by: architect
-  configuration: docs/configuration.mdx            # used by: devops
-  deployment: docs/guides/deployment.mdx           # used by: devops
-  troubleshooting: docs/guides/troubleshooting.mdx  # used by: devops
-  issue_management: docs/processes/issue-management.mdx  # used by: product-lead
-  dev_process: docs/processes/dev-process.mdx      # used by: architect
-  contributing: docs/contributing.mdx              # used by: doc-writer, architect
+  configuration: docs/standards/configuration.md  # used by: devops
+  deployment: docs/guides/deployment.md           # used by: devops
+  troubleshooting: docs/guides/troubleshooting.md  # used by: devops
+  issue_management: docs/processes/issue-management.md  # used by: product-lead
+  dev_process: docs/processes/dev-process.md      # used by: architect
+  contributing: docs/contributing.md              # used by: doc-writer, architect

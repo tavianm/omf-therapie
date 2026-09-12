@@ -1,0 +1,6 @@
+# .dev/dev-core.yml — dev-core project configuration
+# Public repo configuration only (no secrets) — commit this file.
+# Used by dev-core skills (checkup doctor, triage, PR tooling) and as the
+# /R-dev-init idempotency marker.
+
+github_repo: tavianm/omf-therapie
