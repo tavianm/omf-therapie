@@ -1,9 +1,48 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  CalendarNetworkError,
+  createCalendarEvent,
   generateSlotsForRange,
+  getPersistedOAuthClient,
+  GoogleCalendarError,
   type GenerateSlotsInput,
 } from '@/lib/google-calendar';
 import type { Period } from '@/types/manual-slots';
+
+// ---------------------------------------------------------------------------
+// Supabase mock (idiom: tests/unit/manual-slots.test.ts) — a chainable query
+// whose terminal `.single()` resolves a per-test seeded result, plus write
+// spies so the SC1 oracles can assert that ZERO writes to google_oauth_tokens
+// originate from the token-row READ path (issue #153).
+// ---------------------------------------------------------------------------
+const supabaseMock = vi.hoisted(() => ({
+  // Seed per test: the { data, error } resolved by the token-row select.
+  tokenSelect: {
+    data: null as unknown,
+    error: null as { code?: string; message?: string } | null,
+  },
+  // Write spies — a read path must never call these.
+  update: vi.fn(),
+  upsert: vi.fn(),
+  insert: vi.fn(),
+}));
+
+vi.mock('@/lib/supabase', () => {
+  const query = {
+    select: () => query,
+    eq: () => query,
+    single: async () => supabaseMock.tokenSelect,
+    update: supabaseMock.update,
+    upsert: supabaseMock.upsert,
+    insert: supabaseMock.insert,
+  };
+  supabaseMock.update.mockReturnValue(query);
+  supabaseMock.upsert.mockReturnValue(query);
+  supabaseMock.insert.mockReturnValue(query);
+  return {
+    supabaseAdmin: { from: (_table: string) => query },
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Paris-timezone helpers (deterministic regardless of the host's local TZ).
@@ -13,11 +52,20 @@ import type { Period } from '@/types/manual-slots';
 
 const TZ = 'Europe/Paris';
 const WEEKDAY_MAP: Record<string, number> = {
-  Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+  Sun: 7,
 };
 
 function parisWeekday(date: Date): number {
-  const wd = new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'short' }).format(date);
+  const wd = new Intl.DateTimeFormat('en-US', {
+    timeZone: TZ,
+    weekday: 'short',
+  }).format(date);
   return WEEKDAY_MAP[wd] ?? 7;
 }
 
@@ -28,7 +76,7 @@ function parisDateKey(date: Date): string {
     month: '2-digit',
     day: '2-digit',
   }).formatToParts(date);
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  const get = (t: string) => parts.find(p => p.type === t)?.value ?? '';
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
@@ -39,8 +87,11 @@ function parisHourMinute(date: Date): { hour: number; minute: number } {
     minute: '2-digit',
     hour12: false,
   }).formatToParts(date);
-  const hour = parseInt(parts.find((p) => p.type === 'hour')?.value ?? '0', 10);
-  const minute = parseInt(parts.find((p) => p.type === 'minute')?.value ?? '0', 10);
+  const hour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
+  const minute = parseInt(
+    parts.find(p => p.type === 'minute')?.value ?? '0',
+    10,
+  );
   return { hour: hour === 24 ? 0 : hour, minute };
 }
 
@@ -67,7 +118,9 @@ function buildInput(
   };
 }
 
-function manualMap(entries: Array<[string, Period[]]>): Map<string, Set<Period>> {
+function manualMap(
+  entries: Array<[string, Period[]]>,
+): Map<string, Set<Period>> {
   const map = new Map<string, Set<Period>>();
   for (const [date, periods] of entries) {
     map.set(date, new Set(periods));
@@ -85,7 +138,10 @@ function firstDateKeyWithWeekday(weekday: number): string {
   const minStartKey = parisDateKey(new Date(NOW.getTime() + MIN_NOTICE_MS));
   for (let i = 0; i < 14; i++) {
     const instant = new Date(START.getTime() + i * DAY_MS);
-    if (parisWeekday(instant) === weekday && parisDateKey(instant) > minStartKey) {
+    if (
+      parisWeekday(instant) === weekday &&
+      parisDateKey(instant) > minStartKey
+    ) {
       return parisDateKey(instant);
     }
   }
@@ -114,7 +170,7 @@ describe('generateSlotsForRange — eligibility model', () => {
     it('video and in-person are strictly disjoint (no shared slot start)', () => {
       const inPerson = generateSlotsForRange(buildInput({ mode: 'in-person' }));
       const video = generateSlotsForRange(buildInput({ mode: 'video' }));
-      const inPersonStarts = new Set(inPerson.map((s) => s.start));
+      const inPersonStarts = new Set(inPerson.map(s => s.start));
       for (const s of video) {
         expect(inPersonStarts.has(s.start)).toBe(false);
       }
@@ -131,7 +187,9 @@ describe('generateSlotsForRange — eligibility model', () => {
         }),
       );
 
-      const mondayStarts = slots.filter((s) => parisDateKey(new Date(s.start)) === monday);
+      const mondayStarts = slots.filter(
+        s => parisDateKey(new Date(s.start)) === monday,
+      );
       expect(mondayStarts.length).toBeGreaterThan(0);
       for (const s of mondayStarts) {
         const { hour } = parisHourMinute(new Date(s.start));
@@ -149,7 +207,9 @@ describe('generateSlotsForRange — eligibility model', () => {
         }),
       );
 
-      const mondaySlots = slots.filter((s) => parisDateKey(new Date(s.start)) === monday);
+      const mondaySlots = slots.filter(
+        s => parisDateKey(new Date(s.start)) === monday,
+      );
       for (const s of mondaySlots) {
         const { hour } = parisHourMinute(new Date(s.start));
         // Afternoon only — morning is now cabinet, so visio must not offer it.
@@ -163,14 +223,24 @@ describe('generateSlotsForRange — eligibility model', () => {
     it('manual all_day on a weekday → cabinet both halves, video none that day', () => {
       const tuesday = firstDateKeyWithWeekday(2);
       const inPerson = generateSlotsForRange(
-        buildInput({ mode: 'in-person', manualSlots: manualMap([[tuesday, ['all_day']]]) }),
+        buildInput({
+          mode: 'in-person',
+          manualSlots: manualMap([[tuesday, ['all_day']]]),
+        }),
       );
       const video = generateSlotsForRange(
-        buildInput({ mode: 'video', manualSlots: manualMap([[tuesday, ['all_day']]]) }),
+        buildInput({
+          mode: 'video',
+          manualSlots: manualMap([[tuesday, ['all_day']]]),
+        }),
       );
 
-      const ipTue = inPerson.filter((s) => parisDateKey(new Date(s.start)) === tuesday);
-      const vidTue = video.filter((s) => parisDateKey(new Date(s.start)) === tuesday);
+      const ipTue = inPerson.filter(
+        s => parisDateKey(new Date(s.start)) === tuesday,
+      );
+      const vidTue = video.filter(
+        s => parisDateKey(new Date(s.start)) === tuesday,
+      );
       expect(ipTue.length).toBeGreaterThan(0);
       expect(vidTue).toHaveLength(0);
     });
@@ -178,16 +248,28 @@ describe('generateSlotsForRange — eligibility model', () => {
     it('Wednesday stays fully cabinet even when a manual slot is added on it (additive)', () => {
       const wednesday = firstDateKeyWithWeekday(3);
       const inPerson = generateSlotsForRange(
-        buildInput({ mode: 'in-person', manualSlots: manualMap([[wednesday, ['morning']]]) }),
+        buildInput({
+          mode: 'in-person',
+          manualSlots: manualMap([[wednesday, ['morning']]]),
+        }),
       );
       const video = generateSlotsForRange(
-        buildInput({ mode: 'video', manualSlots: manualMap([[wednesday, ['morning']]]) }),
+        buildInput({
+          mode: 'video',
+          manualSlots: manualMap([[wednesday, ['morning']]]),
+        }),
       );
 
-      const ipWed = inPerson.filter((s) => parisDateKey(new Date(s.start)) === wednesday);
-      const vidWed = video.filter((s) => parisDateKey(new Date(s.start)) === wednesday);
+      const ipWed = inPerson.filter(
+        s => parisDateKey(new Date(s.start)) === wednesday,
+      );
+      const vidWed = video.filter(
+        s => parisDateKey(new Date(s.start)) === wednesday,
+      );
       // Wednesday afternoon remains cabinet (not flipped to visio)
-      const ipWedPm = ipWed.filter((s) => parisHourMinute(new Date(s.start)).hour >= 14);
+      const ipWedPm = ipWed.filter(
+        s => parisHourMinute(new Date(s.start)).hour >= 14,
+      );
       expect(ipWedPm.length).toBeGreaterThan(0);
       expect(vidWed).toHaveLength(0);
     });
@@ -213,10 +295,16 @@ describe('generateSlotsForRange — eligibility model', () => {
     it('morning slots stay within 08:00–12:00, afternoon within 14:00–19:00 (Paris)', () => {
       const wednesday = firstDateKeyWithWeekday(3);
       const inPerson = generateSlotsForRange(buildInput({ mode: 'in-person' }));
-      const wedSlots = inPerson.filter((s) => parisDateKey(new Date(s.start)) === wednesday);
+      const wedSlots = inPerson.filter(
+        s => parisDateKey(new Date(s.start)) === wednesday,
+      );
 
-      const startHours = wedSlots.map((s) => parisHourMinute(new Date(s.start)).hour);
-      const minutes = wedSlots.map((s) => parisHourMinute(new Date(s.start)).minute);
+      const startHours = wedSlots.map(
+        s => parisHourMinute(new Date(s.start)).hour,
+      );
+      const minutes = wedSlots.map(
+        s => parisHourMinute(new Date(s.start)).minute,
+      );
       // Every start is either in [8,11] (morning, 30-min grid) or [14,18] (afternoon)
       for (let i = 0; i < wedSlots.length; i++) {
         const totalMin = startHours[i] * 60 + minutes[i];
@@ -227,7 +315,9 @@ describe('generateSlotsForRange — eligibility model', () => {
     });
 
     it('90-min duration does not overflow the period end (no slot ending after 12:00 / 19:00)', () => {
-      const inPerson = generateSlotsForRange(buildInput({ mode: 'in-person', duration: 90 }));
+      const inPerson = generateSlotsForRange(
+        buildInput({ mode: 'in-person', duration: 90 }),
+      );
       for (const s of inPerson) {
         const startHm = parisHourMinute(new Date(s.start));
         const totalMin = startHm.hour * 60 + startHm.minute;
@@ -261,5 +351,141 @@ describe('generateSlotsForRange — eligibility model', () => {
       // Generous ceiling; typically a few ms. Catches formatter-per-slot regressions.
       expect(elapsed).toBeLessThan(50);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getPersistedOAuthClient — token-row READ classification (issue #153 / SC1)
+//
+// Production incident 2026-09-13: the token-row select ignored its error, so
+// a transient fetch failure (network / 5xx / timeout) was treated as "no row"
+// and fell into the env bootstrap, which UPSERTED a stale
+// GOOGLE_OAUTH_REFRESH_TOKEN over the fresh row before refreshing → phantom
+// invalid_grant. SC1 contract under test:
+//   - select failure (≠ PGRST116) → CalendarNetworkError, ZERO writes;
+//   - no row (PGRST116) → null, ZERO writes, deprecation warn IFF the legacy
+//     GOOGLE_OAUTH_REFRESH_TOKEN env var is still set.
+// The env bootstrap itself is REMOVED from runtime — no table write may
+// originate from a read path.
+// ---------------------------------------------------------------------------
+describe('getPersistedOAuthClient — token-row read classification (SC1)', () => {
+  const ENV_KEYS = [
+    'GOOGLE_OAUTH_CLIENT_ID',
+    'GOOGLE_OAUTH_CLIENT_SECRET',
+    'GOOGLE_OAUTH_REFRESH_TOKEN',
+  ] as const;
+  let savedEnv: Record<string, string | undefined>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    supabaseMock.tokenSelect = { data: null, error: null };
+    supabaseMock.update.mockClear();
+    supabaseMock.upsert.mockClear();
+    supabaseMock.insert.mockClear();
+    savedEnv = Object.fromEntries(ENV_KEYS.map(key => [key, process.env[key]]));
+    process.env.GOOGLE_OAUTH_CLIENT_ID = 'test-client-id';
+    process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'test-client-secret';
+    // Absent by default — the "with env var" test re-sets it explicitly.
+    delete process.env.GOOGLE_OAUTH_REFRESH_TOKEN;
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+    for (const [key, value] of Object.entries(savedEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  it('PostgREST 504 on the token select → CalendarNetworkError, ZERO writes', async () => {
+    supabaseMock.tokenSelect = {
+      data: null,
+      error: { code: '504', message: 'Gateway timeout' },
+    };
+
+    const err: unknown = await getPersistedOAuthClient().catch(
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(CalendarNetworkError);
+    // Sanitized message only — the raw error payloads must never be carried
+    // (they may embed credentials).
+    expect((err as Error).message).not.toContain('Gateway timeout');
+    expect(supabaseMock.update).not.toHaveBeenCalled();
+    expect(supabaseMock.upsert).not.toHaveBeenCalled();
+    expect(supabaseMock.insert).not.toHaveBeenCalled();
+  });
+
+  it('network timeout on the select (error without code) → CalendarNetworkError, ZERO writes', async () => {
+    supabaseMock.tokenSelect = {
+      data: null,
+      error: { message: 'fetch failed' },
+    };
+
+    await expect(getPersistedOAuthClient()).rejects.toBeInstanceOf(
+      CalendarNetworkError,
+    );
+    expect(supabaseMock.update).not.toHaveBeenCalled();
+    expect(supabaseMock.upsert).not.toHaveBeenCalled();
+    expect(supabaseMock.insert).not.toHaveBeenCalled();
+  });
+
+  it('PGRST116 (no row) with GOOGLE_OAUTH_REFRESH_TOKEN set → null, ZERO writes, deprecation warn', async () => {
+    supabaseMock.tokenSelect = {
+      data: null,
+      error: {
+        code: 'PGRST116',
+        message: 'JSON object requested, multiple (or no) rows returned',
+      },
+    };
+    process.env.GOOGLE_OAUTH_REFRESH_TOKEN = 'stale-env-refresh-token';
+
+    await expect(getPersistedOAuthClient()).resolves.toBeNull();
+    expect(supabaseMock.update).not.toHaveBeenCalled();
+    expect(supabaseMock.upsert).not.toHaveBeenCalled();
+    expect(supabaseMock.insert).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const warned = String(warnSpy.mock.calls[0]?.[0]);
+    expect(warned).toContain('bootstrap env supprimé');
+    expect(warned).toContain('/api/admin/google-oauth');
+    // Never echo the stale token value into the logs.
+    expect(warned).not.toContain('stale-env-refresh-token');
+  });
+
+  it('PGRST116 (no row) without the env var → null, ZERO writes, NO warn', async () => {
+    supabaseMock.tokenSelect = {
+      data: null,
+      error: {
+        code: 'PGRST116',
+        message: 'JSON object requested, multiple (or no) rows returned',
+      },
+    };
+
+    await expect(getPersistedOAuthClient()).resolves.toBeNull();
+    expect(supabaseMock.update).not.toHaveBeenCalled();
+    expect(supabaseMock.upsert).not.toHaveBeenCalled();
+    expect(supabaseMock.insert).not.toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('no row keeps the caller contract: createCalendarEvent throws the stable "OAuth non configuré" error', async () => {
+    supabaseMock.tokenSelect = {
+      data: null,
+      error: {
+        code: 'PGRST116',
+        message: 'JSON object requested, multiple (or no) rows returned',
+      },
+    };
+
+    await expect(
+      createCalendarEvent({
+        title: 'Séance test',
+        start: '2030-01-02T10:00:00+01:00',
+        end: '2030-01-02T11:00:00+01:00',
+      }),
+    ).rejects.toThrow('OAuth non configuré');
+    // And the null path triggers no write either.
+    expect(supabaseMock.upsert).not.toHaveBeenCalled();
+    expect(supabaseMock.update).not.toHaveBeenCalled();
   });
 });

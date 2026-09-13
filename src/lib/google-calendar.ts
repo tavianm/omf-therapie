@@ -38,22 +38,34 @@ export class GoogleCalendarError extends Error {
 
 export class CalendarAuthError extends GoogleCalendarError {
   readonly type = 'CalendarAuthError' as const;
-  constructor(message: string, cause?: unknown) { super(message, cause); this.name = 'CalendarAuthError'; }
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+    this.name = 'CalendarAuthError';
+  }
 }
 
 export class CalendarPermissionError extends GoogleCalendarError {
   readonly type = 'CalendarPermissionError' as const;
-  constructor(message: string, cause?: unknown) { super(message, cause); this.name = 'CalendarPermissionError'; }
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+    this.name = 'CalendarPermissionError';
+  }
 }
 
 export class CalendarQuotaError extends GoogleCalendarError {
   readonly type = 'CalendarQuotaError' as const;
-  constructor(message: string, cause?: unknown) { super(message, cause); this.name = 'CalendarQuotaError'; }
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+    this.name = 'CalendarQuotaError';
+  }
 }
 
 export class CalendarNetworkError extends GoogleCalendarError {
   readonly type = 'CalendarNetworkError' as const;
-  constructor(message: string, cause?: unknown) { super(message, cause); this.name = 'CalendarNetworkError'; }
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+    this.name = 'CalendarNetworkError';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -61,19 +73,31 @@ export class CalendarNetworkError extends GoogleCalendarError {
 // ---------------------------------------------------------------------------
 
 function parseGoogleError(err: unknown): GoogleCalendarError {
-  const asRecord = typeof err === 'object' && err !== null ? (err as Record<string, unknown>) : null;
-  const responseStatus = asRecord?.['response'] != null
-    ? (asRecord['response'] as Record<string, unknown>)['status']
-    : undefined;
+  const asRecord =
+    typeof err === 'object' && err !== null
+      ? (err as Record<string, unknown>)
+      : null;
+  const responseStatus =
+    asRecord?.['response'] != null
+      ? (asRecord['response'] as Record<string, unknown>)['status']
+      : undefined;
   const status = responseStatus ?? asRecord?.['code'];
-  if (status === 401) return new CalendarAuthError('Authentication failed', err);
-  if (status === 403) return new CalendarPermissionError('Calendar access denied', err);
-  if (status === 429) return new CalendarQuotaError('Google API quota exceeded', err);
+  if (status === 401)
+    return new CalendarAuthError('Authentication failed', err);
+  if (status === 403)
+    return new CalendarPermissionError('Calendar access denied', err);
+  if (status === 429)
+    return new CalendarQuotaError('Google API quota exceeded', err);
   return new CalendarNetworkError('Calendar API error', err);
 }
 
-export async function withCalendarRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
-  let lastError: GoogleCalendarError = new CalendarNetworkError('Unknown error');
+export async function withCalendarRetry<T>(
+  fn: () => Promise<T>,
+  maxAttempts = 3,
+): Promise<T> {
+  let lastError: GoogleCalendarError = new CalendarNetworkError(
+    'Unknown error',
+  );
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await fn();
@@ -81,11 +105,16 @@ export async function withCalendarRetry<T>(fn: () => Promise<T>, maxAttempts = 3
       const parsed = parseGoogleError(err);
       lastError = parsed;
       // No retry for auth/permission errors
-      if (parsed instanceof CalendarAuthError || parsed instanceof CalendarPermissionError) {
+      if (
+        parsed instanceof CalendarAuthError ||
+        parsed instanceof CalendarPermissionError
+      ) {
         throw parsed;
       }
       if (attempt < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+        await new Promise(resolve =>
+          setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)),
+        );
       }
     }
   }
@@ -119,7 +148,8 @@ export type AppointmentDuration = 60 | 90;
  * env access in this file must go through this helper (or an explicit DI value).
  */
 function readEnv(key: string): string | undefined {
-  const fromMeta = (import.meta as { env?: Record<string, string | undefined> }).env?.[key];
+  const fromMeta = (import.meta as { env?: Record<string, string | undefined> })
+    .env?.[key];
   if (fromMeta !== undefined) return fromMeta;
   return process.env[key];
 }
@@ -168,41 +198,66 @@ const MIN_NOTICE_MS = 24 * 60 * 60 * 1000;
 // Authentification Google
 // ---------------------------------------------------------------------------
 
-
 /**
  * Returns a configured OAuth2Client with a valid access token, persisting
  * token rotation in the `google_oauth_tokens` Supabase table.
- * Falls back to bootstrapping from env vars on first run.
+ *
+ * Token-row READ classification (issue #153 / SC1):
+ *   - select failure (network / 5xx / timeout, i.e. any error ≠ PGRST116)
+ *     → throws `CalendarNetworkError` (sanitized — the raw error is never
+ *     attached) and performs ZERO writes;
+ *   - no row (PGRST116) → returns null with NO write of any kind. The env
+ *     bootstrap (GOOGLE_OAUTH_REFRESH_TOKEN) is REMOVED from runtime: the
+ *     OAuth callback (/api/admin/google-oauth) is the single authoritative
+ *     source of the token row — no table write may originate from a read
+ *     path.
+ *
+ * Exported for the token-read contracts (unit tests, issue #153 SC1/SC8).
  */
-async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | null> {
+export async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | null> {
   const clientId = readEnv('GOOGLE_OAUTH_CLIENT_ID');
   const clientSecret = readEnv('GOOGLE_OAUTH_CLIENT_SECRET');
   if (!clientId || !clientSecret) return null;
 
-  const redirectUri = readEnv('GOOGLE_OAUTH_REDIRECT_URI') ?? 'https://developers.google.com/oauthplayground';
-  const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+  const redirectUri =
+    readEnv('GOOGLE_OAUTH_REDIRECT_URI') ??
+    'https://developers.google.com/oauthplayground';
+  const oauth2Client = new google.auth.OAuth2(
+    clientId,
+    clientSecret,
+    redirectUri,
+  );
 
-  // 1. Load persisted tokens from DB
-  let { data: tokens } = await supabaseAdmin
+  // 1. Load persisted tokens from DB. The select error is CLASSIFIED, never
+  //    ignored: a transient fetch failure must not be mistaken for "no row" —
+  //    that used to fall into the env bootstrap, which upserted a stale
+  //    GOOGLE_OAUTH_REFRESH_TOKEN over the fresh row before refreshing
+  //    (production incident 2026-09-13, issue #153).
+  const { data: tokens, error } = await supabaseAdmin
     .from('google_oauth_tokens')
     .select('*')
     .eq('id', 'therapist')
     .single();
 
-  if (!tokens) {
-    // 2. Bootstrap from env vars on first run
-    const refreshToken = readEnv('GOOGLE_OAUTH_REFRESH_TOKEN');
-    if (!refreshToken) return null;
+  if (error && error.code !== 'PGRST116') {
+    // Transient infra failure (network, 5xx, timeout) → typed throw. The raw
+    // error is deliberately NOT attached: its payloads may embed credentials
+    // (client_secret / refresh_token).
+    throw new CalendarNetworkError(
+      'Lecture de la ligne token impossible (panne transitoire de google_oauth_tokens).',
+    );
+  }
 
-    tokens = {
-      id: 'therapist',
-      access_token: '',
-      refresh_token: refreshToken,
-      expiry_date: 0, // Forces immediate refresh below
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    await supabaseAdmin.from('google_oauth_tokens').upsert(tokens);
+  if (!tokens) {
+    // 2. No row (PGRST116) → not configured: return null with NO write of any
+    //    kind. Deprecation notice if the legacy env bootstrap token still
+    //    exists — reconnection via the OAuth callback is now the only path.
+    if (readEnv('GOOGLE_OAUTH_REFRESH_TOKEN')) {
+      console.warn(
+        '[google-calendar] GOOGLE_OAUTH_REFRESH_TOKEN ignoré — bootstrap env supprimé, reconnecter via /api/admin/google-oauth.',
+      );
+    }
+    return null;
   }
 
   // 3. Proactive refresh: refresh if token expires within 5 minutes
@@ -219,7 +274,7 @@ async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | null> {
         // does, this path will keep persisting the ORIGINAL token and needs
         // revisiting.
         refresh_token: credentials.refresh_token ?? tokens.refresh_token,
-        expiry_date: credentials.expiry_date ?? (Date.now() + 3600 * 1000),
+        expiry_date: credentials.expiry_date ?? Date.now() + 3600 * 1000,
         updated_at: new Date().toISOString(),
       };
       await supabaseAdmin
@@ -229,19 +284,28 @@ async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | null> {
       oauth2Client.setCredentials(credentials);
       return oauth2Client;
     } catch (err: unknown) {
-      const errData = (err as { response?: { data?: { error?: string } } })?.response?.data;
+      const errData = (err as { response?: { data?: { error?: string } } })
+        ?.response?.data;
       if (errData?.error === 'invalid_grant') {
         // AC-3: alert admin — fire and forget (don't block the throw)
         const adminEmail = readEnv('ADMIN_EMAIL');
         const siteUrl = readEnv('SITE_URL') ?? 'https://omf-therapie.fr';
         if (adminEmail) {
           const { createElement } = await import('react');
-          const { default: CalendarAuthAlert } = await import('../emails/CalendarAuthAlert');
+          const { default: CalendarAuthAlert } =
+            await import('../emails/CalendarAuthAlert');
           sendEmail({
             to: adminEmail,
             subject: '⚠️ Google Calendar — re-autorisation requise',
-            react: createElement(CalendarAuthAlert, { reauthorizeUrl: `${siteUrl}/api/admin/google-oauth` }),
-          }).catch((e: unknown) => console.error('[calendar] Alert email failed:', e instanceof Error ? e.message : e));
+            react: createElement(CalendarAuthAlert, {
+              reauthorizeUrl: `${siteUrl}/api/admin/google-oauth`,
+            }),
+          }).catch((e: unknown) =>
+            console.error(
+              '[calendar] Alert email failed:',
+              e instanceof Error ? e.message : e,
+            ),
+          );
         }
         // Store only the safe error code — do NOT pass raw err (GaxiosError may
         // carry client_secret / refresh_token in response.config.data)
@@ -250,10 +314,9 @@ async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | null> {
           { googleErrorCode: errData.error },
         );
       }
-      throw new CalendarNetworkError(
-        'Token refresh failed',
-        { status: (err as { response?: { status?: number } })?.response?.status },
-      );
+      throw new CalendarNetworkError('Token refresh failed', {
+        status: (err as { response?: { status?: number } })?.response?.status,
+      });
     }
   }
 
@@ -308,7 +371,7 @@ const PARIS_WEEKDAY_FORMATTER = new Intl.DateTimeFormat('en-US', {
  */
 function toParisLocalParts(date: Date) {
   const parts = Object.fromEntries(
-    PARIS_PARTS_FORMATTER.formatToParts(date).map((p) => [p.type, p.value]),
+    PARIS_PARTS_FORMATTER.formatToParts(date).map(p => [p.type, p.value]),
   );
 
   // fr-FR with hour12:false can emit "24" at midnight — normalise to 0.
@@ -338,9 +401,7 @@ function parisLocalToUTC(
   // On construit une date ISO sans timezone et on la parse via un trick Intl
   // La méthode la plus fiable est d'utiliser toLocaleString avec un test
   // d'aller-retour pour déterminer l'offset Paris à cette date précise.
-  const candidate = new Date(
-    Date.UTC(year, month - 1, day, hour, minute),
-  );
+  const candidate = new Date(Date.UTC(year, month - 1, day, hour, minute));
 
   // Récupère l'heure locale Paris de ce candidat UTC
   const local = toParisLocalParts(candidate);
@@ -358,7 +419,13 @@ function parisLocalToUTC(
 function getParisISOWeekday(date: Date): number {
   const wd = PARIS_WEEKDAY_FORMATTER.format(date);
   const map: Record<string, number> = {
-    Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+    Sun: 7,
   };
   return map[wd] ?? 7;
 }
@@ -436,7 +503,16 @@ export function generateSlotsForRange(input: GenerateSlotsInput): TimeSlot[] {
         const eligible = input.mode === 'in-person' ? isCabinet : !isCabinet;
         if (!eligible) continue;
 
-        slots.push(...generatePeriodSlots(year, month, day, half, input.duration, minStart));
+        slots.push(
+          ...generatePeriodSlots(
+            year,
+            month,
+            day,
+            half,
+            input.duration,
+            minStart,
+          ),
+        );
       }
     }
 
@@ -548,7 +624,9 @@ export async function getAvailableSlots(
   options: CalendarClientOptions = {},
 ): Promise<TimeSlot[]> {
   if (isCalendarMockEnabled()) {
-    console.log('[calendar-mock] getAvailableSlots called — generating slots via shared algorithm');
+    console.log(
+      '[calendar-mock] getAvailableSlots called — generating slots via shared algorithm',
+    );
 
     // Mock = pas de Google Calendar : on réutilise le même moteur de génération
     // que la production (cabinet = mercredi, visio = inverse), sans slots manuels.
@@ -565,10 +643,10 @@ export async function getAvailableSlots(
 
     if (dbBusyPeriods.length === 0) return candidates;
 
-    return candidates.filter((slot) => {
+    return candidates.filter(slot => {
       const slotStart = new Date(slot.start).getTime();
       const slotEnd = new Date(slot.end).getTime();
-      return !dbBusyPeriods.some((busy) => {
+      return !dbBusyPeriods.some(busy => {
         const busyStart = new Date(busy.start).getTime();
         const busyEnd = new Date(busy.end).getTime();
         return slotStart < busyEnd && slotEnd > busyStart;
@@ -578,13 +656,20 @@ export async function getAvailableSlots(
 
   const calendarId = await resolveCalendarId(options.calendarId);
 
-  const candidates = await generateCandidateSlots(startDate, endDate, duration, mode);
+  const candidates = await generateCandidateSlots(
+    startDate,
+    endDate,
+    duration,
+    mode,
+  );
 
   if (candidates.length === 0) {
     return [];
   }
 
-  const calendar = options.calendar ?? google.calendar({ version: 'v3', auth: await resolveCalendarAuth() });
+  const calendar =
+    options.calendar ??
+    google.calendar({ version: 'v3', auth: await resolveCalendarAuth() });
 
   // Une seule requête Freebusy pour toute la plage
   let busyPeriods: Array<{ start: string; end: string }> = [];
@@ -616,7 +701,10 @@ export async function getAvailableSlots(
   } catch (err: unknown) {
     // Gestion gracieuse : timeout, quota dépassé, réseau…
     const message = err instanceof Error ? err.message : String(err);
-    console.error('[google-calendar] Impossible d\'interroger Freebusy :', message);
+    console.error(
+      "[google-calendar] Impossible d'interroger Freebusy :",
+      message,
+    );
     throw new GoogleCalendarError(
       'Impossible de vérifier les disponibilités. Veuillez réessayer.',
       err,
@@ -627,11 +715,11 @@ export async function getAvailableSlots(
   const allBusy = [...busyPeriods, ...dbBusyPeriods];
 
   return candidates
-    .map((slot) => {
+    .map(slot => {
       const slotStart = new Date(slot.start).getTime();
       const slotEnd = new Date(slot.end).getTime();
 
-      const isBusy = allBusy.some((busy) => {
+      const isBusy = allBusy.some(busy => {
         const busyStart = new Date(busy.start).getTime();
         const busyEnd = new Date(busy.end).getTime();
         // Chevauchement : (slotStart < busyEnd) && (slotEnd > busyStart)
@@ -640,7 +728,7 @@ export async function getAvailableSlots(
 
       return { ...slot, available: !isBusy };
     })
-    .filter((slot) => slot.available);
+    .filter(slot => slot.available);
 }
 
 // ---------------------------------------------------------------------------
@@ -649,8 +737,8 @@ export async function getAvailableSlots(
 
 export interface CreateEventParams {
   title: string;
-  start: string;  // ISO 8601
-  end: string;    // ISO 8601
+  start: string; // ISO 8601
+  end: string; // ISO 8601
   description?: string;
   location?: string;
   attendeeEmail?: string;
@@ -668,24 +756,29 @@ export interface CreateEventResult {
   meetLink?: string;
 }
 
-
 // Accept the canonical googleapis Schema$Event shape (id, conferenceData,
 // hangoutLink) rather than a hand-rolled partial — callers pass response.data
 // directly. `Pick` narrows to the fields this function reads.
-type EventResultInput = Pick<calendar_v3.Schema$Event, 'id' | 'conferenceData' | 'hangoutLink'>;
+type EventResultInput = Pick<
+  calendar_v3.Schema$Event,
+  'id' | 'conferenceData' | 'hangoutLink'
+>;
 
 function extractEventResult(data: EventResultInput): CreateEventResult {
   const eventId = data.id;
   if (!eventId) {
     throw new GoogleCalendarError(
-      'L\'événement a été créé mais aucun ID n\'a été retourné par l\'API.',
+      "L'événement a été créé mais aucun ID n'a été retourné par l'API.",
     );
   }
 
   const meetLink =
-    data.conferenceData?.entryPoints?.find((entryPoint) => {
+    data.conferenceData?.entryPoints?.find(entryPoint => {
       if (!entryPoint) return false;
-      return entryPoint.entryPointType === 'video' && typeof entryPoint.uri === 'string';
+      return (
+        entryPoint.entryPointType === 'video' &&
+        typeof entryPoint.uri === 'string'
+      );
     })?.uri ??
     data.hangoutLink ??
     undefined;
@@ -694,7 +787,7 @@ function extractEventResult(data: EventResultInput): CreateEventResult {
 }
 
 function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     setTimeout(resolve, ms);
   });
 }
@@ -736,10 +829,14 @@ export async function updateCalendarEvent(
   const calendarId = await resolveCalendarId(options.calendarId);
 
   await withCalendarRetry(async () => {
-    const calendar = options.calendar ?? google.calendar({ version: 'v3', auth: await resolveCalendarAuth() });
+    const calendar =
+      options.calendar ??
+      google.calendar({ version: 'v3', auth: await resolveCalendarAuth() });
     const body: calendar_v3.Schema$Event = {};
-    if (patch.start) body.start = { dateTime: patch.start.toISOString(), timeZone: TIMEZONE };
-    if (patch.end) body.end = { dateTime: patch.end.toISOString(), timeZone: TIMEZONE };
+    if (patch.start)
+      body.start = { dateTime: patch.start.toISOString(), timeZone: TIMEZONE };
+    if (patch.end)
+      body.end = { dateTime: patch.end.toISOString(), timeZone: TIMEZONE };
     if (patch.summary) body.summary = patch.summary;
     await calendar.events.patch({
       calendarId,
@@ -765,7 +862,9 @@ export async function deleteCalendarEvent(
   const calendarId = await resolveCalendarId(options.calendarId);
 
   await withCalendarRetry(async () => {
-    const calendar = options.calendar ?? google.calendar({ version: 'v3', auth: await resolveCalendarAuth() });
+    const calendar =
+      options.calendar ??
+      google.calendar({ version: 'v3', auth: await resolveCalendarAuth() });
     await calendar.events.delete({
       calendarId,
       eventId,
@@ -783,7 +882,9 @@ export async function createCalendarEvent(
   options: CalendarClientOptions = {},
 ): Promise<CreateEventResult> {
   if (isCalendarMockEnabled()) {
-    console.log(`[calendar-mock] Creating event: ${params.title} at ${params.start}`);
+    console.log(
+      `[calendar-mock] Creating event: ${params.title} at ${params.start}`,
+    );
     const { withMeet, appointmentId } = params;
     const eventId = `mock-event-${Date.now()}`;
     return {
@@ -847,7 +948,11 @@ export async function createCalendarEvent(
     const inserted = extractEventResult(response.data);
     if (!params.withMeet || inserted.meetLink) return inserted;
 
-    const polledMeet = await pollMeetLink(calendar, calendarId, inserted.eventId);
+    const polledMeet = await pollMeetLink(
+      calendar,
+      calendarId,
+      inserted.eventId,
+    );
     return {
       ...inserted,
       meetLink: polledMeet,
@@ -855,15 +960,17 @@ export async function createCalendarEvent(
   };
 
   // Use OAuth for all event types (Meet and in-person).
-  const oauthCalendar = options.calendar ?? await (async () => {
-    const oauthAuth = await getPersistedOAuthClient();
-    if (!oauthAuth) {
-      throw new GoogleCalendarError(
-        'OAuth non configuré : impossible de créer le rendez-vous dans l\'agenda.',
-      );
-    }
-    return google.calendar({ version: 'v3', auth: oauthAuth });
-  })();
+  const oauthCalendar =
+    options.calendar ??
+    (await (async () => {
+      const oauthAuth = await getPersistedOAuthClient();
+      if (!oauthAuth) {
+        throw new GoogleCalendarError(
+          "OAuth non configuré : impossible de créer le rendez-vous dans l'agenda.",
+        );
+      }
+      return google.calendar({ version: 'v3', auth: oauthAuth });
+    })());
   try {
     return await upsertEvent(
       oauthCalendar,
@@ -874,9 +981,12 @@ export async function createCalendarEvent(
   } catch (err: unknown) {
     if (err instanceof GoogleCalendarError) throw err;
     const message = err instanceof Error ? err.message : String(err);
-    console.error('[google-calendar] Impossible de créer l\'événement :', message);
+    console.error(
+      "[google-calendar] Impossible de créer l'événement :",
+      message,
+    );
     throw new GoogleCalendarError(
-      'Impossible de créer le rendez-vous dans l\'agenda.',
+      "Impossible de créer le rendez-vous dans l'agenda.",
       err,
     );
   }
