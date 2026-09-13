@@ -47,7 +47,7 @@ Livrer les données vivantes du poste de travail en 3 slices : (V1) GET admin au
 
 ## Wave Structure
 
-4 waves, max 2 agents parallèles par wave. Étape parallèle ~4 waves vs ~9 tâches séquentielles.
+4 waves, jusqu'à 3 agents parallèles par wave (vitest toujours ciblé, --maxWorkers=1 — garde mémoire WSL). Étape parallèle ~4 waves vs ~9 tâches séquentielles.
 
 | Wave | Trigger | Agents | Tasks |
 |------|---------|--------|-------|
@@ -118,7 +118,7 @@ Livrer les données vivantes du poste de travail en 3 slices : (V1) GET admin au
 **T5 [R-frontend-dev-A] [dashboard] [SC5, SC6] — reload → refresh + réconciliation (bloqué par T4)**
 - Fichiers : `src/components/admin/workbench/rdv/AppointmentDetail.tsx`, `src/components/admin/workbench/CreateAppointmentDrawer.tsx`
 - Remplacer les 3 `window.location.reload()` par `refresh()` (via props depuis RendezVousView). Réconciliation : après succès, reset `actionLoading`/panneau/`actionMessage` ; notes ré-alignées serveur uniquement si aucune édition locale en cours ; état local jamais re-dérivé des props après montage ; RDV ouvert absent du payload → fermeture explicite du détail.
-- Vérifier : `grep -c "window.location.reload" src/components/admin/workbench/` → 0 ; `npm run lint`.
+- Vérifier : `! grep -r "window.location.reload" src/components/admin/workbench/` (contrat inversé : succès = 0 occurrence) ; `npm run lint`.
 - Difficulté 3 · ~15 min
 
 ### Slice V3 — Indicateur
