@@ -1,30 +1,43 @@
 /**
- * Golden availability fixtures — characterization suite (issue #153, task T1).
+ * Golden availability fixtures — equivalence suite (issue #153, tasks T1+T8).
  *
- * Pins the CURRENT success-path output of `getAvailableSlots` for the 4 games
- * {in-person, video} × {60, 90} under 4 frozen-clock scenarios. The fixtures
- * (tests/fixtures/availability/*.json) were captured from the PRE-refactor
- * implementation and are the oracle for SC4 (équivalence de dérivation): the
- * future pure derivation (T8) must reproduce them deep-equal.
+ * The fixtures (tests/fixtures/availability/*.json) capture the PRE-refactor
+ * success-path output of `getAvailableSlots` for the 4 games
+ * {in-person, video} × {60, 90} under 4 frozen-clock scenarios. They are the
+ * oracle for SC4 (équivalence de dérivation); this suite replays them through
+ * BOTH consumers of the refactor:
  *
- * Mock strategy — external API boundary ONLY, so the suite survives the
- * upcoming internal refactor:
+ *   1. PURE DERIVATION (cron side) — `loadAvailabilitySnapshot` (1 manual-slot
+ *      read + 1 Freebusy query, SC3 budget) → per game `generateSlotsForRange`
+ *      + `filterSlotsByBusy([...snapshot.busyPeriods, ...dbBusy])`, exactly
+ *      the combination `warmAvailabilityCache` (dbBusy=[]) and the patient
+ *      path perform.
+ *   2. LIVE PATIENT PATH — `getAvailableSlots` regression: the shared core
+ *      must keep reproducing the same games (SC7 "contrat inchangé").
+ *
+ * Mock strategy — external API boundary ONLY, so the suite survives internal
+ * refactors:
  *   - `fetchManualSlots` is mocked at its module boundary (no DB, no
  *     supabaseAdmin in the loop).
- *   - Freebusy is faked through the `CalendarClientOptions.calendar` DI seam —
- *     `resolveCalendarAuth` and the whole token path are NEVER exercised.
- *   - The clock is frozen with `vi.setSystemTime` (`generateCandidateSlots`
- *     reads `new Date()` for the 24h-notice cutoff).
- *   - Range bounds come from the fixture (4-week horizon, cron default) so T8
- *     reproduces them exactly.
+ *   - Freebusy is faked twice, once per injection style: through the
+ *     `CalendarClientOptions.calendar` DI seam for the live path (the token
+ *     path is NEVER exercised), and through a mocked `googleapis` calendar
+ *     factory for `loadAvailabilitySnapshot` (which builds its own client
+ *     from the injected OAuth2Client).
+ *   - The clock is frozen with `vi.setSystemTime` (the derivation reads
+ *     `new Date()` for the 24h-notice cutoff).
+ *   - Range bounds come from the fixture (4-week horizon, cron default).
  *   - No calendar-cache interaction; error paths are out of scope (SC4).
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { calendar_v3 } from 'googleapis';
+import type { Auth, calendar_v3 } from 'googleapis';
 import {
+  filterSlotsByBusy,
+  generateSlotsForRange,
   getAvailableSlots,
+  loadAvailabilitySnapshot,
   type AppointmentDuration,
   type AppointmentMode,
   type TimeSlot,
@@ -46,6 +59,47 @@ const manualSlots = vi.hoisted(() => ({
 
 vi.mock('@/lib/manual-slots', () => ({
   fetchManualSlots: manualSlots.fetchManualSlots,
+}));
+
+// ---------------------------------------------------------------------------
+// External-boundary mock: googleapis calendar factory — the seam
+// `loadAvailabilitySnapshot` uses (it builds its own calendar from the
+// injected OAuth2Client, which is why the client itself can stay a dummy:
+// the token path is never exercised). `state.busy` is read LAZILY at query
+// time, so each scenario seeds it right before calling the loader.
+// ---------------------------------------------------------------------------
+
+const googleApis = vi.hoisted(() => {
+  const state = {
+    calendarId: 'primary',
+    busy: [] as Array<{ start: string; end: string }>,
+  };
+  const freebusyQuery = vi.fn(async () => ({
+    data: {
+      calendars: {
+        [state.calendarId]: {
+          busy: state.busy.map(b => ({ start: b.start, end: b.end })),
+        },
+      },
+    },
+  }));
+  const calendarFactory = vi.fn(() => ({
+    freebusy: { query: freebusyQuery },
+  }));
+  return { state, freebusyQuery, calendarFactory };
+});
+
+vi.mock('googleapis', () => ({
+  google: {
+    auth: {
+      // Shape-only: getPersistedOAuthClient is never reached in this suite.
+      OAuth2: class {
+        setCredentials = vi.fn();
+        refreshAccessToken = vi.fn();
+      },
+    },
+    calendar: googleApis.calendarFactory,
+  },
 }));
 
 // ---------------------------------------------------------------------------
@@ -122,9 +176,7 @@ function fakeCalendarClient(
   return { client, freebusyQuery };
 }
 
-async function runScenario(
-  fixture: AvailabilityFixture,
-): Promise<{
+async function runScenario(fixture: AvailabilityFixture): Promise<{
   actual: Record<string, TimeSlot[]>;
   freebusyQuery: ReturnType<typeof vi.fn>;
 }> {
@@ -171,6 +223,62 @@ async function runScenario(
   return { actual, freebusyQuery };
 }
 
+/**
+ * Pure-derivation replay (cron side): one shared snapshot per scenario, then
+ * the 4 games derived locally with `generateSlotsForRange` +
+ * `filterSlotsByBusy([...snapshot.busyPeriods, ...fixtureDbBusy])` — exactly
+ * the combination the patient path performs (the cron derives with dbBusy=[]
+ * from the same building blocks). Returns the games for deep-equal against
+ * the fixture.
+ */
+async function deriveGamesViaSnapshot(
+  fixture: AvailabilityFixture,
+): Promise<{ actual: Record<string, TimeSlot[]> }> {
+  const { inputs } = fixture;
+
+  vi.stubEnv('DEV', inputs.mockMode);
+  vi.stubEnv('GOOGLE_CALENDAR_MOCK', inputs.mockMode ? 'true' : 'false');
+  // The snapshot loader resolves the calendar id from env (no DI seam).
+  vi.stubEnv('GOOGLE_CALENDAR_ID', 'primary');
+  vi.setSystemTime(new Date(inputs.frozenNow));
+
+  manualSlots.fetchManualSlots.mockReset();
+  manualSlots.fetchManualSlots.mockResolvedValue(
+    inputs.manualSlotRows.map(row => ({ ...row })),
+  );
+  googleApis.state.calendarId = 'primary';
+  googleApis.state.busy = inputs.freebusyBusyPeriods.map(b => ({ ...b }));
+  googleApis.freebusyQuery.mockClear();
+  googleApis.calendarFactory.mockClear();
+
+  const start = new Date(inputs.range.start);
+  const end = new Date(inputs.range.end);
+
+  const snapshot = await loadAvailabilitySnapshot(
+    {} as unknown as Auth.OAuth2Client,
+    start,
+    end,
+  );
+
+  const actual: Record<string, TimeSlot[]> = {};
+  for (const game of GAMES) {
+    const candidates = generateSlotsForRange({
+      startDate: start,
+      endDate: end,
+      duration: game.duration,
+      mode: game.mode,
+      now: new Date(inputs.frozenNow),
+      manualSlots: snapshot.manualSlots,
+    });
+    actual[game.key] = filterSlotsByBusy(candidates, [
+      ...snapshot.busyPeriods,
+      ...inputs.dbBusyPeriods,
+    ]);
+  }
+
+  return { actual };
+}
+
 beforeEach(() => {
   // Fake ONLY the clock: async flows keep real microtasks/timers.
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -183,6 +291,8 @@ beforeEach(() => {
   vi.stubEnv('SUPABASE_DATABASE_URL', 'http://localhost:54321');
   vi.stubEnv('SUPABASE_ANON_KEY', 'test-anon-key');
   vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'test-service-role-key');
+  // Snapshot loader resolves the calendar id from env.
+  vi.stubEnv('GOOGLE_CALENDAR_ID', 'primary');
 });
 
 afterEach(() => {
@@ -191,8 +301,92 @@ afterEach(() => {
 });
 
 // ===========================================================================
-// SC4 — one characterization test per golden scenario: the 4-game map must
-// deep-equal the fixture captured from the pre-refactor implementation.
+// SC4 — EQUIVALENCE (cron side): the pure derivation (shared snapshot →
+// generateSlotsForRange + filterSlotsByBusy) must reproduce every golden
+// game captured from the pre-refactor implementation, across all 4 scenarios.
+// ===========================================================================
+
+describe('pure derivation vs golden fixtures (SC4 — snapshot → generate + filter)', () => {
+  describe('scenario: manual-slots week', () => {
+    it('derives the 4 {mode}×{duration} games deep-equal to the golden fixture', async () => {
+      const fixture = loadFixture('manual-slots-week');
+      const { actual } = await deriveGamesViaSnapshot(fixture);
+      expect(actual).toEqual(fixture.expected);
+    });
+  });
+
+  describe('scenario: partial busy overlaps', () => {
+    it('derives the 4 {mode}×{duration} games deep-equal to the golden fixture', async () => {
+      const fixture = loadFixture('partial-busy-overlaps');
+      const { actual } = await deriveGamesViaSnapshot(fixture);
+      expect(actual).toEqual(fixture.expected);
+    });
+  });
+
+  describe('scenario: DST transition week Europe/Paris 2026-10-25', () => {
+    it('derives the 4 {mode}×{duration} games deep-equal to the golden fixture', async () => {
+      const fixture = loadFixture('dst-transition-week');
+      const { actual } = await deriveGamesViaSnapshot(fixture);
+      expect(actual).toEqual(fixture.expected);
+    });
+  });
+
+  describe('scenario: mock mode', () => {
+    it('derives the 4 {mode}×{duration} games deep-equal to the golden fixture', async () => {
+      const fixture = loadFixture('mock-mode');
+      const { actual } = await deriveGamesViaSnapshot(fixture);
+      expect(actual).toEqual(fixture.expected);
+      // Mock mode = zero I/O: no manual-slots read, no googleapis calendar
+      // built, hence no Freebusy query.
+      expect(manualSlots.fetchManualSlots).not.toHaveBeenCalled();
+      expect(googleApis.calendarFactory).not.toHaveBeenCalled();
+      expect(googleApis.freebusyQuery).not.toHaveBeenCalled();
+    });
+  });
+});
+
+// ===========================================================================
+// SC3 evidence (snapshot side) — ONE manual-slot read and ONE Freebusy query
+// per loadAvailabilitySnapshot call, with the exact fixture range window.
+// The cron-side 1/1/1 counters are asserted end-to-end in
+// tests/unit/calendar-keepwarm.test.ts.
+// ===========================================================================
+
+describe('loadAvailabilitySnapshot — shared-stage I/O budget (SC3)', () => {
+  it('per snapshot: exactly one manual-slots read and one Freebusy query with the fixture range window', async () => {
+    const fixture = loadFixture('partial-busy-overlaps');
+    await deriveGamesViaSnapshot(fixture);
+    const start = new Date(fixture.inputs.range.start);
+    const end = new Date(fixture.inputs.range.end);
+
+    expect(manualSlots.fetchManualSlots).toHaveBeenCalledTimes(1);
+    expect(manualSlots.fetchManualSlots).toHaveBeenCalledWith(start, end);
+
+    expect(googleApis.calendarFactory).toHaveBeenCalledTimes(1);
+    expect(googleApis.freebusyQuery).toHaveBeenCalledTimes(1);
+    expect(googleApis.freebusyQuery).toHaveBeenCalledWith({
+      requestBody: {
+        timeMin: start.toISOString(),
+        timeMax: end.toISOString(),
+        timeZone: fixture.inputs.timezone,
+        items: [{ id: 'primary' }],
+      },
+    });
+  });
+
+  it('mock mode: returns an empty snapshot with zero I/O', async () => {
+    const fixture = loadFixture('mock-mode');
+    await deriveGamesViaSnapshot(fixture);
+
+    expect(manualSlots.fetchManualSlots).not.toHaveBeenCalled();
+    expect(googleApis.freebusyQuery).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// SC4/SC7 — LIVE PATIENT PATH: getAvailableSlots (which now delegates to the
+// same snapshot core) must still reproduce every golden game — the external
+// contract is unchanged by the refactor.
 // ===========================================================================
 
 describe('getAvailableSlots — golden fixtures (characterization, SC4)', () => {
