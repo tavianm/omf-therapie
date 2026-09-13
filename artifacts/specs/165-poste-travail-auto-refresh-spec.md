@@ -105,7 +105,7 @@ oracles: ["GET sans session → 401, corps sans aucune donnée appointment", "GE
 - [ ] **SC5 — Non-intrusion** : aucun rafraîchissement n'écrase une saisie non enregistrée — **y compris un poll qui renvoie des données modifiées** ; l'état local du détail n'est jamais re-dérivé des props après le montage ; RDV ouvert absent du payload → fermeture explicite du détail ; polling en pause tant que le tiroir de création est ouvert. Oracles 1 et 3 vérifiés en Playwright e2e (le repo a un environnement e2e) ; oracle tiroir vérifié au poller pur.
 
 ```yaml
-claim:   guard
+claim:   fail-closed
 priced:  "aucun rafraîchissement automatique ne peut effacer ou écraser une saisie non enregistrée de la thérapeute — quel que soit le moment du poll ET quel que soit le contenu renvoyé (identique ou modifié)"
 not:     "vérifier seulement que les données sont remplacées / tester uniquement un poll dont les données n'ont pas changé / tester seulement le cas page au repos"
 oracles: ["notes modifiées non enregistrées + poll renvoyant des données MODIFIÉES (nouvelle ligne, statut changé) → le texte saisi et le focus survivent à l'écran (e2e)", "RDV ouvert disparaît du payload → le détail se ferme explicitement, la saisie n'est pas détruite sans décision visible (e2e)", "tiroir de création ouvert → 0 fetch pendant toute l'ouverture (poller pur, timers factices)", "RDV déplié + poll → le détail reste ouvert sur le même RDV (e2e)"]
@@ -113,10 +113,9 @@ oracles: ["notes modifiées non enregistrées + poll renvoyant des données MODI
 
 - [ ] **SC6 — Actions sans reload + réconciliation** : après une mutation admin réussie (statut, notes, régénération calendrier, création), la liste se met à jour in place ; `window.location.reload()` a disparu du Workbench et de ses vues (3 sites : ×2 `AppointmentDetail`, ×1 `CreateAppointmentDrawer`) ; les états transitoires du détail sont réinitialisés et le champ notes n'est ré-aligné serveur que si aucune édition locale non enregistrée n'est en cours.
 - [ ] **SC7 — Fin de session** : un 401/403 pendant le polling arrête la boucle définitivement (aucune requête ultérieure, y compris après retour de visibilité) et redirige comme le guard SSR : 401 → `/login/?redirect=/poste-travail/`, 403 → `/login/?error=acces-refuse`.
-- [ ] **SC7 — Fin de session** : un 401/403 pendant le polling arrête la boucle définitivement (aucune requête ultérieure, y compris après retour de visibilité) et redirige vers la connexion.
 
 ```yaml
-claim:   guard
+claim:   fail-closed
 priced:  "une session expirée ne peut jamais laisser une boucle de polling marteler l'endpoint : la boucle est irrévocablement arrêtée avant toute redirection"
 not:     "vérifier seulement qu'une redirection a lieu / compter les requêtes avant redirection sans vérifier l'absence de requêtes après"
 oracles: ["401 au poll → 0 requête supplémentaire sur l'horloge factice, tous les événements de visibilité simulés", "403 au poll → même arrêt irrévocable", "401 → /login/?redirect=/poste-travail/ ; 403 → /login/?error=acces-refuse (miroir exact du guard SSR)"]
