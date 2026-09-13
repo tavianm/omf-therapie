@@ -1,66 +1,117 @@
 {
   "issue": 153,
+  "schema_version": "2",
+  "runner": "scripts/run-falsify.mjs",
+  "admission": "Per row: apply the criterion-specific COMPILING mutation(s) (exact-match, unique occurrence enforced by the runner), run the mapped test file(s), and admit 'proven' ONLY when the suite completes with at least one ASSERTION failure matching expect_test. Collection / module-resolution / transform failures do NOT count (revue #154 — deleting whole source files made the previous oracle vacuous). A clean PASS control per test-file set must be green before any mutated run.",
   "rows": [
     {
       "sc_id": "SC1",
-      "sources": [
-        "src/lib/google-calendar.ts"
+      "criterion": "Token-row read integrity: a select failure (≠ PGRST116) is classified CalendarNetworkError with ZERO writes",
+      "mutations": [
+        {
+          "file": "src/lib/google-calendar.ts",
+          "find": "if (error && error.code !== 'PGRST116') {",
+          "replace": "if (error && false) {"
+        }
       ],
-      "test_cmd": "node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/google-calendar.test.ts --maxWorkers=1"
+      "expect_test": "CalendarNetworkError, ZERO writes",
+      "test_files": ["tests/unit/google-calendar.test.ts"]
     },
     {
       "sc_id": "SC2",
-      "sources": [
-        "netlify/functions/calendar-keepwarm.ts"
+      "criterion": "Session states + 6-min margin gate: exactly 6 min of persisted margin is NOT admitted as ok",
+      "mutations": [
+        {
+          "file": "netlify/functions/calendar-keepwarm.ts",
+          "find": "if (remainingMs !== null && remainingMs > WARMUP_MIN_TOKEN_VALIDITY_MS) {",
+          "replace": "if (remainingMs !== null && remainingMs > 0) {"
+        }
       ],
-      "test_cmd": "node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/calendar-keepwarm.test.ts --maxWorkers=1"
+      "expect_test": "6 min exactly",
+      "test_files": ["tests/unit/calendar-keepwarm.test.ts"]
     },
     {
       "sc_id": "SC3",
-      "sources": [
-        "netlify/functions/calendar-keepwarm.ts",
-        "src/lib/google-calendar.ts"
+      "criterion": "Budget amont 1/1/1: ONE Freebusy query per shared snapshot",
+      "mutations": [
+        {
+          "file": "src/lib/google-calendar.ts",
+          "find": "return { manualSlots: indexManualSlots(manualRecords), busyPeriods };",
+          "replace": "await fetchBusyPeriodsStage(calendar, calendarId, startDate, endDate);\n  return { manualSlots: indexManualSlots(manualRecords), busyPeriods };"
+        }
       ],
-      "test_cmd": "node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/calendar-keepwarm.test.ts --maxWorkers=1"
+      "expect_test": "exactly 1 manual read",
+      "test_files": ["tests/unit/calendar-keepwarm.test.ts"]
     },
     {
       "sc_id": "SC4",
-      "sources": [
-        "src/lib/google-calendar.ts"
+      "criterion": "Derivation equivalence: video = strict inverse of cabinet eligibility (golden fixtures)",
+      "mutations": [
+        {
+          "file": "src/lib/google-calendar.ts",
+          "find": "const eligible = input.mode === 'in-person' ? isCabinet : !isCabinet;",
+          "replace": "const eligible = isCabinet;"
+        }
       ],
-      "test_cmd": "node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/availability-batch.test.ts --maxWorkers=1"
+      "expect_test": "deep-equal to the golden fixture",
+      "test_files": ["tests/unit/availability-batch.test.ts"]
     },
     {
       "sc_id": "SC5",
-      "sources": [
-        "src/lib/google-calendar.ts",
-        "netlify/functions/calendar-keepwarm.ts",
-        "src/pages/api/availability.ts"
+      "criterion": "No cache poisoning on ANY writer: a snapshot failure writes NOTHING (existing entries preserved)",
+      "mutations": [
+        {
+          "file": "netlify/functions/calendar-keepwarm.ts",
+          "find": "snapshot = await loadAvailabilitySnapshot(\n      session.oauth2Client,\n      now,\n      end,\n      deadline\n        ? { timeoutMs: deadline.msRemaining(), signal: deadline.signal }\n        : undefined,\n    );",
+          "replace": "snapshot = await loadAvailabilitySnapshot(\n      session.oauth2Client,\n      now,\n      end,\n      deadline\n        ? { timeoutMs: deadline.msRemaining(), signal: deadline.signal }\n        : undefined,\n    ).catch(() => ({ manualSlots: new Map(), busyPeriods: [] }));"
+        }
       ],
-      "test_cmd": "node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/calendar-keepwarm.test.ts tests/unit/availability-api.test.ts tests/unit/google-calendar.test.ts --maxWorkers=1"
+      "expect_test": "0 writes",
+      "test_files": ["tests/unit/calendar-keepwarm.test.ts"]
     },
     {
       "sc_id": "SC6",
-      "sources": [
-        "src/lib/calendar-cache.ts",
-        "netlify/functions/calendar-keepwarm.ts"
+      "criterion": "Truthful telemetry: a failed cache write is counted failed, never folded into 'written'",
+      "mutations": [
+        {
+          "file": "netlify/functions/calendar-keepwarm.ts",
+          "find": "failed += 1;",
+          "replace": "written += 1;\n    failed += 1;"
+        }
       ],
-      "test_cmd": "node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/calendar-cache.test.ts tests/unit/calendar-keepwarm.test.ts --maxWorkers=1"
+      "expect_test": "computed: 4, written: 3",
+      "test_files": ["tests/unit/calendar-keepwarm.test.ts", "tests/unit/calendar-cache.test.ts"]
     },
     {
       "sc_id": "SC7",
-      "sources": [
-        "src/pages/api/availability.ts"
+      "criterion": "Patient path unchanged: a cache hit is served (re-filtered by live dbBusy) without hitting Google",
+      "mutations": [
+        {
+          "file": "src/pages/api/availability.ts",
+          "find": "if (cached) {",
+          "replace": "if (false && cached) {"
+        }
       ],
-      "test_cmd": "node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/availability-api.test.ts --maxWorkers=1"
+      "expect_test": "serves cached slots",
+      "test_files": ["tests/unit/availability-api.test.ts"]
     },
     {
       "sc_id": "SC8",
-      "sources": [
-        "src/lib/google-calendar.ts",
-        "netlify/functions/calendar-keepwarm.ts"
+      "criterion": "CAS on token writes: the refresh persist is conditioned on the updated_at value READ at select time",
+      "mutations": [
+        {
+          "file": "netlify/functions/calendar-keepwarm.ts",
+          "find": ".eq('updated_at', tokens.updated_at)",
+          "replace": ".eq('updated_at', null as never)"
+        },
+        {
+          "file": "src/lib/google-calendar.ts",
+          "find": ".eq('updated_at', tokens.updated_at)",
+          "replace": ".eq('updated_at', null as never)"
+        }
       ],
-      "test_cmd": "node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/google-calendar.test.ts tests/unit/calendar-keepwarm.test.ts --maxWorkers=1"
+      "expect_test": "conditioned on updated_at",
+      "test_files": ["tests/unit/google-calendar.test.ts", "tests/unit/calendar-keepwarm.test.ts"]
     }
   ]
 }
