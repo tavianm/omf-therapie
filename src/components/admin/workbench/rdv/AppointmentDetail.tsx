@@ -13,7 +13,7 @@
  * qui reste locale comme sur la proposition A.
  */
 
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { Appointment } from '../../../../types/appointment';
 import { getTypeLabel, getModeLabel } from '../../../../lib/pricing';
 import {
@@ -39,8 +39,8 @@ interface AppointmentDetailProps {
   onClose?: () => void;
   /**
    * Explicit data refetch after a successful mutation (#165) — replaces the
-   * `window.location.reload()` call sites (wired through RendezVousView from
-   * the Workbench polling hook). Consumed in a follow-up slice.
+   * former full-page reload call sites (wired through RendezVousView from
+   * the Workbench polling hook).
    */
   onRefresh?: () => void;
 }
@@ -67,7 +67,7 @@ function InfoCard({ label, children }: { label: string; children: React.ReactNod
   );
 }
 
-export function AppointmentDetail({ appointment, patient, variant, onClose }: AppointmentDetailProps) {
+export function AppointmentDetail({ appointment, patient, variant, onClose, onRefresh }: AppointmentDetailProps) {
   // IDs uniques par instance : le détail est monté deux fois (panneau ≥ lg + sheet < lg),
   // des ids fixes dupliqueraient les associations label/contrôle (revue #148).
   const instanceId = useId();
@@ -83,6 +83,19 @@ export function AppointmentDetail({ appointment, patient, variant, onClose }: Ap
   const [openPanel, setOpenPanel] = useState<'reschedule' | 'decline' | 'cancel' | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState('');
   const [actionMessage, setActionMessage] = useState('');
+
+  // SC6 — notes re-align to the server value ONLY when no unsaved local edit
+  // is in progress: a poll or a post-action refresh may bring new server
+  // notes (an action can append a message server-side); a field diverging
+  // from the PREVIOUS server value means the user typed — it wins.
+  const serverNotesRef = useRef(appointment.therapist_notes ?? '');
+  useEffect(() => {
+    const serverNotes = appointment.therapist_notes ?? '';
+    const previousServerNotes = serverNotesRef.current;
+    serverNotesRef.current = serverNotes;
+    if (serverNotes === previousServerNotes) return;
+    setNotes((current) => (current === previousServerNotes ? serverNotes : current));
+  }, [appointment.therapist_notes]);
 
   const isVideo = appointment.appointment_mode === 'video';
   const isDirectReschedule =
@@ -109,7 +122,13 @@ export function AppointmentDetail({ appointment, patient, variant, onClose }: Ap
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(data.error ?? `Erreur HTTP ${res.status}`);
       }
-      window.location.reload();
+      // Success — was a full page reload. The fresh data lands via the
+      // poller (single writer, #165); the transitory UI resets right away
+      // (SC6) — the reload used to provide that reset implicitly.
+      onRefresh?.();
+      setActionLoading(null);
+      setOpenPanel(null);
+      setActionMessage('');
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erreur inconnue');
@@ -155,7 +174,10 @@ export function AppointmentDetail({ appointment, patient, variant, onClose }: Ap
           ? 'Google Calendar non connecté — reconnectez-le depuis le tableau de bord.'
           : data.error ?? 'Erreur lors de la génération du lien.');
       }
-      window.location.reload();
+      // Success — was a full page reload: the regenerated video link
+      // arrives via the poller (single writer, #165).
+      onRefresh?.();
+      setActionLoading(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erreur réseau');
       setActionLoading(null);

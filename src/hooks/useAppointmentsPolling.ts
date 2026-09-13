@@ -114,9 +114,12 @@ export function useAppointmentsPolling(
     typeof createAppointmentPoller<Appointment[]>
   > | null>(null);
 
-  useEffect(() => {
-    pausedRef.current = options.paused;
-  }, [options.paused]);
+  // Latest-ref mirror of `paused`, synced during render (never read while
+  // rendering) rather than in an effect: the drawer's post-creation refresh
+  // fires in the same commit that closes it (SC5/SC6) and must observe the
+  // lifted pause deterministically. A discarded concurrent render holding a
+  // stale value is corrected by the next render before any tick can run.
+  pausedRef.current = options.paused;
 
   useEffect(() => {
     const poller = createAppointmentPoller<Appointment[]>({
