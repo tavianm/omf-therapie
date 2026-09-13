@@ -334,18 +334,22 @@ export async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | nul
         // a TRANSIENT error, NEVER a collision: reconcile with a re-read,
         // then continue on the in-memory credentials (the refresh itself
         // succeeded). Sanitized: no raw error object is logged.
-        console.warn(
-          '[google-calendar] Persist du token non confirmé (erreur infra transitoire) — relecture de réconciliation.',
-        );
-        await supabaseAdmin
+        const reread = await supabaseAdmin
           .from('google_oauth_tokens')
           .select('updated_at')
           .eq('id', 'therapist')
           .single()
           .then(
-            () => undefined,
-            () => undefined,
+            result => result,
+            () => null,
           );
+        console.warn(
+          '[google-calendar] Persist du token non confirmé (erreur infra transitoire) — relecture de réconciliation.',
+          {
+            persistErrorCode: updateError.code ?? 'unknown',
+            currentUpdatedAt: reread?.data?.updated_at ?? 'unavailable',
+          },
+        );
       } else if (!persisted) {
         // CAS MISS: zero rows matched — a NEWER version of the row exists
         // (reconnexion callback or the keepwarm cron). Benign by design:
@@ -386,12 +390,7 @@ export async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | nul
             react: createElement(CalendarAuthAlert, {
               reauthorizeUrl: `${siteUrl}/api/admin/google-oauth/`,
             }),
-          }).catch((e: unknown) =>
-            console.error(
-              '[calendar] Alert email failed:',
-              e instanceof Error ? e.message : e,
-            ),
-          );
+          }).catch(() => console.error('[calendar] Alert email failed.'));
         }
         // Store only the safe error code — do NOT pass raw err (GaxiosError may
         // carry client_secret / refresh_token in response.config.data)
@@ -420,7 +419,7 @@ async function resolveCalendarAuth(): Promise<Auth.OAuth2Client> {
   if (oauth) return oauth;
 
   throw new GoogleCalendarError(
-    'Configuration Google Calendar manquante : configurez OAuth (GOOGLE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN).',
+    'Configuration Google Calendar manquante : reconnectez-vous via /api/admin/google-oauth/.',
   );
 }
 
@@ -735,11 +734,10 @@ async function fetchManualSlotsStage(
   startDate: Date,
   endDate: Date,
 ): Promise<Array<{ slot_date: string; period: Period }>> {
-  return fetchManualSlots(startDate, endDate).catch((err: unknown) => {
-    const message = err instanceof Error ? err.message : String(err);
+  return fetchManualSlots(startDate, endDate).catch(() => {
     console.error(
       '[google-calendar] Échec de la lecture manual_time_slots (stage partagé) :',
-      message,
+      { stage: 'manual-time-slots' },
     );
     throw new CalendarSharedStageError(
       'Échec du stage partagé availability-snapshot : lecture manual_time_slots impossible.',
@@ -782,7 +780,7 @@ async function fetchBusyPeriodsStage(
       // HTTP 200 mais l'agenda demandé n'est pas dans la réponse — impossible
       // de distinguer « vide » d'une réponse tronquée : fail-closed.
       throw new CalendarSharedStageError(
-        "Échec du stage partagé availability-snapshot : agenda demandé absent de la réponse Freebusy.",
+        'Échec du stage partagé availability-snapshot : agenda demandé absent de la réponse Freebusy.',
       );
     }
 
@@ -810,11 +808,16 @@ async function fetchBusyPeriodsStage(
       );
     }
     if (
-      !busy.every(
-        (b): b is { start: string; end: string } =>
-          typeof (b as { start?: unknown } | null)?.start === 'string' &&
-          typeof (b as { end?: unknown } | null)?.end === 'string',
-      )
+      !busy.every((b): b is { start: string; end: string } => {
+        const start = (b as { start?: unknown } | null)?.start;
+        const end = (b as { end?: unknown } | null)?.end;
+        if (typeof start !== 'string' || typeof end !== 'string') {
+          return false;
+        }
+        const startTime = Date.parse(start);
+        const endTime = Date.parse(end);
+        return Number.isFinite(startTime) && startTime < endTime;
+      })
     ) {
       throw new CalendarSharedStageError(
         'Échec du stage partagé availability-snapshot : réponse Freebusy malformée (intervalle busy invalide).',
@@ -825,10 +828,11 @@ async function fetchBusyPeriodsStage(
     if (err instanceof CalendarSharedStageError) throw err; // déjà classée
     // Gestion gracieuse : timeout, quota dépassé, réseau… — même classement
     // échec de stage partagé. Cause sanitisée au seul champ sûr (status).
-    const message = err instanceof Error ? err.message : String(err);
     console.error(
       "[google-calendar] Impossible d'interroger Freebusy (stage partagé) :",
-      message,
+      {
+        status: (err as { response?: { status?: unknown } })?.response?.status,
+      },
     );
     throw new CalendarSharedStageError(
       'Échec du stage partagé availability-snapshot : requête Freebusy impossible.',
@@ -1216,11 +1220,7 @@ export async function createCalendarEvent(
     );
   } catch (err: unknown) {
     if (err instanceof GoogleCalendarError) throw err;
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(
-      "[google-calendar] Impossible de créer l'événement :",
-      message,
-    );
+    console.error("[google-calendar] Impossible de créer l'événement.");
     throw new GoogleCalendarError(
       "Impossible de créer le rendez-vous dans l'agenda.",
       err,

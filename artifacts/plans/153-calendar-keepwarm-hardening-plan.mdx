@@ -33,7 +33,7 @@ Correctif du path token (`getPersistedOAuthClient` : classement d'erreur, suppre
 
 ## Bootstrap Context
 
-Source : spec #153 (approuvée, amendée après revue du plan) + analyse `artifacts/analyses/132-calendar-keepwarm-production-hardening-analysis.mdx`. L'incident 02:20 est un **chemin de défaillance confirmé dans le code et l'hypothèse principale** — pas une cause racine prouvée par les logs (voir Context de la spec). Patterns de référence : seam DI `CalendarClientOptions` (`google-calendar.ts:141-146`, consommé `:587` — **attend un `calendar_v3.Calendar`, pas un OAuth2Client**), précédent PGRST116 (`manual-slots.ts:124`), persist-confirmé `.select().single()` (`calendar-keepwarm.ts:472-489`), tests horloge figée (`tests/unit/google-calendar.test.ts`).
+Source : spec #153 (approuvée, amendée après revue du plan). L'incident 02:20 est un **chemin de défaillance confirmé dans le code et l'hypothèse principale** — pas une cause racine prouvée par les logs (voir Context de la spec). Patterns de référence : seam DI `CalendarClientOptions` (`google-calendar.ts:141-146`, consommé `:587` — **attend un `calendar_v3.Calendar`, pas un OAuth2Client**), précédent PGRST116 (`manual-slots.ts:124`), persist-confirmé `.select().single()` (`calendar-keepwarm.ts:472-489`), tests horloge figée (`tests/unit/google-calendar.test.ts`).
 
 **Garde WSL (AGENTS.md)** : les agents ne lancent QUE des vitest ciblés `--maxWorkers=1` ; les gates complets (`npm run test:low` → lint → typecheck → build) sont lancés par le lead en séquence.
 

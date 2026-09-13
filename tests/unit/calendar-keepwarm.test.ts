@@ -381,8 +381,8 @@ function invalidGrantError(): Error {
 
 /**
  * Gaxios-like transient refresh error carrying raw config/response payloads
- * (fake secrets): pins that only err.message — never the payload objects —
- * reaches Sentry on the transient path.
+ * (fake secrets): pins that no raw error content reaches Sentry or logs on
+ * the transient path.
  */
 function transientRefreshError(): Error {
   return Object.assign(new Error('network glitch'), {
@@ -755,13 +755,22 @@ describe('warm-up fall-through contract (B1/B2/W2)', () => {
     const captured = sentry.captureException.mock.calls[0][0];
     expect(captured).toBeInstanceOf(Error);
     const capturedMessage = (captured as Error).message;
-    expect(
-      capturedMessage.startsWith(
-        'Google OAuth token refresh failed (transient): ',
-      ),
-    ).toBe(true);
+    expect(capturedMessage).toContain(
+      'Google OAuth token refresh failed (transient) — fall-through on persisted token',
+    );
+    expect(capturedMessage).not.toContain('network glitch');
     expect(capturedMessage).not.toContain('RAW_CLIENT_SECRET');
     expect(capturedMessage).not.toContain('RAW_REFRESH_TOKEN');
+    const refreshBreadcrumb = sentry.addBreadcrumb.mock.calls.find(call =>
+      String((call[0] as { message?: string }).message ?? '').includes(
+        'token refresh failed (transient) — fall-through',
+      ),
+    );
+    expect(refreshBreadcrumb).toBeDefined();
+    expect(JSON.stringify(refreshBreadcrumb)).not.toContain('network glitch');
+    expect(JSON.stringify(refreshBreadcrumb)).not.toContain(
+      'RAW_CLIENT_SECRET',
+    );
   });
 
   it('preserves the newer row when the CAS-guarded persist matches zero rows (SC8 miss, was W2 zero-rows)', async () => {
@@ -812,6 +821,14 @@ describe('warm-up fall-through contract (B1/B2/W2)', () => {
       expect.stringContaining('NOT confirmed persisted'),
       'warning',
     );
+    const persistBreadcrumb = sentry.addBreadcrumb.mock.calls.find(call =>
+      String((call[0] as { message?: string }).message ?? '').includes(
+        'NOT confirmed persisted',
+      ),
+    );
+    expect(persistBreadcrumb).toBeDefined();
+    expect(JSON.stringify(persistBreadcrumb)).not.toContain('persist failed');
+    expect(JSON.stringify(persistBreadcrumb)).toContain('persistErrorCode');
   });
 
   it('runs the warm-up (4 writes) after a successful refresh AND persist — pins the refresh-branch coupling', async () => {

@@ -746,6 +746,13 @@ describe('getPersistedOAuthClient — CAS on the refresh persist (SC8)', () => {
     const warned = warnSpy.mock.calls.map(c => String(c[0])).join('\n');
     expect(warned).not.toContain('CAS');
     expect(warned).not.toContain('collision');
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Persist du token non confirmé'),
+      {
+        persistErrorCode: 'XX000',
+        currentUpdatedAt: T2,
+      },
+    );
   });
 
   it('clean confirm (1 row matched) → no CAS-miss log, no reconciliation re-read', async () => {
@@ -977,8 +984,8 @@ describe('loadAvailabilitySnapshot — shared snapshot + typed shared-stage erro
   });
 
   it('Freebusy 200 with a malformed busy array → typed shared-stage error — malformed entries REJECTED, not silently dropped', async () => {
-    // Malformed busy content (non-array busy, or an interval whose bounds
-    // are not strings) is a protocol violation: treating it as empty would
+    // Malformed busy content (non-array busy, non-string, unparseable, or
+    // inverted bounds) is a protocol violation: treating it as empty would
     // poison downstream caches with fake free availability.
     for (const payload of [
       { data: { calendars: { [CAL_ID]: { busy: 'not-an-array' } } } },
@@ -992,6 +999,29 @@ describe('loadAvailabilitySnapshot — shared snapshot + typed shared-stage erro
                   end: '2026-06-16T11:00:00+02:00',
                 },
                 { start: 12, end: null },
+              ],
+            },
+          },
+        },
+      },
+      {
+        data: {
+          calendars: {
+            [CAL_ID]: {
+              busy: [{ start: 'not-a-date', end: '2026-06-16T11:00:00Z' }],
+            },
+          },
+        },
+      },
+      {
+        data: {
+          calendars: {
+            [CAL_ID]: {
+              busy: [
+                {
+                  start: '2026-06-16T11:00:00Z',
+                  end: '2026-06-16T10:00:00Z',
+                },
               ],
             },
           },
@@ -1066,7 +1096,7 @@ describe('loadAvailabilitySnapshot — shared snapshot + typed shared-stage erro
     }));
     googleCalendarFactory.calendar.mockReturnValue(calendar);
     manualSlotsApi.fetchManualSlots.mockRejectedValue(
-      new Error('Failed to fetch manual slots: 504 Gateway timeout'),
+      new Error('GOCSPX-manual-slots-secret'),
     );
 
     const err: unknown = await loadAvailabilitySnapshot(
@@ -1080,19 +1110,21 @@ describe('loadAvailabilitySnapshot — shared snapshot + typed shared-stage erro
     const message = (err as Error).message;
     expect(message).toContain('stage partagé');
     // Sanitized: the raw upstream message must NOT leak into the typed error.
-    expect(message).not.toContain('Gateway timeout');
-    expect(message).not.toContain('Failed to fetch manual slots');
+    expect(message).not.toContain('GOCSPX-manual-slots-secret');
     // No raw error object attached as cause.
     expect((err as { cause?: unknown }).cause).toBeUndefined();
     // Stage isolation: the Freebusy stage never runs after a failed read.
     expect(query).not.toHaveBeenCalled();
+    expect(errorSpy.mock.calls.map(String).join('\n')).not.toContain(
+      'GOCSPX-manual-slots-secret',
+    );
   });
 
   it('Freebusy transport failure (504) → typed shared-stage error, sanitized status-only cause', async () => {
     // Shaped like a GaxiosError: response.status is the only safe field —
     // the rest (config/data) may embed OAuth credentials and must not travel.
     const gaxiosLike = Object.assign(
-      new Error('Request failed with status code 504'),
+      new Error('GOCSPX-freebusy-transport-secret'),
       {
         response: {
           status: 504,
@@ -1116,8 +1148,14 @@ describe('loadAvailabilitySnapshot — shared snapshot + typed shared-stage erro
     // Sanitized cause: status only. The secret-bearing payload never travels.
     expect((err as { cause?: unknown }).cause).toEqual({ status: 504 });
     expect((err as Error).message).not.toContain('GOCSPX-should-never-leak');
+    expect((err as Error).message).not.toContain(
+      'GOCSPX-freebusy-transport-secret',
+    );
     expect(errorSpy.mock.calls.map(String).join('\n')).not.toContain(
       'GOCSPX-should-never-leak',
+    );
+    expect(errorSpy.mock.calls.map(String).join('\n')).not.toContain(
+      'GOCSPX-freebusy-transport-secret',
     );
     expect(query).toHaveBeenCalledTimes(1);
   });

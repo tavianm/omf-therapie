@@ -16,7 +16,7 @@ Trois amplificateurs rendent l'incident probable et le diagnostic incohérent :
 2. **Session jetée** : `keepTokenWarm()` rafraîchit un client OAuth puis le discard ; le warm-up se ré-authentifie depuis zéro (double refresh possible dans le même run sur persist non confirmé).
 3. **Télémétrie mensongère** : `setCachedAvailability` avale toutes ses erreurs et `getAvailabilityStore()` épingle une init Blobs échouée à `null` pour la vie de l'instance — `warmed: 4` signifie « 4 calculs », jamais « 4 écritures ».
 
-Sources : `artifacts/analyses/132-calendar-keepwarm-production-hardening-analysis.mdx` (analyse post-prod) + revue contradictoire croisée des deux analyses (session 2026-09-13) — la solution réconciliée P0 fait foi.
+Sources : [spec #153 approuvée](../specs/153-calendar-keepwarm-hardening-spec.mdx) et [plan #153](../plans/153-calendar-keepwarm-hardening-plan.mdx), qui consignent la revue contradictoire croisée et l'amendement de périmètre — la solution réconciliée P0 fait foi.
 
 ## Who
 
@@ -36,9 +36,9 @@ Sources : `artifacts/analyses/132-calendar-keepwarm-production-hardening-analysi
 
 ## Out of Scope
 
-- CAS `updated_at` sur les écritures token, centralisation du cooldown d'alerte invalid_grant, `maxRuntime` Sentry — suivis P1 distincts.
+- Centralisation du cooldown d'alerte invalid_grant, `maxRuntime` Sentry — suivis P1 distincts. Le CAS `updated_at` sur les écritures token est inclus par l'amendement de périmètre de la spec #153.
 - Imports allégés (`@googleapis/calendar` / `google-auth-library`), lazy-load de la stack email d'alerte — suivi P2 (mesures séparées).
-- Re-filtre 24 h sur cache-hit, classification typée des freebusy response-level errors, stale-if-error grace, révision/monotonic revision du cache — suivis P1/P2.
+- Re-filtre 24 h sur cache-hit, stale-if-error grace, révision/monotonic revision du cache — suivis P1/P2. La classification typée des erreurs Freebusy response-level est incluse par l'amendement de périmètre de la spec #153.
 - Suppression du miroir `_lib/` (#136) — orthogonal.
 
 ## Premise Validity

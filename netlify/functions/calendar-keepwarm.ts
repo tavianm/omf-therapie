@@ -556,7 +556,7 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<KeepwarmSession> {
   if (fetchError && fetchError.code !== 'PGRST116') {
     logger.warn(
       'calendar-keepwarm: token row read failed (transient) — warm-up skipped this run',
-      { code: fetchError.code, message: fetchError.message },
+      { code: fetchError.code },
     );
     // Sanitisée : seul le libellé fixe circule — jamais le message brut.
     Sentry.captureMessage(
@@ -632,21 +632,22 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<KeepwarmSession> {
         // keep the W2 observability. NOT 'auth-broken': the in-memory token
         // is fresh (refreshAccessToken() set it on the client) and the next
         // run self-heals. Sanitized fields only, no raw error object.
-        logger.error(
-          'calendar-keepwarm: refreshed token NOT confirmed persisted (transient infra)',
-          {
-            persistError: updateError.message,
-          },
-        );
-        await supabase
+        const reread = await supabase
           .from('google_oauth_tokens')
           .select('updated_at')
           .eq('id', 'therapist')
           .single()
           .then(
-            () => undefined,
-            () => undefined,
+            result => result,
+            () => null,
           );
+        logger.error(
+          'calendar-keepwarm: refreshed token NOT confirmed persisted (transient infra)',
+          {
+            persistErrorCode: updateError.code ?? 'unknown',
+            currentUpdatedAt: reread?.data?.updated_at ?? 'unavailable',
+          },
+        );
         // The run still succeeds ('ok' → warm-up proceeds), so the Sentry
         // monitor stays green: a persist failure recurring every 10 min
         // would otherwise never surface. Sanitized fields only.
@@ -726,13 +727,13 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<KeepwarmSession> {
           refresh_token: tokens.refresh_token,
           expiry_date: tokens.expiry_date,
         });
-        const message = err instanceof Error ? err.message : String(err);
-        const httpStatus = (err as { response?: { status?: number } })?.response
-          ?.status;
+        const responseStatus = (err as { response?: { status?: unknown } })
+          ?.response?.status;
+        const httpStatus =
+          typeof responseStatus === 'number' ? responseStatus : undefined;
         logger.warn(
           'calendar-keepwarm: token refresh failed (transient) — fall-through on the persisted token',
           {
-            errMessage: message,
             httpStatus,
             remainingMs,
           },
@@ -741,7 +742,7 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<KeepwarmSession> {
         // refresh_token in its response/config payloads.
         Sentry.captureException(
           new Error(
-            `Google OAuth token refresh failed (transient): ${message}`,
+            `Google OAuth token refresh failed (transient) — fall-through on persisted token (remainingMs=${remainingMs})`,
           ),
         );
         return { status: 'ok', oauth2Client };
