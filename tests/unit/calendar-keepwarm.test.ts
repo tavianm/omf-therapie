@@ -156,24 +156,34 @@ const googleMocks = vi.hoisted(() => ({
     data: { calendars: {} },
     error: null,
   })),
+  // T3 (issue #153): the cron builds ONE calendar from the ok-session client —
+  // captured here so tests can assert the construction AND that the very
+  // client instance (with the session's credentials) is threaded through.
+  calendar: vi.fn(() => ({
+    freebusy: { query: googleMocks.freebusyQuery },
+  })),
 }));
 vi.mock('googleapis', () => {
   return {
     google: {
       auth: {
         OAuth2: class {
+          // Mirrors google-auth-library's setCredentials contract (REPLACE,
+          // not merge) so tests can observe `client.credentials` identity.
+          credentials: Record<string, unknown> = {};
           constructor(
             _clientId?: string,
             _clientSecret?: string,
             _redirectUri?: string,
           ) {}
-          setCredentials = googleMocks.setCredentials;
+          setCredentials = (creds: Record<string, unknown>) => {
+            googleMocks.setCredentials(creds);
+            this.credentials = { ...creds };
+          };
           refreshAccessToken = googleMocks.refreshAccessToken;
         },
       },
-      calendar: vi.fn(() => ({
-        freebusy: { query: googleMocks.freebusyQuery },
-      })),
+      calendar: googleMocks.calendar,
     },
   };
 });
@@ -403,6 +413,7 @@ function resetMocks(): void {
   });
   googleMocks.setCredentials.mockClear();
   googleMocks.freebusyQuery.mockClear();
+  googleMocks.calendar.mockClear();
   googleMocks.freebusyQuery.mockResolvedValue({
     data: { calendars: {} },
     error: null,
@@ -513,9 +524,8 @@ describe('calendar-keepwarm handler wiring', () => {
     // vi.mock registrations survive resetModules, so the re-imported graph
     // still lands on the hoisted sentry spies.
     vi.resetModules();
-    const { default: freshHandler } = await import(
-      '../../netlify/functions/calendar-keepwarm'
-    );
+    const { default: freshHandler } =
+      await import('../../netlify/functions/calendar-keepwarm');
     sentry.init.mockClear();
     sentry.withMonitor.mockClear();
     // Still-valid token → the wrapped work function resolves cleanly.
@@ -674,10 +684,14 @@ describe('warm-up fall-through contract (B1/B2/W2)', () => {
   });
 
   it('still runs the warm-up (4 writes) when refresh fails with a NON-invalid_grant error', async () => {
-    // Spec edge-case row 2: a transient refresh failure must not disable the
-    // warm-up — log + proceed. RED-until-impl: the pre-rework code returns.
-    seedTokenRow(Date.now() - 60_000); // expired → refresh is attempted
-    googleMocks.refreshAccessToken.mockRejectedValueOnce(transientRefreshError());
+    // Spec edge-case row 2 (SC2 rework): a transient refresh failure must not
+    // disable the warm-up as long as the PERSISTED token keeps > 6 min of
+    // validity (the fall-through margin gate). 10 min → refresh fires
+    // (< 15 min) AND the fall-through is admitted (> 6 min).
+    seedTokenRow(Date.now() + 10 * 60_000);
+    googleMocks.refreshAccessToken.mockRejectedValueOnce(
+      transientRefreshError(),
+    );
 
     await expect(keepwarmHandler()).resolves.toBeUndefined();
 
@@ -695,7 +709,9 @@ describe('warm-up fall-through contract (B1/B2/W2)', () => {
     expect(captured).toBeInstanceOf(Error);
     const capturedMessage = (captured as Error).message;
     expect(
-      capturedMessage.startsWith('Google OAuth token refresh failed (transient): '),
+      capturedMessage.startsWith(
+        'Google OAuth token refresh failed (transient): ',
+      ),
     ).toBe(true);
     expect(capturedMessage).not.toContain('RAW_CLIENT_SECRET');
     expect(capturedMessage).not.toContain('RAW_REFRESH_TOKEN');
@@ -1032,5 +1048,210 @@ describe('Sentry flush + failure capture (S4, ported from heartbeat)', () => {
     expect(sentry.captureException).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'supabase unavailable' }),
     );
+  });
+});
+
+// ===========================================================================
+// KeepwarmSession — 3 honest states + 6-min margin gate (issue #153 / SC2)
+//
+// keepTokenWarm returns a session carrying the authenticated client instead
+// of discarding it:
+//   ok          — token valid (≥ 15 min), OR refreshed (persist confirmed or
+//                 not), OR fall-through: refresh failed transiently but the
+//                 PERSISTED token keeps > WARMUP_MIN_TOKEN_VALIDITY_MS
+//                 (eager refresh threshold 5 min + 60 s warm-up budget =
+//                 6 min) → client.setCredentials straight from the row.
+//   transient   — the cron's own token-row READ fails (log « transient »,
+//                 NOT « no token row »), OR refresh failed with margin
+//                 ≤ threshold / token expired / expiry_date absent —
+//                 warm-up skipped, NO alert of any kind.
+//   auth-broken — unchanged #132 behavior (no row / null refresh_token /
+//                 invalid_grant + cooled alert).
+//
+// The ok session's client is observable through the setCredentials spy, the
+// ONE google.calendar({ version: 'v3', auth }) construction, and the 4
+// getAvailableSlots calls receiving it via the CalendarClientOptions DI seam
+// (transitory threading — T6 replaces the fan-out with the mono-snapshot).
+//
+// Margin boundaries need a FROZEN clock: real-time drift between seeding the
+// row and the in-run margin check would flip the exact "6 min + 1 ms" case.
+// ===========================================================================
+
+describe('KeepwarmSession — 3 states + 6-min margin gate (SC2)', () => {
+  /** Frozen clock instant shared by the boundary cases. */
+  const T0 = new Date('2026-09-13T02:00:00Z').getTime();
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Seeds a row that TRIGGERS the refresh, then fails it transiently. */
+  function seedRowAndFailRefresh(expiryDate: number | null): void {
+    seedTokenRow(expiryDate);
+    googleMocks.refreshAccessToken.mockRejectedValueOnce(
+      transientRefreshError(),
+    );
+  }
+
+  function breadcrumbMessages(): string[] {
+    return sentry.addBreadcrumb.mock.calls.map(
+      call => (call[0] as { message?: string }).message ?? '',
+    );
+  }
+
+  it('fall-through (> 6 min persisted margin) → ok: warm-up client carries the ROW credentials, ONE calendar built from it, ≤ 1 token-endpoint call', async () => {
+    const rowExpiry = T0 + 10 * 60_000; // 10 min: refresh fires (<15), margin >6
+    seedRowAndFailRefresh(rowExpiry);
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // Token-endpoint budget: exactly the ONE (failed) refresh — no hidden or
+    // retried token-endpoint interaction while the 4 warm-up calls run.
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    // Fall-through identity: the session client is set straight from the row.
+    expect(googleMocks.setCredentials).toHaveBeenLastCalledWith({
+      access_token: 'ya29.old',
+      refresh_token: '1//persisted-rt',
+      expiry_date: rowExpiry,
+    });
+    // ONE calendar client built from the session's authenticated OAuth2Client.
+    expect(googleMocks.calendar).toHaveBeenCalledTimes(1);
+    const built = googleMocks.calendar.mock.calls[0][0] as {
+      version: string;
+      auth: { credentials: Record<string, unknown> };
+    };
+    expect(built.version).toBe('v3');
+    expect(
+      built.auth.credentials.access_token,
+      'fall-through identity: client.credentials.access_token === row.access_token',
+    ).toBe('ya29.old');
+    // The 4 warm-up calls receive that SAME calendar via the DI seam.
+    expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
+    const calendarObject = googleMocks.calendar.mock.results[0]?.value;
+    for (const call of googleCalendar.getAvailableSlots.mock.calls) {
+      expect(call[5]).toEqual({ calendar: calendarObject });
+    }
+  });
+
+  it('still-valid token (≥ 15 min) → ok with credentials from the row, ZERO token-endpoint calls', async () => {
+    seedTokenRow(T0 + 60 * 60_000);
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(googleMocks.refreshAccessToken).not.toHaveBeenCalled();
+    expect(googleMocks.setCredentials).toHaveBeenCalledWith({
+      access_token: 'ya29.old',
+      refresh_token: '1//persisted-rt',
+      expiry_date: T0 + 60 * 60_000,
+    });
+    expect(googleMocks.calendar).toHaveBeenCalledTimes(1);
+    expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
+  });
+
+  it('6 min + 1 ms of persisted margin → transient is avoided: ok, warm-up runs', async () => {
+    seedRowAndFailRefresh(T0 + 6 * 60_000 + 1);
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
+    // No alert on the transient refresh failure.
+    expect(resendSend).not.toHaveBeenCalled();
+    expect(sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it('6 min exactly of persisted margin → transient: warm-up skipped, no alert', async () => {
+    seedRowAndFailRefresh(T0 + 6 * 60_000);
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // The refresh WAS attempted — the skip is attributable to the margin
+    // gate, not an earlier abort.
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
+    // « aucune alerte » — no email, no Sentry message, no exception capture.
+    expect(resendSend).not.toHaveBeenCalled();
+    expect(sentry.captureMessage).not.toHaveBeenCalled();
+    expect(sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it('4 min of persisted margin → transient: warm-up skipped', async () => {
+    seedRowAndFailRefresh(T0 + 4 * 60_000);
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
+    expect(resendSend).not.toHaveBeenCalled();
+  });
+
+  it('expired persisted token → transient: warm-up skipped', async () => {
+    seedRowAndFailRefresh(T0 - 60_000);
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
+    expect(resendSend).not.toHaveBeenCalled();
+    expect(sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it('unknown expiry (null expiry_date) → transient: warm-up skipped', async () => {
+    seedRowAndFailRefresh(null);
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
+    expect(resendSend).not.toHaveBeenCalled();
+  });
+
+  it('cron token-row read failure (504) → transient: log « transient », NOT « no token row », no alert', async () => {
+    supabaseQuery.mockResolvedValueOnce({
+      ...EMPTY_RESULT,
+      error: { code: '504', message: 'gateway timeout' },
+    });
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // Precondition: the read really ran and nothing downstream followed.
+    expect(supabaseQuery).toHaveBeenCalledTimes(1);
+    expect(googleMocks.refreshAccessToken).not.toHaveBeenCalled();
+    expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
+    // No alert of any kind on a transient read failure.
+    expect(resendSend).not.toHaveBeenCalled();
+    expect(sentry.captureMessage).not.toHaveBeenCalled();
+    // Log wording (spec SC2): the run logs « transient », never the #132
+    // « no token row » wording on a fetch failure.
+    const logs = breadcrumbMessages().join('\n');
+    expect(logs).toContain('transient');
+    expect(logs).not.toContain('no token row');
+  });
+
+  it('PGRST116 (genuinely no row) on the cron select → auth-broken, unchanged #132 behavior', async () => {
+    supabaseQuery.mockResolvedValueOnce({
+      ...EMPTY_RESULT,
+      error: {
+        code: 'PGRST116',
+        message: 'JSON object requested, multiple (or no) rows returned',
+      },
+    });
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // No row is DEFINITIVE (not transient): the #132 contract holds — Sentry
+    // capture at level 'error' with the « no token row » wording, warm-up
+    // skipped.
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('no token row'),
+      'error',
+    );
+    expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
   });
 });

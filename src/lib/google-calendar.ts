@@ -137,6 +137,27 @@ export interface TimeSlot {
 export type AppointmentMode = 'in-person' | 'video';
 export type AppointmentDuration = 60 | 90;
 
+/**
+ * Outcome of the keepwarm cron's token step (issue #153 / SC2) — the session
+ * the whole warm-up run is built on:
+ *
+ *   - `ok`: Google auth is usable RIGHT NOW. `oauth2Client` is the
+ *     authenticated client (valid, freshly refreshed, or fall-through on the
+ *     persisted credentials admitted by the 6-min margin gate) — every
+ *     Freebusy/cache call of the run is served from this ONE client.
+ *   - `transient`: the token row could not be read (network/5xx), or the
+ *     refresh failed without enough persisted margin (> 6 min required),
+ *     or the persisted token is expired / has no `expiry_date`. The warm-up
+ *     is skipped this run; no alert is emitted (the next run retries).
+ *   - `auth-broken`: definitively unusable — no token row, null
+ *     refresh_token, or a real invalid_grant. Warm-up skipped; the existing
+ *     #132 alerting (24 h email cooldown) applies.
+ */
+export type KeepwarmSession =
+  | { status: 'ok'; oauth2Client: Auth.OAuth2Client }
+  | { status: 'transient'; reason: string }
+  | { status: 'auth-broken' };
+
 // ---------------------------------------------------------------------------
 // Env access — lazy & runtime-agnostic (issue #126 / T12)
 // ---------------------------------------------------------------------------

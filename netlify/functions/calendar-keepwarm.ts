@@ -8,14 +8,15 @@
  * comfortable validity window.
  *
  * V2 (T6) adds the second half of the run: unless the token step is
- * DEFINITIVELY broken (no token row / empty refresh_token / invalid_grant),
- * the four availability cache keys the booking wizard reads ({in-person,
+ * DEFINITIVELY broken (no token row / empty refresh_token / invalid_grant)
+ * or transient without enough persisted margin (issue #153 / SC2), the four
+ * availability cache keys the booking wizard reads ({in-person,
  * video} × {60, 90}, weeks=4) are pre-computed, so patients are served from a
- * warm cache instead of paying the Google Freebusy round-trip. Transient
- * failures (non-invalid_grant refresh error, persist write failure) do NOT
- * skip the warm-up: the persisted access token usually keeps 5-15 min of
- * validity and getAvailableSlots falls back to it via getPersistedOAuthClient
- * (src/lib/google-calendar.ts).
+ * warm cache instead of paying the Google Freebusy round-trip. The warm-up
+ * runs on the ONE authenticated OAuth2Client the token step returns
+ * (KeepwarmSession) — no per-call fallback, no hidden token refresh: the
+ * fall-through is only admitted when the persisted token keeps > 6 min of
+ * validity (eager refresh threshold 5 min + 60 s of warm-up budget).
  *
  * Supersedes AND deletes calendar-token-heartbeat.ts (weekly refresh against
  * Google's ~6-month idle revocation): this 10-minute cadence keeps the token
@@ -71,7 +72,12 @@ import type { Config } from '@netlify/functions';
 import * as Sentry from '@sentry/node';
 import { createElement } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { google } from 'googleapis';
+// google-auth-library's eager-refresh threshold (5 min): a signed API call
+// with less remaining validity triggers a HIDDEN token-endpoint refresh. The
+// root package does not re-export this constant — it lives in the authclient
+// submodule (google-auth-library is a direct dependency).
+import { DEFAULT_EAGER_REFRESH_THRESHOLD_MILLIS } from 'google-auth-library/build/src/auth/authclient';
+import { google, type calendar_v3 } from 'googleapis';
 import ws from 'ws';
 // Leaf import for the invalid_grant email-cooldown state (see
 // sendInvalidGrantAlert). No new dependency: @netlify/blobs is already part of
@@ -84,7 +90,10 @@ import CalendarAuthAlert from '../../src/emails/CalendarAuthAlert.js';
 // src/lib imports — same specifier style as reconcile-invitations.ts (relative,
 // no .js suffix): the lazy-init refactors (#126 / T12) make this module graph
 // safe to bundle into the plain-Node cron runtime.
-import { getAvailableSlots } from '../../src/lib/google-calendar';
+import {
+  getAvailableSlots,
+  type KeepwarmSession,
+} from '../../src/lib/google-calendar';
 import {
   buildAvailabilityCacheKey,
   setCachedAvailability,
@@ -120,6 +129,26 @@ export const config: Config = {
  * this run's refresh fails.
  */
 const REFRESH_THRESHOLD_MS = 15 * 60 * 1000;
+
+/**
+ * Minimum validity the PERSISTED token must keep for a refresh-failure
+ * fall-through to be admitted as 'ok' (issue #153 / SC2):
+ *
+ *   google-auth-library's eager refresh threshold (5 min — a signed API call
+ *   with less remaining triggers a HIDDEN token-endpoint refresh inside the
+ *   library) + 60 s of warm-up budget.
+ *
+ * Why 5 min alone is NOT enough: the availability snapshot (manual-slots
+ * read, key building) runs BETWEEN this check and the Freebusy calls — ~500 ms
+ * of latency re-crosses the eager threshold and sneaks a second token-endpoint
+ * call into the run. The 6-min gate makes that structurally impossible
+ * (SC2: ≤ 1 token-endpoint interaction per run).
+ *
+ * This gate governs the fall-through and session admission ONLY — the
+ * proactive refresh TRIGGER above (15 min) is unchanged.
+ */
+const WARMUP_MIN_TOKEN_VALIDITY_MS =
+  DEFAULT_EAGER_REFRESH_THRESHOLD_MILLIS + 60_000;
 
 /**
  * Pure predicate — no I/O when `nowMs` is injected (defaults to Date.now() so
@@ -172,16 +201,26 @@ async function invalidGrantAlertDue(): Promise<boolean> {
     const lastSentIso = await store.get(INVALID_GRANT_ALERT_KEY);
     if (lastSentIso) {
       const lastSentMs = Date.parse(lastSentIso);
-      if (Number.isFinite(lastSentMs) && Date.now() - lastSentMs < ALERT_COOLDOWN_MS) {
-        logger.info('calendar-keepwarm: invalid_grant alert throttled — email already sent within 24h');
+      if (
+        Number.isFinite(lastSentMs) &&
+        Date.now() - lastSentMs < ALERT_COOLDOWN_MS
+      ) {
+        logger.info(
+          'calendar-keepwarm: invalid_grant alert throttled — email already sent within 24h',
+        );
         return false;
       }
     }
     return true;
   } catch {
-    logger.warn('calendar-keepwarm: alert cooldown state unavailable — sending anyway (fail open)');
+    logger.warn(
+      'calendar-keepwarm: alert cooldown state unavailable — sending anyway (fail open)',
+    );
     // The cooldown is best-effort, but a broken state store escalates to repeat emails — it must be alertable.
-    Sentry.captureMessage('calendar-keepwarm: alert cooldown state unavailable — failing open', 'warning');
+    Sentry.captureMessage(
+      'calendar-keepwarm: alert cooldown state unavailable — failing open',
+      'warning',
+    );
     return true;
   }
 }
@@ -196,9 +235,14 @@ async function markInvalidGrantAlertSent(): Promise<void> {
     const store = await getStore(ALERT_STATE_STORE);
     await store.set(INVALID_GRANT_ALERT_KEY, new Date().toISOString());
   } catch {
-    logger.warn('calendar-keepwarm: failed to record alert send — cooldown may not apply on the next run');
+    logger.warn(
+      'calendar-keepwarm: failed to record alert send — cooldown may not apply on the next run',
+    );
     // The cooldown is best-effort, but a broken state store escalates to repeat emails — it must be alertable.
-    Sentry.captureMessage('calendar-keepwarm: failed to record alert send — cooldown may not apply', 'warning');
+    Sentry.captureMessage(
+      'calendar-keepwarm: failed to record alert send — cooldown may not apply',
+      'warning',
+    );
   }
 }
 
@@ -221,13 +265,17 @@ async function sendInvalidGrantAlert(
       createElement(CalendarAuthAlert, { reauthorizeUrl }),
     );
     const { error } = await resend.emails.send({
-      from:    fromEmail,
-      to:      [adminEmail],
+      from: fromEmail,
+      to: [adminEmail],
       subject: '⚠️ Google Calendar — re-autorisation requise',
       html,
     });
     if (error) {
-      logger.error('calendar-keepwarm: alert email failed (Resend error)', { adminEmail }, error);
+      logger.error(
+        'calendar-keepwarm: alert email failed (Resend error)',
+        { adminEmail },
+        error,
+      );
     } else {
       // Arm the cooldown only after a CONFIRMED send — a failed send retries
       // on the next run instead of being silenced for 24h.
@@ -258,19 +306,29 @@ const WARMUP_TTL_SECONDS = 900;
  * ({in-person, video} × {60, 90}, weeks=4), so a patient request is served
  * from the cache instead of paying the Google Freebusy round-trip.
  *
+ * `calendar` is the ONE authenticated client built from the ok KeepwarmSession
+ * (issue #153 / SC2) — threaded into every getAvailableSlots call via the
+ * CalendarClientOptions DI seam so the run performs no token lookup and no
+ * hidden refresh of its own. TRANSITORY threading: T6 replaces this ×4 fan-out
+ * with the mono-snapshot and removes it.
+ *
  * dbBusyPeriods is deliberately empty: DB appointments change minute to minute
  * and the read path re-applies live busy filtering on every cache hit
  * (filterSlotsByBusy) — warm entries must not bake busy state in. Mock mode
  * (GOOGLE_CALENDAR_MOCK=true) returns fictional slots; caching them is
  * acceptable dev behavior.
  */
-export async function warmAvailabilityCache(): Promise<void> {
+export async function warmAvailabilityCache(
+  calendar: calendar_v3.Calendar,
+): Promise<void> {
   // Skip rather than fail: without a calendar id every getAvailableSlots call
   // below throws the same configuration error — four identical errors every
   // 10 minutes. One short warn here, NOT a captured error.
   const calendarId = process.env.GOOGLE_CALENDAR_ID;
   if (!calendarId) {
-    logger.warn('calendar-keepwarm: GOOGLE_CALENDAR_ID missing — skipping availability warm-up');
+    logger.warn(
+      'calendar-keepwarm: GOOGLE_CALENDAR_ID missing — skipping availability warm-up',
+    );
     return;
   }
 
@@ -281,11 +339,11 @@ export async function warmAvailabilityCache(): Promise<void> {
   // matching change here SILENTLY invalidates the warm-up — the cron would
   // warm keys nobody requests while patients pay the cold Freebusy
   // round-trip again.
-  const modes     = ['in-person', 'video'] as const;
+  const modes = ['in-person', 'video'] as const;
   const durations = [60, 90] as const;
-  const now       = new Date();
+  const now = new Date();
   // 4 weeks ahead in ms — same horizon as the availability API's weeks=4.
-  const end       = new Date(now.getTime() + WARMUP_WEEKS * 7 * 24 * 3600 * 1000);
+  const end = new Date(now.getTime() + WARMUP_WEEKS * 7 * 24 * 3600 * 1000);
 
   const pairs = modes.flatMap(mode =>
     durations.map(duration => ({ mode, duration })),
@@ -295,7 +353,9 @@ export async function warmAvailabilityCache(): Promise<void> {
   // three — and no rejection may escape this function.
   const results = await Promise.allSettled(
     pairs.map(async ({ mode, duration }) => {
-      const slots = await getAvailableSlots(now, end, duration, mode, []);
+      const slots = await getAvailableSlots(now, end, duration, mode, [], {
+        calendar,
+      });
       const key = buildAvailabilityCacheKey(mode, duration, WARMUP_WEEKS, now);
       await setCachedAvailability(key, slots, WARMUP_TTL_SECONDS);
     }),
@@ -313,8 +373,14 @@ export async function warmAvailabilityCache(): Promise<void> {
     // Sanitized reason only — a raw Google error may embed credentials in its
     // response/config payloads (same caution as the invalid_grant capture).
     const reason =
-      result.reason instanceof Error ? result.reason.message : String(result.reason);
-    logger.error('calendar-keepwarm: availability warm-up failed for key', { mode, duration, reason });
+      result.reason instanceof Error
+        ? result.reason.message
+        : String(result.reason);
+    logger.error('calendar-keepwarm: availability warm-up failed for key', {
+      mode,
+      duration,
+      reason,
+    });
     Sentry.captureMessage(
       `calendar-keepwarm: availability warm-up failed (${mode}/${duration}): ${reason}`,
       'warning',
@@ -347,15 +413,11 @@ export async function warmAvailabilityCache(): Promise<void> {
 // (guarded by `initialized`).
 async function handler(): Promise<void> {
   initSentry();
-  return Sentry.withMonitor(
-    'calendar-keepwarm',
-    runKeepwarm,
-    {
-      schedule: { type: 'crontab', value: SCHEDULE },
-      checkInMargin: 2,
-      maxRuntime: 5,
-    },
-  );
+  return Sentry.withMonitor('calendar-keepwarm', runKeepwarm, {
+    schedule: { type: 'crontab', value: SCHEDULE },
+    checkInMargin: 2,
+    maxRuntime: 5,
+  });
 }
 
 async function runKeepwarm(): Promise<void> {
@@ -377,24 +439,10 @@ export default handler;
 // Token keep-warm step (V1 — issue #132 / T2)
 // ---------------------------------------------------------------------------
 
-/**
- * Outcome of the token step — the STRUCTURAL gate for the availability
- * warm-up in keepwarm() below.
- *
- *   'ok'          — Google auth is usable for API calls right now: the token
- *                   was still valid, OR it was refreshed and the persist was
- *                   confirmed, OR the run hit a transient failure (non-
- *                   invalid_grant refresh error, unconfirmed persist) and
- *                   falls through: the previously persisted access token
- *                   typically keeps 5-15 min of validity and
- *                   getAvailableSlots serves from it via
- *                   getPersistedOAuthClient.
- *   'auth-broken' — Google auth is DEFINITIVELY unusable: no token row,
- *                   empty refresh_token, or invalid_grant (revoked). The
- *                   warm-up would only burn four doomed Freebusy calls, so
- *                   keepwarm() skips it.
- */
-type TokenKeepwarmStatus = 'ok' | 'auth-broken';
+// The token-step outcome type is `KeepwarmSession`
+// (src/lib/google-calendar.ts, imported above) — the STRUCTURAL gate for the
+// availability warm-up in keepwarm(). See its doc block for the full
+// 3-state contract (issue #153 / SC2).
 
 /** Env values keepwarm() has already validated — passed down, not re-read. */
 interface TokenKeepwarmEnv {
@@ -412,9 +460,11 @@ interface TokenKeepwarmEnv {
 /**
  * Runs one token keep-warm pass: load the persisted token row, refresh when
  * less than 15 min of validity remain, persist the rotated credentials.
- * Returns the gate status — never throws for expected auth failures.
+ * Returns the KeepwarmSession — never throws for expected auth failures.
+ * The 'ok' session carries the AUTHENTICATED client the whole warm-up run
+ * builds on (issue #153 / SC2).
  */
-async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<TokenKeepwarmStatus> {
+async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<KeepwarmSession> {
   // Service-role client: this cron owns the token row (no RLS session).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createClient<any>(env.supabaseUrl, env.serviceRoleKey, {
@@ -422,7 +472,11 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<TokenKeepwarmStatus
     realtime: { transport: ws },
   });
 
-  const oauth2Client = new google.auth.OAuth2(env.clientId, env.clientSecret, env.redirectUri);
+  const oauth2Client = new google.auth.OAuth2(
+    env.clientId,
+    env.clientSecret,
+    env.redirectUri,
+  );
 
   // Load persisted token from DB.
   const { data: tokens, error: fetchError } = await supabase
@@ -431,24 +485,44 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<TokenKeepwarmStatus
     .eq('id', 'therapist')
     .single();
 
+  // Classify the read failure (issue #153 / SC2): a transient fetch error
+  // (network, 5xx, timeout) is NOT "no row" — it must not be reported as
+  // auth-broken. PGRST116 = .single() matched no row → definitively broken
+  // (unchanged #132 behavior, handled by the guard below); anything else is
+  // transient infra: log « transient », NO alert, warm-up skipped this run.
+  if (fetchError && fetchError.code !== 'PGRST116') {
+    logger.warn(
+      'calendar-keepwarm: token row read failed (transient) — warm-up skipped this run',
+      { code: fetchError.code, message: fetchError.message },
+    );
+    return { status: 'transient', reason: 'token-row-read-failed' };
+  }
+
   // No token row = definitively broken: nothing to keep warm, and the warm-up
   // has no credentials to authenticate its Freebusy calls with either.
-  if (fetchError || !tokens) {
-    const msg = 'calendar-keepwarm: no token row in DB — nothing to keep warm. Connect Google Calendar first.';
+  if (!tokens) {
+    const msg =
+      'calendar-keepwarm: no token row in DB — nothing to keep warm. Connect Google Calendar first.';
     logger.warn(msg, { fetchError });
     Sentry.captureMessage(msg, 'error');
-    return 'auth-broken';
+    return { status: 'auth-broken' };
   }
 
   if (!tokens.refresh_token) {
-    const msg = 'calendar-keepwarm: token row exists but refresh_token is null — re-authorization required';
+    const msg =
+      'calendar-keepwarm: token row exists but refresh_token is null — re-authorization required';
     logger.error(msg);
     // Same every-run capture as the invalid_grant branch — the cron monitor
     // stays green here, so Sentry is the only durable signal if the alert
     // email itself fails (e.g. Resend down).
     Sentry.captureMessage(msg, 'error');
-    await sendInvalidGrantAlert(env.adminEmail, env.siteUrl, env.resendApiKey, env.fromEmail);
-    return 'auth-broken';
+    await sendInvalidGrantAlert(
+      env.adminEmail,
+      env.siteUrl,
+      env.resendApiKey,
+      env.fromEmail,
+    );
+    return { status: 'auth-broken' };
   }
 
   // Token keep-warm — refresh only when the validity window runs short.
@@ -459,7 +533,7 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<TokenKeepwarmStatus
       const { credentials } = await oauth2Client.refreshAccessToken();
 
       const updated = {
-        access_token:  credentials.access_token ?? '',
+        access_token: credentials.access_token ?? '',
         // google-auth-library's refreshAccessToken() never surfaces a
         // server-rotated refresh token: it echoes back the credential it was
         // given, so this persists the same refresh_token we loaded. Google
@@ -467,8 +541,8 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<TokenKeepwarmStatus
         // does, this path will keep persisting the ORIGINAL token and needs
         // revisiting.
         refresh_token: credentials.refresh_token ?? tokens.refresh_token,
-        expiry_date:   credentials.expiry_date ?? (Date.now() + 3600 * 1000),
-        updated_at:    new Date().toISOString(),
+        expiry_date: credentials.expiry_date ?? Date.now() + 3600 * 1000,
+        updated_at: new Date().toISOString(),
       };
 
       // Verify the write: PostgREST answers 2xx + no error even when the
@@ -484,13 +558,17 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<TokenKeepwarmStatus
 
       if (updateError || !persisted) {
         // Persist NOT confirmed. NOT 'auth-broken': the in-memory token is
-        // fresh, and the DB row still holds the previous access token — the
-        // warm-up can serve from it. The next run self-heals (the stale
-        // row's expiry stays under the threshold → refresh retried). No
-        // retry here: sanitized fields only, no raw error object.
-        logger.error('calendar-keepwarm: refreshed token NOT confirmed persisted', {
-          persistError: updateError?.message ?? 'zero rows matched',
-        });
+        // fresh (refreshAccessToken() set it on the client), and the DB row
+        // still holds the previous access token. The next run self-heals
+        // (the stale row's expiry stays under the threshold → refresh
+        // retried). No retry here: sanitized fields only, no raw error
+        // object.
+        logger.error(
+          'calendar-keepwarm: refreshed token NOT confirmed persisted',
+          {
+            persistError: updateError?.message ?? 'zero rows matched',
+          },
+        );
         // The run still succeeds ('ok' → warm-up proceeds), so the Sentry
         // monitor stays green: a persist failure recurring every 10 min
         // would otherwise never surface. Sanitized fields only.
@@ -498,48 +576,108 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<TokenKeepwarmStatus
           'calendar-keepwarm: refreshed token NOT confirmed persisted — warm-up proceeds on the persisted token',
           'warning',
         );
-        return 'ok';
+        return { status: 'ok', oauth2Client };
       }
 
       // Success log only on a confirmed write.
       logger.info('calendar-keepwarm: token refreshed and persist confirmed');
+      // refreshAccessToken() already set the fresh credentials on the client.
+      return { status: 'ok', oauth2Client };
     } catch (err: unknown) {
       // invalid_grant → token revoked, alert admin (24h email cooldown — see
       // sendInvalidGrantAlert) and skip the warm-up: auth is definitively
       // broken.
-      const errData = (err as { response?: { data?: { error?: string } } })?.response?.data;
+      const errData = (err as { response?: { data?: { error?: string } } })
+        ?.response?.data;
       if (errData?.error === 'invalid_grant') {
-        logger.error('calendar-keepwarm: invalid_grant — token revoked, sending alert to admin');
-        await sendInvalidGrantAlert(env.adminEmail, env.siteUrl, env.resendApiKey, env.fromEmail);
+        logger.error(
+          'calendar-keepwarm: invalid_grant — token revoked, sending alert to admin',
+        );
+        await sendInvalidGrantAlert(
+          env.adminEmail,
+          env.siteUrl,
+          env.resendApiKey,
+          env.fromEmail,
+        );
         // Capture a sanitized error only — NEVER the raw GaxiosError: its
         // response/config payloads may embed client_secret / refresh_token.
-        Sentry.captureException(new Error('Google OAuth token refresh failed: invalid_grant'));
-        return 'auth-broken';
+        Sentry.captureException(
+          new Error('Google OAuth token refresh failed: invalid_grant'),
+        );
+        return { status: 'auth-broken' };
       }
 
-      // Transient failure (network blip, Google 5xx, quota…): log + capture
-      // SANITIZED — same rule as invalid_grant, the raw GaxiosError may
-      // embed client_secret / refresh_token in its response/config payloads.
-      // Then proceed ('ok'): the persisted access token usually still has
-      // 5-15 min of validity and getAvailableSlots falls back to it via
-      // getPersistedOAuthClient; the next run retries the refresh.
-      const message = err instanceof Error ? err.message : String(err);
-      const httpStatus = (err as { response?: { status?: number } })?.response?.status;
-      logger.error('calendar-keepwarm: token refresh failed (transient) — warm-up proceeds on the persisted token', {
-        errMessage: message,
-        httpStatus,
-      });
-      Sentry.captureException(new Error(`Google OAuth token refresh failed (transient): ${message}`));
-      return 'ok';
+      // Transient failure (network blip, Google 5xx, quota…). The fall-through
+      // GATE (issue #153 / SC2): admit 'ok' ONLY if the PERSISTED token still
+      // keeps > WARMUP_MIN_TOKEN_VALIDITY_MS of validity — otherwise the
+      // warm-up's signed calls could cross the library's eager refresh
+      // threshold mid-run and trigger a HIDDEN token-endpoint refresh.
+      const remainingMs =
+        typeof tokens.expiry_date === 'number'
+          ? tokens.expiry_date - Date.now()
+          : null;
+
+      if (remainingMs !== null && remainingMs > WARMUP_MIN_TOKEN_VALIDITY_MS) {
+        // Fall-through admitted: serve the warm-up from the persisted
+        // credentials, straight from the row. The raw error is NOT logged —
+        // sanitized fields only.
+        oauth2Client.setCredentials({
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+          expiry_date: tokens.expiry_date,
+        });
+        const message = err instanceof Error ? err.message : String(err);
+        const httpStatus = (err as { response?: { status?: number } })?.response
+          ?.status;
+        logger.warn(
+          'calendar-keepwarm: token refresh failed (transient) — fall-through on the persisted token',
+          {
+            errMessage: message,
+            httpStatus,
+            remainingMs,
+          },
+        );
+        // Capture SANITIZED — the raw GaxiosError may embed client_secret /
+        // refresh_token in its response/config payloads.
+        Sentry.captureException(
+          new Error(
+            `Google OAuth token refresh failed (transient): ${message}`,
+          ),
+        );
+        return { status: 'ok', oauth2Client };
+      }
+
+      // Below the margin (or unknown expiry): warm-up skipped this run.
+      // Log « transient », NO alert (no email, no Sentry capture) — the next
+      // run retries the refresh. Sanitized fields only.
+      logger.warn(
+        'calendar-keepwarm: token refresh failed (transient) — persisted margin insufficient, warm-up skipped this run',
+        {
+          remainingMs,
+        },
+      );
+      return {
+        status: 'transient',
+        reason:
+          remainingMs === null
+            ? 'missing-expiry'
+            : 'insufficient-persisted-margin',
+      };
     }
-  } else {
-    // Token still valid (≥ 15 min remaining) — skip the refresh this run.
-    logger.info('calendar-keepwarm: token still valid — refresh skipped', {
-      remainingMs: tokens.expiry_date - Date.now(),
-    });
   }
 
-  return 'ok';
+  // Token still valid (≥ 15 min remaining) — admit the persisted credentials
+  // as-is: the margin dwarfs the eager refresh threshold, so the warm-up's
+  // signed calls cannot trigger a hidden token refresh.
+  oauth2Client.setCredentials({
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    expiry_date: tokens.expiry_date,
+  });
+  logger.info('calendar-keepwarm: token still valid — refresh skipped', {
+    remainingMs: tokens.expiry_date - Date.now(),
+  });
+  return { status: 'ok', oauth2Client };
 }
 
 // ---------------------------------------------------------------------------
@@ -556,35 +694,41 @@ async function keepwarm(): Promise<void> {
   //    the monitor green while the cron silently does nothing on every run.
   //    GOOGLE_CALENDAR_ID is NOT required here — see the dedicated warn-only
   //    check below the guards.
-  const clientId      = process.env.GOOGLE_OAUTH_CLIENT_ID;
-  const clientSecret  = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
-  const calendarId    = process.env.GOOGLE_CALENDAR_ID;
-  const supabaseUrl   = process.env.SUPABASE_DATABASE_URL;
+  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  const calendarId = process.env.GOOGLE_CALENDAR_ID;
+  const supabaseUrl = process.env.SUPABASE_DATABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const adminEmail    = process.env.ADMIN_EMAIL;
-  const resendApiKey  = process.env.RESEND_API_KEY;
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const resendApiKey = process.env.RESEND_API_KEY;
   // Optional, with fallbacks — mirror heartbeat's defaults.
-  const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI ?? 'https://developers.google.com/oauthplayground';
-  const siteUrl     = process.env.SITE_URL ?? 'https://omf-therapie.fr';
-  const fromEmail   = process.env.RESEND_FROM_EMAIL ?? 'OMF Thérapie <contact@omf-therapie.fr>';
+  const redirectUri =
+    process.env.GOOGLE_OAUTH_REDIRECT_URI ??
+    'https://developers.google.com/oauthplayground';
+  const siteUrl = process.env.SITE_URL ?? 'https://omf-therapie.fr';
+  const fromEmail =
+    process.env.RESEND_FROM_EMAIL ?? 'OMF Thérapie <contact@omf-therapie.fr>';
   // PUBLIC_SENTRY_DSN is optional and consumed by initSentry()/logger directly.
 
   if (!clientId || !clientSecret) {
-    const msg = 'calendar-keepwarm: required env missing — run skipped (GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET)';
+    const msg =
+      'calendar-keepwarm: required env missing — run skipped (GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET)';
     logger.warn(msg);
     Sentry.captureMessage(msg, 'error');
     return;
   }
 
   if (!supabaseUrl || !serviceRoleKey) {
-    const msg = 'calendar-keepwarm: required env missing — run skipped (SUPABASE_DATABASE_URL / SUPABASE_SERVICE_ROLE_KEY)';
+    const msg =
+      'calendar-keepwarm: required env missing — run skipped (SUPABASE_DATABASE_URL / SUPABASE_SERVICE_ROLE_KEY)';
     logger.warn(msg);
     Sentry.captureMessage(msg, 'error');
     return;
   }
 
   if (!adminEmail || !resendApiKey) {
-    const msg = 'calendar-keepwarm: required env missing — run skipped (ADMIN_EMAIL / RESEND_API_KEY)';
+    const msg =
+      'calendar-keepwarm: required env missing — run skipped (ADMIN_EMAIL / RESEND_API_KEY)';
     logger.warn(msg);
     Sentry.captureMessage(msg, 'error');
     return;
@@ -597,19 +741,22 @@ async function keepwarm(): Promise<void> {
   // keep-warm has no reason to stop. The warm-up skips itself (never the
   // token step) while this is unset — see warmAvailabilityCache()'s guard.
   if (!calendarId) {
-    logger.warn('calendar-keepwarm: GOOGLE_CALENDAR_ID missing — token keep-warm continues; availability warm-up will be skipped');
+    logger.warn(
+      'calendar-keepwarm: GOOGLE_CALENDAR_ID missing — token keep-warm continues; availability warm-up will be skipped',
+    );
   }
 
   // 2. Token step, then the availability warm-up. The gate is STRUCTURAL:
   //    keepTokenWarm() returns 'auth-broken' ONLY when Google auth is
   //    definitively unusable (no token row / empty refresh_token /
-  //    invalid_grant), and the warm-up is skipped exactly then. Transient
-  //    failures (non-invalid_grant refresh error, unconfirmed persist)
-  //    return 'ok' and fall through to the warm-up: the persisted access
-  //    token usually keeps 5-15 min of validity and getAvailableSlots serves
-  //    from it via getPersistedOAuthClient. warmAvailabilityCache() skips
-  //    itself when GOOGLE_CALENDAR_ID is unset.
-  const status = await keepTokenWarm({
+  //    invalid_grant), and 'transient' when the run cannot proceed safely
+  //    (token-row read failure, refresh failure with persisted margin
+  //    ≤ 6 min, expired or unknown expiry) — the warm-up is skipped in both
+  //    non-ok cases. On 'ok' the session carries the AUTHENTICATED client:
+  //    ONE calendar is built from it and threaded into every warm-up call
+  //    (issue #153 / SC2). warmAvailabilityCache() skips itself when
+  //    GOOGLE_CALENDAR_ID is unset.
+  const session = await keepTokenWarm({
     clientId,
     clientSecret,
     redirectUri,
@@ -620,7 +767,11 @@ async function keepwarm(): Promise<void> {
     resendApiKey,
     fromEmail,
   });
-  if (status !== 'auth-broken') {
-    await warmAvailabilityCache();
+  if (session.status === 'ok') {
+    const calendar = google.calendar({
+      version: 'v3',
+      auth: session.oauth2Client,
+    });
+    await warmAvailabilityCache(calendar);
   }
 }
