@@ -4,7 +4,10 @@ import type { AppointmentStatus } from '../types/appointment';
  * Statuts à partir desquels un RDV ne peut plus être annulé ni reporté
  * (déjà refusé, déjà annulé).
  */
-const TERMINAL_STATUSES: ReadonlySet<AppointmentStatus> = new Set(['declined', 'cancelled']);
+const TERMINAL_STATUSES: ReadonlySet<AppointmentStatus> = new Set([
+  'declined',
+  'cancelled',
+]);
 
 /**
  * Un rendez-vous peut-il être annulé ou reporté par la thérapeute ?
@@ -24,7 +27,9 @@ export function isCancellableByTherapist(appt: {
   status: AppointmentStatus;
 }): boolean {
   if (TERMINAL_STATUSES.has(appt.status)) return false;
-  return new Date(appt.scheduled_at).getTime() >= startOfYesterdayParis().getTime();
+  return (
+    new Date(appt.scheduled_at).getTime() >= startOfYesterdayParis().getTime()
+  );
 }
 
 /** ISO weekday in Paris time (1 = lundi, …, 7 = dimanche). */
@@ -35,7 +40,13 @@ export function getParisISOWeekday(date: Date): number {
     weekday: 'short',
   }).format(date);
   const map: Record<string, number> = {
-    Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+    Sun: 7,
   };
   return map[abbr] ?? 7;
 }
@@ -48,7 +59,7 @@ export function toParisDateString(date: Date): string {
     month: '2-digit',
     day: '2-digit',
   }).formatToParts(date);
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  const get = (t: string) => parts.find(p => p.type === t)?.value ?? '';
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
@@ -82,9 +93,12 @@ export function startOfYesterdayParis(now: Date = new Date()): Date {
       hour12: false,
     });
     const parts = dtf.formatToParts(new Date(utcMs));
-    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+    const get = (t: string) => parts.find(p => p.type === t)?.value ?? '';
     // On veut exactement 00:00 sur la date ymd (évite de capter le minuit du jour suivant).
-    return `${get('year')}-${get('month')}-${get('day')}` === ymd && `${get('hour')}:${get('minute')}` === '00:00';
+    return (
+      `${get('year')}-${get('month')}-${get('day')}` === ymd &&
+      `${get('hour')}:${get('minute')}` === '00:00'
+    );
   };
 
   // Minuit Paris du jour D est dans [D-1 22:00 UTC, D 00:00 UTC].
@@ -103,7 +117,10 @@ export function startOfYesterdayParis(now: Date = new Date()): Date {
  * Matin  : 8h00–12h00  (480–720 min)
  * Après-midi : 14h00–19h00 (840–1140 min)
  */
-export function isWithinBusinessHours(isoDate: string, durationMin: number): boolean {
+export function isWithinBusinessHours(
+  isoDate: string,
+  durationMin: number,
+): boolean {
   const start = new Date(isoDate);
   const end = new Date(start.getTime() + durationMin * 60 * 1000);
 
@@ -138,7 +155,9 @@ export function isUpcoming(iso: string, nowMs: number = Date.now()): boolean {
 
 /** Compare deux instants au jour calendaire près (fuseau Paris). */
 export function isSameParisDay(isoA: string, isoB: string): boolean {
-  return toParisDateString(new Date(isoA)) === toParisDateString(new Date(isoB));
+  return (
+    toParisDateString(new Date(isoA)) === toParisDateString(new Date(isoB))
+  );
 }
 
 /**
@@ -146,7 +165,7 @@ export function isSameParisDay(isoA: string, isoB: string): boolean {
  * L'arithmétique se fait sur la date UTC (zéro heure) pour rester insensible
  * aux transitions DST : on manipule une date « pure », pas une heure.
  */
-function shiftParisDay(dayKey: string, deltaDays: number): string {
+export function shiftParisDay(dayKey: string, deltaDays: number): string {
   const [y, m, d] = dayKey.split('-').map(Number);
   const shifted = new Date(Date.UTC(y, m - 1, d) + deltaDays * 86_400_000);
   const sy = shifted.getUTCFullYear();

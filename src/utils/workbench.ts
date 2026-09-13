@@ -6,23 +6,25 @@
  * no I/O, no server-only import, safe for React islands. All time-dependent
  * functions take `nowMs` explicitly so views and tests stay deterministic.
  *
- * Triage rule ("À traiter"): an appointment requires action while its status
- * is `pending` (to confirm), `payment_pending` (to collect) or `rescheduled`
- * (to re-plan). A triage item whose start time has passed carries the derived
- * "EN RETARD" flag. Terminal statuses (`cancelled`, `declined`) and settled
- * ones (`confirmed`, `payment_received`) are never triaged.
+ * Triage badges: `getTriageReasons` derives the per-row « EN RETARD » /
+ * payment / reschedule flags for statuses still needing attention (consumed
+ * by the appointment rows UI). The therapist-action queue is defined
+ * separately by `getDemandItems`: `pending` requests plus `rescheduled`
+ * whose patient proposal has expired — `payment_pending` is excluded.
  */
 
 import type { Appointment, AppointmentStatus } from '../types/appointment';
 import {
   formatTimeParis,
+  getParisISOWeekday,
   getRelativeDayLabel,
   isSameParisDay,
   isUpcoming,
+  shiftParisDay,
   toParisDateString,
 } from './date';
 
-/** Statuses that still require a decision from the practitioner. */
+/** Statuses that carry triage badge flags (see `getTriageReasons`). */
 const TRIAGE_STATUSES: ReadonlySet<AppointmentStatus> = new Set([
   'pending',
   'payment_pending',
@@ -53,11 +55,6 @@ export interface TriageReasons {
   reschedule: boolean;
 }
 
-export interface TriageItem {
-  appointment: Appointment;
-  reasons: TriageReasons;
-}
-
 /**
  * Triage reasons for one appointment, or `null` when it needs no action.
  */
@@ -73,32 +70,103 @@ export function getTriageReasons(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Demand queue + week/tomorrow KPIs (issue #164 — synthèse rework)
+// ---------------------------------------------------------------------------
+
 /**
- * "À traiter" queue, soonest first (late items bubble to the top naturally).
+ * Therapist-action queue for the "Demandes de RDV" card: `pending` requests,
+ * plus `rescheduled` whose proposal has expired for the patient
+ * (`!rescheduled_to || rescheduled_to ≤ nowMs` — inclusive boundary, same
+ * rule as the patient accept/decline page). `payment_pending` is excluded —
+ * the payment link acts on its own; terminal (`cancelled`, `declined`) and
+ * settled (`confirmed`, `payment_received`) statuses never qualify.
+ * Sorted by `scheduled_at` ascending so late items bubble to the top.
  */
-export function getTriageItems(
+export function getDemandItems(
   appointments: Appointment[],
   nowMs: number = Date.now(),
-): TriageItem[] {
+): Appointment[] {
   return appointments
-    .map((appointment) => ({ appointment, reasons: getTriageReasons(appointment, nowMs) }))
-    .filter((item): item is TriageItem => item.reasons !== null)
-    .sort((a, b) => a.appointment.scheduled_at.localeCompare(b.appointment.scheduled_at));
+    .filter(appointment => {
+      if (appointment.status === 'pending') return true;
+      if (appointment.status !== 'rescheduled') return false;
+      return (
+        !appointment.rescheduled_to ||
+        Date.parse(appointment.rescheduled_to) <= nowMs
+      );
+    })
+    .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
 }
 
-/** Per-flag counts for the KPI card subtitle (« X retards · Y paiements · … »). */
-export function getTriageBreakdown(items: TriageItem[]): {
-  late: number;
-  payment: number;
-  reschedule: number;
-} {
-  const breakdown = { late: 0, payment: 0, reschedule: 0 };
-  for (const item of items) {
-    if (item.reasons.late) breakdown.late += 1;
-    if (item.reasons.payment) breakdown.payment += 1;
-    if (item.reasons.reschedule) breakdown.reschedule += 1;
-  }
-  return breakdown;
+/** Summary of the "Ma semaine" KPI card. */
+export interface WeekSessionsSummary {
+  /** Active sessions within the counted Paris civil week. */
+  count: number;
+  /** Monday day key (YYYY-MM-DD, Paris) of the counted week. */
+  weekStartKey: string;
+  /** Sunday day key (YYYY-MM-DD, Paris) of the counted week. */
+  weekEndKey: string;
+  /** « Ma semaine » (Mon–Fri) or « Ma semaine à venir » (week-end). */
+  label: 'Ma semaine' | 'Ma semaine à venir';
+}
+
+/**
+ * Active sessions of a Paris civil week (Monday→Sunday), counted on DAY KEYS
+ * — never instant arithmetic. On weekdays (Mon–Fri) the current week is
+ * counted, past days included (« Ma semaine »); on Saturday/Sunday the count
+ * shifts to the following week (« Ma semaine à venir »).
+ */
+export function getWeekSessions(
+  appointments: Appointment[],
+  nowMs: number = Date.now(),
+): WeekSessionsSummary {
+  const todayKey = toParisDateString(new Date(nowMs));
+  const weekday = getParisISOWeekday(new Date(nowMs));
+  const currentMondayKey = shiftParisDay(todayKey, 1 - weekday);
+  const isWeekend = weekday >= 6;
+  const weekStartKey = isWeekend
+    ? shiftParisDay(currentMondayKey, 7)
+    : currentMondayKey;
+  const weekEndKey = shiftParisDay(weekStartKey, 6);
+  const count = appointments.filter(appointment => {
+    if (!isActiveAppointment(appointment)) return false;
+    const dayKey = toParisDateString(new Date(appointment.scheduled_at));
+    return dayKey >= weekStartKey && dayKey <= weekEndKey;
+  }).length;
+  return {
+    count,
+    weekStartKey,
+    weekEndKey,
+    label: isWeekend ? 'Ma semaine à venir' : 'Ma semaine',
+  };
+}
+
+/** Summary of the "Demain" KPI card. */
+export interface TomorrowSessionsSummary {
+  /** Active sessions of the next Paris day, chronological. */
+  sessions: Appointment[];
+  /** `scheduled_at` of the first session of the day, or `null` when free. */
+  firstStartIso: string | null;
+}
+
+/**
+ * Active sessions of the next Paris day — day key +1 via `shiftParisDay`,
+ * DST-safe by construction (a 25-hour day is still one day-key step).
+ */
+export function getTomorrowSessions(
+  appointments: Appointment[],
+  nowMs: number = Date.now(),
+): TomorrowSessionsSummary {
+  const tomorrowKey = shiftParisDay(toParisDateString(new Date(nowMs)), 1);
+  const sessions = appointments
+    .filter(
+      appointment =>
+        isActiveAppointment(appointment) &&
+        toParisDateString(new Date(appointment.scheduled_at)) === tomorrowKey,
+    )
+    .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
+  return { sessions, firstStartIso: sessions[0]?.scheduled_at ?? null };
 }
 
 /** Today's active sessions (Paris day), chronological. */
@@ -108,7 +176,9 @@ export function getTodaySessions(
 ): Appointment[] {
   const nowIso = new Date(nowMs).toISOString();
   return appointments
-    .filter((a) => isActiveAppointment(a) && isSameParisDay(a.scheduled_at, nowIso))
+    .filter(
+      a => isActiveAppointment(a) && isSameParisDay(a.scheduled_at, nowIso),
+    )
     .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
 }
 
@@ -119,7 +189,7 @@ export function getNextSessions(
   limit: number = 3,
 ): Appointment[] {
   return appointments
-    .filter((a) => isActiveAppointment(a) && isUpcoming(a.scheduled_at, nowMs))
+    .filter(a => isActiveAppointment(a) && isUpcoming(a.scheduled_at, nowMs))
     .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
     .slice(0, limit);
 }
@@ -142,7 +212,11 @@ export function getMonthlyVolume(
   let total = 0;
   let active = 0;
   for (const appointment of appointments) {
-    if (toParisDateString(new Date(appointment.scheduled_at)).slice(0, 7) !== monthKey) continue;
+    if (
+      toParisDateString(new Date(appointment.scheduled_at)).slice(0, 7) !==
+      monthKey
+    )
+      continue;
     total += 1;
     if (ACTIVE_STATUSES.has(appointment.status)) active += 1;
   }
@@ -154,7 +228,10 @@ export function getMonthlyVolume(
 }
 
 /** Whole minutes until the session starts, or `null` once it has begun. */
-export function getMinutesUntil(iso: string, nowMs: number = Date.now()): number | null {
+export function getMinutesUntil(
+  iso: string,
+  nowMs: number = Date.now(),
+): number | null {
   const deltaMs = new Date(iso).getTime() - nowMs;
   if (deltaMs <= 0) return null;
   return Math.round(deltaMs / 60_000);
@@ -214,14 +291,17 @@ export function aggregatePatients(
 
   const patients: PatientAggregate[] = [];
   for (const [email, rows] of buckets) {
-    const history = [...rows].sort((a, b) => b.scheduled_at.localeCompare(a.scheduled_at));
+    const history = [...rows].sort((a, b) =>
+      b.scheduled_at.localeCompare(a.scheduled_at),
+    );
     const latest = history[0];
     if (!latest) continue;
     let paidCents = 0;
     let pendingPaymentCents = 0;
     let completedCount = 0;
     for (const appointment of rows) {
-      if (appointment.status === 'payment_received') paidCents += appointment.final_price;
+      if (appointment.status === 'payment_received')
+        paidCents += appointment.final_price;
       if (appointment.status === 'payment_pending') {
         pendingPaymentCents += appointment.final_price;
       }
@@ -229,13 +309,16 @@ export function aggregatePatients(
       // `pending` sans réponse ou un report `rescheduled` proposé ne prouvent
       // pas qu'une séance s'est tenue (revue #148).
       if (
-        (appointment.status === 'confirmed' || appointment.status === 'payment_received') &&
+        (appointment.status === 'confirmed' ||
+          appointment.status === 'payment_received') &&
         !isUpcoming(appointment.scheduled_at, nowMs)
       ) {
         completedCount += 1;
       }
     }
-    const sortedAsc = [...rows].sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
+    const sortedAsc = [...rows].sort((a, b) =>
+      a.scheduled_at.localeCompare(b.scheduled_at),
+    );
     patients.push({
       email,
       name: latest.patient_name,
@@ -251,14 +334,16 @@ export function aggregatePatients(
       isActive: new Date(latest.scheduled_at).getTime() >= activeCutoffMs,
       nextAppointment:
         sortedAsc.find(
-          (a) => isActiveAppointment(a) && isUpcoming(a.scheduled_at, nowMs),
+          a => isActiveAppointment(a) && isUpcoming(a.scheduled_at, nowMs),
         ) ?? null,
       paidCents,
       pendingPaymentCents,
       history,
     });
   }
-  return patients.sort((a, b) => b.lastAppointmentAt.localeCompare(a.lastAppointmentAt));
+  return patients.sort((a, b) =>
+    b.lastAppointmentAt.localeCompare(a.lastAppointmentAt),
+  );
 }
 
 /** Initials for avatar chips: first letter of the two first words. */
@@ -267,7 +352,7 @@ export function getInitials(name: string): string {
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
+    .map(part => part[0]?.toUpperCase() ?? '')
     .join('');
 }
 
@@ -336,6 +421,8 @@ const RESCHEDULABLE_STATUSES: ReadonlySet<AppointmentStatus> = new Set([
  * l'acceptation, plutôt qu'un refus + re-création. La date d'origine ne
  * bloque pas ; seule la NOUVELLE date doit être future (contrôle côté API).
  */
-export function isReschedulable(appointment: Pick<Appointment, 'status'>): boolean {
+export function isReschedulable(
+  appointment: Pick<Appointment, 'status'>,
+): boolean {
   return RESCHEDULABLE_STATUSES.has(appointment.status);
 }
