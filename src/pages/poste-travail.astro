@@ -15,14 +15,20 @@ import { Workbench } from '../components/admin/workbench/Workbench';
 import { auth } from '../lib/auth';
 import { isAdminSession } from '../lib/authz';
 import { fetchActiveAppointments } from '../lib/admin-appointments';
+import {
+  LOGIN_PATH_FORBIDDEN,
+  LOGIN_PATH_UNAUTHENTICATED,
+} from '../utils/login-redirects';
 
 // ── Auth guard ───────────────────────────────────────────────────────────────
+// Redirections partagées avec le hook de polling (SC7 — miroir exact) :
+// voir src/utils/login-redirects.ts.
 const session = await auth.api.getSession({ headers: Astro.request.headers });
 if (!session) {
-  return Astro.redirect('/login/?redirect=/poste-travail/');
+  return Astro.redirect(LOGIN_PATH_UNAUTHENTICATED);
 }
 if (!isAdminSession(session)) {
-  return Astro.redirect('/login/?error=acces-refuse');
+  return Astro.redirect(LOGIN_PATH_FORBIDDEN);
 }
 
 const practitionerName = session.user?.name ?? 'Oriane Montabonnet';
