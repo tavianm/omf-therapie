@@ -25,6 +25,13 @@ import {
   PollerAuthError,
   type AppointmentsSnapshot,
 } from '../utils/appointment-poller';
+import {
+  LOGIN_PATH_FORBIDDEN,
+  LOGIN_PATH_UNAUTHENTICATED,
+} from '../utils/login-redirects';
+
+/** Per-fetch abort timeout — a hung poll must reject into onError/backoff. */
+const FETCH_TIMEOUT_MS = 15_000;
 
 export interface UseAppointmentsPollingOptions {
   /**
@@ -77,19 +84,41 @@ function isDeepEqual(a: unknown, b: unknown): boolean {
 async function fetchAppointments(): Promise<
   AppointmentsSnapshot<Appointment[]>
 > {
-  // Trailing slash required — ADR-013 (otherwise Astro answers with an HTML
-  // redirect and response.json() explodes).
-  const response = await fetch('/api/admin/appointments/', {
-    credentials: 'same-origin',
-    headers: { Accept: 'application/json' },
-  });
-  if (response.status === 401 || response.status === 403) {
-    throw new PollerAuthError(response.status);
+  // A hung request must reject into the poller's error lane (onError →
+  // backoff → isStale), never stall the loop: the fetch is aborted after
+  // FETCH_TIMEOUT_MS. AbortController + setTimeout (Safari-safe — no
+  // AbortSignal.timeout). The abort rejection flows through the SAME path
+  // as any network failure (nothing catches it here).
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    // Trailing slash required — ADR-013 (otherwise Astro answers with an HTML
+    // redirect and response.json() explodes).
+    const response = await fetch('/api/admin/appointments/', {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+    if (response.status === 401 || response.status === 403) {
+      throw new PollerAuthError(response.status);
+    }
+    if (!response.ok) {
+      throw new Error(`Appointments poll failed with HTTP ${response.status}`);
+    }
+    const body = (await response.json()) as AppointmentsSnapshot<Appointment[]>;
+    // Runtime guard on the trusted-typed envelope: a reshaped upstream
+    // payload must fail loudly (rejection lane) instead of poisoning the
+    // poller's snapshot application.
+    if (
+      !Array.isArray(body.appointments) ||
+      typeof body.fetchedAt !== 'string'
+    ) {
+      throw new Error('Malformed appointments envelope');
+    }
+    return body;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  if (!response.ok) {
-    throw new Error(`Appointments poll failed with HTTP ${response.status}`);
-  }
-  return (await response.json()) as AppointmentsSnapshot<Appointment[]>;
 }
 
 /**
@@ -153,11 +182,10 @@ export function useAppointmentsPolling(
         console.error('[useAppointmentsPolling] poll failed', error);
       },
       onAuthError: status => {
-        // SC7 — exact mirror of the SSR guard.
+        // SC7 — exact mirror of the SSR guard (shared constants, see
+        // src/utils/login-redirects.ts).
         window.location.href =
-          status === 401
-            ? '/login/?redirect=/poste-travail/'
-            : '/login/?error=acces-refuse';
+          status === 401 ? LOGIN_PATH_UNAUTHENTICATED : LOGIN_PATH_FORBIDDEN;
       },
     });
     pollerRef.current = poller;
