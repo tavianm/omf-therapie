@@ -32,7 +32,7 @@ Un run keepwarm sain utilise exactement une session OAuth, une lecture manual sl
 
 Déroulé d'un run sain : `keepTokenWarm()` charge la ligne token une seule fois, la rafraîchit si < 15 min de validité, persiste **avec CAS `updated_at`** (un miss = une écriture plus récente existe — relecture, log, préservation de la ligne récente), et retourne le client OAuth authentifié (`KeepwarmSession`).
 
-**Porte de marge du fall-through** : après un échec transitoire du refresh, le statut `'ok'` n'est retourné que si le token persisté garde **> 5 min** de validité (aligné sur le seuil `eagerRefreshThresholdMillis` par défaut de google-auth-library — en dessous, la lib exécuterait un refresh caché dans le premier appel API). Marge insuffisante, token expiré, ou `expiry_date` absent → `'transient'`, warm-up sauté ce run, aucune alerte. Après un refresh **réussi** → `'ok'` toujours (token frais en mémoire, CAS confirmé ou non — voir CAS).
+**Porte de marge du fall-through** : après un échec transitoire du refresh, le statut `'ok'` n'est retourné que si le token persisté garde **> `WARMUP_MIN_TOKEN_VALIDITY_MS`** de validité — constante = seuil `eagerRefreshThresholdMillis` par défaut de google-auth-library (5 min) **+ 60 s de budget warm-up**, soit 6 min. La marge doit couvrir la latence du snapshot entre le contrôle et le Freebusy (lecture manual slots, etc.) : à 5 min + 100 ms observés au contrôle, une lecture de 500 ms suffit à repasser sous le seuil eager et à déclencher un refresh caché. Marge ≤ seuil, token expiré, ou `expiry_date` absent → `'transient'`, warm-up sauté ce run, aucune alerte. Après un refresh **réussi** → `'ok'` toujours (token frais en mémoire, CAS confirmé ou non — voir CAS).
 
 Trois états de sortie, honnêtement classés : `'ok'` (client authentifié, warm-up procède), `'transient'` (échec de lecture de la ligne, échec de refresh avec marge insuffisante — log « transient », aucune alerte), `'auth-broken'` (définitif : ligne absente, refresh_token null, invalid_grant réel — alerte cadencée 24 h, warm-up sauté, comportement #132 inchangé).
 
@@ -44,7 +44,7 @@ Chemin patient : `getAvailableSlots` convertit les erreurs response-level Freebu
 
 ## Data Model & Consumers
 
-- `KeepwarmSession` — `{ status: 'ok'; oauth2Client: Auth.OAuth2Client } | { status: 'transient'; reason: string } | { status: 'auth-broken' }`. Client authentifié dans tous les cas 'ok' : valide, rafraîchi, ou fall-through avec marge > 5 min (`credentials.access_token === row.access_token`, `expiry_date` peuplé).
+- `KeepwarmSession` — `{ status: 'ok'; oauth2Client: Auth.OAuth2Client } | { status: 'transient'; reason: string } | { status: 'auth-broken' }`. Client authentifié dans tous les cas 'ok' : valide, rafraîchi, ou fall-through avec marge > `WARMUP_MIN_TOKEN_VALIDITY_MS` (`credentials.access_token === row.access_token`, `expiry_date` peuplé).
 - `AvailabilitySnapshot` — `{ manualSlots: Map<string, Set<Period>>; busyPeriods: Array<{ start: string; end: string }> }`, produit par `loadAvailabilitySnapshot(oauth2Client, startDate, endDate)` ; mock → `{∅, []}` sans I/O.
 - `CacheWriteResult` — `'written' | 'skipped-no-store' | 'failed'` ; init Blobs échouée → `'failed'`.
 - `filterSlotsByBusy(slots, busyPeriods)` — pur, exporté, déduplique les 3 copies.
@@ -60,7 +60,7 @@ Chemin patient : `getAvailableSlots` convertit les erreurs response-level Freebu
 
 | ID | Élément | Handler | Données |
 |---|---|---|---|
-| N1 | `keepTokenWarm(env)` → `KeepwarmSession` | cron | 1 lecture (avec `updated_at`) + au plus 1 refresh + persist CAS-confirmé ; fall-through gated à > 5 min ; échec select ou marge insuffisante → `'transient'` |
+| N1 | `keepTokenWarm(env)` → `KeepwarmSession` | cron | 1 lecture (avec `updated_at`) + au plus 1 refresh + persist CAS-confirmé ; fall-through gated à > `WARMUP_MIN_TOKEN_VALIDITY_MS` (6 min) ; échec select ou marge insuffisante → `'transient'` |
 | N2 | `loadAvailabilitySnapshot(oauth2Client, start, end)` → `AvailabilitySnapshot` \| throw typé | lib | 1 lecture `manual_time_slots`, 1 Freebusy ; mock → zéro I/O |
 | N3 | dérivation pure par `{mode, duration}` | lib | snapshot + dbBusy=[] |
 | N4 | `setCachedAvailability(key, slots, ttl)` → `CacheWriteResult` | lib | Blobs, TTL 900 s ; init échouée → `'failed'` |
@@ -71,7 +71,7 @@ Chemin patient : `getAvailableSlots` convertit les erreurs response-level Freebu
 
 | # | Slice | Démo |
 |---|-------|------|
-| V1 (N1, N5) | Correctif token + session + CAS (SC1, SC2, SC8) | 504 → throw, zéro écriture ; session réutilisée, marge fall-through (14 min/4 min/expiré/sans expiry) ; course reconnect-vs-refresh → la ligne récente survit |
+| V1 (N1, N5) | Correctif token + session + CAS (SC1, SC2, SC8) | 504 → throw, zéro écriture ; session réutilisée, marge fall-through (6 min+1 ms/6 min/4 min/expiré/sans expiry) ; course reconnect-vs-refresh → la ligne récente survit |
 | V2 (N2, N3, N5) | Batch mono-snapshot (SC3, SC4, SC5) | mocks comptent 1+1 ; équivalence fixtures dorées (DST 2026-10-25) ; response-level → 0 écriture, patient → 503 |
 | V3 (N4, N5, U1) | Écritures strictes + store résilient (SC6, SC7, SC8) | échec Blobs/init → `failed ≥ 1` ; mini test contrat `/api/availability` |
 
@@ -85,7 +85,7 @@ not:     "vérifier uniquement que error est non-null après .single() / la pré
 oracles: ["PostgREST 504 sur le select token → throw, zéro upsert/update", "timeout réseau sur le select token → throw, zéro écriture", "PGRST116 (0 ligne) → retourne null, zéro écriture, warn dépréciation si var env présente"]
 ```
 
-- [ ] **SC2 — Session injectée, états honnêtes, porte de marge** : `keepTokenWarm` retourne un client authentifié pour `'ok'` — y compris fall-through où `client.credentials.access_token === row.access_token` avec **> 5 min de validité restante** (aucun lazy-refresh possible : ≤ 1 appel au endpoint token par run, mesuré au mock HTTP) ; après échec de refresh : marge > 5 min → `'ok'`, marge ≤ 5 min / token expiré / `expiry_date` absent → `'transient'` (warm-up sauté, aucune alerte) — cas testés : 14 min, 4 min, expiré, sans expiry ; échec du select propre au cron → `'transient'` (log « transient », pas « no token row »).
+- [ ] **SC2 — Session injectée, états honnêtes, porte de marge** : `keepTokenWarm` retourne un client authentifié pour `'ok'` — y compris fall-through où `client.credentials.access_token === row.access_token` avec **> `WARMUP_MIN_TOKEN_VALIDITY_MS`** (= 6 min : seuil eager 5 min + 60 s de budget warm-up) de validité restante (aucun refresh caché possible : ≤ 1 appel au endpoint token par run, mesuré au mock HTTP) ; après échec de refresh : marge > seuil → `'ok'`, marge ≤ seuil / token expiré / `expiry_date` absent → `'transient'` (warm-up sauté, aucune alerte) — cas testés aux bornes : 6 min + 1 ms → ok, 6 min → transient, 4 min → transient, expiré → transient, sans expiry → transient ; échec du select propre au cron → `'transient'` (log « transient », pas « no token row »).
 - [ ] **SC3 — Budget amont** : un run sain effectue exactement 1 lecture `manual_time_slots`, 1 lecture `google_oauth_tokens`, 1 appel Freebusy (avant : 4/5/4).
 - [ ] **SC4 — Équivalence de dérivation (chemin de succès)** : contre des **fixtures dorées capturées depuis l'implémentation pré-refactor** (jeux réalistes de manual slots + busy periods → 4 jeux attendus, commités en JSON, y compris semaine DST Europe/Paris 2026-10-25), horloge figée (`vi.setSystemTime`), la dérivation pure produit des jeux deep-equal ; l'équivalence ne couvre pas les chemins d'erreur.
 - [ ] **SC5 — Pas d'empoisonnement, sur AUCUN writer** : une erreur response-level Freebusy ou un échec de stage partagé entraîne 0 écriture cache et la préservation des entrées existantes, côté cron et côté patient (throw typé → 503, jamais une entrée vide).
@@ -98,12 +98,12 @@ oracles: ["Freebusy 200 avec calendars[id].errors non vide côté cron → 0 éc
 
 - [ ] **SC6 — Télémétrie véridique + store résilient** : `setCachedAvailability` retourne `CacheWriteResult` ; le log final rapporte `{computed, written, failed}` où `written` ne compte que des écritures confirmées ; un échec d'écriture **ou d'init** du store produit `failed ≥ 1` (≠ silence du mock) ; une init échouée est retentée à l'invocation suivante (le catch réinitialise le promise mémoïsé ; le garde mock court-circuite toujours).
 - [ ] **SC7 — Chemin patient inchangé (hors suppression de l'écriture vide)** : `/api/availability` conserve clés, shape, `Cache-Control: no-store` et dégradation gracieuse ; vérifié par un nouveau mini test de contrat + suites `google-calendar` / `calendar-keepwarm` vertes sans modification de contrat.
-- [ ] **SC8 — CAS sur les écritures token** : tout persist de refresh (cron et patient) est conditionné par `.eq('updated_at', <valeur lue>)` ; un miss (0 ligne) préserve la ligne récente, relit, et loggue — jamais d'écrasement d'une écriture plus récente.
+- [ ] **SC8 — CAS sur les écritures token** : tout persist de refresh (cron et patient) est conditionné par `.eq('updated_at', <valeur lue>)` ; **un miss (PGRST116 — 0 ligne matchée) préserve la ligne récente, relit, et loggue un CAS-miss** ; **une erreur 5xx/timeout sur l'UPDATE conditionnel est une erreur infra transitoire → relecture de réconciliation, jamais présentée automatiquement comme une collision**. Jamais d'écrasement d'une écriture plus récente. Précondition vérifiée par lecture croisée : toutes les écritures de la table (callback de reconnexion, persists de refresh des deux writers) modifient systématiquement `updated_at` — une colonne `token_version` entière monotone resterait une évolution plus robuste, différée.
 
 ```yaml
 priced:  "un writer détenant une vue obsolète de la ligne token ne peut jamais écraser une écriture plus récente de google_oauth_tokens"
-not:     "vérifier seulement la présence d'une clause WHERE id='therapist' / que l'UPDATE échoue quand la table est vide"
-oracles: ["cron : ligne v2 (reconnexion) écrite après lecture v1 → persist du refresh matche 0 ligne, v2 préservée, CAS-miss loggé", "patient : même course sur getPersistedOAuthClient → v2 préservée", "le callback de reconnexion n'est jamais bloqué par un CAS concurrent"]
+not:     "vérifier seulement la présence d'une clause WHERE id='therapist' / que l'UPDATE échoue quand la table est vide / traiter un 5xx sur l'UPDATE comme un CAS-miss"
+oracles: ["cron : ligne v2 (reconnexion) écrite après lecture v1 → persist du refresh matche 0 ligne (PGRST116), v2 préservée, CAS-miss loggé", "patient : même course sur getPersistedOAuthClient → v2 préservée", "UPDATE conditionnel en 5xx/timeout → relecture de réconciliation, pas de log de collision", "le callback de reconnexion n'est jamais bloqué par un CAS concurrent"]
 ```
 
 ## Hors périmètre
