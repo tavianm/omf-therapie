@@ -16,7 +16,11 @@
  * runs on the ONE authenticated OAuth2Client the token step returns
  * (KeepwarmSession) — no per-call fallback, no hidden token refresh: the
  * fall-through is only admitted when the persisted token keeps > 6 min of
- * validity (eager refresh threshold 5 min + 60 s of warm-up budget).
+ * validity (eager refresh threshold 5 min + 60 s of warm-up budget). Since
+ * the mono-snapshot (issue #153 / SC3) the whole warm-up performs exactly ONE
+ * availability-snapshot load (one manual-slots read + one Freebusy query)
+ * and derives the four games purely from it; a snapshot failure writes
+ * NOTHING and preserves existing cache entries (issue #153 / SC5).
  *
  * Supersedes AND deletes calendar-token-heartbeat.ts (weekly refresh against
  * Google's ~6-month idle revocation): this 10-minute cadence keeps the token
@@ -77,7 +81,7 @@ import { createClient } from '@supabase/supabase-js';
 // root package does not re-export this constant — it lives in the authclient
 // submodule (google-auth-library is a direct dependency).
 import { DEFAULT_EAGER_REFRESH_THRESHOLD_MILLIS } from 'google-auth-library/build/src/auth/authclient';
-import { google, type calendar_v3 } from 'googleapis';
+import { google } from 'googleapis';
 import ws from 'ws';
 // Leaf import for the invalid_grant email-cooldown state (see
 // sendInvalidGrantAlert). No new dependency: @netlify/blobs is already part of
@@ -91,7 +95,10 @@ import CalendarAuthAlert from '../../src/emails/CalendarAuthAlert.js';
 // no .js suffix): the lazy-init refactors (#126 / T12) make this module graph
 // safe to bundle into the plain-Node cron runtime.
 import {
-  getAvailableSlots,
+  filterSlotsByBusy,
+  generateSlotsForRange,
+  loadAvailabilitySnapshot,
+  type AvailabilitySnapshot,
   type KeepwarmSession,
 } from '../../src/lib/google-calendar';
 import {
@@ -306,24 +313,43 @@ const WARMUP_TTL_SECONDS = 900;
  * ({in-person, video} × {60, 90}, weeks=4), so a patient request is served
  * from the cache instead of paying the Google Freebusy round-trip.
  *
- * `calendar` is the ONE authenticated client built from the ok KeepwarmSession
- * (issue #153 / SC2) — threaded into every getAvailableSlots call via the
- * CalendarClientOptions DI seam so the run performs no token lookup and no
- * hidden refresh of its own. TRANSITORY threading: T6 replaces this ×4 fan-out
- * with the mono-snapshot and removes it.
+ * MONO-SNAPSHOT (issue #153 / SC3): the whole run is served by ONE
+ * `loadAvailabilitySnapshot` call on the ok session's authenticated client —
+ * exactly one `manual_time_slots` read and one Freebusy query. The four games
+ * are then derived PURELY (`generateSlotsForRange` + the shared
+ * `filterSlotsByBusy`, issue #153 / N3) — no per-game I/O, no
+ * getAvailableSlots fan-out (removed with #153). The cron performs no token
+ * lookup and no hidden refresh of its own.
  *
- * dbBusyPeriods is deliberately empty: DB appointments change minute to minute
- * and the read path re-applies live busy filtering on every cache hit
+ * A snapshot failure is a SHARED-STAGE failure (issue #153 / SC5): NOTHING is
+ * written — existing Blobs entries are preserved, never overwritten with a
+ * partial or empty derivation — and the failed stage is logged. No
+ * invalid_grant alert originates here: token alerts stay in keepTokenWarm().
+ *
+ * dbBusy is deliberately empty: DB appointments change minute to minute and
+ * the read path re-applies live busy filtering on every cache hit
  * (filterSlotsByBusy) — warm entries must not bake busy state in. Mock mode
- * (GOOGLE_CALENDAR_MOCK=true) returns fictional slots; caching them is
- * acceptable dev behavior.
+ * (GOOGLE_CALENDAR_MOCK=true) yields an empty snapshot with zero I/O; the
+ * derived dev slots then hit the store's mock short-circuit
+ * ('skipped-no-store') — unchanged dev semantics.
  */
 export async function warmAvailabilityCache(
-  calendar: calendar_v3.Calendar,
+  session: KeepwarmSession,
 ): Promise<void> {
-  // Skip rather than fail: without a calendar id every getAvailableSlots call
-  // below throws the same configuration error — four identical errors every
-  // 10 minutes. One short warn here, NOT a captured error.
+  // Structural gate (issue #153 / SC2): only an 'ok' session carries the
+  // authenticated client the snapshot needs. (keepwarm() already gates on
+  // 'ok'; this guard keeps the function safe on its own.)
+  if (session.status !== 'ok') {
+    logger.info(
+      'calendar-keepwarm: availability warm-up skipped — session is not ok',
+      { status: session.status },
+    );
+    return;
+  }
+
+  // Skip rather than fail: without a calendar id the snapshot's Freebusy
+  // query would throw the same configuration error every 10 minutes. One
+  // short warn here, NOT a captured error.
   const calendarId = process.env.GOOGLE_CALENDAR_ID;
   if (!calendarId) {
     logger.warn(
@@ -345,51 +371,82 @@ export async function warmAvailabilityCache(
   // 4 weeks ahead in ms — same horizon as the availability API's weeks=4.
   const end = new Date(now.getTime() + WARMUP_WEEKS * 7 * 24 * 3600 * 1000);
 
+  // ONE shared snapshot for the whole run (issue #153 / SC3).
+  let snapshot: AvailabilitySnapshot;
+  try {
+    snapshot = await loadAvailabilitySnapshot(session.oauth2Client, now, end);
+  } catch (err: unknown) {
+    // Shared-stage failure (issue #153 / SC5): the snapshot is unusable, so
+    // the run writes NOTHING and every existing cache entry survives. The
+    // typed error's message is sanitized and names the failed stage; the raw
+    // error object is never logged (its payloads may embed credentials), and
+    // no invalid_grant alert is sent from this path.
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.error(
+      'calendar-keepwarm: availability snapshot failed (shared stage) — no cache write, existing entries preserved',
+      { stage: 'availability-snapshot', reason },
+    );
+    Sentry.captureMessage(
+      `calendar-keepwarm: availability snapshot failed (stage: availability-snapshot): ${reason}`,
+      'warning',
+    );
+    return;
+  }
+
   const pairs = modes.flatMap(mode =>
     durations.map(duration => ({ mode, duration })),
   );
 
-  // allSettled, not all: one key's Google API hiccup must not abort the other
-  // three — and no rejection may escape this function.
-  const results = await Promise.allSettled(
-    pairs.map(async ({ mode, duration }) => {
-      const slots = await getAvailableSlots(now, end, duration, mode, [], {
-        calendar,
-      });
-      const key = buildAvailabilityCacheKey(mode, duration, WARMUP_WEEKS, now);
-      await setCachedAvailability(key, slots, WARMUP_TTL_SECONDS);
-    }),
-  );
+  // Pure derivation ×4 (issue #153 / N3) — deterministic, zero I/O: the same
+  // engine the patient path runs, from the ONE snapshot.
+  const games = pairs.map(({ mode, duration }) => ({
+    mode,
+    duration,
+    slots: filterSlotsByBusy(
+      generateSlotsForRange({
+        startDate: now,
+        endDate: end,
+        duration,
+        mode,
+        now,
+        manualSlots: snapshot.manualSlots,
+      }),
+      snapshot.busyPeriods,
+    ),
+  }));
 
-  let warmed = 0;
-  results.forEach((result, index) => {
-    // allSettled preserves input order, so results[i] describes pairs[i].
-    const { mode, duration } = pairs[index];
-    if (result.status === 'fulfilled') {
-      warmed += 1;
-      return;
+  // Strict writes (issue #153 / SC6): every write reports an explicit
+  // CacheWriteResult; 'written' counts CONFIRMED writes only. Sequential on
+  // purpose — four tiny writes, deterministic log order.
+  let written = 0;
+  let failed = 0;
+  for (const { mode, duration, slots } of games) {
+    const key = buildAvailabilityCacheKey(mode, duration, WARMUP_WEEKS, now);
+    const result = await setCachedAvailability(key, slots, WARMUP_TTL_SECONDS);
+    if (result === 'written') {
+      written += 1;
+      continue;
     }
-
-    // Sanitized reason only — a raw Google error may embed credentials in its
-    // response/config payloads (same caution as the invalid_grant capture).
-    const reason =
-      result.reason instanceof Error
-        ? result.reason.message
-        : String(result.reason);
-    logger.error('calendar-keepwarm: availability warm-up failed for key', {
+    if (result === 'skipped-no-store') {
+      // Mock mode (or no Blobs context): dev short-circuit — neither a
+      // confirmed write nor a failure.
+      continue;
+    }
+    failed += 1;
+    logger.error('calendar-keepwarm: availability cache write failed', {
       mode,
       duration,
-      reason,
     });
     Sentry.captureMessage(
-      `calendar-keepwarm: availability warm-up failed (${mode}/${duration}): ${reason}`,
+      `calendar-keepwarm: availability cache write failed (${mode}/${duration})`,
       'warning',
     );
-  });
+  }
 
   logger.info('calendar-keepwarm: availability cache warm-up complete', {
-    warmed,
-    failed: results.length - warmed,
+    computed: games.length,
+    written,
+    failed,
   });
 }
 
@@ -786,9 +843,9 @@ async function keepwarm(): Promise<void> {
   //    (token-row read failure, refresh failure with persisted margin
   //    ≤ 6 min, expired or unknown expiry) — the warm-up is skipped in both
   //    non-ok cases. On 'ok' the session carries the AUTHENTICATED client:
-  //    ONE calendar is built from it and threaded into every warm-up call
-  //    (issue #153 / SC2). warmAvailabilityCache() skips itself when
-  //    GOOGLE_CALENDAR_ID is unset.
+  //    it is handed to warmAvailabilityCache(), which loads ONE shared
+  //    availability snapshot from it (mono-snapshot, issue #153 / SC3).
+  //    warmAvailabilityCache() skips itself when GOOGLE_CALENDAR_ID is unset.
   const session = await keepTokenWarm({
     clientId,
     clientSecret,
@@ -801,10 +858,6 @@ async function keepwarm(): Promise<void> {
     fromEmail,
   });
   if (session.status === 'ok') {
-    const calendar = google.calendar({
-      version: 'v3',
-      auth: session.oauth2Client,
-    });
-    await warmAvailabilityCache(calendar);
+    await warmAvailabilityCache(session);
   }
 }
