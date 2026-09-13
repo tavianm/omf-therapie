@@ -104,6 +104,7 @@ import {
 import {
   buildAvailabilityCacheKey,
   setCachedAvailability,
+  type CacheWriteResult,
 } from '../../src/lib/calendar-cache';
 import { initSentry, captureAndFlush } from './_lib/sentry';
 import { logger } from './_lib/logger';
@@ -156,6 +157,72 @@ const REFRESH_THRESHOLD_MS = 15 * 60 * 1000;
  */
 const WARMUP_MIN_TOKEN_VALIDITY_MS =
   DEFAULT_EAGER_REFRESH_THRESHOLD_MILLIS + 60_000;
+
+/**
+ * Run-level upstream deadline (revue #154): Netlify scheduled functions are
+ * synchronous with a 10 s default platform timeout. Every upstream call —
+ * token row read, token refresh, shared snapshot, cache writes — is bounded
+ * by ONE shared deadline that leaves the last ~2 s for classification, final
+ * telemetry and the `Sentry.flush(2000)` of runKeepwarm's finally block. A
+ * stalled socket must never reach the platform kill before the run has been
+ * classified: the deadline converts the stall into a typed 'transient' /
+ * failed-write outcome instead.
+ */
+const RUN_DEADLINE_MS = 8_000;
+
+/** Typed marker for "the shared run deadline fired at this stage". */
+class KeepwarmDeadlineError extends Error {
+  readonly stage: string;
+  constructor(stage: string) {
+    super(`calendar-keepwarm: run deadline exceeded at stage ${stage}`);
+    this.name = 'KeepwarmDeadlineError';
+    this.stage = stage;
+  }
+}
+
+interface RunDeadline {
+  /** Aborted the moment the deadline fires — thread into abortable requests. */
+  signal: AbortSignal;
+  /** Milliseconds left before the deadline (0 once fired). */
+  msRemaining(): number;
+  /** Binds a non-abortable promise to the deadline (blobs writes, refresh). */
+  race<T>(stage: string, promise: Promise<T>): Promise<T>;
+}
+
+function createRunDeadline(): RunDeadline {
+  const controller = new AbortController();
+  const deadlineAt = Date.now() + RUN_DEADLINE_MS;
+  const fire = (): void => {
+    if (!controller.signal.aborted) controller.abort();
+  };
+  return {
+    signal: controller.signal,
+    msRemaining: () => Math.max(0, deadlineAt - Date.now()),
+    race<T>(stage: string, promise: Promise<T>): Promise<T> {
+      const remaining = deadlineAt - Date.now();
+      if (remaining <= 0) {
+        fire();
+        return Promise.reject(new KeepwarmDeadlineError(stage));
+      }
+      return new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          fire();
+          reject(new KeepwarmDeadlineError(stage));
+        }, remaining);
+        promise.then(
+          value => {
+            clearTimeout(timer);
+            resolve(value);
+          },
+          err => {
+            clearTimeout(timer);
+            reject(err);
+          },
+        );
+      });
+    },
+  };
+}
 
 /**
  * Pure predicate — no I/O when `nowMs` is injected (defaults to Date.now() so
@@ -335,6 +402,7 @@ const WARMUP_TTL_SECONDS = 900;
  */
 export async function warmAvailabilityCache(
   session: KeepwarmSession,
+  deadline?: RunDeadline,
 ): Promise<void> {
   // Structural gate (issue #153 / SC2): only an 'ok' session carries the
   // authenticated client the snapshot needs. (keepwarm() already gates on
@@ -371,10 +439,21 @@ export async function warmAvailabilityCache(
   // 4 weeks ahead in ms — same horizon as the availability API's weeks=4.
   const end = new Date(now.getTime() + WARMUP_WEEKS * 7 * 24 * 3600 * 1000);
 
-  // ONE shared snapshot for the whole run (issue #153 / SC3).
+  // ONE shared snapshot for the whole run (issue #153 / SC3), bounded by the
+  // run deadline when one is provided (revue #154): the manual-slots read
+  // carries the abort signal and the Freebusy query gets a per-request
+  // timeout through gaxios — a stalled upstream aborts into the typed
+  // shared-stage failure below (SC5: zero writes, entries preserved).
   let snapshot: AvailabilitySnapshot;
   try {
-    snapshot = await loadAvailabilitySnapshot(session.oauth2Client, now, end);
+    snapshot = await loadAvailabilitySnapshot(
+      session.oauth2Client,
+      now,
+      end,
+      deadline
+        ? { timeoutMs: deadline.msRemaining(), signal: deadline.signal }
+        : undefined,
+    );
   } catch (err: unknown) {
     // Shared-stage failure (issue #153 / SC5): the snapshot is unusable, so
     // the run writes NOTHING and every existing cache entry survives. The
@@ -417,12 +496,22 @@ export async function warmAvailabilityCache(
 
   // Strict writes (issue #153 / SC6): every write reports an explicit
   // CacheWriteResult; 'written' counts CONFIRMED writes only. Sequential on
-  // purpose — four tiny writes, deterministic log order.
+  // purpose — four tiny writes, deterministic log order. When a run deadline
+  // is provided each write is raced against it (revue #154): a stall counts
+  // as a failed write in the telemetry, never an unclassified hang.
   let written = 0;
   let failed = 0;
   for (const { mode, duration, slots } of games) {
     const key = buildAvailabilityCacheKey(mode, duration, WARMUP_WEEKS, now);
-    const result = await setCachedAvailability(key, slots, WARMUP_TTL_SECONDS);
+    let result: CacheWriteResult;
+    try {
+      const write = setCachedAvailability(key, slots, WARMUP_TTL_SECONDS);
+      result = deadline
+        ? await deadline.race(`cache-write:${mode}/${duration}`, write)
+        : await write;
+    } catch {
+      result = 'failed';
+    }
     if (result === 'written') {
       written += 1;
       continue;
@@ -519,9 +608,14 @@ interface TokenKeepwarmEnv {
  * less than 15 min of validity remain, persist the rotated credentials.
  * Returns the KeepwarmSession — never throws for expected auth failures.
  * The 'ok' session carries the AUTHENTICATED client the whole warm-up run
- * builds on (issue #153 / SC2).
+ * builds on (issue #153 / SC2). Every upstream call is bounded by `deadline`
+ * (revue #154): a stalled read/refresh is classified, never left to the
+ * platform kill.
  */
-async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<KeepwarmSession> {
+async function keepTokenWarm(
+  env: TokenKeepwarmEnv,
+  deadline: RunDeadline,
+): Promise<KeepwarmSession> {
   // Service-role client: this cron owns the token row (no RLS session).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createClient<any>(env.supabaseUrl, env.serviceRoleKey, {
@@ -536,12 +630,44 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<KeepwarmSession> {
   );
 
   // Load persisted token from DB. `updated_at` is the CAS witness for the
-  // refresh persist below (issue #153 / SC8).
-  const { data: tokens, error: fetchError } = await supabase
-    .from('google_oauth_tokens')
-    .select('refresh_token, access_token, expiry_date, updated_at')
-    .eq('id', 'therapist')
-    .single();
+  // refresh persist below (issue #153 / SC8). The read carries the run
+  // deadline's abort signal (revue #154) so a stalled connection aborts
+  // BEFORE the platform timeout — an abort is classified transient below,
+  // never "no row" and never an unclassified monitor error.
+  let tokensResult: {
+    data: {
+      refresh_token: string | null;
+      access_token: string | null;
+      expiry_date: number | null;
+      updated_at: string;
+    } | null;
+    error: { code?: string } | null;
+  };
+  try {
+    tokensResult = await supabase
+      .from('google_oauth_tokens')
+      .select('refresh_token, access_token, expiry_date, updated_at')
+      .eq('id', 'therapist')
+      .abortSignal(deadline.signal)
+      .single();
+  } catch (err: unknown) {
+    // Deadline abort on the read: same transient classification as a fetch
+    // error. ANY other throw keeps the S4 contract (capture + rethrow — the
+    // monitor run is marked errored).
+    if (!(deadline.signal.aborted && err instanceof Error && err.name === 'AbortError')) {
+      throw err;
+    }
+    logger.warn(
+      'calendar-keepwarm: token row read failed (transient) — warm-up skipped this run',
+      { code: 'deadline-abort' },
+    );
+    Sentry.captureMessage(
+      'calendar-keepwarm: token row read failed (transient) — warm-up skipped this run',
+      'warning',
+    );
+    return { status: 'transient', reason: 'token-row-read-failed' };
+  }
+  const { data: tokens, error: fetchError } = tokensResult;
 
   // Classify the read failure (issue #153 / SC2): a transient fetch error
   // (network, 5xx, timeout) is NOT "no row" — it must not be reported as
@@ -594,11 +720,36 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<KeepwarmSession> {
   }
 
   // Token keep-warm — refresh only when the validity window runs short.
-  if (shouldRefreshToken(tokens.expiry_date ?? null, Date.now())) {
+  // An EMPTY persisted access_token forces the refresh too (revue #154):
+  // google-auth-library treats '' as absent (`!this.credentials.access_token`
+  // → eager refresh), so admitting it would hand the warm-up a client that
+  // refreshes hiddenly on its first signed call — the exact SC2 violation.
+  if (
+    shouldRefreshToken(tokens.expiry_date ?? null, Date.now()) ||
+    !tokens.access_token
+  ) {
     oauth2Client.setCredentials({ refresh_token: tokens.refresh_token });
 
     try {
-      const { credentials } = await oauth2Client.refreshAccessToken();
+      const { credentials } = await deadline.race(
+        'token-refresh',
+        oauth2Client.refreshAccessToken(),
+      );
+
+      // A refresh response WITHOUT an access token is unusable (revue #154):
+      // persisting `access_token: ''` would poison the row, and admitting the
+      // session would re-create the hidden-refresh trap. Reject the response —
+      // classified transient, the next run retries.
+      if (!credentials.access_token) {
+        const msg =
+          'calendar-keepwarm: token refresh returned no access_token — warm-up skipped this run';
+        logger.warn(msg);
+        Sentry.captureMessage(msg, 'warning');
+        return {
+          status: 'transient',
+          reason: 'refresh-response-missing-access-token',
+        };
+      }
 
       const updated = {
         access_token: credentials.access_token ?? '',
@@ -623,6 +774,7 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<KeepwarmSession> {
         .update(updated)
         .eq('id', 'therapist')
         .eq('updated_at', tokens.updated_at)
+        .abortSignal(deadline.signal)
         .select('id')
         .single();
 
@@ -718,6 +870,25 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<KeepwarmSession> {
           ? tokens.expiry_date - Date.now()
           : null;
 
+      // Empty persisted access_token: the fall-through can NEVER be admitted
+      // (revue #154) — a client seeded with '' refreshes hiddenly on its first
+      // signed call (google-auth-library's eager path), breaking SC2's
+      // one-token-endpoint-interaction budget even with ample expiry margin.
+      if (!tokens.access_token) {
+        logger.warn(
+          'calendar-keepwarm: token refresh failed (transient) — persisted access_token empty, fall-through refused, warm-up skipped this run',
+        );
+        Sentry.captureException(
+          new Error(
+            'Google OAuth token refresh failed (transient) — persisted access_token empty, fall-through refused',
+          ),
+        );
+        return {
+          status: 'transient',
+          reason: 'missing-persisted-access-token',
+        };
+      }
+
       if (remainingMs !== null && remainingMs > WARMUP_MIN_TOKEN_VALIDITY_MS) {
         // Fall-through admitted: serve the warm-up from the persisted
         // credentials, straight from the row. The raw error is NOT logged —
@@ -780,7 +951,9 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<KeepwarmSession> {
     }
   }
 
-  // Token still valid (≥ 15 min remaining) — admit the persisted credentials
+  // Token still valid (≥ 15 min remaining) AND non-empty access_token (the
+  // refresh trigger above fires on an empty token, so this path is only
+  // reachable with a usable credential) — admit the persisted credentials
   // as-is: the margin dwarfs the eager refresh threshold, so the warm-up's
   // signed calls cannot trigger a hidden token refresh.
   oauth2Client.setCredentials({
@@ -860,6 +1033,11 @@ async function keepwarm(): Promise<void> {
     );
   }
 
+  // ONE shared deadline for every upstream call of the run (revue #154):
+  // 8 s of work, ~2 s reserved for classification + Sentry flush before the
+  // 10 s platform default.
+  const deadline = createRunDeadline();
+
   // 2. Token step, then the availability warm-up. The gate is STRUCTURAL:
   //    keepTokenWarm() returns 'auth-broken' ONLY when Google auth is
   //    definitively unusable (no token row / empty refresh_token /
@@ -870,18 +1048,21 @@ async function keepwarm(): Promise<void> {
   //    it is handed to warmAvailabilityCache(), which loads ONE shared
   //    availability snapshot from it (mono-snapshot, issue #153 / SC3).
   //    warmAvailabilityCache() skips itself when GOOGLE_CALENDAR_ID is unset.
-  const session = await keepTokenWarm({
-    clientId,
-    clientSecret,
-    redirectUri,
-    supabaseUrl,
-    serviceRoleKey,
-    adminEmail,
-    siteUrl,
-    resendApiKey,
-    fromEmail,
-  });
+  const session = await keepTokenWarm(
+    {
+      clientId,
+      clientSecret,
+      redirectUri,
+      supabaseUrl,
+      serviceRoleKey,
+      adminEmail,
+      siteUrl,
+      resendApiKey,
+      fromEmail,
+    },
+    deadline,
+  );
   if (session.status === 'ok') {
-    await warmAvailabilityCache(session);
+    await warmAvailabilityCache(session, deadline);
   }
 }

@@ -5,10 +5,16 @@
 //   setCachedAvailability returns an explicit CacheWriteResult:
 //     'written'           — Blob write confirmed
 //     'skipped-no-store'  — mock guard short-circuit (zero store interaction)
+//                           OR no Netlify Blobs context (revue #154: expected
+//                           no-store runtime state, memoised — see below)
 //     'failed'            — store init failure OR write failure
 //   A failed store init must NOT pin the memoised promise: the next
 //   invocation retries init (previously one failure disabled the cache
 //   until a cold restart).
+//   A MISSING Blobs context (plain `astro dev`, no `netlify dev`) is NOT a
+//   failure: detected before init, memoised for the instance, mapped to
+//   'skipped-no-store' with zero getStore attempts and zero error logs
+//   (revue #154 — previously every read/write re-attempted init + logged).
 //
 // Mock strategy: only the @netlify/blobs leaf and the mock-mode guard are
 // faked — the real calendar-cache logic (key, TTL → expiresAt math,
@@ -71,12 +77,17 @@ describe('setCachedAvailability — CacheWriteResult (SC6)', () => {
     vi.resetModules();
     blobsMock.getStore.mockReset();
     mockMode.enabled = false;
+    // Simulate the Netlify runtime for the context-present tests: the module
+    // mirrors @netlify/blobs' own resolution (globalThis.netlifyBlobsContext
+    // || NETLIFY_BLOBS_CONTEXT) and skips init entirely without one.
+    vi.stubEnv('NETLIFY_BLOBS_CONTEXT', JSON.stringify({ siteID: 'test' }));
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     cache = await import('@/lib/calendar-cache');
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("happy path — returns 'written' and persists the entry with the requested TTL", async () => {
@@ -181,5 +192,83 @@ describe('setCachedAvailability — CacheWriteResult (SC6)', () => {
     expect(result).toBe('skipped-no-store');
     expect(blobsMock.getStore).not.toHaveBeenCalled();
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Outside Netlify (revue #154) — a MISSING Blobs context is an expected
+// no-store runtime state, never a failure: no init attempt, no error log,
+// writes report 'skipped-no-store', and the outcome is memoised for the
+// instance (no re-detection storm on every read/write).
+// ---------------------------------------------------------------------------
+
+describe('no Netlify Blobs context — expected no-store state (revue #154)', () => {
+  let cache: typeof import('@/lib/calendar-cache');
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+  let infoSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    blobsMock.getStore.mockReset();
+    mockMode.enabled = false;
+    // Plain Node/`astro dev` runtime: NO Blobs context anywhere.
+    vi.unstubAllEnvs();
+    delete process.env.NETLIFY_BLOBS_CONTEXT;
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    cache = await import('@/lib/calendar-cache');
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("no context → writes report 'skipped-no-store', ZERO getStore attempts, ZERO error logs", async () => {
+    const result = await cache.setCachedAvailability(CACHE_KEY, SLOTS, 900);
+
+    expect(result).toBe('skipped-no-store');
+    expect(blobsMock.getStore).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+    // Detection is announced once per instance — informationally, not as an
+    // error.
+    expect(infoSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('the unavailable outcome is MEMOISED — a second write neither re-detects nor logs again', async () => {
+    await cache.setCachedAvailability(CACHE_KEY, SLOTS, 900);
+    await cache.setCachedAvailability('available:video:90:4w:2026-06-15', SLOTS, 900);
+
+    expect(blobsMock.getStore).not.toHaveBeenCalled();
+    expect(infoSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads degrade to null with zero store interaction', async () => {
+    const cached = await cache.getCachedAvailability(CACHE_KEY);
+
+    expect(cached).toBeNull();
+    expect(blobsMock.getStore).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it("getStore throwing MissingBlobsEnvironmentError (context present but incomplete) → same memoised 'skipped-no-store' outcome, ONE attempt only", async () => {
+    // Context IS configured (env stubbed) but the library still rejects —
+    // e.g. token missing from the context payload. Same class, same
+    // behaviour: memoised unavailable, never retried, never an error log.
+    vi.stubEnv('NETLIFY_BLOBS_CONTEXT', JSON.stringify({ siteID: 'test' }));
+    const missingEnvError = new Error(
+      'Both siteID and token must be provided',
+    );
+    missingEnvError.name = 'MissingBlobsEnvironmentError';
+    blobsMock.getStore.mockRejectedValue(missingEnvError);
+
+    const first = await cache.setCachedAvailability(CACHE_KEY, SLOTS, 900);
+    expect(first).toBe('skipped-no-store');
+    expect(blobsMock.getStore).toHaveBeenCalledTimes(1);
+    expect(errorSpy).not.toHaveBeenCalled();
+
+    const second = await cache.setCachedAvailability(CACHE_KEY, SLOTS, 900);
+    expect(second).toBe('skipped-no-store');
+    // Memoised: no second init attempt.
+    expect(blobsMock.getStore).toHaveBeenCalledTimes(1);
   });
 });

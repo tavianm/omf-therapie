@@ -7,6 +7,13 @@
  * 'failed') — failures are logged, never silently swallowed (#153 SC6) — and a
  * failed store init is retried on the next invocation.
  *
+ * Outside Netlify is an EXPECTED no-store state, not a failure (revue #154):
+ * the absence of a Blobs context is detected before initialization, memoised
+ * for the instance lifetime, and mapped to silent no-ops (reads → null,
+ * writes → 'skipped-no-store') — previously every read/write re-attempted
+ * init and logged an error, twice per cache miss under plain `astro dev`.
+ * Only GENUINE initialization failures reset the memoised promise and retry.
+ *
  * Cache TTL is enforced via metadata.expiresAt rather than Blobs native TTL
  * to maintain compatibility across Netlify Blobs versions.
  */
@@ -24,17 +31,58 @@ type AvailabilityStore = ReturnType<
 // ---------------------------------------------------------------------------
 // Singleton store promise — memoised, but a FAILED init resets it so the
 // next invocation retries (#153 SC6): one transient failure must not pin
-// `null` for the life of the instance.
+// `null` for the life of the instance. A missing Blobs context is different
+// (revue #154): memoised as permanently unavailable — retrying an expected
+// state would only spam init attempts + logs on every invocation.
 // ---------------------------------------------------------------------------
 
 let _storePromise: Promise<AvailabilityStore | null> | null = null;
+let _blobsUnavailable = false;
+
+/**
+ * Mirrors @netlify/blobs' own context resolution (`globalThis.
+ * netlifyBlobsContext || process.env.NETLIFY_BLOBS_CONTEXT`): when both are
+ * absent, getStore() is guaranteed to throw MissingBlobsEnvironmentError —
+ * checked BEFORE initialization so the expected no-store state never costs
+ * an error log.
+ */
+function blobsContextConfigured(): boolean {
+  const globalContext = (
+    globalThis as { netlifyBlobsContext?: unknown }
+  ).netlifyBlobsContext;
+  if (globalContext !== undefined && globalContext !== null) return true;
+  const envContext = process.env.NETLIFY_BLOBS_CONTEXT;
+  return envContext !== undefined && envContext !== '';
+}
 
 async function getAvailabilityStore(): Promise<AvailabilityStore | null> {
   if (isCalendarMockEnabled()) return null;
+  if (_blobsUnavailable) return null;
+  if (!blobsContextConfigured()) {
+    _blobsUnavailable = true;
+    // One line per instance (memoised) — informational, not an error.
+    console.info(
+      '[calendar-cache] Aucun contexte Netlify Blobs — cache de disponibilité désactivé pour cette instance (hors Netlify).',
+    );
+    return null;
+  }
   if (_storePromise) return _storePromise;
   _storePromise = import('@netlify/blobs')
     .then(({ getStore }) => getStore(STORE_NAME))
     .catch((err: unknown) => {
+      if (
+        err instanceof Error &&
+        err.name === 'MissingBlobsEnvironmentError'
+      ) {
+        // The context exists but is incomplete (e.g. token missing) — the
+        // library says this runtime cannot serve Blobs: memoise unavailable,
+        // never retry.
+        _blobsUnavailable = true;
+        console.info(
+          '[calendar-cache] Contexte Netlify Blobs incomplet — cache de disponibilité désactivé pour cette instance.',
+        );
+        return null;
+      }
       // Reset the memoised promise — the next invocation retries init.
       _storePromise = null;
       // Fixed classification only (revue #154): a raw upstream message could
@@ -96,10 +144,14 @@ export async function setCachedAvailability(
   // unchanged, now reported explicitly (#153 SC6).
   if (isCalendarMockEnabled()) return 'skipped-no-store';
   const store = await getAvailabilityStore();
-  // `store` is null here only because init failed (the mock guard above
-  // already returned) — getAvailabilityStore logged it and reset its
-  // memoised promise, so the next invocation retries.
-  if (!store) return 'failed';
+  if (!store) {
+    // Outside Netlify (no Blobs context, memoised unavailable) — an expected
+    // no-store state reported as a skip, NOT a failure (revue #154). The only
+    // remaining null path is a GENUINE init failure, which
+    // getAvailabilityStore logged and reset for the next-invocation retry.
+    if (_blobsUnavailable) return 'skipped-no-store';
+    return 'failed';
+  }
   try {
     const entry: CacheEntry = {
       slots,

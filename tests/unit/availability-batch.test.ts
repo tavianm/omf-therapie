@@ -3,7 +3,11 @@
  *
  * The fixtures (tests/fixtures/availability/*.json) capture the PRE-refactor
  * success-path output of `getAvailableSlots` for the 4 games
- * {in-person, video} × {60, 90} under 4 frozen-clock scenarios. They are the
+ * {in-person, video} × {60, 90} under 4 frozen-clock scenarios. Their origin
+ * is VERIFIABLE: scripts/capture-availability-fixtures.mjs re-derives them
+ * from the immutable pre-refactor revision — see
+ * tests/fixtures/availability/PROVENANCE.md (revue #154) for the pinned
+ * revision + reproducible command + digests. They are the
  * oracle for SC4 (équivalence de dérivation); this suite replays them through
  * BOTH consumers of the refactor:
  *

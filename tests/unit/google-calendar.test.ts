@@ -827,6 +827,26 @@ describe('loadAvailabilitySnapshot — shared snapshot + typed shared-stage erro
     vi.useRealTimers();
   });
 
+  it('fail-closed guard: NO OAuth client → typed GoogleCalendarError BEFORE any stage I/O (revue #154)', async () => {
+    // A direct caller passing a falsy client must receive the typed
+    // configuration error instead of proceeding into the later stages —
+    // deleting the guard used to leave the whole suite green.
+    manualSlotsApi.fetchManualSlots.mockClear();
+    googleCalendarFactory.calendar.mockClear();
+
+    await expect(
+      loadAvailabilitySnapshot(
+        undefined as never,
+        SNAPSHOT_START,
+        SNAPSHOT_END,
+      ),
+    ).rejects.toBeInstanceOf(GoogleCalendarError);
+
+    // Zero stage I/O: no manual-slot read, no calendar client, no Freebusy.
+    expect(manualSlotsApi.fetchManualSlots).not.toHaveBeenCalled();
+    expect(googleCalendarFactory.calendar).not.toHaveBeenCalled();
+  });
+
   it('happy path: returns manual periods + busy periods with EXACTLY 1 manual read and 1 Freebusy query (SC3)', async () => {
     const { calendar, query } = freebusyCalendar(() => ({
       data: {

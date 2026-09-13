@@ -163,10 +163,13 @@ export type AppointmentDuration = 60 | 90;
  *     authenticated client (valid, freshly refreshed, or fall-through on the
  *     persisted credentials admitted by the 6-min margin gate) — every
  *     Freebusy/cache call of the run is served from this ONE client.
- *   - `transient`: the token row could not be read (network/5xx), or the
- *     refresh failed without enough persisted margin (> 6 min required),
- *     or the persisted token is expired / has no `expiry_date`. The warm-up
- *     is skipped this run; no alert is emitted (the next run retries).
+ *   - `transient`: the token row could not be read (network/5xx), the
+ *     refresh failed without enough persisted margin (> 6 min required), the
+ *     persisted token is expired / has no `expiry_date` / has an EMPTY
+ *     `access_token` (a client seeded with '' would refresh hiddenly on its
+ *     first signed call — revue #154), or the refresh response itself came
+ *     back without an access token. The warm-up is skipped this run; no
+ *     alert is emitted (the next run retries).
  *   - `auth-broken`: definitively unusable — no token row, null
  *     refresh_token, or a real invalid_grant. Warm-up skipped; the existing
  *     #132 alerting (24 h email cooldown) applies.
@@ -696,6 +699,22 @@ export interface AvailabilitySnapshot {
 }
 
 /**
+ * Optional bounds for the shared snapshot's upstream I/O (revue #154): a
+ * stalled manual-slots read or Freebusy query must abort into the typed
+ * shared-stage failure instead of hanging until the platform timeout.
+ */
+export interface SnapshotOptions {
+  /**
+   * Per-request timeout (ms) applied to the Freebusy query via gaxios
+   * (`timeout` on the calendar client — gaxios turns it into a real
+   * AbortSignal). Undefined → no timeout (patient-path default, unchanged).
+   */
+  timeoutMs?: number;
+  /** Abort signal threaded into the manual-slots Supabase read. */
+  signal?: AbortSignal;
+}
+
+/**
  * Charge le snapshot de disponibilité partagé pour une fenêtre : UNE lecture
  * `manual_time_slots` et UNE requête Freebusy (issue #153 / SC3), servies par
  * le client OAuth authentifié injecté. Mock mode → snapshot vide, ZÉRO I/O.
@@ -708,6 +727,7 @@ export async function loadAvailabilitySnapshot(
   oauth2Client: Auth.OAuth2Client,
   startDate: Date,
   endDate: Date,
+  options: SnapshotOptions = {},
 ): Promise<AvailabilitySnapshot> {
   if (isCalendarMockEnabled()) {
     return { manualSlots: new Map(), busyPeriods: [] };
@@ -720,21 +740,42 @@ export async function loadAvailabilitySnapshot(
   }
 
   const calendarId = await resolveCalendarId();
-  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-  return loadSnapshotWithCalendar(calendar, calendarId, startDate, endDate);
+  // The deadline timeout rides on the calendar client itself: googleapis
+  // merges per-API options into every request's gaxios config, and gaxios
+  // converts `timeout` into a real AbortSignal for the underlying fetch.
+  const calendar = google.calendar({
+    version: 'v3',
+    auth: oauth2Client,
+    ...(options.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
+  });
+  return loadSnapshotWithCalendar(
+    calendar,
+    calendarId,
+    startDate,
+    endDate,
+    options.signal,
+  );
 }
 
 /**
  * Stage 1 du snapshot — la lecture unique `manual_time_slots`. Toute erreur
  * est classée échec de stage partagé (issue #153 / SC5). Message sanitisé :
  * le détail PostgREST n'est loggué que côté serveur, jamais transporté dans
- * l'erreur typée.
+ * l'erreur typée. `signal` (optionnel, revue #154) borne la lecture côté
+ * Supabase — un abort y est classé échec de stage comme toute erreur.
  */
 async function fetchManualSlotsStage(
   startDate: Date,
   endDate: Date,
+  signal?: AbortSignal,
 ): Promise<Array<{ slot_date: string; period: Period }>> {
-  return fetchManualSlots(startDate, endDate).catch(() => {
+  // No signal → EXACT pre-#154 call shape (start, end): the patient path's
+  // call contract is observable (SC7) and must not drift for a cron-only
+  // concern.
+  const read = signal
+    ? fetchManualSlots(startDate, endDate, { signal })
+    : fetchManualSlots(startDate, endDate);
+  return read.catch(() => {
     console.error(
       '[google-calendar] Échec de la lecture manual_time_slots (stage partagé) :',
       { stage: 'manual-time-slots' },
@@ -844,15 +885,22 @@ async function fetchBusyPeriodsStage(
 /**
  * Exécute les DEUX stages I/O du snapshot — exactement UNE lecture
  * `manual_time_slots` et UNE requête Freebusy — et classe toute erreur comme
- * échec de stage partagé (issue #153 / SC5).
+ * échec de stage partagé (issue #153 / SC5). Le `signal` optionnel borne la
+ * lecture manual slots ; la requête Freebusy est bornée par le timeout du
+ * client calendar (SnapshotOptions.timeoutMs).
  */
 async function loadSnapshotWithCalendar(
   calendar: calendar_v3.Calendar,
   calendarId: string,
   startDate: Date,
   endDate: Date,
+  signal?: AbortSignal,
 ): Promise<AvailabilitySnapshot> {
-  const manualRecords = await fetchManualSlotsStage(startDate, endDate);
+  const manualRecords = await fetchManualSlotsStage(
+    startDate,
+    endDate,
+    signal,
+  );
   const busyPeriods = await fetchBusyPeriodsStage(
     calendar,
     calendarId,
