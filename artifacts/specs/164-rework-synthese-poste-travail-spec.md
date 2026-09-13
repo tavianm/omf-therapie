@@ -88,6 +88,7 @@ Le prédicat `matchesFilter('demandes')` est l'appartenance à la file (et non `
 priced:  "l'ordre des sections reflète la priorité de lecture du praticien"
 not:     "vérifier seulement que les deux sections existent / un ordre CSS visuel (order/flex)"
 oracles: ["compareDocumentPosition ou ordre des children : section prochains RDV avant section demandes"]
+claim:   fail-closed
 ```
 
 - [ ] **SC2 — Périmètre de la file « Demandes de RDV »** : la file contient exactement les RDV `pending` plus les RDV `rescheduled` dont la proposition est expirée au sens patient (`!rescheduled_to || rescheduled_to ≤ nowMs`) ; un `payment_pending` n'y figure jamais ; un `rescheduled` à proposition valide non plus. `TRIAGE_STATUSES`/`getTriageReasons` restent intacts (badge EN RETARD inchangé sur toute la section Rendez-vous).
@@ -96,6 +97,7 @@ oracles: ["compareDocumentPosition ou ordre des children : section prochains RDV
 priced:  "la liste ne présente que des RDV nécessitant une action de la thérapeute — jamais un état qui attend le patient ou le paiement"
 not:     "masquer les paiements en CSS dans un computed qui les compte encore / dériver la file d'un simple filtrage de l'ancienne file de triage / muter TRIAGE_STATUSES"
 oracles: ["fixture payment_pending seule → liste vide + KPI 0", "fixture rescheduled avec rescheduled_to future → absente", "fixture rescheduled avec rescheduled_to passée → présente", "fixture rescheduled avec rescheduled_to null → présente (même règle que la page patient)", "fixture pending avec scheduled_at passée → présente et en tête"]
+claim:   fail-closed
 ```
 
 - [ ] **SC3 — Click-through « Demandes de RDV »** : la carte KPI est un `<button>` ; à l'activation, la section Rendez-vous affiche le filtre « Demandes de RDV » (pilule active) et **toutes** les demandes de la file SC2 sont visibles — y compris les demandes en retard et les reports expirés (le filtre est partition-agnostique) — recherche vidée, pagination à 1. Canal unique : requête union `{kind:'filter'}`, un compteur de nonce côté Workbench, un ref de garde côté RendezVousView — un clic KPI n'avale pas un focus de ligne et inversement ; opérable au clavier, nom accessible explicite.
