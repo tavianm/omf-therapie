@@ -1,0 +1,103 @@
+---
+title: "Calendar keepwarm — durcissement post-production : correctif token OAuth, session partagée, batch unique, écritures cache vérifiées"
+description: "Correctif getPersistedOAuthClient (erreur fetch ≠ absence de ligne), session OAuth injectée, warm-up mono-snapshot (1 lecture manual slots + 1 Freebusy), écritures cache strictement vérifiées, plus d'empoisonnement de cache vide sur aucun writer"
+type: spec
+status: approved
+---
+
+## Context
+
+Promu depuis `artifacts/frames/153-calendar-keepwarm-hardening-frame.mdx` (F-lite, approuvé). Sources amont : `artifacts/analyses/132-calendar-keepwarm-production-hardening-analysis.mdx` (analyse post-prod) et la revue contradictoire croisée des deux analyses (session 2026-09-13). Supplante #135 (écritures strictes) et #137 (Freebusy unique). Amendé après revue d'experts (R-adversarial + R-architect, 2026-09-13) : état `transient` du cron, credentials de fall-through, fermeture de l'empoisonnement vide sur le chemin patient, classification init Blobs.
+
+Incident déclencheur : run `calendar-keepwarm` de 2026-09-13 02:20 — issues contradictoires intra-run sur panne transitoire PostgREST. Cause racine : `getPersistedOAuthClient` (`src/lib/google-calendar.ts:186-206`) ignore l'erreur de fetch, bascule sur le bootstrap env `GOOGLE_OAUTH_REFRESH_TOKEN` (obsolète/révoqué) et upsert cette valeur par-dessus la ligne fraîche avant le refresh.
+
+## Intent
+
+Le cron `calendar-keepwarm` traite des états partagés (ligne OAuth, manual slots, busy Google) comme s'ils étaient privés à chaque branche du fan-out : une panne transitoire peut corrompre la ligne token, produire un diagnostic « consent revoked » fantôme, et la télémétrie `warmed` rapporte des calculs, pas des écritures. Pourquoi maintenant : incident réel le premier jour de production du cron fusionné (#132).
+
+## Goal
+
+Un run keepwarm sain utilise exactement une session OAuth, une lecture manual slots et un appel Freebusy, écrit 4 entrées cache **dont les écritures sont confirmées**, et une panne transitoire amont ne peut ni corrompre la ligne `google_oauth_tokens` ni publier un état vide ou contradictoire — depuis n'importe quel writer (cron ou chemin patient).
+
+## Users
+
+- **Primaire :** le patient (disponibilités fiables sur /rendez-vous ; jamais de cache vide empoisonné, ni depuis le cron ni depuis le chemin patient).
+- **Secondaire :** la thérapeute (alertes invalid_grant uniquement légitimes ; plus de re-connexion suite à corruption).
+- **Tertiaire :** l'opérateur (télémétrie véridique : `written`/`failed` distingués, échecs de stage partagé identifiés comme tels).
+
+## Expected Behavior
+
+Déroulé d'un run sain : `keepTokenWarm()` charge la ligne token une seule fois, la rafraîchit si < 15 min de validité, confirme le persist, et **retourne le client OAuth authentifié** (`KeepwarmSession`). Sur échec transitoire du refresh, le client est ré-alimenté depuis la ligne lue (`setCredentials({ access_token, refresh_token, expiry_date })`) pour interdire tout lazy-refresh caché dans le premier appel Freebusy. Le warm-up reçoit cette session — zéro re-lecture de ligne, zéro refresh supplémentaire.
+
+Trois états de sortie, honnêtement classés : `'ok'` (client authentifié, warm-up procède), `'transient'` (échec de lecture de la ligne token côté cron — warm-up sauté ce run, log « transient », **pas** « no token row », aucune alerte), `'auth-broken'` (définitif : ligne absente, refresh_token null, invalid_grant réel — alerte cadencée 24 h, warm-up sauté, comportement #132 inchangé).
+
+`loadAvailabilitySnapshot()` effectue UNE lecture manual slots et UN appel Freebusy (via la session injectée) ; toute erreur (504, réseau, response-level calendar errors) est classée échec de stage partagé : aucune écriture, les entrées Blobs existantes sont préservées, le log nomme le stage. En mock mode, le snapshot saute les deux lectures (dérivation seule, aucun I/O). La dérivation des 4 combinaisons `{in-person, video} × {60, 90}` est pure et locale (`generateSlotsForRange` + filtre de chevauchement exporté partagé). Chaque écriture cache retourne un résultat explicite (`'written'` / `'skipped-no-store'` [mock ou hors contexte Netlify] / `'failed'` [échec d'écriture **ou d'init** du store]) ; le log final distingue `computed` / `written` / `failed`. En mock mode : 4 calculs, 0 écriture Blobs (`skipped-no-store`).
+
+Chemin patient : `getAvailableSlots` convertit désormais les erreurs response-level Freebusy (`calendars[id].errors`) en erreur typée au lieu de retourner `[]` — `/api/availability` répond 503 explicite via son catch existant et **n'écrit jamais une entrée vide** ; à part cela, contrat externe inchangé (mêmes clés, même shape, dégradation gracieuse conservée). Amende de périmètre issue de la revue : le frame différait la « classification typée » complète ; seule la conversion erreurs-response-level → throw entre dans ce ticket, sinon la promesse « plus de cache empoisonné » resterait contournable par le writer patient.
+
+## Data Model & Consumers
+
+Nouveaux types/contrats (module `src/lib/google-calendar.ts`, étendus par le cron) :
+
+- `KeepwarmSession` — `{ status: 'ok'; oauth2Client: Auth.OAuth2Client } | { status: 'transient'; reason: string } | { status: 'auth-broken' }`. Le client est authentifié dans TOUS les cas 'ok' : token encore valide, rafraîchi, OU fall-through transitoire ré-alimenté depuis la ligne (`credentials.access_token === row.access_token`, `expiry_date` peuplé — oracle SC2).
+- `AvailabilitySnapshot` — `{ manualSlots: Map<string, Set<Period>>; busyPeriods: Array<{ start: string; end: string }> }`, produit par `loadAvailabilitySnapshot(oauth2Client, startDate, endDate)` ; mock mode → `{ manualSlots: ∅, busyPeriods: [] }` sans I/O. Échecs : `CalendarNetworkError` (manual slots / réseau), `CalendarAuthError`/`CalendarPermissionError` (Freebusy 401/403), échec de stage partagé pour response-level calendar errors.
+- `CacheWriteResult` — `'written' | 'skipped-no-store' | 'failed'`, retour de `setCachedAvailability`. Init Blobs échouée → `'failed'` (pas `skipped`) : une panne du store doit produire `failed ≥ 1`, pas un silence identique au mock.
+- `filterSlotsByBusy(slots, busyPeriods)` — pur, extrait et exporté depuis la logique triplée (`google-calendar.ts` ×2 inline + `availability.ts`).
+
+| Consommateur | Champs | Quand | Statut |
+|---|---|---|---|
+| `netlify/functions/calendar-keepwarm.ts` | `KeepwarmSession`, `AvailabilitySnapshot`, `CacheWriteResult`, `filterSlotsByBusy` | chaque run */10 | ce ticket |
+| `src/pages/api/availability.ts` | `CacheWriteResult` (ignoré), `filterSlotsByBusy` (dédupliqué) | cache-miss patient | ce ticket (comportement inchangé hors suppression de l'écriture vide) |
+| `src/lib/google-calendar.ts` `getAvailableSlots` | correctif fetch-error + conversion response-level → throw typé | chemin patient | ce ticket (minimal, taxonomie complète différée) |
+
+Décision (pas de χ) : le snapshot vit dans `google-calendar.ts` près de `generateSlotsForRange` — pas de nouveau module ; le cron reste le seul orchestrateur.
+
+## Breadboard
+
+| ID | Élément | Handler | Données |
+|---|---|---|---|
+| N1 | `keepTokenWarm(env)` → `KeepwarmSession` | cron | 1 lecture + au plus 1 refresh + persist confirmé (`.select().single()`) ; fall-through → `setCredentials` depuis la ligne ; échec select → `'transient'` |
+| N2 | `loadAvailabilitySnapshot(oauth2Client, start, end)` → `AvailabilitySnapshot` \| throw typé | lib | 1 lecture `manual_time_slots`, 1 Freebusy ; mock → zéro I/O |
+| N3 | dérivation pure par `{mode, duration}` | lib (`generateSlotsForRange` + `filterSlotsByBusy`) | snapshot + dbBusy=[] |
+| N4 | `setCachedAvailability(key, slots, ttl)` → `CacheWriteResult` | lib | Blobs store, TTL 900 s ; init échouée → `'failed'` |
+| N5 | `warmAvailabilityCache(session)` | cron | N2→(N3→N4)×4, log `{computed, written, failed}` |
+| U1 | `GET /api/availability` | page API | contrat externe inchangé ; erreurs typées → 503 sans écriture |
+
+## Slices
+
+| # | Slice | Démo |
+|---|-------|------|
+| V1 (N1, N5) | Correctif token + session (SC1, SC2) | test : erreur fetch 504 → throw typé, zéro écriture ligne ; session authentifiée réutilisée — threadée dans les 4 appels `getAvailableSlots` existants via `options.calendar` (transitoire avant V2), 0 re-lecture/0 refresh côté warm-up, fall-through `setCredentials` vérifié |
+| V2 (N2, N3, N5) | Batch mono-snapshot (SC3, SC4, SC5) | test : mocks comptent 1 lecture manual slots + 1 Freebusy ; équivalence des 4 jeux vs fixtures dorées pré-refactor (horloge figée, semaine DST 2026-10-25) ; erreur response-level → 0 écriture, entrées préservées, patient → 503 |
+| V3 (N4, N5, U1) | Écritures strictes + store résilient (SC6, SC7, SC8) | test : échec Blobs (écriture ou init) → `failed: 1` (jamais `warmed: 4`) ; init store échouée puis réussie → écrit au 2e appel ; nouveau mini test de contrat `/api/availability` + suites `google-calendar` / `calendar-keepwarm` vertes |
+
+## Success Criteria
+
+- [ ] **SC1 — Classement d'erreur fetch** : un échec de lecture `google_oauth_tokens` (réseau, 5xx, timeout) fait throw une erreur transitoire typée et n'exécute NI le bootstrap env NI aucune écriture sur la table ; l'absence de ligne (PGRST116) conserve le comportement bootstrap documenté **et émet un warn distinctif** nommant `GOOGLE_OAUTH_REFRESH_TOKEN` (le bootstrap doit rester diagnostiquable — sa présence en log signale une var env à retirer).
+
+```yaml
+priced:  "un échec de lecture de la ligne token ne déclenche jamais le chemin bootstrap env ni la moindre écriture sur google_oauth_tokens"
+not:     "vérifier uniquement que error est non-null après .single() / la présence d'un test nommé 'fetch-error'"
+oracles: ["PostgREST 504 sur le select token → throw, zéro upsert/update", "timeout réseau sur le select token → throw, zéro écriture", "PGRST116 (0 ligne) → NE throw PAS, prend le chemin bootstrap premier-run AVEC warn distinctif"]
+```
+
+- [ ] **SC2 — Session injectée, états honnêtes** : `keepTokenWarm` retourne un `OAuth2Client` authentifié pour tout `'ok'` — y compris fall-through transitoire où `client.credentials.access_token === row.access_token` et `expiry_date` peuplé avant tout appel API (aucun lazy-refresh possible : nombre d'appels au endpoint token == ≤ 1 par run, mesuré au mock HTTP) ; un échec du select propre au cron produit `'transient'` (log « transient », pas « no token row », aucune alerte) ; le warm-up effectue 0 re-lecture de ligne et 0 refresh supplémentaire.
+- [ ] **SC3 — Budget amont** : un run sain effectue exactement 1 lecture `manual_time_slots`, 1 lecture `google_oauth_tokens`, 1 appel Freebusy (avant : 4/5/4 — les 5 lectures token incluent les 4 relectures par clé via `resolveCalendarAuth`).
+- [ ] **SC4 — Équivalence de dérivation (chemin de succès)** : contre des **fixtures dorées capturées depuis l'implémentation pré-refactor** (jeux realistes de manual slots + busy periods → 4 jeux attendus, commités en JSON, y compris la semaine de transition DST Europe/Paris 2026-10-25), horloge figée (`vi.setSystemTime`) des deux côtés, la dérivation pure produit des jeux deep-equal ; l'équivalence ne couvre PAS les chemins d'erreur (leur divergence est précisément SC5).
+- [ ] **SC5 — Pas d'empoisonnement, sur AUCUN writer** : une erreur response-level Freebusy (`calendars[id].errors`) ou un échec de stage partagé entraîne 0 écriture cache et la préservation des entrées Blobs existantes, côté cron (snapshot : échec de stage, log nommé) **et** côté patient (`getAvailableSlots` throw typé → `/api/availability` répond 503, jamais une entrée vide).
+
+```yaml
+priced:  "une erreur amont n'est jamais persistée comme disponibilité vide — aucune écriture Blobs n'a lieu et les entrées existantes survivent, quel que soit le writer (cron ou patient)"
+not:     "retester jusqu'au succès / vérifier seulement slots.length === 0 avant écriture / couvrir uniquement le chemin keepwarm"
+oracles: ["Freebusy 200 avec calendars[id].errors non vide côté cron → 0 écriture, anciennes entrées intactes", "manual_time_slots 504 → échec de stage partagé, 0 écriture, entrées intactes", "Freebusy response-level via chemin patient → 503 rendu, 0 écriture de clé, entrée existante intacte", "Freebusy réseau 500 → 0 écriture, entrées intactes"]
+```
+
+- [ ] **SC6 — Télémétrie véridique** : `setCachedAvailability` retourne `CacheWriteResult` ; le log final du run rapporte `{computed, written, failed}` où `written` ne compte que des écritures confirmées ; un échec d'écriture Blobs **ou d'init du store** produit `failed ≥ 1` (une panne d'init ≠ silence du mock : mock → `skipped-no-store`).
+- [ ] **SC7 — Store non épinglé** : une init Blobs échouée est retentée à l'invocation suivante (le catch réinitialise le promise mémoïsé ; plus de pin `null` à vie de l'instance) ; le garde mock court-circuite toujours vers no-store.
+- [ ] **SC8 — Chemin patient inchangé (hors suppression de l'écriture vide)** : `/api/availability` conserve clés de cache, shape de réponse, `Cache-Control: no-store` et dégradation gracieuse (échec d'écriture cache non fatal) ; vérifié par un **nouveau mini test de contrat** dédié (aucune suite availability existante aujourd'hui) + suites `tests/unit/google-calendar.test.ts` et `tests/unit/calendar-keepwarm.test.ts` vertes sans modification de contrat.
+
+## Hors périmètre
+
+Confirmés depuis le frame : CAS `updated_at`, centralisation du cooldown d'alerte, `maxRuntime` Sentry, imports allégés googleapis / lazy email stack, re-filtre 24 h sur cache-hit, taxonomie complète des erreurs typées amont (seule la conversion response-level → throw entre dans ce ticket — amende de revue), stale-if-error grace, révision monotonic du cache, suppression du miroir `_lib/` (#136).
+
+Rollout (ops, hors code, vérifiable via SC1) : retirer/pivoter `GOOGLE_OAUTH_REFRESH_TOKEN` du dashboard Netlify prod immédiatement après déploiement — le warn distinctif du bootstrap (SC1) rend un oubli visible dans les logs du cron.
