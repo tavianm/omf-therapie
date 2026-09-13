@@ -15,11 +15,14 @@ import type { Appointment } from '../src/types/appointment';
 //
 // Prerequisites (same as manual-slots.spec.ts): a running dev server on
 // :4321 (npx playwright test starts it via webServer), local PostgreSQL
-// (`npm run db:start`) and a seeded admin account (`npx tsx
-// scripts/seed-admin.ts`, or PLAYWRIGHT_ADMIN_EMAIL /
-// PLAYWRIGHT_ADMIN_PASSWORD). Without them the login fails and the tests
-// are skipped with an explicit reason — CI never runs Playwright
-// (gates are lint → test → build).
+// (`npm run db:start`) and a seeded admin account. PLAYWRIGHT_ADMIN_EMAIL /
+// PLAYWRIGHT_ADMIN_PASSWORD are REQUIRED and must match that seeded admin
+// account (scripts/seed-admin.ts reads ADMIN_EMAIL/ADMIN_PASSWORD and
+// enforces a ≥16-char password); the in-file defaults in loginAsAdmin are
+// last-resort fallbacks only — the seed policy rejects them. Without the
+// prerequisites the login fails: an unreachable dev server skips the suite
+// with an explicit reason, while a login failure on a live server fails it —
+// CI never runs Playwright (gates are lint → test → build).
 //
 // How the poll is forced without waiting 30 s: GET /api/admin/appointments/
 // is intercepted with page.route — this also lets each test deliver a
@@ -218,13 +221,20 @@ test.describe('Poste de travail — auto-refresh (issue #165, SC5 non-intrusion)
   test.beforeEach(async ({ page }) => {
     try {
       await loginAsAdmin(page);
-    } catch {
-      // No dev DB / admin seed available: the whole suite is meaningless —
-      // skip with an explicit reason instead of a misleading failure.
-      test.skip(
-        true,
-        'Prérequis e2e absents : serveur de dev + PostgreSQL + compte admin (scripts/seed-admin.ts)',
-      );
+    } catch (error) {
+      // Distinguish "environment absent" from "product/login broken": probe
+      // the dev server root. Unreachable server → the whole suite is
+      // meaningless, skip with an explicit reason. Server up but login
+      // failed → real defect (or bad credentials): fail loudly instead of a
+      // green zero-assertion skip.
+      const probe = await page.request.get('/').catch(() => null);
+      if (probe === null || !probe.ok()) {
+        test.skip(
+          true,
+          'Prérequis e2e absents : serveur de dev + PostgreSQL + compte admin (scripts/seed-admin.ts)',
+        );
+      }
+      throw error;
     }
   });
 
@@ -245,10 +255,18 @@ test.describe('Poste de travail — auto-refresh (issue #165, SC5 non-intrusion)
     await expect(notes).toHaveValue(unsavedText);
     await expect(notes).toBeFocused();
 
-    // Next poll returns MODIFIED data: status change on the OPEN appointment
-    // plus a brand-new row — exactly the case where re-deriving local state
-    // from props would wipe the typing (spec SC5, priced oracle).
-    payload = [makeAppointment({ status: 'confirmed' }), makePaulAppointment()];
+    // Next poll returns MODIFIED data: status change AND server-side notes
+    // on the OPEN appointment plus a brand-new row — exactly the case where
+    // re-deriving local state from props would wipe the typing, and where
+    // the CONFLICT branch of the realignment effect (server notes changed
+    // while a local edit is unsaved → local wins) must fire (spec SC5).
+    payload = [
+      makeAppointment({
+        status: 'confirmed',
+        therapist_notes: 'Note ajoutée par une action serveur',
+      }),
+      makePaulAppointment(),
+    ];
 
     await armNoReloadDetector(page);
     await triggerPoll(page);

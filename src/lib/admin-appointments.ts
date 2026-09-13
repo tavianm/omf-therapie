@@ -46,6 +46,18 @@ export const APPOINTMENT_COLUMNS = [
 ].join(',');
 
 /**
+ * Structured Supabase/Postgrest error, surfaced WHOLE (not flattened to
+ * `error.message`) so callers log `code`/`details`/`hint` alongside `message`
+ * for server-side diagnosis.
+ */
+export type AdminAppointmentsError = {
+  message: string;
+  code?: string;
+  details?: string | null;
+  hint?: string | null;
+};
+
+/**
  * Fetch every active (non soft-deleted) appointment, most recent first.
  *
  * Degradation contract shared by both pages: on a Supabase error the caller
@@ -57,7 +69,7 @@ export const APPOINTMENT_COLUMNS = [
  */
 export async function fetchActiveAppointments(): Promise<{
   appointments: Appointment[];
-  error: string | null;
+  error: AdminAppointmentsError | null;
 }> {
   const { data: rows, error } = await supabaseAdmin
     .from('appointments')
@@ -66,7 +78,12 @@ export async function fetchActiveAppointments(): Promise<{
     .order('scheduled_at', { ascending: false });
 
   if (error) {
-    return { appointments: [], error: error.message };
+    // `as unknown as` bridges the Supabase GenericStringError → structured
+    // error boundary (non-overlapping types), mirroring the row cast below.
+    return {
+      appointments: [],
+      error: error as unknown as AdminAppointmentsError,
+    };
   }
 
   return { appointments: rows as unknown as Appointment[], error: null };
