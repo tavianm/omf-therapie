@@ -1,0 +1,207 @@
+{
+  "schema_version": "2",
+  "issue": 153,
+  "head": "54e90ca0bd43cca230a416ef6e379b34fd5f04cc",
+  "runner_id": "run-falsify/2",
+  "oracle_ok": true,
+  "oracle_reason": "ok — every SC row: pass control green, compiling criterion-specific mutation, targeted suite completed with ≥1 expect_test-matching assertion failure",
+  "generated_at": "2026-09-13T11:33:29.030Z",
+  "rows": [
+    {
+      "sc_id": "SC1",
+      "criterion": "Token-row read integrity: a select failure (≠ PGRST116) is classified CalendarNetworkError with ZERO writes",
+      "sources": [
+        "src/lib/google-calendar.ts"
+      ],
+      "source_hashes": {
+        "src/lib/google-calendar.ts": "e821ac6b810ffc7ed3e8bb63c1617b40e91136c238ba62f1401cdc1e73426af6"
+      },
+      "mutations": [
+        "src/lib/google-calendar.ts: \"if (error && error.code !== 'PGRST116') {…\""
+      ],
+      "test_cmd": "node scripts/generate-build-env.mjs && node node_modules/vitest/vitest.mjs run tests/unit/google-calendar.test.ts --maxWorkers=1",
+      "fail_exit": 1,
+      "assertion_failures": [
+        "tests/unit/google-calendar.test.ts > getPersistedOAuthClient — token-row read classification (SC1) > PostgREST 504 on the token select → CalendarNetworkError, ZERO writes",
+        "tests/unit/google-calendar.test.ts > getPersistedOAuthClient — token-row read classification (SC1) > network timeout on the select (error without code) → CalendarNetworkError, ZERO writes",
+        "PostgREST 504 on the token select → CalendarNetworkError, ZERO writes 5ms",
+        "network timeout on the select (error without code) → CalendarNetworkError, ZERO writes 2ms"
+      ],
+      "summary": "2 failed | 33 passed",
+      "status": "proven",
+      "evidence": "tests/unit/google-calendar.test.ts > getPersistedOAuthClient — token-row read classification (SC1) > PostgREST 504 on the token select → CalendarNetworkError, ZERO writes"
+    },
+    {
+      "sc_id": "SC2",
+      "criterion": "Session states + 6-min margin gate: exactly 6 min of persisted margin is NOT admitted as ok",
+      "sources": [
+        "netlify/functions/calendar-keepwarm.ts"
+      ],
+      "source_hashes": {
+        "netlify/functions/calendar-keepwarm.ts": "4f9e1e615d70ce938fcb4821d79852885dc49dfaa0bcf870347c8cd4d9bdea20"
+      },
+      "mutations": [
+        "netlify/functions/calendar-keepwarm.ts: \"if (remainingMs !== null && remainingMs > WARMUP_MIN_TOKEN_V…\""
+      ],
+      "test_cmd": "node scripts/generate-build-env.mjs && node node_modules/vitest/vitest.mjs run tests/unit/calendar-keepwarm.test.ts --maxWorkers=1",
+      "fail_exit": 1,
+      "assertion_failures": [
+        "tests/unit/calendar-keepwarm.test.ts > KeepwarmSession — 3 states + 6-min margin gate (SC2) > 6 min exactly of persisted margin → transient: warm-up skipped, no alert",
+        "6 min exactly of persisted margin → transient: warm-up skipped, no alert 19ms"
+      ],
+      "summary": "2 failed | 44 passed",
+      "status": "proven",
+      "evidence": "tests/unit/calendar-keepwarm.test.ts > KeepwarmSession — 3 states + 6-min margin gate (SC2) > 6 min exactly of persisted margin → transient: warm-up skipped, no alert"
+    },
+    {
+      "sc_id": "SC3",
+      "criterion": "Budget amont 1/1/1: ONE Freebusy query per shared snapshot",
+      "sources": [
+        "src/lib/google-calendar.ts"
+      ],
+      "source_hashes": {
+        "src/lib/google-calendar.ts": "e821ac6b810ffc7ed3e8bb63c1617b40e91136c238ba62f1401cdc1e73426af6"
+      },
+      "mutations": [
+        "src/lib/google-calendar.ts: \"return { manualSlots: indexManualSlots(manualRecords), busyP…\""
+      ],
+      "test_cmd": "node scripts/generate-build-env.mjs && node node_modules/vitest/vitest.mjs run tests/unit/calendar-keepwarm.test.ts --maxWorkers=1",
+      "fail_exit": 1,
+      "assertion_failures": [
+        "tests/unit/calendar-keepwarm.test.ts > warmAvailabilityCache — mono-snapshot (SC3/SC5/SC6) > SC3 healthy run: exactly 1 manual read + 1 Freebusy + 1 token select, then 4 confirmed writes",
+        "SC3 healthy run: exactly 1 manual read + 1 Freebusy + 1 token select, then 4 confirmed writes 12ms"
+      ],
+      "summary": "4 failed | 42 passed",
+      "status": "proven",
+      "evidence": "tests/unit/calendar-keepwarm.test.ts > warmAvailabilityCache — mono-snapshot (SC3/SC5/SC6) > SC3 healthy run: exactly 1 manual read + 1 Freebusy + 1 token select, then 4 confirmed writes"
+    },
+    {
+      "sc_id": "SC4",
+      "criterion": "Derivation equivalence: video = strict inverse of cabinet eligibility (golden fixtures)",
+      "sources": [
+        "src/lib/google-calendar.ts"
+      ],
+      "source_hashes": {
+        "src/lib/google-calendar.ts": "e821ac6b810ffc7ed3e8bb63c1617b40e91136c238ba62f1401cdc1e73426af6"
+      },
+      "mutations": [
+        "src/lib/google-calendar.ts: \"const eligible = input.mode === 'in-person' ? isCabinet : !i…\""
+      ],
+      "test_cmd": "node scripts/generate-build-env.mjs && node node_modules/vitest/vitest.mjs run tests/unit/availability-batch.test.ts --maxWorkers=1",
+      "fail_exit": 1,
+      "assertion_failures": [
+        "tests/unit/availability-batch.test.ts > pure derivation vs golden fixtures (SC4 — snapshot → generate + filter) > scenario: manual-slots week > derives the 4 {mode}×{duration} games deep-equal to the golden fixture",
+        "tests/unit/availability-batch.test.ts > pure derivation vs golden fixtures (SC4 — snapshot → generate + filter) > scenario: partial busy overlaps > derives the 4 {mode}×{duration} games deep-equal to the golden fixture",
+        "tests/unit/availability-batch.test.ts > pure derivation vs golden fixtures (SC4 — snapshot → generate + filter) > scenario: DST transition week Europe/Paris 2026-10-25 > derives the 4 {mode}×{duration} games deep-equal to the golden fixture",
+        "tests/unit/availability-batch.test.ts > pure derivation vs golden fixtures (SC4 — snapshot → generate + filter) > scenario: mock mode > derives the 4 {mode}×{duration} games deep-equal to the golden fixture",
+        "tests/unit/availability-batch.test.ts > getAvailableSlots — golden fixtures (characterization, SC4) > scenario: manual-slots week > derives the 4 {mode}×{duration} games deep-equal to the golden fixture",
+        "tests/unit/availability-batch.test.ts > getAvailableSlots — golden fixtures (characterization, SC4) > scenario: partial busy overlaps > derives the 4 {mode}×{duration} games deep-equal to the golden fixture",
+        "tests/unit/availability-batch.test.ts > getAvailableSlots — golden fixtures (characterization, SC4) > scenario: DST transition week Europe/Paris 2026-10-25 > derives the 4 {mode}×{duration} games deep-equal to the golden fixture",
+        "tests/unit/availability-batch.test.ts > getAvailableSlots — golden fixtures (characterization, SC4) > scenario: mock mode > derives the 4 {mode}×{duration} games deep-equal to the golden fixture",
+        "derives the 4 {mode}×{duration} games deep-equal to the golden fixture 65ms",
+        "derives the 4 {mode}×{duration} games deep-equal to the golden fixture 54ms",
+        "derives the 4 {mode}×{duration} games deep-equal to the golden fixture 49ms",
+        "derives the 4 {mode}×{duration} games deep-equal to the golden fixture 43ms",
+        "derives the 4 {mode}×{duration} games deep-equal to the golden fixture 47ms",
+        "derives the 4 {mode}×{duration} games deep-equal to the golden fixture 45ms",
+        "derives the 4 {mode}×{duration} games deep-equal to the golden fixture 44ms"
+      ],
+      "summary": "8 failed | 6 passed",
+      "status": "proven",
+      "evidence": "tests/unit/availability-batch.test.ts > pure derivation vs golden fixtures (SC4 — snapshot → generate + filter) > scenario: manual-slots week > derives the 4 {mode}×{duration} games deep-equal to the golden fixture"
+    },
+    {
+      "sc_id": "SC5",
+      "criterion": "No cache poisoning on ANY writer: a snapshot failure writes NOTHING (existing entries preserved)",
+      "sources": [
+        "netlify/functions/calendar-keepwarm.ts"
+      ],
+      "source_hashes": {
+        "netlify/functions/calendar-keepwarm.ts": "4f9e1e615d70ce938fcb4821d79852885dc49dfaa0bcf870347c8cd4d9bdea20"
+      },
+      "mutations": [
+        "netlify/functions/calendar-keepwarm.ts: \"snapshot = await loadAvailabilitySnapshot(\n      session.oau…\""
+      ],
+      "test_cmd": "node scripts/generate-build-env.mjs && node node_modules/vitest/vitest.mjs run tests/unit/calendar-keepwarm.test.ts --maxWorkers=1",
+      "fail_exit": 1,
+      "assertion_failures": [
+        "tests/unit/calendar-keepwarm.test.ts > warmAvailabilityCache — mono-snapshot (SC3/SC5/SC6) > SC5 cron: Freebusy 200 with calendars[id].errors → 0 writes, existing entries INTACT, stage-named log",
+        "tests/unit/calendar-keepwarm.test.ts > warmAvailabilityCache — mono-snapshot (SC3/SC5/SC6) > SC5 cron: manual-slots read failure → 0 writes, existing entries INTACT, stage-named log, NO Freebusy",
+        "SC5 cron: Freebusy 200 with calendars[id].errors → 0 writes, existing entries INTACT, stage-named log 23ms",
+        "SC5 cron: manual-slots read failure → 0 writes, existing entries INTACT, stage-named log, NO Freebusy 16ms"
+      ],
+      "summary": "2 failed | 44 passed",
+      "status": "proven",
+      "evidence": "tests/unit/calendar-keepwarm.test.ts > warmAvailabilityCache — mono-snapshot (SC3/SC5/SC6) > SC5 cron: Freebusy 200 with calendars[id].errors → 0 writes, existing entries INTACT, stage-named log"
+    },
+    {
+      "sc_id": "SC6",
+      "criterion": "Truthful telemetry: a failed cache write is counted failed, never folded into 'written'",
+      "sources": [
+        "netlify/functions/calendar-keepwarm.ts"
+      ],
+      "source_hashes": {
+        "netlify/functions/calendar-keepwarm.ts": "4f9e1e615d70ce938fcb4821d79852885dc49dfaa0bcf870347c8cd4d9bdea20"
+      },
+      "mutations": [
+        "netlify/functions/calendar-keepwarm.ts: \"failed += 1;…\""
+      ],
+      "test_cmd": "node scripts/generate-build-env.mjs && node node_modules/vitest/vitest.mjs run tests/unit/calendar-keepwarm.test.ts tests/unit/calendar-cache.test.ts --maxWorkers=1",
+      "fail_exit": 1,
+      "assertion_failures": [
+        "tests/unit/calendar-keepwarm.test.ts > warmAvailabilityCache — mono-snapshot (SC3/SC5/SC6) > SC6 telemetry: one cache write failing → {computed: 4, written: 3, failed: 1} — never a silent success",
+        "SC6 telemetry: one cache write failing → {computed: 4, written: 3, failed: 1} — never a silent success 18ms"
+      ],
+      "summary": "1 failed | 54 passed",
+      "status": "proven",
+      "evidence": "tests/unit/calendar-keepwarm.test.ts > warmAvailabilityCache — mono-snapshot (SC3/SC5/SC6) > SC6 telemetry: one cache write failing → {computed: 4, written: 3, failed: 1} — never a silent success"
+    },
+    {
+      "sc_id": "SC7",
+      "criterion": "Patient path unchanged: a cache hit is served (re-filtered by live dbBusy) without hitting Google",
+      "sources": [
+        "src/pages/api/availability.ts"
+      ],
+      "source_hashes": {
+        "src/pages/api/availability.ts": "938c59f03aec008a8970dbe147849b96a75268d600eb7147bb44114b39caff12"
+      },
+      "mutations": [
+        "src/pages/api/availability.ts: \"if (cached) {…\""
+      ],
+      "test_cmd": "node scripts/generate-build-env.mjs && node node_modules/vitest/vitest.mjs run tests/unit/availability-api.test.ts --maxWorkers=1",
+      "fail_exit": 1,
+      "assertion_failures": [
+        "tests/unit/availability-api.test.ts > GET /api/availability — cache hit re-filtering (SC7) > serves cached slots re-filtered by live dbBusy and never hits Google nor writes the cache",
+        "serves cached slots re-filtered by live dbBusy and never hits Google nor writes the cache 5ms"
+      ],
+      "summary": "1 failed | 13 passed",
+      "status": "proven",
+      "evidence": "tests/unit/availability-api.test.ts > GET /api/availability — cache hit re-filtering (SC7) > serves cached slots re-filtered by live dbBusy and never hits Google nor writes the cache"
+    },
+    {
+      "sc_id": "SC8",
+      "criterion": "CAS on token writes: the refresh persist is conditioned on the updated_at value READ at select time",
+      "sources": [
+        "netlify/functions/calendar-keepwarm.ts",
+        "src/lib/google-calendar.ts"
+      ],
+      "source_hashes": {
+        "netlify/functions/calendar-keepwarm.ts": "4f9e1e615d70ce938fcb4821d79852885dc49dfaa0bcf870347c8cd4d9bdea20",
+        "src/lib/google-calendar.ts": "e821ac6b810ffc7ed3e8bb63c1617b40e91136c238ba62f1401cdc1e73426af6"
+      },
+      "mutations": [
+        "netlify/functions/calendar-keepwarm.ts: \".eq('updated_at', tokens.updated_at)…\"",
+        "src/lib/google-calendar.ts: \".eq('updated_at', tokens.updated_at)…\""
+      ],
+      "test_cmd": "node scripts/generate-build-env.mjs && node node_modules/vitest/vitest.mjs run tests/unit/google-calendar.test.ts tests/unit/calendar-keepwarm.test.ts --maxWorkers=1",
+      "fail_exit": 1,
+      "assertion_failures": [
+        "tests/unit/calendar-keepwarm.test.ts > CAS updated_at on the refresh persist (SC8) — cron writer > race: v2 lands after the read → UPDATE conditioned on updated_at=T1 matches 0 rows → v2 preserved, CAS-miss logged, run continues ok",
+        "race: v2 lands after the read → UPDATE conditioned on updated_at=T1 matches 0 rows → v2 preserved, CAS-miss logged, run continues ok 17ms"
+      ],
+      "summary": "5 failed | 76 passed",
+      "status": "proven",
+      "evidence": "tests/unit/calendar-keepwarm.test.ts > CAS updated_at on the refresh persist (SC8) — cron writer > race: v2 lands after the read → UPDATE conditioned on updated_at=T1 matches 0 rows → v2 preserved, CAS-miss logged, run continues ok"
+    }
+  ]
+}

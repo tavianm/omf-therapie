@@ -38,22 +38,52 @@ export class GoogleCalendarError extends Error {
 
 export class CalendarAuthError extends GoogleCalendarError {
   readonly type = 'CalendarAuthError' as const;
-  constructor(message: string, cause?: unknown) { super(message, cause); this.name = 'CalendarAuthError'; }
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+    this.name = 'CalendarAuthError';
+  }
 }
 
 export class CalendarPermissionError extends GoogleCalendarError {
   readonly type = 'CalendarPermissionError' as const;
-  constructor(message: string, cause?: unknown) { super(message, cause); this.name = 'CalendarPermissionError'; }
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+    this.name = 'CalendarPermissionError';
+  }
 }
 
 export class CalendarQuotaError extends GoogleCalendarError {
   readonly type = 'CalendarQuotaError' as const;
-  constructor(message: string, cause?: unknown) { super(message, cause); this.name = 'CalendarQuotaError'; }
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+    this.name = 'CalendarQuotaError';
+  }
 }
 
 export class CalendarNetworkError extends GoogleCalendarError {
   readonly type = 'CalendarNetworkError' as const;
-  constructor(message: string, cause?: unknown) { super(message, cause); this.name = 'CalendarNetworkError'; }
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+    this.name = 'CalendarNetworkError';
+  }
+}
+
+/**
+ * Shared-stage failure (issue #153 / SC5): one of the two I/O stages of the
+ * shared availability snapshot — the `manual_time_slots` read or the Google
+ * Freebusy query — failed (transport error, or a response-level calendar
+ * error on an HTTP 200). The snapshot is unusable, so EVERY caller (keepwarm
+ * cron, patient path) must treat the whole batch as failed: ZERO cache
+ * writes, existing entries preserved. Messages and causes are sanitized —
+ * raw GaxiosError / PostgREST payloads are never attached (they may embed
+ * client_secret / refresh_token).
+ */
+export class CalendarSharedStageError extends GoogleCalendarError {
+  readonly type = 'CalendarSharedStageError' as const;
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+    this.name = 'CalendarSharedStageError';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -61,19 +91,31 @@ export class CalendarNetworkError extends GoogleCalendarError {
 // ---------------------------------------------------------------------------
 
 function parseGoogleError(err: unknown): GoogleCalendarError {
-  const asRecord = typeof err === 'object' && err !== null ? (err as Record<string, unknown>) : null;
-  const responseStatus = asRecord?.['response'] != null
-    ? (asRecord['response'] as Record<string, unknown>)['status']
-    : undefined;
+  const asRecord =
+    typeof err === 'object' && err !== null
+      ? (err as Record<string, unknown>)
+      : null;
+  const responseStatus =
+    asRecord?.['response'] != null
+      ? (asRecord['response'] as Record<string, unknown>)['status']
+      : undefined;
   const status = responseStatus ?? asRecord?.['code'];
-  if (status === 401) return new CalendarAuthError('Authentication failed', err);
-  if (status === 403) return new CalendarPermissionError('Calendar access denied', err);
-  if (status === 429) return new CalendarQuotaError('Google API quota exceeded', err);
+  if (status === 401)
+    return new CalendarAuthError('Authentication failed', err);
+  if (status === 403)
+    return new CalendarPermissionError('Calendar access denied', err);
+  if (status === 429)
+    return new CalendarQuotaError('Google API quota exceeded', err);
   return new CalendarNetworkError('Calendar API error', err);
 }
 
-export async function withCalendarRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
-  let lastError: GoogleCalendarError = new CalendarNetworkError('Unknown error');
+export async function withCalendarRetry<T>(
+  fn: () => Promise<T>,
+  maxAttempts = 3,
+): Promise<T> {
+  let lastError: GoogleCalendarError = new CalendarNetworkError(
+    'Unknown error',
+  );
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await fn();
@@ -81,11 +123,16 @@ export async function withCalendarRetry<T>(fn: () => Promise<T>, maxAttempts = 3
       const parsed = parseGoogleError(err);
       lastError = parsed;
       // No retry for auth/permission errors
-      if (parsed instanceof CalendarAuthError || parsed instanceof CalendarPermissionError) {
+      if (
+        parsed instanceof CalendarAuthError ||
+        parsed instanceof CalendarPermissionError
+      ) {
         throw parsed;
       }
       if (attempt < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+        await new Promise(resolve =>
+          setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)),
+        );
       }
     }
   }
@@ -108,6 +155,30 @@ export interface TimeSlot {
 export type AppointmentMode = 'in-person' | 'video';
 export type AppointmentDuration = 60 | 90;
 
+/**
+ * Outcome of the keepwarm cron's token step (issue #153 / SC2) — the session
+ * the whole warm-up run is built on:
+ *
+ *   - `ok`: Google auth is usable RIGHT NOW. `oauth2Client` is the
+ *     authenticated client (valid, freshly refreshed, or fall-through on the
+ *     persisted credentials admitted by the 6-min margin gate) — every
+ *     Freebusy/cache call of the run is served from this ONE client.
+ *   - `transient`: the token row could not be read (network/5xx), the
+ *     refresh failed without enough persisted margin (> 6 min required), the
+ *     persisted token is expired / has no `expiry_date` / has an EMPTY
+ *     `access_token` (a client seeded with '' would refresh hiddenly on its
+ *     first signed call — revue #154), or the refresh response itself came
+ *     back without an access token. The warm-up is skipped this run; no
+ *     alert is emitted (the next run retries).
+ *   - `auth-broken`: definitively unusable — no token row, null
+ *     refresh_token, or a real invalid_grant. Warm-up skipped; the existing
+ *     #132 alerting (24 h email cooldown) applies.
+ */
+export type KeepwarmSession =
+  | { status: 'ok'; oauth2Client: Auth.OAuth2Client }
+  | { status: 'transient'; reason: string }
+  | { status: 'auth-broken' };
+
 // ---------------------------------------------------------------------------
 // Env access — lazy & runtime-agnostic (issue #126 / T12)
 // ---------------------------------------------------------------------------
@@ -119,7 +190,8 @@ export type AppointmentDuration = 60 | 90;
  * env access in this file must go through this helper (or an explicit DI value).
  */
 function readEnv(key: string): string | undefined {
-  const fromMeta = (import.meta as { env?: Record<string, string | undefined> }).env?.[key];
+  const fromMeta = (import.meta as { env?: Record<string, string | undefined> })
+    .env?.[key];
   if (fromMeta !== undefined) return fromMeta;
   return process.env[key];
 }
@@ -168,50 +240,96 @@ const MIN_NOTICE_MS = 24 * 60 * 60 * 1000;
 // Authentification Google
 // ---------------------------------------------------------------------------
 
-
 /**
  * Returns a configured OAuth2Client with a valid access token, persisting
  * token rotation in the `google_oauth_tokens` Supabase table.
- * Falls back to bootstrapping from env vars on first run.
+ *
+ * Token-row READ classification (issue #153 / SC1):
+ *   - select failure (network / 5xx / timeout, i.e. any error ≠ PGRST116)
+ *     → throws `CalendarNetworkError` (sanitized — the raw error is never
+ *     attached) and performs ZERO writes;
+ *   - no row (PGRST116) → returns null with NO write of any kind. The env
+ *     bootstrap (GOOGLE_OAUTH_REFRESH_TOKEN) is REMOVED from runtime: the
+ *     OAuth callback (/api/admin/google-oauth) is the single authoritative
+ *     source of the token row — no table write may originate from a read
+ *     path.
+ *
+ * Exported for the token-read contracts (unit tests, issue #153 SC1/SC8).
  */
-async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | null> {
+export async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | null> {
   const clientId = readEnv('GOOGLE_OAUTH_CLIENT_ID');
   const clientSecret = readEnv('GOOGLE_OAUTH_CLIENT_SECRET');
   if (!clientId || !clientSecret) return null;
 
-  const redirectUri = readEnv('GOOGLE_OAUTH_REDIRECT_URI') ?? 'https://developers.google.com/oauthplayground';
-  const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+  const redirectUri =
+    readEnv('GOOGLE_OAUTH_REDIRECT_URI') ??
+    'https://developers.google.com/oauthplayground';
+  const oauth2Client = new google.auth.OAuth2(
+    clientId,
+    clientSecret,
+    redirectUri,
+  );
 
-  // 1. Load persisted tokens from DB
-  let { data: tokens } = await supabaseAdmin
+  // 1. Load persisted tokens from DB. The select error is CLASSIFIED, never
+  //    ignored: a transient fetch failure must not be mistaken for "no row" —
+  //    that used to fall into the env bootstrap, which upserted a stale
+  //    GOOGLE_OAUTH_REFRESH_TOKEN over the fresh row before refreshing
+  //    (production incident 2026-09-13, issue #153).
+  const { data: tokens, error } = await supabaseAdmin
     .from('google_oauth_tokens')
     .select('*')
     .eq('id', 'therapist')
     .single();
 
-  if (!tokens) {
-    // 2. Bootstrap from env vars on first run
-    const refreshToken = readEnv('GOOGLE_OAUTH_REFRESH_TOKEN');
-    if (!refreshToken) return null;
-
-    tokens = {
-      id: 'therapist',
-      access_token: '',
-      refresh_token: refreshToken,
-      expiry_date: 0, // Forces immediate refresh below
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    await supabaseAdmin.from('google_oauth_tokens').upsert(tokens);
+  if (error && error.code !== 'PGRST116') {
+    // Transient infra failure (network, 5xx, timeout) → typed throw. The raw
+    // error is deliberately NOT attached: its payloads may embed credentials
+    // (client_secret / refresh_token).
+    throw new CalendarNetworkError(
+      'Lecture de la ligne token impossible (panne transitoire de google_oauth_tokens).',
+    );
   }
 
-  // 3. Proactive refresh: refresh if token expires within 5 minutes
-  if (!tokens.expiry_date || tokens.expiry_date < Date.now() + 5 * 60 * 1000) {
+  if (!tokens) {
+    // 2. No row (PGRST116) → not configured: return null with NO write of any
+    //    kind. Deprecation notice if the legacy env bootstrap token still
+    //    exists — reconnection via the OAuth callback is now the only path.
+    if (readEnv('GOOGLE_OAUTH_REFRESH_TOKEN')) {
+      console.warn(
+        '[google-calendar] GOOGLE_OAUTH_REFRESH_TOKEN ignoré — bootstrap env supprimé, reconnecter via /api/admin/google-oauth.',
+      );
+    }
+    return null;
+  }
+
+  // 3. Proactive refresh: refresh if token expires within 5 minutes. An EMPTY
+  //    or blank persisted access_token forces the refresh too (revue #154):
+  //    google-auth-library treats '' as absent (`!this.credentials.access_token`
+  //    → eager refresh), so a client seeded with '' would refresh hiddenly on
+  //    its first signed call — the same gate the keepwarm cron enforces.
+  if (
+    !tokens.expiry_date ||
+    tokens.expiry_date < Date.now() + 5 * 60 * 1000 ||
+    !tokens.access_token?.trim()
+  ) {
     oauth2Client.setCredentials({ refresh_token: tokens.refresh_token });
     try {
       const { credentials } = await oauth2Client.refreshAccessToken();
+      // A refresh response WITHOUT a usable access token must never reach the
+      // persist below: writing '' (or a blank token) over a healthy row would
+      // poison it. Refuse BEFORE any write — transient, the next run retries.
+      const accessToken = credentials.access_token?.trim();
+
+      if (!accessToken) {
+        console.warn(
+          '[google-calendar] Réponse de refresh sans access_token — écriture refusée.',
+        );
+        throw new CalendarNetworkError(
+          'Google OAuth refresh returned no usable access token.',
+        );
+      }
       const updated = {
-        access_token: credentials.access_token ?? '',
+        access_token: accessToken,
         // google-auth-library's refreshAccessToken() never surfaces a
         // server-rotated refresh token: it echoes back the credential it was
         // given, so this persists the same refresh_token we loaded. Google
@@ -219,29 +337,89 @@ async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | null> {
         // does, this path will keep persisting the ORIGINAL token and needs
         // revisiting.
         refresh_token: credentials.refresh_token ?? tokens.refresh_token,
-        expiry_date: credentials.expiry_date ?? (Date.now() + 3600 * 1000),
+        expiry_date: credentials.expiry_date ?? Date.now() + 3600 * 1000,
         updated_at: new Date().toISOString(),
       };
-      await supabaseAdmin
+      // Persist with CAS (issue #153 / SC8): the UPDATE may only overwrite
+      // the row AS READ — `.eq('updated_at', <value read at select time>)` —
+      // so a newer write (reconnexion callback, cron refresh) always
+      // survives. The .select('id').single() confirm surfaces a zero-row
+      // conditional update as PGRST116.
+      const { data: persisted, error: updateError } = await supabaseAdmin
         .from('google_oauth_tokens')
         .update(updated)
-        .eq('id', 'therapist');
+        .eq('id', 'therapist')
+        .eq('updated_at', tokens.updated_at)
+        .select('id')
+        .single();
+
+      if (updateError && updateError.code !== 'PGRST116') {
+        // Infra error on the conditional UPDATE (5xx / timeout / network) —
+        // a TRANSIENT error, NEVER a collision: reconcile with a re-read,
+        // then continue on the in-memory credentials (the refresh itself
+        // succeeded). Sanitized: no raw error object is logged.
+        const reread = await supabaseAdmin
+          .from('google_oauth_tokens')
+          .select('updated_at')
+          .eq('id', 'therapist')
+          .single()
+          .then(
+            result => result,
+            () => null,
+          );
+        console.warn(
+          '[google-calendar] Persist du token non confirmé (erreur infra transitoire) — relecture de réconciliation.',
+          {
+            persistErrorCode: updateError.code ?? 'unknown',
+            currentUpdatedAt: reread?.data?.updated_at ?? 'unavailable',
+          },
+        );
+      } else if (!persisted) {
+        // CAS MISS: zero rows matched — a NEWER version of the row exists
+        // (reconnexion callback or the keepwarm cron). Benign by design:
+        // reconcile (re-read for the log), preserve the recent row, and
+        // continue on the in-memory credentials. Never fatal.
+        const reread = await supabaseAdmin
+          .from('google_oauth_tokens')
+          .select('updated_at')
+          .eq('id', 'therapist')
+          .single()
+          .then(
+            result => result,
+            () => null,
+          );
+        console.warn(
+          '[google-calendar] CAS miss — ligne récente préservée',
+          reread?.data?.updated_at
+            ? { currentUpdatedAt: reread.data.updated_at }
+            : undefined,
+        );
+      }
       oauth2Client.setCredentials(credentials);
       return oauth2Client;
     } catch (err: unknown) {
-      const errData = (err as { response?: { data?: { error?: string } } })?.response?.data;
+      // refreshAccessToken() itself never throws CalendarNetworkError, so this
+      // rethrow only passes through our own validation rejection above — the
+      // write was refused BEFORE any persistence and stays classified
+      // transient instead of being re-wrapped as a generic refresh failure.
+      if (err instanceof CalendarNetworkError) throw err;
+      const errData = (err as { response?: { data?: { error?: string } } })
+        ?.response?.data;
       if (errData?.error === 'invalid_grant') {
         // AC-3: alert admin — fire and forget (don't block the throw)
         const adminEmail = readEnv('ADMIN_EMAIL');
         const siteUrl = readEnv('SITE_URL') ?? 'https://omf-therapie.fr';
         if (adminEmail) {
           const { createElement } = await import('react');
-          const { default: CalendarAuthAlert } = await import('../emails/CalendarAuthAlert');
+          const { default: CalendarAuthAlert } =
+            await import('../emails/CalendarAuthAlert');
           sendEmail({
             to: adminEmail,
             subject: '⚠️ Google Calendar — re-autorisation requise',
-            react: createElement(CalendarAuthAlert, { reauthorizeUrl: `${siteUrl}/api/admin/google-oauth` }),
-          }).catch((e: unknown) => console.error('[calendar] Alert email failed:', e instanceof Error ? e.message : e));
+            react: createElement(CalendarAuthAlert, {
+              reauthorizeUrl: `${siteUrl}/api/admin/google-oauth/`,
+            }),
+          }).catch(() => console.error('[calendar] Alert email failed.'));
         }
         // Store only the safe error code — do NOT pass raw err (GaxiosError may
         // carry client_secret / refresh_token in response.config.data)
@@ -250,10 +428,9 @@ async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | null> {
           { googleErrorCode: errData.error },
         );
       }
-      throw new CalendarNetworkError(
-        'Token refresh failed',
-        { status: (err as { response?: { status?: number } })?.response?.status },
-      );
+      throw new CalendarNetworkError('Token refresh failed', {
+        status: (err as { response?: { status?: number } })?.response?.status,
+      });
     }
   }
 
@@ -271,7 +448,7 @@ async function resolveCalendarAuth(): Promise<Auth.OAuth2Client> {
   if (oauth) return oauth;
 
   throw new GoogleCalendarError(
-    'Configuration Google Calendar manquante : configurez OAuth (GOOGLE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN).',
+    'Configuration Google Calendar manquante : reconnectez-vous via /api/admin/google-oauth/.',
   );
 }
 
@@ -308,7 +485,7 @@ const PARIS_WEEKDAY_FORMATTER = new Intl.DateTimeFormat('en-US', {
  */
 function toParisLocalParts(date: Date) {
   const parts = Object.fromEntries(
-    PARIS_PARTS_FORMATTER.formatToParts(date).map((p) => [p.type, p.value]),
+    PARIS_PARTS_FORMATTER.formatToParts(date).map(p => [p.type, p.value]),
   );
 
   // fr-FR with hour12:false can emit "24" at midnight — normalise to 0.
@@ -338,9 +515,7 @@ function parisLocalToUTC(
   // On construit une date ISO sans timezone et on la parse via un trick Intl
   // La méthode la plus fiable est d'utiliser toLocaleString avec un test
   // d'aller-retour pour déterminer l'offset Paris à cette date précise.
-  const candidate = new Date(
-    Date.UTC(year, month - 1, day, hour, minute),
-  );
+  const candidate = new Date(Date.UTC(year, month - 1, day, hour, minute));
 
   // Récupère l'heure locale Paris de ce candidat UTC
   const local = toParisLocalParts(candidate);
@@ -358,7 +533,13 @@ function parisLocalToUTC(
 function getParisISOWeekday(date: Date): number {
   const wd = PARIS_WEEKDAY_FORMATTER.format(date);
   const map: Record<string, number> = {
-    Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+    Sun: 7,
   };
   return map[wd] ?? 7;
 }
@@ -405,8 +586,8 @@ export interface GenerateSlotsInput {
  *
  * Fonction pure (sans I/O, sans Date.now()) — entièrement déterministe via
  * `now` et `manualSlots`. C'est le cœur testable de la génération : la couche
- * async `generateCandidateSlots` se contente d'hydrater `manualSlots` depuis
- * Supabase puis de déléguer ici.
+ * async (`loadAvailabilitySnapshot`) se contente d'hydrater `manualSlots`
+ * depuis Supabase puis de déléguer ici.
  *
  * Règle d'éligibilité (additive, visio = inverse du cabinet) :
  *   in-person → périodes cabinet-eligibles
@@ -436,7 +617,16 @@ export function generateSlotsForRange(input: GenerateSlotsInput): TimeSlot[] {
         const eligible = input.mode === 'in-person' ? isCabinet : !isCabinet;
         if (!eligible) continue;
 
-        slots.push(...generatePeriodSlots(year, month, day, half, input.duration, minStart));
+        slots.push(
+          ...generatePeriodSlots(
+            year,
+            month,
+            day,
+            half,
+            input.duration,
+            minStart,
+          ),
+        );
       }
     }
 
@@ -499,19 +689,14 @@ function generatePeriodSlots(
 }
 
 /**
- * Wrapper async : hydrate les slots manuels depuis Supabase puis délègue à la
- * fonction pure `generateSlotsForRange`.
+ * Indexe les lignes de slots manuels par date Paris (YYYY-MM-DD) → périodes
+ * couvertes — la forme consommée par la fonction pure `generateSlotsForRange`.
  */
-export async function generateCandidateSlots(
-  startDate: Date,
-  endDate: Date,
-  duration: AppointmentDuration,
-  mode: AppointmentMode,
-): Promise<TimeSlot[]> {
-  const manualRecords = await fetchManualSlots(startDate, endDate);
-
+function indexManualSlots(
+  records: Array<{ slot_date: string; period: Period }>,
+): Map<string, Set<Period>> {
   const manualSlots = new Map<string, Set<Period>>();
-  for (const record of manualRecords) {
+  for (const record of records) {
     let periods = manualSlots.get(record.slot_date);
     if (!periods) {
       periods = new Set();
@@ -519,25 +704,277 @@ export async function generateCandidateSlots(
     }
     periods.add(record.period);
   }
+  return manualSlots;
+}
 
-  return generateSlotsForRange({
+// ---------------------------------------------------------------------------
+// Snapshot de disponibilité partagé (issue #153 — batch mono-snapshot)
+// ---------------------------------------------------------------------------
+
+/**
+ * Tout ce dont la dérivation pure a besoin : les périodes de présence manuel
+ * indexées par date Paris, et les périodes occupées Freebusy de la fenêtre.
+ * Produit par `loadAvailabilitySnapshot` — mock mode → snapshot vide, zéro
+ * I/O.
+ */
+export interface AvailabilitySnapshot {
+  /** Slots manuels indexés par date (YYYY-MM-DD) → périodes couvertes. */
+  manualSlots: Map<string, Set<Period>>;
+  /** Périodes occupées Freebusy (ISO 8601) sur la fenêtre demandée. */
+  busyPeriods: Array<{ start: string; end: string }>;
+}
+
+/**
+ * Optional bounds for the shared snapshot's upstream I/O (revue #154): a
+ * stalled manual-slots read or Freebusy query must abort into the typed
+ * shared-stage failure instead of hanging until the platform timeout.
+ */
+export interface SnapshotOptions {
+  /**
+   * Per-request timeout (ms) applied to the Freebusy query via gaxios
+   * (`timeout` on the calendar client — gaxios turns it into a real
+   * AbortSignal). Undefined → no timeout (patient-path default, unchanged).
+   */
+  timeoutMs?: number;
+  /** Abort signal threaded into the manual-slots Supabase read. */
+  signal?: AbortSignal;
+}
+
+/**
+ * Charge le snapshot de disponibilité partagé pour une fenêtre : UNE lecture
+ * `manual_time_slots` et UNE requête Freebusy (issue #153 / SC3), servies par
+ * le client OAuth authentifié injecté. Mock mode → snapshot vide, ZÉRO I/O.
+ *
+ * Tout échec de stage (lecture manuel slots, Freebusy transport ou erreur
+ * response-level) lève une erreur typée de stage partagé (SC5) : l'appelant
+ * — cron comme chemin patient — ne doit alors écrire AUCUNE entrée cache.
+ */
+export async function loadAvailabilitySnapshot(
+  oauth2Client: Auth.OAuth2Client,
+  startDate: Date,
+  endDate: Date,
+  options: SnapshotOptions = {},
+): Promise<AvailabilitySnapshot> {
+  if (isCalendarMockEnabled()) {
+    return { manualSlots: new Map(), busyPeriods: [] };
+  }
+
+  if (!oauth2Client) {
+    throw new GoogleCalendarError(
+      'Client OAuth absent : impossible de charger le snapshot de disponibilités.',
+    );
+  }
+
+  const calendarId = await resolveCalendarId();
+  // The deadline timeout rides on the calendar client itself: googleapis
+  // merges per-API options into every request's gaxios config, and gaxios
+  // converts `timeout` into a real AbortSignal for the underlying fetch.
+  const calendar = google.calendar({
+    version: 'v3',
+    auth: oauth2Client,
+    ...(options.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
+  });
+  return loadSnapshotWithCalendar(
+    calendar,
+    calendarId,
     startDate,
     endDate,
-    duration,
-    mode,
-    now: new Date(),
-    manualSlots,
+    options.signal,
+  );
+}
+
+/**
+ * Stage 1 du snapshot — la lecture unique `manual_time_slots`. Toute erreur
+ * est classée échec de stage partagé (issue #153 / SC5). Message sanitisé :
+ * le détail PostgREST n'est loggué que côté serveur, jamais transporté dans
+ * l'erreur typée. `signal` (optionnel, revue #154) borne la lecture côté
+ * Supabase — un abort y est classé échec de stage comme toute erreur.
+ */
+async function fetchManualSlotsStage(
+  startDate: Date,
+  endDate: Date,
+  signal?: AbortSignal,
+): Promise<Array<{ slot_date: string; period: Period }>> {
+  // No signal → EXACT pre-#154 call shape (start, end): the patient path's
+  // call contract is observable (SC7) and must not drift for a cron-only
+  // concern.
+  const read = signal
+    ? fetchManualSlots(startDate, endDate, { signal })
+    : fetchManualSlots(startDate, endDate);
+  return read.catch(() => {
+    console.error(
+      '[google-calendar] Échec de la lecture manual_time_slots (stage partagé) :',
+      { stage: 'manual-time-slots' },
+    );
+    throw new CalendarSharedStageError(
+      'Échec du stage partagé availability-snapshot : lecture manual_time_slots impossible.',
+    );
+  });
+}
+
+/**
+ * Stage 2 du snapshot — la requête Freebusy unique pour toute la plage.
+ *
+ * Contrat strict (issue #153 / SC5) : la réponse est VALIDE seulement si
+ * l'agenda demandé est présent dans `calendars` ET que `busy` est un tableau
+ * d'intervalles structurellement corrects. Une entrée absente, un `busy`
+ * manquant ou un intervalle malformé ne sont PAS « agenda vide » : traiter
+ * ces réponses comme fail-open empoisonnerait les caches avec des
+ * disponibilités fantômes → erreur typée de stage partagé. Une erreur
+ * response-level (`calendars[id].errors` non vide sur HTTP 200) lève
+ * également. Messages et causes sanitisés : les payloads bruts
+ * Google/PostgREST ne circulent jamais (risque d'y trouver client_secret /
+ * refresh_token).
+ */
+async function fetchBusyPeriodsStage(
+  calendar: calendar_v3.Calendar,
+  calendarId: string,
+  startDate: Date,
+  endDate: Date,
+): Promise<Array<{ start: string; end: string }>> {
+  try {
+    const response = await calendar.freebusy.query({
+      requestBody: {
+        timeMin: startDate.toISOString(),
+        timeMax: endDate.toISOString(),
+        timeZone: TIMEZONE,
+        items: [{ id: calendarId }],
+      },
+    });
+
+    const calendarData = response.data.calendars?.[calendarId];
+    if (!calendarData) {
+      // HTTP 200 mais l'agenda demandé n'est pas dans la réponse — impossible
+      // de distinguer « vide » d'une réponse tronquée : fail-closed.
+      throw new CalendarSharedStageError(
+        'Échec du stage partagé availability-snapshot : agenda demandé absent de la réponse Freebusy.',
+      );
+    }
+
+    if (calendarData.errors && calendarData.errors.length > 0) {
+      // HTTP 200 mais Google signale une erreur sur cet agenda (permissions,
+      // introuvable…). Seuls les codes `reason` circulent — jamais les
+      // payloads bruts.
+      const reasons = calendarData.errors
+        .map(e => (typeof e?.reason === 'string' ? e.reason : 'unknown'))
+        .join(',');
+      console.error(
+        '[google-calendar] Erreur freebusy response-level pour le calendrier (stage partagé) :',
+        reasons,
+      );
+      throw new CalendarSharedStageError(
+        "Échec du stage partagé availability-snapshot : erreur response-level Freebusy sur l'agenda.",
+        { googleErrorCode: reasons },
+      );
+    }
+
+    const busy: unknown = calendarData.busy;
+    if (!Array.isArray(busy)) {
+      throw new CalendarSharedStageError(
+        'Échec du stage partagé availability-snapshot : réponse Freebusy malformée (busy absent ou non tableau).',
+      );
+    }
+    if (
+      !busy.every((b): b is { start: string; end: string } => {
+        const start = (b as { start?: unknown } | null)?.start;
+        const end = (b as { end?: unknown } | null)?.end;
+        if (typeof start !== 'string' || typeof end !== 'string') {
+          return false;
+        }
+        const startTime = Date.parse(start);
+        const endTime = Date.parse(end);
+        return Number.isFinite(startTime) && startTime < endTime;
+      })
+    ) {
+      throw new CalendarSharedStageError(
+        'Échec du stage partagé availability-snapshot : réponse Freebusy malformée (intervalle busy invalide).',
+      );
+    }
+    return busy;
+  } catch (err: unknown) {
+    if (err instanceof CalendarSharedStageError) throw err; // déjà classée
+    // Gestion gracieuse : timeout, quota dépassé, réseau… — même classement
+    // échec de stage partagé. Cause sanitisée au seul champ sûr (status).
+    console.error(
+      "[google-calendar] Impossible d'interroger Freebusy (stage partagé) :",
+      {
+        status: (err as { response?: { status?: unknown } })?.response?.status,
+      },
+    );
+    throw new CalendarSharedStageError(
+      'Échec du stage partagé availability-snapshot : requête Freebusy impossible.',
+      { status: (err as { response?: { status?: number } })?.response?.status },
+    );
+  }
+}
+
+/**
+ * Exécute les DEUX stages I/O du snapshot — exactement UNE lecture
+ * `manual_time_slots` et UNE requête Freebusy — et classe toute erreur comme
+ * échec de stage partagé (issue #153 / SC5). Le `signal` optionnel borne la
+ * lecture manual slots ; la requête Freebusy est bornée par le timeout du
+ * client calendar (SnapshotOptions.timeoutMs).
+ */
+async function loadSnapshotWithCalendar(
+  calendar: calendar_v3.Calendar,
+  calendarId: string,
+  startDate: Date,
+  endDate: Date,
+  signal?: AbortSignal,
+): Promise<AvailabilitySnapshot> {
+  const manualRecords = await fetchManualSlotsStage(
+    startDate,
+    endDate,
+    signal,
+  );
+  const busyPeriods = await fetchBusyPeriodsStage(
+    calendar,
+    calendarId,
+    startDate,
+    endDate,
+  );
+  return { manualSlots: indexManualSlots(manualRecords), busyPeriods };
+}
+
+/**
+ * Filtre pur de chevauchement — exclut tout créneau recouvrant une période
+ * occupée. Partagé par le chemin patient (`/api/availability`), la dérivation
+ * du cron keepwarm et la branche mock ; déduplique les 3 copies historiques
+ * (issue #153). Les extrémités qui se touchent (slot.end === busy.start) ne
+ * chevauchent PAS.
+ */
+export function filterSlotsByBusy(
+  slots: TimeSlot[],
+  busyPeriods: Array<{ start: string; end: string }>,
+): TimeSlot[] {
+  if (busyPeriods.length === 0) return slots;
+  return slots.filter(slot => {
+    const slotStart = new Date(slot.start).getTime();
+    const slotEnd = new Date(slot.end).getTime();
+    return !busyPeriods.some(busy => {
+      const busyStart = new Date(busy.start).getTime();
+      const busyEnd = new Date(busy.end).getTime();
+      return slotStart < busyEnd && slotEnd > busyStart;
+    });
   });
 }
 
 // ---------------------------------------------------------------------------
-// Freebusy query
+// Freebusy query — chemin patient
 // ---------------------------------------------------------------------------
 
 /**
  * Retourne les créneaux disponibles en vérifiant Google Calendar Freebusy.
- * Les créneaux qui chevauchent un événement existant sont marqués `available: false`
- * et filtrés du résultat final.
+ * Les créneaux qui chevauchent un événement existant sont filtrés du résultat.
+ *
+ * Chemin patient (issue #153 / SC7) : les candidats sont dérivés depuis la
+ * lecture unique `manual_time_slots` AVANT la requête Freebusy — une plage
+ * sans créneau éligible retourne [] sans consommer d'appel Freebusy ni
+ * risquer un 503 pendant une panne Google. Sinon, UNE requête Freebusy dont
+ * tout échec est typé erreur de stage partagé (SC5) : en particulier, une
+ * réponse tronquée/malformée ou une erreur response-level lève désormais
+ * (→ 503 sur /api/availability) au lieu de retourner [] — un résultat vide
+ * qui était autrefois persisté par les writers comme disponibilités fantômes.
  */
 export async function getAvailableSlots(
   startDate: Date,
@@ -548,7 +985,9 @@ export async function getAvailableSlots(
   options: CalendarClientOptions = {},
 ): Promise<TimeSlot[]> {
   if (isCalendarMockEnabled()) {
-    console.log('[calendar-mock] getAvailableSlots called — generating slots via shared algorithm');
+    console.log(
+      '[calendar-mock] getAvailableSlots called — generating slots via shared algorithm',
+    );
 
     // Mock = pas de Google Calendar : on réutilise le même moteur de génération
     // que la production (cabinet = mercredi, visio = inverse), sans slots manuels.
@@ -563,84 +1002,47 @@ export async function getAvailableSlots(
       manualSlots: EMPTY_PERIOD_MAP,
     });
 
-    if (dbBusyPeriods.length === 0) return candidates;
-
-    return candidates.filter((slot) => {
-      const slotStart = new Date(slot.start).getTime();
-      const slotEnd = new Date(slot.end).getTime();
-      return !dbBusyPeriods.some((busy) => {
-        const busyStart = new Date(busy.start).getTime();
-        const busyEnd = new Date(busy.end).getTime();
-        return slotStart < busyEnd && slotEnd > busyStart;
-      });
-    });
+    return filterSlotsByBusy(candidates, dbBusyPeriods);
   }
 
   const calendarId = await resolveCalendarId(options.calendarId);
 
-  const candidates = await generateCandidateSlots(startDate, endDate, duration, mode);
+  // Stage 1 — slots manuels, puis dérivation des candidats. L'early return
+  // précède la requête Freebusy : zéro appel API quand la plage n'offre
+  // aucun créneau éligible (comportement d'avant le batch mono-snapshot).
+  const manualRecords = await fetchManualSlotsStage(startDate, endDate);
+  const candidates = generateSlotsForRange({
+    startDate,
+    endDate,
+    duration,
+    mode,
+    now: new Date(),
+    manualSlots: indexManualSlots(manualRecords),
+  });
 
   if (candidates.length === 0) {
     return [];
   }
 
-  const calendar = options.calendar ?? google.calendar({ version: 'v3', auth: await resolveCalendarAuth() });
+  // Stage 2 — la résolution d'auth et la requête Freebusy ne tournent que
+  // s'il y a des candidats à filtrer. Échecs classés erreur de stage partagé
+  // (SC5), contrat fail-closed strict sur la réponse (voir
+  // fetchBusyPeriodsStage).
+  const calendar =
+    options.calendar ??
+    google.calendar({ version: 'v3', auth: await resolveCalendarAuth() });
+  const busyPeriods = await fetchBusyPeriodsStage(
+    calendar,
+    calendarId,
+    startDate,
+    endDate,
+  );
 
-  // Une seule requête Freebusy pour toute la plage
-  let busyPeriods: Array<{ start: string; end: string }> = [];
-
-  try {
-    const response = await calendar.freebusy.query({
-      requestBody: {
-        timeMin: startDate.toISOString(),
-        timeMax: endDate.toISOString(),
-        timeZone: TIMEZONE,
-        items: [{ id: calendarId }],
-      },
-    });
-
-    const calendarData = response.data.calendars?.[calendarId];
-    if (calendarData?.errors && calendarData.errors.length > 0) {
-      // L'agenda est inaccessible (ex: permissions) → on log et retourne vide
-      console.error(
-        '[google-calendar] Erreur freebusy pour le calendrier :',
-        calendarData.errors,
-      );
-      return [];
-    }
-
-    busyPeriods = (calendarData?.busy ?? []).filter(
-      (b): b is { start: string; end: string } =>
-        typeof b.start === 'string' && typeof b.end === 'string',
-    );
-  } catch (err: unknown) {
-    // Gestion gracieuse : timeout, quota dépassé, réseau…
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[google-calendar] Impossible d\'interroger Freebusy :', message);
-    throw new GoogleCalendarError(
-      'Impossible de vérifier les disponibilités. Veuillez réessayer.',
-      err,
-    );
-  }
-
-  // Marque les créneaux occupés et filtre
-  const allBusy = [...busyPeriods, ...dbBusyPeriods];
-
-  return candidates
-    .map((slot) => {
-      const slotStart = new Date(slot.start).getTime();
-      const slotEnd = new Date(slot.end).getTime();
-
-      const isBusy = allBusy.some((busy) => {
-        const busyStart = new Date(busy.start).getTime();
-        const busyEnd = new Date(busy.end).getTime();
-        // Chevauchement : (slotStart < busyEnd) && (slotEnd > busyStart)
-        return slotStart < busyEnd && slotEnd > busyStart;
-      });
-
-      return { ...slot, available: !isBusy };
-    })
-    .filter((slot) => slot.available);
+  // Filtre les créneaux occupés (Freebusy + RDV DB)
+  return filterSlotsByBusy(candidates, [
+    ...busyPeriods,
+    ...dbBusyPeriods,
+  ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -649,8 +1051,8 @@ export async function getAvailableSlots(
 
 export interface CreateEventParams {
   title: string;
-  start: string;  // ISO 8601
-  end: string;    // ISO 8601
+  start: string; // ISO 8601
+  end: string; // ISO 8601
   description?: string;
   location?: string;
   attendeeEmail?: string;
@@ -668,24 +1070,29 @@ export interface CreateEventResult {
   meetLink?: string;
 }
 
-
 // Accept the canonical googleapis Schema$Event shape (id, conferenceData,
 // hangoutLink) rather than a hand-rolled partial — callers pass response.data
 // directly. `Pick` narrows to the fields this function reads.
-type EventResultInput = Pick<calendar_v3.Schema$Event, 'id' | 'conferenceData' | 'hangoutLink'>;
+type EventResultInput = Pick<
+  calendar_v3.Schema$Event,
+  'id' | 'conferenceData' | 'hangoutLink'
+>;
 
 function extractEventResult(data: EventResultInput): CreateEventResult {
   const eventId = data.id;
   if (!eventId) {
     throw new GoogleCalendarError(
-      'L\'événement a été créé mais aucun ID n\'a été retourné par l\'API.',
+      "L'événement a été créé mais aucun ID n'a été retourné par l'API.",
     );
   }
 
   const meetLink =
-    data.conferenceData?.entryPoints?.find((entryPoint) => {
+    data.conferenceData?.entryPoints?.find(entryPoint => {
       if (!entryPoint) return false;
-      return entryPoint.entryPointType === 'video' && typeof entryPoint.uri === 'string';
+      return (
+        entryPoint.entryPointType === 'video' &&
+        typeof entryPoint.uri === 'string'
+      );
     })?.uri ??
     data.hangoutLink ??
     undefined;
@@ -694,7 +1101,7 @@ function extractEventResult(data: EventResultInput): CreateEventResult {
 }
 
 function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     setTimeout(resolve, ms);
   });
 }
@@ -736,10 +1143,14 @@ export async function updateCalendarEvent(
   const calendarId = await resolveCalendarId(options.calendarId);
 
   await withCalendarRetry(async () => {
-    const calendar = options.calendar ?? google.calendar({ version: 'v3', auth: await resolveCalendarAuth() });
+    const calendar =
+      options.calendar ??
+      google.calendar({ version: 'v3', auth: await resolveCalendarAuth() });
     const body: calendar_v3.Schema$Event = {};
-    if (patch.start) body.start = { dateTime: patch.start.toISOString(), timeZone: TIMEZONE };
-    if (patch.end) body.end = { dateTime: patch.end.toISOString(), timeZone: TIMEZONE };
+    if (patch.start)
+      body.start = { dateTime: patch.start.toISOString(), timeZone: TIMEZONE };
+    if (patch.end)
+      body.end = { dateTime: patch.end.toISOString(), timeZone: TIMEZONE };
     if (patch.summary) body.summary = patch.summary;
     await calendar.events.patch({
       calendarId,
@@ -765,7 +1176,9 @@ export async function deleteCalendarEvent(
   const calendarId = await resolveCalendarId(options.calendarId);
 
   await withCalendarRetry(async () => {
-    const calendar = options.calendar ?? google.calendar({ version: 'v3', auth: await resolveCalendarAuth() });
+    const calendar =
+      options.calendar ??
+      google.calendar({ version: 'v3', auth: await resolveCalendarAuth() });
     await calendar.events.delete({
       calendarId,
       eventId,
@@ -783,7 +1196,9 @@ export async function createCalendarEvent(
   options: CalendarClientOptions = {},
 ): Promise<CreateEventResult> {
   if (isCalendarMockEnabled()) {
-    console.log(`[calendar-mock] Creating event: ${params.title} at ${params.start}`);
+    console.log(
+      `[calendar-mock] Creating event: ${params.title} at ${params.start}`,
+    );
     const { withMeet, appointmentId } = params;
     const eventId = `mock-event-${Date.now()}`;
     return {
@@ -847,7 +1262,11 @@ export async function createCalendarEvent(
     const inserted = extractEventResult(response.data);
     if (!params.withMeet || inserted.meetLink) return inserted;
 
-    const polledMeet = await pollMeetLink(calendar, calendarId, inserted.eventId);
+    const polledMeet = await pollMeetLink(
+      calendar,
+      calendarId,
+      inserted.eventId,
+    );
     return {
       ...inserted,
       meetLink: polledMeet,
@@ -855,15 +1274,17 @@ export async function createCalendarEvent(
   };
 
   // Use OAuth for all event types (Meet and in-person).
-  const oauthCalendar = options.calendar ?? await (async () => {
-    const oauthAuth = await getPersistedOAuthClient();
-    if (!oauthAuth) {
-      throw new GoogleCalendarError(
-        'OAuth non configuré : impossible de créer le rendez-vous dans l\'agenda.',
-      );
-    }
-    return google.calendar({ version: 'v3', auth: oauthAuth });
-  })();
+  const oauthCalendar =
+    options.calendar ??
+    (await (async () => {
+      const oauthAuth = await getPersistedOAuthClient();
+      if (!oauthAuth) {
+        throw new GoogleCalendarError(
+          "OAuth non configuré : impossible de créer le rendez-vous dans l'agenda.",
+        );
+      }
+      return google.calendar({ version: 'v3', auth: oauthAuth });
+    })());
   try {
     return await upsertEvent(
       oauthCalendar,
@@ -873,10 +1294,9 @@ export async function createCalendarEvent(
     );
   } catch (err: unknown) {
     if (err instanceof GoogleCalendarError) throw err;
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[google-calendar] Impossible de créer l\'événement :', message);
+    console.error("[google-calendar] Impossible de créer l'événement.");
     throw new GoogleCalendarError(
-      'Impossible de créer le rendez-vous dans l\'agenda.',
+      "Impossible de créer le rendez-vous dans l'agenda.",
       err,
     );
   }

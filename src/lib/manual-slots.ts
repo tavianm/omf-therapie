@@ -32,19 +32,24 @@ function isUniqueConstraintViolation(error: unknown): boolean {
  * Fetch manual time slots for a date range
  * @param from - Start date (inclusive)
  * @param to - End date (inclusive)
+ * @param options.signal - Optional abort signal bounding the read (revue #154:
+ *   the keepwarm cron threads its run deadline here; a stall aborts instead of
+ *   hanging until the platform timeout). Existing callers stay unchanged.
  * @returns Array of manual time slots
  */
 export async function fetchManualSlots(
   from: Date,
   to: Date,
+  options: { signal?: AbortSignal } = {},
 ): Promise<ManualTimeSlot[]> {
-  const { data, error } = await supabaseAdmin
+  const base = supabaseAdmin
     .from('manual_time_slots')
     .select('*')
     .gte('slot_date', from.toISOString().split('T')[0])
     .lte('slot_date', to.toISOString().split('T')[0])
-    .is('deleted_at', null)
-    .order('slot_date', { ascending: true });
+    .is('deleted_at', null);
+  const bounded = options.signal ? base.abortSignal(options.signal) : base;
+  const { data, error } = await bounded.order('slot_date', { ascending: true });
 
   if (error) {
     throw new Error(`Failed to fetch manual slots: ${error.message}`);

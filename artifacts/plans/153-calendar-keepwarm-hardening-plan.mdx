@@ -1,0 +1,212 @@
+---
+title: "Plan: Calendar keepwarm — durcissement post-production (#153)"
+issue: 153
+spec: artifacts/specs/153-calendar-keepwarm-hardening-spec.mdx
+complexity: 6/10
+tier: F-lite
+generated: 2026-09-13
+---
+
+## Summary
+
+Correctif du path token (`getPersistedOAuthClient` : classement d'erreur, suppression du bootstrap env), session OAuth injectée avec porte de marge (> 5 min) et CAS `updated_at` sur les persists de refresh, remplacement du fan-out ×4 par un batch mono-snapshot, écritures cache strictement vérifiées, et conversion des erreurs response-level Freebusy en throw typé — fermant l'empoisonnement vide sur les deux writers.
+
+## Architecture
+
+**Data flow (après)** :
+
+1. `keepTokenWarm(env)` (cron) — 1 lecture `google_oauth_tokens` (avec `updated_at`) → classée `ok` (client authentifié : valide / rafraîchi avec persist CAS / fall-through `setCredentials` gated à > 5 min de marge) | `transient` (échec select, échec refresh avec marge ≤ 5 min, expiry absent) | `auth-broken` (déinitif). Retourne `KeepwarmSession`.
+2. `loadAvailabilitySnapshot(oauth2Client, start, end)` (`google-calendar.ts`) — 1 lecture `manual_time_slots` + 1 Freebusy via la session injectée → `AvailabilitySnapshot` ; mock → zéro I/O ; échecs → erreurs typées (stage partagé).
+3. Dérivation pure ×4 — `generateSlotsForRange` + `filterSlotsByBusy` (exporté, déduplique les 3 copies) par `{mode} × {duration}`.
+4. `setCachedAvailability(key, slots, ttl)` → `CacheWriteResult` ; init Blobs échouée = `failed`, promise mémoïsé réinitialisé.
+5. Chemin patient inchangé hors : `getAvailableSlots` throw typé sur `calendars[id].errors` (→ 503, jamais d'écriture vide) ; persists de refresh CASés (cron + `getPersistedOAuthClient`).
+
+**File × Function map** :
+
+| Fichier | Fonctions | Arêtes |
+|---|---|---|
+| `src/lib/google-calendar.ts` | `getPersistedOAuthClient` (classement erreur, suppression bootstrap, CAS), `loadAvailabilitySnapshot` (new), `filterSlotsByBusy` (new export), `getAvailableSlots` (throw response-level), `KeepwarmSession`/`AvailabilitySnapshot` (types) | consommé par cron + availability |
+| `src/lib/calendar-cache.ts` | `setCachedAvailability` → `CacheWriteResult`, `getAvailabilityStore` (unpin) | cron + availability |
+| `netlify/functions/calendar-keepwarm.ts` | `keepTokenWarm` → `KeepwarmSession` (3 états, marge fall-through, CAS), `warmAvailabilityCache(session)` mono-snapshot + compteurs | orchestrateur seul |
+| `src/pages/api/availability.ts` | GET (dédup `filterSlotsByBusy`, aucun autre changement comportemental) | chemin patient |
+| `tests/fixtures/availability/*.json` | fixtures dorées pré-refactor (4 jeux × scénarios, DST 2026-10-25) | consommé par tests équivalence |
+
+## Bootstrap Context
+
+Source : spec #153 (approuvée, amendée après revue du plan). L'incident 02:20 est un **chemin de défaillance confirmé dans le code et l'hypothèse principale** — pas une cause racine prouvée par les logs (voir Context de la spec). Patterns de référence : seam DI `CalendarClientOptions` (`google-calendar.ts:141-146`, consommé `:587` — **attend un `calendar_v3.Calendar`, pas un OAuth2Client**), précédent PGRST116 (`manual-slots.ts:124`), persist-confirmé `.select().single()` (`calendar-keepwarm.ts:472-489`), tests horloge figée (`tests/unit/google-calendar.test.ts`).
+
+**Garde WSL (AGENTS.md)** : les agents ne lancent QUE des vitest ciblés `--maxWorkers=1` ; les gates complets (`npm run test:low` → lint → typecheck → build) sont lancés par le lead en séquence.
+
+## Agents
+
+| Instance | Tâches | Sujets | Fichiers |
+|---|---|---|---|
+| R-tester-A | T1, T8, T9 | fixtures, contract | tests/**, fixtures |
+| R-backend-dev-A | T2, T3, T10 | oauth | google-calendar.ts (auth/persist), calendar-keepwarm.ts (token) |
+| R-backend-dev-B | T4 | cache | calendar-cache.ts |
+| R-backend-dev-C | T5, T6, T7 | batch, availability | google-calendar.ts (snapshot), calendar-keepwarm.ts (warm-up), availability.ts |
+
+## Micro-Tasks
+
+### T1 — Fixtures dorées pré-refactor
+- **Description :** Capturer les 4 jeux `{mode}×{duration}` depuis l'implémentation ACTUELLE de `getAvailableSlots` (horloge figée `vi.setSystemTime`, auth/calendar mockés au niveau API — la capture ne dépend pas du path token), scénarios : manual slots lundi/mercredi, chevauchements busy partiels, semaine DST 2026-10-25. Commiter en JSON.
+- **Files :** `tests/fixtures/availability/*.json`, `tests/unit/availability-batch.test.ts` (squelette characterization)
+- **Verify :** `npx vitest run tests/unit/availability-batch.test.ts --maxWorkers=1` → characterization verte contre l'implémentation actuelle
+- **Agent :** R-tester-A · **Subject :** fixtures · **Trace :** SC4 · **Slice :** V2 (pré-requis) · **Phase :** GREEN (characterization) · **[P]** · **Difficulty :** 3
+
+### T2 — Classement d'erreur fetch + suppression du bootstrap env
+- **Description :** Distinguer échec de fetch (réseau/5xx/timeout → throw `CalendarNetworkError`, zéro écriture) de l'absence de ligne (PGRST116 → retourne `null`, **bootstrap env supprimé**, warn de dépréciation si `GOOGLE_OAUTH_REFRESH_TOKEN` existe encore). Aucune écriture de table depuis un chemin de lecture.
+- **Files :** `src/lib/google-calendar.ts` (~186-206), `tests/unit/google-calendar.test.ts` (RED d'abord : oracles SC1)
+- **Snippet :** `const { data: tokens, error } = await …single(); if (error && error.code !== 'PGRST116') throw new CalendarNetworkError(…); if (!tokens) { if (process.env.GOOGLE_OAUTH_REFRESH_TOKEN) logger.warn('bootstrap env supprimé — reconnecter via /api/admin/google-oauth'); return null; }`
+- **Verify :** `npx vitest run tests/unit/google-calendar.test.ts --maxWorkers=1` → oracles SC1 verts (504 → throw + 0 écriture espionnée ; PGRST116 → null + warn, 0 écriture)
+- **Agent :** R-backend-dev-A · **Subject :** oauth · **Trace :** SC1 · **Slice :** V1 · **Phase :** RED→GREEN · **[P]** · **Difficulty :** 3
+
+### T3 — KeepwarmSession (3 états, porte de marge) + injection
+- **Description :** `keepTokenWarm` retourne `KeepwarmSession` : `ok` + client authentifié (valide/rafraîchi/**fall-through** `setCredentials({access_token, refresh_token, expiry_date})` **gated** : marge > `WARMUP_MIN_TOKEN_VALIDITY_MS = EAGER_REFRESH_THRESHOLD_MS + 60_000` (6 min — le seuil eager 5 min seul ne suffit pas : la latence du snapshot entre contrôle et Freebusy peut repasser le token sous le seuil) ; sinon `transient`), `transient` (échec select ; échec refresh avec marge ≤ seuil ; `expiry_date` absent), `auth-broken` (inchangé). Construire UN `calendar_v3.Calendar` depuis la session (`google.calendar({ version: 'v3', auth: sessionClient })`) et le threader dans les 4 appels `getAvailableSlots` via `options.calendar` (**l'option attend un Calendar, pas un OAuth2Client**) — transitoire, supprimé en T6. Cas testés aux bornes : 6 min + 1 ms → ok, 6 min → transient, 4 min → transient, expiré → transient, sans expiry → transient.
+- **Files :** `src/lib/google-calendar.ts` (type), `netlify/functions/calendar-keepwarm.ts`, `tests/unit/calendar-keepwarm.test.ts` (RED d'abord : SC2 — credentials du fall-through, compteur d'appels endpoint token ≤ 1 via mock HTTP, 5 cas de marge)
+- **Verify :** `npx vitest run tests/unit/calendar-keepwarm.test.ts --maxWorkers=1` → SC2 vert
+- **Agent :** R-backend-dev-A · **Subject :** oauth · **Trace :** SC2 · **Slice :** V1 · **Phase :** RED→GREEN · **Difficulty :** 4
+
+### T4 — CacheWriteResult + store non épinglé
+- **Description :** `setCachedAvailability` → `'written' | 'skipped-no-store' | 'failed'` ; init Blobs échouée → `'failed'` ; le catch d'init réinitialise le promise mémoïsé ; garde mock inchangé.
+- **Files :** `src/lib/calendar-cache.ts`, `tests/unit/calendar-cache.test.ts` (créer ; RED d'abord : SC6)
+- **Verify :** `npx vitest run tests/unit/calendar-cache.test.ts --maxWorkers=1` → SC6 verts (échec écriture → `failed` ; init échoue puis réussit → écrit au 2e appel)
+- **Agent :** R-backend-dev-B · **Subject :** cache · **Trace :** SC6 · **Slice :** V3 · **Phase :** RED→GREEN · **[P]** · **Difficulty :** 3
+
+### T5 — loadAvailabilitySnapshot + filterSlotsByBusy + throw response-level
+- **Description :** `loadAvailabilitySnapshot(oauth2Client, start, end)` : 1 `fetchManualSlots` + 1 Freebusy direct, mock → `{∅, []}` sans I/O, `calendars[id].errors` → erreur typée de stage partagé. Exporter `filterSlotsByBusy` pur. Dans `getAvailableSlots` : erreur response-level → throw typé.
+- **Files :** `src/lib/google-calendar.ts`, `tests/unit/google-calendar.test.ts` (RED : oracles SC5 côté lib)
+- **Verify :** `npx vitest run tests/unit/google-calendar.test.ts --maxWorkers=1` → SC5-lib verts
+- **Agent :** R-backend-dev-C · **Subject :** batch · **Trace :** SC3, SC5 · **Slice :** V2 · **Phase :** RED→GREEN · **Difficulty :** 4
+
+### T6 — warmAvailabilityCache mono-snapshot
+- **Description :** Remplacer le fan-out par : 1 snapshot (échec → stage partagé, 0 écriture, entrées préservées, log nommé) → dérivation pure ×4 → écritures strictes → log `{computed, written, failed}`. Supprime le threading transitoire de T3.
+- **Files :** `netlify/functions/calendar-keepwarm.ts`, `tests/unit/calendar-keepwarm.test.ts` (mocks compteurs : 1 lecture manual + 1 Freebusy)
+- **Verify :** `npx vitest run tests/unit/calendar-keepwarm.test.ts --maxWorkers=1` → SC3 vert (compteurs 1/1/1)
+- **Agent :** R-backend-dev-C · **Subject :** batch · **Trace :** SC3, SC6 · **Slice :** V2 · **Phase :** GREEN · **Difficulty :** 4
+
+### T7 — availability.ts : dédup + zéro écriture vide
+- **Description :** Remplacer le `filterSlotsByBusy` local par l'export partagé ; erreur typée → 503 existant SANS écriture ; dégradation gracieuse conservée.
+- **Files :** `src/pages/api/availability.ts`
+- **Verify :** typecheck ciblé + lecture croisée (test de contrat écrit en T8)
+- **Agent :** R-backend-dev-C · **Subject :** availability · **Trace :** SC5 (patient), SC7 · **Slice :** V3 · **Phase :** GREEN · **Difficulty :** 2
+
+### T8 — Tests d'équivalence + contrat /api/availability
+- **Description :** Équivalence : dérivation pure vs fixtures T1 (deep-equal, horloge figée, DST 2026-10-25, chemin de succès uniquement). Contrat : clés, shape `{slots}`, `Cache-Control: no-store`, 503 sur erreur typée sans écriture, échec d'écriture cache non fatal.
+- **Files :** `tests/unit/availability-batch.test.ts`, `tests/unit/availability-api.test.ts` (créer)
+- **Verify :** `npx vitest run tests/unit/availability-batch.test.ts tests/unit/availability-api.test.ts --maxWorkers=1` → SC4, SC7 verts
+- **Agent :** R-tester-A · **Subject :** contract · **Trace :** SC4, SC7 · **Slice :** V2/V3 · **Phase :** GREEN · **Difficulty :** 3
+
+### T9 — RED-GATE sentinelle de fin
+- **Description :** Suite ciblée complète verte (5 fichiers de tests) + garde structurel **ciblé au corps de `warmAvailabilityCache`** (extraction de la fonction puis absence d'appel `getAvailableSlots(` dedans — pas de grep global qui compterait imports/commentaires) + couverture du budget amont par les tests compteurs SC3.
+- **Files :** aucun (verifs seulement)
+- **Verify :** `npx vitest run tests/unit/google-calendar.test.ts tests/unit/calendar-keepwarm.test.ts tests/unit/calendar-cache.test.ts tests/unit/availability-batch.test.ts tests/unit/availability-api.test.ts --maxWorkers=1` + extraction du corps de `warmAvailabilityCache` (awk) → 0 occurrence de `getAvailableSlots(`
+- **Agent :** R-tester-A · **Subject :** contract · **Trace :** toutes SC · **Slice :** V1-V3 · **Phase :** RED-GATE · **Difficulty :** 2
+
+### T10 — CAS updated_at sur les persists de refresh
+- **Description :** Tout persist de refresh — cron `keepTokenWarm` ET `getPersistedOAuthClient` (patient) — matche `.eq('updated_at', <valeur lue>)`. **Miss = PGRST116 (0 ligne matchée)** → relecture + log « CAS miss — ligne récente préservée », exécution continue sur credentials en mémoire ; **erreur 5xx/timeout sur l'UPDATE conditionnel = erreur infra transitoire** → relecture de réconciliation, jamais logguée comme collision. Le select initial lit `updated_at` ; lecture croisée préalable : toutes les écritures de la table (callback reconnexion inclus) bumpent `updated_at`. Le callback de reconnexion reste sans condition.
+- **Files :** `src/lib/google-calendar.ts`, `netlify/functions/calendar-keepwarm.ts`, `tests/unit/google-calendar.test.ts` + `tests/unit/calendar-keepwarm.test.ts` (RED d'abord : oracles SC8 — course v1-lu/v2-écrit, UPDATE 5xx ≠ collision)
+- **Verify :** `npx vitest run tests/unit/google-calendar.test.ts tests/unit/calendar-keepwarm.test.ts --maxWorkers=1` → SC8 vert (v2 préservée, CAS-miss loggé, 5xx → réconciliation, les deux writers)
+- **Agent :** R-backend-dev-A · **Subject :** oauth · **Trace :** SC8 · **Slice :** V1 · **Phase :** RED→GREEN · **Difficulty :** 3
+
+## Wave Structure
+
+5 vagues, max 3 agents ∥ (wave 1). Le séquentiel domine : `google-calendar.ts` et `calendar-keepwarm.ts` sont partagés entre instances.
+
+| Wave | Trigger | Agents | Tasks |
+|------|---------|--------|-------|
+| 1 | start | 3 ∥ | R-tester-A: T1 · R-backend-dev-A: T2 · R-backend-dev-B: T4 |
+| 2 | T2 done | 1 | R-backend-dev-A: T3 |
+| 3 | T3 done | 1 | R-backend-dev-A: T10 |
+| 4 | T10 done | 1 | R-backend-dev-C: T5→T6→T7 |
+| 5 | T7 done | 1 | R-tester-A: T8→T9 |
+| 6 (lead) | T9 done | 1 (lead) | Gates finaux séquentiels : `npm run test:low` → `npm run lint` → `npm run typecheck` → `npm run build` — jamais dans un agent (garde WSL) |
+
+### Budget — per task
+
+| Task | Items | Class | Est. ops | Split? |
+|------|-------|-------|----------|--------|
+| T1 | 4 | judgmental | 5 | — |
+| T2 | 3 | judgmental | 5 | — |
+| T3 | 4 | judgmental | 6 | — |
+| T4 | 3 | judgmental | 4 | — |
+| T5 | 4 | judgmental | 6 | — |
+| T6 | 3 | judgmental | 5 | — |
+| T7 | 2 | bounded | 3 | — |
+| T8 | 4 | judgmental | 5 | — |
+| T9 | 2 | bounded | 2 | — |
+| T10 | 3 | judgmental | 4 | — |
+
+**Total estimé : 45 ops**
+
+### Budget — per agent instance
+
+| Instance | Tasks | Σ ops | Subjects | Split? |
+|----------|-------|-------|----------|--------|
+| R-tester-A | T1, T8, T9 | 12 | fixtures, contract | — |
+| R-backend-dev-A | T2, T3, T10 | 15 | oauth | — |
+| R-backend-dev-B | T4 | 4 | cache | — |
+| R-backend-dev-C | T5, T6, T7 | 14 | batch, availability | — |
+
+## Consistency Report
+
+- **Covered :** 8/8 SC — SC1→T2 · SC2→T3 · SC3→T5/T6 · SC4→T1/T8 · SC5→T5/T7 · SC6→T4/T6 · SC7→T7/T8 · SC8→T10 ; U1→T7/T8 ; N1→T3/T10 · N2/N3→T5 · N4→T4 · N5→T6.
+- **Uncovered :** néant.
+- **Untraced :** T9 (sentinelle RED-GATE, trace = toutes SC).
+- **Exemptions :** néant.
+
+## Task Seeding Blueprint
+
+<!-- Used by /R-dev-implement to seed TaskCreate calls on session start.
+     Format: T{n} | agent-instance | blockedBy | subject -->
+
+### Wave 1 — no deps, 3 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T1 | R-tester-A | — | fixtures |
+| T2 | R-backend-dev-A | — | oauth |
+| T4 | R-backend-dev-B | — | cache |
+
+### Wave 2 — after T2, 1 agent
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T3 | R-backend-dev-A | T2 | oauth |
+
+### Wave 3 — after T3, 1 agent
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T10 | R-backend-dev-A | T3 | oauth |
+
+### Wave 4 — after T10, 1 agent
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T5 | R-backend-dev-C | T10 | batch |
+| T6 | R-backend-dev-C | T5 | batch |
+| T7 | R-backend-dev-C | T6 | availability |
+
+### Wave 5 — after T7, 1 agent
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T8 | R-tester-A | T7 | contract |
+| T9 | R-tester-A | T8 | contract |
+
+## Task IDs
+
+<!-- Generated by /R-dev-plan. Used by /R-dev-implement to resume tasks on session restart.
+     Host: portable todo list (no durable IDs) — T-numbers are the SSoT; agent instances
+     and waves per the Task Seeding Blueprint above. -->
+- T1: fixtures — R-tester-A — Wave 1
+- T2: oauth (classement fetch + suppression bootstrap) — R-backend-dev-A — Wave 1
+- T3: oauth (KeepwarmSession + marge 6 min + injection Calendar) — R-backend-dev-A — Wave 2
+- T4: cache (CacheWriteResult + unpin) — R-backend-dev-B — Wave 1
+- T5: batch (snapshot + filterSlotsByBusy + throw response-level) — R-backend-dev-C — Wave 4
+- T6: batch (warm-up mono-snapshot + compteurs) — R-backend-dev-C — Wave 4
+- T7: availability (dédup + zéro écriture vide) — R-backend-dev-C — Wave 4
+- T8: contract (équivalence fixtures + contrat API) — R-tester-A — Wave 5
+- T9: RED-GATE (sentinelle de fin) — R-tester-A — Wave 5
+- T10: oauth (CAS updated_at, miss vs infra) — R-backend-dev-A — Wave 3

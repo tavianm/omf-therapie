@@ -14,11 +14,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 //   3. invalid_grant handling — token revoked → admin alert email via Resend,
 //      and the run aborts BEFORE the availability warm-up (V2 scope).
 //
-// V2 warm-up scope (warmAvailabilityCache, issue #132 / T6): its own describe
-// block below drives the handler with a valid token row and asserts the cache
-// writes through the REAL src/lib/calendar-cache.ts (only the @netlify/blobs
-// leaf is mocked). RED by design until T6 lands — the warm-up tests fail at
-// assertion level (zero getAvailableSlots / setJSON calls) while V1 stays green.
+// V2 warm-up scope (warmAvailabilityCache, issue #153 / T6): its own describe
+// block below drives the handler with a valid token row and asserts the
+// mono-snapshot contract — ONE loadAvailabilitySnapshot (1 manual read +
+// 1 Freebusy), pure derivation ×4, strict {computed, written, failed}
+// telemetry — through the REAL src/lib/google-calendar + calendar-cache
+// (I/O mocked at the leaves: manual-slots, googleapis, @netlify/blobs).
 //
 // Mock strategy mirrors tests/unit/cron-handlers.test.ts exactly: `withMonitor`
 // is a passthrough that invokes the callback immediately (so the monitor
@@ -79,24 +80,60 @@ const EMPTY_RESULT = {
   statusText: 'OK',
 } as const;
 
-// Fixture slot returned by the file-wide getAvailableSlots mock (V2 warm-up).
-const MOCK_SLOT = {
-  start: '2030-01-02T10:00:00+01:00',
-  end: '2030-01-02T11:00:00+01:00',
-  available: true,
-} as const;
+// Fixture slot is gone with the fan-out: T6's warm-up writes REAL slots
+// derived by the pure engine, asserted against an in-test recomputation.
 
 // Supabase client factory: chainable + thenable builder whose terminal calls
 // (`.single()` / `.maybeSingle()` / awaited-then) resolve via `supabaseQuery`,
 // so per-test seeding is a `supabaseQuery.mockResolvedValueOnce({ data })`.
 const supabaseQuery = vi.fn(async () => ({ ...EMPTY_RESULT }));
+// Every `.eq(...)` argument tuple across all chains — the SC8 CAS tests assert
+// the UPDATE was conditioned on `.eq('updated_at', <value read>)`.
+const supabaseEqCalls: Array<unknown[]> = [];
+// Verb-aware recording (revue #154): `.eq(...)` tuples are attributed to the
+// statement they actually condition — the flattened builder previously let a
+// CAS assertion be satisfied by the SELECT's own `.eq('id', 'therapist')`.
+const supabaseUpdateEqCalls: Array<unknown[]> = [];
+// The SET payload of every update() call, in order.
+const supabaseUpdatePayloads: Array<unknown> = [];
+// Run-deadline signals seen by the chains (revue #154): production chains
+// `.abortSignal(deadline.signal)` before the terminal call, so recording the
+// signal lets tests bind a stalled I/O leaf to the very AbortController the
+// run deadline armed.
+const supabaseAbortSignals: Array<unknown> = [];
 const supabaseFrom = vi.fn(() => {
+  let lastVerb: 'select' | 'insert' | 'update' | 'delete' | null = null;
   const chain = {
-    select: vi.fn(() => chain),
-    insert: vi.fn(() => chain),
-    update: vi.fn(() => chain),
-    delete: vi.fn(() => chain),
-    eq: vi.fn(() => chain),
+    select: vi.fn(() => {
+      lastVerb = 'select';
+      return chain;
+    }),
+    insert: vi.fn((..._args: unknown[]) => {
+      lastVerb = 'insert';
+      return chain;
+    }),
+    update: vi.fn((...args: unknown[]) => {
+      lastVerb = 'update';
+      supabaseUpdatePayloads.push(args[0]);
+      return chain;
+    }),
+    delete: vi.fn(() => {
+      lastVerb = 'delete';
+      return chain;
+    }),
+    eq: vi.fn((...args: unknown[]) => {
+      supabaseEqCalls.push(args);
+      if (lastVerb === 'update') supabaseUpdateEqCalls.push(args);
+      return chain;
+    }),
+    // Run-deadline plumbing (revue #154): production chains
+    // `.abortSignal(signal)` before the terminal call on every keepwarm
+    // supabase statement — the mock accepts it AND records the signal so the
+    // global-abort tests can stall a leaf until the deadline fires.
+    abortSignal: vi.fn((signal?: unknown) => {
+      supabaseAbortSignals.push(signal);
+      return chain;
+    }),
     neq: vi.fn(() => chain),
     gt: vi.fn(() => chain),
     gte: vi.fn(() => chain),
@@ -137,12 +174,11 @@ vi.mock('resend', () => {
 });
 
 // googleapis: keepwarm instantiates `new google.auth.OAuth2(...)`, calls
-// `setCredentials`, then `refreshAccessToken()`. NOTE: `freebusyQuery` is
-// retained as a refresh-path leaf only — it is NO LONGER a valid "warm-up did
-// NOT run" signal, because src/lib/google-calendar is mocked file-wide (see
-// below): a RUNNING warm-up would never reach googleapis, so a freebusy
-// assertion would pass even when the warm-up runs (tautology). The guard test
-// asserts on the google-calendar getAvailableSlots spy instead.
+// `setCredentials`, then `refreshAccessToken()`. Since T6 (issue #153) the
+// google.calendar FACTORY is consumed by the REAL loadAvailabilitySnapshot —
+// the cron no longer builds a calendar itself — so the factory returns a
+// counting Freebusy fake and freebusy.query IS the valid warm-up I/O
+// observable again (no file-wide google-calendar mock anymore).
 const googleMocks = vi.hoisted(() => ({
   refreshAccessToken: vi.fn(async () => ({
     credentials: {
@@ -153,8 +189,17 @@ const googleMocks = vi.hoisted(() => ({
   })),
   setCredentials: vi.fn(),
   freebusyQuery: vi.fn(async () => ({
-    data: { calendars: {} },
+    // Healthy Freebusy response: the requested calendar entry MUST be present
+    // with a structurally valid busy array (strict fail-closed contract — a
+    // missing entry now throws a typed shared-stage error).
+    data: { calendars: { primary: { busy: [] } } },
     error: null,
+  })),
+  // T6 (issue #153): ONE calendar built by the snapshot loader from the
+  // ok-session client — captured here so tests can assert the construction
+  // AND that the client carries the session's credentials.
+  calendar: vi.fn(() => ({
+    freebusy: { query: googleMocks.freebusyQuery },
   })),
 }));
 vi.mock('googleapis', () => {
@@ -162,35 +207,43 @@ vi.mock('googleapis', () => {
     google: {
       auth: {
         OAuth2: class {
+          // Mirrors google-auth-library's setCredentials contract (REPLACE,
+          // not merge) so tests can observe `client.credentials` identity.
+          credentials: Record<string, unknown> = {};
           constructor(
             _clientId?: string,
             _clientSecret?: string,
             _redirectUri?: string,
           ) {}
-          setCredentials = googleMocks.setCredentials;
+          setCredentials = (creds: Record<string, unknown>) => {
+            googleMocks.setCredentials(creds);
+            this.credentials = { ...creds };
+          };
           refreshAccessToken = googleMocks.refreshAccessToken;
         },
       },
-      calendar: vi.fn(() => ({
-        freebusy: { query: googleMocks.freebusyQuery },
-      })),
+      calendar: googleMocks.calendar,
     },
   };
 });
 
-// src/lib/google-calendar is mocked FILE-WIDE with an injectable
-// getAvailableSlots spy. The specifier is resolved relative to THIS test
-// file — vitest intercepts by resolved module ID, so the cron's own import
-// (any specifier style, e.g. '../../src/lib/google-calendar.js') is captured.
-// This is the ONLY valid observable for "did the warm-up run": see the
-// googleapis note above for why the freebusy leaf became tautological once
-// this mock exists.
-const googleCalendar = vi.hoisted(() => ({
-  getAvailableSlots: vi.fn(),
+// Manual-slots mock at its module boundary (same idiom as
+// tests/unit/availability-batch.test.ts): the mono-snapshot's manual read is
+// counted / failure-seeded here, never through the DB. src/lib/google-calendar
+// is NOT mocked — the cron exercises the REAL loadAvailabilitySnapshot + the
+// REAL pure derivation, with every I/O leaf mocked (manual-slots here,
+// googleapis freebusy above, supabase for the token step).
+const manualSlotsApi = vi.hoisted(() => ({
+  fetchManualSlots: vi.fn(
+    async (
+      _from: Date,
+      _to: Date,
+    ): Promise<Array<Record<string, unknown>>> => [],
+  ),
 }));
 
-vi.mock('../../src/lib/google-calendar', () => ({
-  getAvailableSlots: googleCalendar.getAvailableSlots,
+vi.mock('@/lib/manual-slots', () => ({
+  fetchManualSlots: manualSlotsApi.fetchManualSlots,
 }));
 
 // `@react-email/render` backs the CalendarAuthAlert email rendered on the
@@ -302,10 +355,12 @@ vi.mock('@netlify/blobs', () => ({
 // ---------------------------------------------------------------------------
 import keepwarmHandler, {
   shouldRefreshToken,
+  warmAvailabilityCache,
 } from '../../netlify/functions/calendar-keepwarm';
 // REAL calendar-cache (only its @netlify/blobs leaf is mocked above) — used
 // to compute the expected `available:{mode}:{duration}:4w:{weekStart}` keys.
 import { buildAvailabilityCacheKey } from '../../src/lib/calendar-cache';
+import type { TimeSlot } from '../../src/lib/google-calendar';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -315,12 +370,15 @@ import { buildAvailabilityCacheKey } from '../../src/lib/calendar-cache';
 const ADMIN_EMAIL_TEST = 'admin@test.omf';
 
 /** Seeds the `google_oauth_tokens` row returned by the `.single()` read. */
-function seedTokenRow(expiryDate: number | null): void {
+function seedTokenRow(
+  expiryDate: number | null,
+  accessToken: string = 'ya29.old',
+): void {
   supabaseQuery.mockResolvedValueOnce({
     ...EMPTY_RESULT,
     data: {
       refresh_token: '1//persisted-rt',
-      access_token: 'ya29.old',
+      access_token: accessToken,
       expiry_date: expiryDate,
     },
   });
@@ -335,8 +393,8 @@ function invalidGrantError(): Error {
 
 /**
  * Gaxios-like transient refresh error carrying raw config/response payloads
- * (fake secrets): pins that only err.message — never the payload objects —
- * reaches Sentry on the transient path.
+ * (fake secrets): pins that no raw error content reaches Sentry or logs on
+ * the transient path.
  */
 function transientRefreshError(): Error {
   return Object.assign(new Error('network glitch'), {
@@ -353,6 +411,16 @@ function stateStoreWriteKeys(): string[] {
     ...blobsStore.stateStore.setJSON.mock.calls.map(c => c[0] as string),
     ...blobsStore.stateStore.set.mock.calls.map(c => c[0] as string),
   ];
+}
+
+/**
+ * The cron's logger.warn/info/error lines, observed through the Sentry
+ * breadcrumb each emits (PUBLIC_SENTRY_DSN is stubbed in beforeEach).
+ */
+function breadcrumbMessages(): string[] {
+  return sentry.addBreadcrumb.mock.calls.map(
+    call => (call[0] as { message?: string }).message ?? '',
+  );
 }
 
 /**
@@ -389,6 +457,10 @@ function resetMocks(): void {
   supabaseFrom.mockClear();
   supabaseQuery.mockClear();
   supabaseQuery.mockResolvedValue({ ...EMPTY_RESULT });
+  supabaseEqCalls.length = 0;
+  supabaseUpdateEqCalls.length = 0;
+  supabaseUpdatePayloads.length = 0;
+  supabaseAbortSignals.length = 0;
 
   resendSend.mockClear();
   resendSend.mockResolvedValue({ data: { id: 're_123' }, error: null });
@@ -403,17 +475,18 @@ function resetMocks(): void {
   });
   googleMocks.setCredentials.mockClear();
   googleMocks.freebusyQuery.mockClear();
+  googleMocks.calendar.mockClear();
   googleMocks.freebusyQuery.mockResolvedValue({
-    data: { calendars: {} },
+    data: { calendars: { primary: { busy: [] } } },
     error: null,
   });
 
-  // V2 warm-up + B4 cooldown mocks: google-calendar spy + @netlify/blobs
+  // V2 warm-up + B4 cooldown mocks: manual-slots counter + @netlify/blobs
   // stores. reset() re-arms the write-through get/set implementations (a
   // fail-open test may have replaced them with mockRejectedValue) and clears
   // BOTH stores' in-memory data so cooldown state never leaks between tests.
-  googleCalendar.getAvailableSlots.mockReset();
-  googleCalendar.getAvailableSlots.mockResolvedValue([MOCK_SLOT]);
+  manualSlotsApi.fetchManualSlots.mockReset();
+  manualSlotsApi.fetchManualSlots.mockResolvedValue([]);
 
   blobsStore.reset();
 }
@@ -434,6 +507,14 @@ beforeEach(() => {
     'https://developers.google.com/oauthplayground',
   );
   vi.stubEnv('ADMIN_EMAIL', ADMIN_EMAIL_TEST);
+  // Simulate the Netlify runtime's Blobs context (revue #154): the cron only
+  // ever runs on Netlify, and calendar-cache now skips init entirely (and
+  // maps writes to 'skipped-no-store') when the context is absent — without
+  // this stub every warm-up write assertion would see zero store writes.
+  vi.stubEnv(
+    'NETLIFY_BLOBS_CONTEXT',
+    JSON.stringify({ siteID: 'test-site', token: 'test-token' }),
+  );
   // T6's warm-up gates on GOOGLE_CALENDAR_ID (warn-and-continue in V1), and
   // calendar-cache's store lookup on GOOGLE_CALENDAR_MOCK. afterEach's
   // unstubAllEnvs() reverts the setup.ts stubs (and .env sets MOCK=true), so
@@ -513,9 +594,8 @@ describe('calendar-keepwarm handler wiring', () => {
     // vi.mock registrations survive resetModules, so the re-imported graph
     // still lands on the hoisted sentry spies.
     vi.resetModules();
-    const { default: freshHandler } = await import(
-      '../../netlify/functions/calendar-keepwarm'
-    );
+    const { default: freshHandler } =
+      await import('../../netlify/functions/calendar-keepwarm');
     sentry.init.mockClear();
     sentry.withMonitor.mockClear();
     // Still-valid token → the wrapped work function resolves cleanly.
@@ -547,7 +627,7 @@ describe('env guard alerting (W1)', () => {
 
     expectErrorLevelCaptureMessage();
     // The run aborted before any warm-up work.
-    expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
   });
 
   it("captures a Sentry 'error'-level message and skips the run when a GOOGLE_OAUTH credential is missing", async () => {
@@ -556,7 +636,7 @@ describe('env guard alerting (W1)', () => {
     await expect(keepwarmHandler()).resolves.toBeUndefined();
 
     expectErrorLevelCaptureMessage();
-    expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
   });
 });
 
@@ -600,13 +680,11 @@ describe('calendar-keepwarm invalid_grant handling', () => {
     // branch (the alert went out) — otherwise the assertion below would pass
     // vacuously on an early return.
     expect(resendSend).toHaveBeenCalledTimes(1);
-    // Primary warm-up signal: src/lib/google-calendar is mocked FILE-WIDE
-    // (getAvailableSlots spy), so this assertion observes the cron's warm-up
-    // import regardless of its specifier style. The previous leaf-level
-    // signal (googleapis freebusy.query) was retired: once google-calendar is
-    // mocked, a RUNNING warm-up could never reach googleapis, so that
-    // assertion would pass even when the warm-up runs — a tautology.
-    expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
+    // Primary warm-up signal: src/lib/google-calendar is NOT mocked anymore,
+    // so a RUNNING warm-up would issue exactly ONE Freebusy query through the
+    // googleapis factory fake and write 4 cache keys. Zero on both = skipped.
+    expect(googleMocks.freebusyQuery).not.toHaveBeenCalled();
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
     // B4: this run must also ARM the alert cooldown — the 10-minute cadence
     // must not re-alert every run while the token stays revoked. The state
     // store's spies are cleared per test, so this observes THIS run only;
@@ -638,7 +716,6 @@ describe('warm-up fall-through contract (B1/B2/W2)', () => {
     // attributable to the no-row guard and not an earlier env abort.
     expect(supabaseQuery).toHaveBeenCalled();
     expect(googleMocks.refreshAccessToken).not.toHaveBeenCalled();
-    expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
     expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
     // Auth-broken on EVERY run while the cron monitor stays green — the
     // capture is the durable signal (same invariant as the env guards).
@@ -670,14 +747,18 @@ describe('warm-up fall-through contract (B1/B2/W2)', () => {
       'error',
     );
     expect(googleMocks.refreshAccessToken).not.toHaveBeenCalled();
-    expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
   });
 
   it('still runs the warm-up (4 writes) when refresh fails with a NON-invalid_grant error', async () => {
-    // Spec edge-case row 2: a transient refresh failure must not disable the
-    // warm-up — log + proceed. RED-until-impl: the pre-rework code returns.
-    seedTokenRow(Date.now() - 60_000); // expired → refresh is attempted
-    googleMocks.refreshAccessToken.mockRejectedValueOnce(transientRefreshError());
+    // Spec edge-case row 2 (SC2 rework): a transient refresh failure must not
+    // disable the warm-up as long as the PERSISTED token keeps > 6 min of
+    // validity (the fall-through margin gate). 10 min → refresh fires
+    // (< 15 min) AND the fall-through is admitted (> 6 min).
+    seedTokenRow(Date.now() + 10 * 60_000);
+    googleMocks.refreshAccessToken.mockRejectedValueOnce(
+      transientRefreshError(),
+    );
 
     await expect(keepwarmHandler()).resolves.toBeUndefined();
 
@@ -685,7 +766,8 @@ describe('warm-up fall-through contract (B1/B2/W2)', () => {
     expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
     // A transient failure is NOT invalid_grant — no admin alert email.
     expect(resendSend).not.toHaveBeenCalled();
-    expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
+    // The warm-up ran on the fall-through session: ONE snapshot, 4 writes.
+    expect(googleMocks.freebusyQuery).toHaveBeenCalledTimes(1);
     expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
     // Sanitized capture contract: exactly one capture, a plain Error whose
     // message starts with the static prefix and never embeds the raw payload
@@ -694,31 +776,49 @@ describe('warm-up fall-through contract (B1/B2/W2)', () => {
     const captured = sentry.captureException.mock.calls[0][0];
     expect(captured).toBeInstanceOf(Error);
     const capturedMessage = (captured as Error).message;
-    expect(
-      capturedMessage.startsWith('Google OAuth token refresh failed (transient): '),
-    ).toBe(true);
+    expect(capturedMessage).toContain(
+      'Google OAuth token refresh failed (transient) — fall-through on persisted token',
+    );
+    expect(capturedMessage).not.toContain('network glitch');
     expect(capturedMessage).not.toContain('RAW_CLIENT_SECRET');
     expect(capturedMessage).not.toContain('RAW_REFRESH_TOKEN');
+    const refreshBreadcrumb = sentry.addBreadcrumb.mock.calls.find(call =>
+      String((call[0] as { message?: string }).message ?? '').includes(
+        'token refresh failed (transient) — fall-through',
+      ),
+    );
+    expect(refreshBreadcrumb).toBeDefined();
+    expect(JSON.stringify(refreshBreadcrumb)).not.toContain('network glitch');
+    expect(JSON.stringify(refreshBreadcrumb)).not.toContain(
+      'RAW_CLIENT_SECRET',
+    );
   });
 
-  it('still runs the warm-up when the refreshed token persist verification matches zero rows (W2)', async () => {
+  it('preserves the newer row when the CAS-guarded persist matches zero rows (SC8 miss, was W2 zero-rows)', async () => {
     seedTokenRow(Date.now() - 60_000); // expired → refresh is attempted
-    // W2: the persist step verifies via .select('id').single(); the mock's
-    // second queued resolution is that verification. data: null = zero rows
-    // matched = persist failure → warn + proceed, NOT abort.
-    supabaseQuery.mockResolvedValueOnce({ ...EMPTY_RESULT, data: null });
+    // CAS (SC8): the persist confirm surfaces a zero-row conditional UPDATE
+    // as PGRST116 — a NEWER row exists (reconnexion or concurrent writer).
+    // The miss is BENIGN: log + reconciliation re-read + continue on the
+    // in-memory credentials — no longer a Sentry warning.
+    supabaseQuery.mockResolvedValueOnce({
+      ...EMPTY_RESULT,
+      data: null,
+      error: {
+        code: 'PGRST116',
+        message: 'JSON object requested, multiple (or no) rows returned',
+      },
+    });
+    // The reconciliation re-read resolves via the resetMocks default.
 
     await expect(keepwarmHandler()).resolves.toBeUndefined();
 
     expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
-    expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
     expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
-    // W2 observability: the run still succeeds ('ok'), so the monitor stays
-    // green — the recurring persist failure must surface in Sentry.
-    expect(sentry.captureMessage).toHaveBeenCalledWith(
-      expect.stringContaining('NOT confirmed persisted'),
-      'warning',
-    );
+    const logs = breadcrumbMessages().join('\n');
+    expect(logs).toContain('CAS miss — ligne récente préservée');
+    // A miss is a benign race outcome — no alert of any kind.
+    expect(sentry.captureMessage).not.toHaveBeenCalled();
+    expect(resendSend).not.toHaveBeenCalled();
   });
 
   it('still runs the warm-up when persisting the refreshed token errors (W2)', async () => {
@@ -735,7 +835,6 @@ describe('warm-up fall-through contract (B1/B2/W2)', () => {
     await expect(keepwarmHandler()).resolves.toBeUndefined();
 
     expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
-    expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
     expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
     // W2 observability: same contract as the zero-rows case above — the
     // failed persist is captured at 'warning' despite the green run.
@@ -743,6 +842,14 @@ describe('warm-up fall-through contract (B1/B2/W2)', () => {
       expect.stringContaining('NOT confirmed persisted'),
       'warning',
     );
+    const persistBreadcrumb = sentry.addBreadcrumb.mock.calls.find(call =>
+      String((call[0] as { message?: string }).message ?? '').includes(
+        'NOT confirmed persisted',
+      ),
+    );
+    expect(persistBreadcrumb).toBeDefined();
+    expect(JSON.stringify(persistBreadcrumb)).not.toContain('persist failed');
+    expect(JSON.stringify(persistBreadcrumb)).toContain('persistErrorCode');
   });
 
   it('runs the warm-up (4 writes) after a successful refresh AND persist — pins the refresh-branch coupling', async () => {
@@ -758,7 +865,6 @@ describe('warm-up fall-through contract (B1/B2/W2)', () => {
     // Non-tautological precondition: this really exercised the REFRESH branch
     // (the older warm-up tests only cover the still-valid shortcut).
     expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
-    expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
     expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
   });
 
@@ -771,136 +877,394 @@ describe('warm-up fall-through contract (B1/B2/W2)', () => {
     // Precondition: the run reached the refresh path — the warm-up skip is
     // attributable to the calendar-id guard, not an earlier abort.
     expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
-    expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
+    // Warm-up skipped BEFORE the shared snapshot: no Freebusy, no writes.
+    expect(googleMocks.freebusyQuery).not.toHaveBeenCalled();
     expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
   });
 });
 
 // ===========================================================================
-// warmAvailabilityCache (V2 warm-up, issue #132 / T6) — availability-cache
-// pre-fill after a healthy token step.
+// warmAvailabilityCache — mono-snapshot (issue #153 / T6, SC3/SC5/SC6)
 //
-// RED by design (test-first): until the cron implements the warm-up, these
-// tests fail at ASSERTION level (getAvailableSlots / setJSON never called)
-// while the V1 tests above stay green.
+// The T3-transitory ×4 fan-out (getAvailableSlots + {calendar} threading) is
+// REPLACED by the batch contract:
+//   SC3 — ONE loadAvailabilitySnapshot per run: exactly 1 manual_time_slots
+//         read + 1 Freebusy query + 1 google_oauth_tokens select (the token
+//         step's own), then a PURE derivation ×4 (generateSlotsForRange +
+//         filterSlotsByBusy) with dbBusy=[] — the patient read path re-applies
+//         live DB busy periods on every cache hit (N3, by design).
+//   SC5 — a snapshot failure (Freebusy response-level errors on an HTTP 200,
+//         transport failure, manual-slots read failure) performs ZERO cache
+//         writes and PRESERVES existing entries; the log names the failed
+//         stage. No invalid_grant alert from this path.
+//   SC6 — strict writes: the final log reports {computed, written, failed}
+//         where written counts ONLY confirmed writes.
 //
-// Contract under test (approved plan):
-//   - 4 combinations: {in-person, video} × {60, 90}
-//   - horizon: now → now + 28 days (weeks=4); dbBusyPeriods = [] because the
-//     patient read path re-applies live DB busy periods on a cache hit
-//   - writes via setCachedAvailability(key, slots, 900): TTL 900 s must
-//     outlast the 600 s cron cadence
-//   - one (mode, duration) lookup failing must not cancel the other writes
-//     (Promise.allSettled isolation)
-//
-// Keys + TTL are validated through the REAL src/lib/calendar-cache.ts — only
-// the @netlify/blobs leaf is mocked (see blobsStore above).
+// The cron runs the REAL src/lib/google-calendar (not mocked): its I/O leaves
+// are the mocked ones — manual-slots (counter), googleapis calendar factory +
+// freebusy (counter), supabase (token step). Keys + TTL go through the REAL
+// calendar-cache (only @netlify/blobs is faked).
 // ===========================================================================
 
-describe('warmAvailabilityCache (V2 warm-up)', () => {
+describe('warmAvailabilityCache — mono-snapshot (SC3/SC5/SC6)', () => {
   const WARM_MODES = ['in-person', 'video'] as const;
   const WARM_DURATIONS = [60, 90] as const;
   const FOUR_WEEKS_MS = 28 * 24 * 3600 * 1000;
 
   /** The 4 expected cache keys, built by the REAL calendar-cache key fn. */
-  function expectedCacheKeys(): string[] {
+  function expectedCacheKeys(from: Date): string[] {
     return WARM_MODES.flatMap(mode =>
       WARM_DURATIONS.map(duration =>
-        buildAvailabilityCacheKey(mode, duration, 4, new Date()),
+        buildAvailabilityCacheKey(mode, duration, 4, from),
       ),
     );
   }
 
-  it('writes the 4 cache keys {in-person,video}×{60,90} with TTL 900 s', async () => {
-    // Valid token far in the future → no refresh → flow reaches the V2 seam.
+  /** Breadcrumb log-field payloads for messages containing `fragment`. */
+  function breadcrumbData(fragment: string): Array<Record<string, unknown>> {
+    return sentry.addBreadcrumb.mock.calls
+      .filter(call =>
+        String((call[0] as { message?: string }).message ?? '').includes(
+          fragment,
+        ),
+      )
+      .map(
+        call =>
+          ((call[0] as { data?: Record<string, unknown> }).data ??
+            {}) as Record<string, unknown>,
+      );
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('SC3 healthy run: exactly 1 manual read + 1 Freebusy + 1 token select, then 4 confirmed writes', async () => {
+    // Still-valid token → no refresh → the run's ONLY supabase terminal call
+    // is keepTokenWarm's own token-row select.
     seedTokenRow(Date.now() + 60 * 60_000);
 
     await expect(keepwarmHandler()).resolves.toBeUndefined();
 
-    expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
+    // ONE shared snapshot = the whole run's upstream availability I/O.
+    expect(manualSlotsApi.fetchManualSlots).toHaveBeenCalledTimes(1);
+    expect(googleMocks.freebusyQuery).toHaveBeenCalledTimes(1);
+    // ONE calendar client, built by the snapshot loader from the session.
+    expect(googleMocks.calendar).toHaveBeenCalledTimes(1);
+    // ONE google_oauth_tokens select — the token step's own; the warm-up
+    // performs NO token lookup of its own.
+    expect(supabaseQuery).toHaveBeenCalledTimes(1);
+    // The 4 derived keys, written through the REAL calendar-cache key fn.
     expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
-
-    // Keys: exactly the {in-person,video}×{60,90} grid for the current week.
-    const writtenKeys = blobsStore.store.setJSON.mock.calls.map(c => c[0]);
-    expect(new Set(writtenKeys)).toEqual(new Set(expectedCacheKeys()));
-
-    // Payload + TTL: expiresAt = write time + 900_000 ms (TTL 900 s, which
-    // must outlast the 600 s cron cadence). The (840_000, 900_000] ms window
-    // excludes both the 600 s default and a 1800 s overshoot.
-    for (const call of blobsStore.store.setJSON.mock.calls) {
-      const entry = call[1] as { slots: unknown[]; expiresAt: number };
-      expect(entry.slots).toEqual([MOCK_SLOT]);
-      const remainingTtlMs = entry.expiresAt - Date.now();
-      expect(remainingTtlMs).toBeLessThanOrEqual(900_000);
-      expect(remainingTtlMs).toBeGreaterThan(900_000 - 60_000);
-    }
+    expect(new Set(blobsStore.store.setJSON.mock.calls.map(c => c[0]))).toEqual(
+      new Set(expectedCacheKeys(new Date())),
+    );
   });
 
-  it('calls getAvailableSlots with weeks=4 horizon (endDate ≈ now + 28 days) and empty DB busy periods', async () => {
+  it('SC6 telemetry: final log reports {computed: 4, written: 4, failed: 0} on a healthy run', async () => {
     seedTokenRow(Date.now() + 60 * 60_000);
-    const before = Date.now();
 
     await keepwarmHandler();
 
-    expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
-    const seenCombos = googleCalendar.getAvailableSlots.mock.calls.map(call => {
-      const [start, end, duration, mode, dbBusyPeriods] = call as [
-        Date,
-        Date,
-        number,
-        string,
-        Array<{ start: string; end: string }>,
-      ];
-      // start ≈ run time (few-second tolerance).
-      expect(start.getTime()).toBeGreaterThanOrEqual(before - 5_000);
-      expect(start.getTime()).toBeLessThanOrEqual(Date.now() + 5_000);
-      // Horizon: end − start ≈ 28 days (±1 min tolerance).
-      expect(
-        Math.abs(end.getTime() - start.getTime() - FOUR_WEEKS_MS),
-      ).toBeLessThanOrEqual(60_000);
-      // Duration is a number in {60, 90} (combo set asserted below).
-      expect(duration).toBeTypeOf('number');
-      // Patient read path re-applies live DB busy on cache hit → empty array.
-      expect(dbBusyPeriods).toEqual([]);
-      return `${mode}:${duration}`;
-    });
-    expect(seenCombos.sort()).toEqual([
-      'in-person:60',
-      'in-person:90',
-      'video:60',
-      'video:90',
-    ]);
+    const logs = breadcrumbData('availability cache warm-up complete');
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toEqual({ computed: 4, written: 4, failed: 0 });
   });
 
-  it('one key failing keeps the 3 other writes (Promise.allSettled isolation)', async () => {
+  it('SC6 telemetry: one cache write failing → {computed: 4, written: 3, failed: 1} — never a silent success', async () => {
     seedTokenRow(Date.now() + 60 * 60_000);
-    googleCalendar.getAvailableSlots.mockImplementation(
-      async (_start, _end, duration, mode) => {
-        if (mode === 'video' && duration === 90) {
-          throw new Error('boom — single (mode, duration) lookup fails');
-        }
-        return [MOCK_SLOT];
-      },
+    // Writes are sequential in {mode}×{duration} pair order — the FIRST write
+    // (in-person/60) fails; setCachedAvailability reports 'failed'.
+    blobsStore.store.setJSON.mockRejectedValueOnce(
+      new Error('blobs write failed'),
     );
 
-    // allSettled isolation: the single rejection must NOT propagate — the
-    // handler still resolves (Promise.all here would reject → test fails).
+    // The write failure is non-fatal: the run still resolves.
     await expect(keepwarmHandler()).resolves.toBeUndefined();
 
-    expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(3);
-    const writtenKeys = blobsStore.store.setJSON.mock.calls.map(c => c[0]);
-    const survivors = expectedCacheKeys().filter(
-      key => key !== buildAvailabilityCacheKey('video', 90, 4, new Date()),
-    );
-    expect(writtenKeys.sort()).toEqual(survivors.sort());
-    // Per-key failure capture: exactly the failing key, at 'warning'
-    // (beforeEach's resetMocks cleared the spy; the token step emitted no
-    // capture on this still-valid-token path).
-    expect(sentry.captureMessage).toHaveBeenCalledTimes(1);
+    // All 4 writes were ATTEMPTED — exactly one failed, three landed.
+    expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
+    const logs = breadcrumbData('availability cache warm-up complete');
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toEqual({ computed: 4, written: 3, failed: 1 });
+    // The failed key is reported at 'warning', never folded into a green
+    // 'warmed' count (the old telemetry's failure mode).
     expect(sentry.captureMessage).toHaveBeenCalledWith(
-      expect.stringContaining('video/90'),
+      expect.stringContaining('(in-person/60)'),
       'warning',
     );
+  });
+
+  it('SC5 cron: Freebusy 200 with calendars[id].errors → 0 writes, existing entries INTACT, stage-named log', async () => {
+    seedTokenRow(Date.now() + 60 * 60_000);
+    googleMocks.freebusyQuery.mockResolvedValue({
+      data: {
+        calendars: {
+          primary: {
+            errors: [{ domain: 'global', reason: 'notFound' }],
+          },
+        },
+      },
+    });
+    // Pre-existing warm entry — must SURVIVE the failed run untouched.
+    const protectedKey = 'available:in-person:60:4w:2026-09-07';
+    const protectedEntry = {
+      slots: [{ start: 's', end: 'e', available: true }],
+      expiresAt: Date.now() + 900_000,
+    };
+    await blobsStore.store.setJSON(protectedKey, protectedEntry);
+    blobsStore.store.setJSON.mockClear();
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(googleMocks.freebusyQuery).toHaveBeenCalledTimes(1);
+    // ZERO writes — the failure must never be persisted as empty availability.
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
+    // The existing entry is intact (never overwritten, never deleted).
+    expect(await blobsStore.store.get(protectedKey)).toEqual(protectedEntry);
+    // The log names the failed shared stage; Sentry carries it at 'warning'.
+    const stageLogs = breadcrumbData('availability snapshot failed');
+    expect(stageLogs).toHaveLength(1);
+    expect(String(stageLogs[0]?.['stage'])).toContain('availability-snapshot');
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('availability-snapshot'),
+      'warning',
+    );
+    // No invalid_grant alert from this path — token alerts stay in the step.
+    expect(resendSend).not.toHaveBeenCalled();
+  });
+
+  it('SC5 cron: manual-slots read failure → 0 writes, existing entries INTACT, stage-named log, NO Freebusy', async () => {
+    seedTokenRow(Date.now() + 60 * 60_000);
+    manualSlotsApi.fetchManualSlots.mockRejectedValue(
+      new Error('Failed to fetch manual slots: 504 Gateway timeout'),
+    );
+    const protectedKey = 'available:video:90:4w:2026-09-07';
+    const protectedEntry = {
+      slots: [{ start: 's', end: 'e', available: true }],
+      expiresAt: Date.now() + 900_000,
+    };
+    await blobsStore.store.setJSON(protectedKey, protectedEntry);
+    blobsStore.store.setJSON.mockClear();
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // Stage isolation: the Freebusy query never runs after a failed read.
+    expect(googleMocks.freebusyQuery).not.toHaveBeenCalled();
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
+    expect(await blobsStore.store.get(protectedKey)).toEqual(protectedEntry);
+    const stageLogs = breadcrumbData('availability snapshot failed');
+    expect(stageLogs).toHaveLength(1);
+    expect(String(stageLogs[0]?.['stage'])).toContain('availability-snapshot');
+    // Sanitized: the raw upstream message never reaches the Sentry capture.
+    const captured = String(sentry.captureMessage.mock.calls[0]?.[0] ?? '');
+    expect(captured).toContain('availability-snapshot');
+    expect(captured).not.toContain('Gateway timeout');
+    expect(resendSend).not.toHaveBeenCalled();
+  });
+
+  it('derives the 4 games from NON-EMPTY upstream data: payloads equal an INDEPENDENT oracle, ONE query with the 4-week horizon (frozen clock)', async () => {
+    // Anti-tautology contract (revue #154): the upstream snapshot is seeded
+    // with REAL data (a manual slot that flips Tuesday morning + a Freebusy
+    // busy overlap on Wednesday morning), and the expected payloads are
+    // computed by an INDEPENDENT oracle below — plain UTC+1 arithmetic per
+    // the spec (half-days 08:00–12:00 / 14:00–19:00 Paris, 30-min grid,
+    // 24 h notice, cabinet = mercredi ∪ manual, video = inverse, busy =
+    // strict overlap) — NOT by the production engine. If the cron ignored
+    // manual slots or busy periods, expected ≠ actual.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const NOW = new Date('2026-11-16T09:00:00.000Z'); // Monday; whole 4-week window is CET (UTC+1)
+    vi.setSystemTime(NOW);
+
+    // Upstream seeds — NON-EMPTY on both snapshot stages.
+    // Manual row: Tuesday 2026-11-17 MORNING flips cabinet-eligible (video
+    // loses that half-day, in-person gains it).
+    manualSlotsApi.fetchManualSlots.mockResolvedValue([
+      { slot_date: '2026-11-17', period: 'morning' },
+    ]);
+    // Freebusy busy: Wednesday 2026-11-18 10:15–11:15 Paris — overlaps and
+    // removes every Wednesday-morning in-person candidate ≥ the 24 h notice.
+    googleMocks.freebusyQuery.mockResolvedValue({
+      data: {
+        calendars: {
+          primary: {
+            busy: [
+              { start: '2026-11-18T09:15:00.000Z', end: '2026-11-18T10:15:00.000Z' },
+            ],
+          },
+        },
+      },
+      error: null,
+    });
+    seedTokenRow(Date.now() + 60 * 60_000);
+
+    // --- Independent oracle (revue #154): zero production functions. ---
+    const PARIS_OFFSET_MS = 60 * 60_000; // CET — no DST transition in the window
+    const DAY_MS = 24 * 3600_000;
+    const HALVES = [
+      { half: 'morning', start: 8 * 60, end: 12 * 60 },
+      { half: 'afternoon', start: 14 * 60, end: 19 * 60 },
+    ] as const;
+    const MANUAL: Record<string, string[]> = { '2026-11-17': ['morning'] };
+    const BUSY = [
+      {
+        start: Date.parse('2026-11-18T09:15:00.000Z'),
+        end: Date.parse('2026-11-18T10:15:00.000Z'),
+      },
+    ];
+
+    function oracleSlots(mode: 'in-person' | 'video', duration: 60 | 90): TimeSlot[] {
+      const nowMs = NOW.getTime();
+      const minStart = nowMs + 24 * 3600_000;
+      const endMs = nowMs + FOUR_WEEKS_MS;
+      // Paris-midnight anchors: shift to Paris wall clock, floor to a day,
+      // shift back — no Intl/timezone machinery involved.
+      const firstDay = new Date(nowMs + PARIS_OFFSET_MS);
+      firstDay.setUTCHours(0, 0, 0, 0);
+      const firstDayUtcMs = firstDay.getTime() - PARIS_OFFSET_MS;
+
+      const out: TimeSlot[] = [];
+      for (let day = 0; ; day++) {
+        const dayUtcMs = firstDayUtcMs + day * DAY_MS;
+        if (dayUtcMs >= endMs) break;
+        const dateStr = new Date(dayUtcMs + PARIS_OFFSET_MS)
+          .toISOString()
+          .slice(0, 10);
+        const weekday = new Date(`${dateStr}T00:00:00Z`).getUTCDay();
+        if (weekday === 0 || weekday === 6) continue; // Mon–Fri only
+        const wed = weekday === 3;
+        const periods = MANUAL[dateStr] ?? [];
+        const cabinet = {
+          morning: wed || periods.includes('all_day') || periods.includes('morning'),
+          afternoon:
+            wed || periods.includes('all_day') || periods.includes('afternoon'),
+        };
+        for (const { half, start, end } of HALVES) {
+          const eligible = mode === 'in-person' ? cabinet[half] : !cabinet[half];
+          if (!eligible) continue;
+          for (let m = start; ; m += 30) {
+            if (m + duration > end) break; // slot must END inside the half-day
+            const s = dayUtcMs + m * 60_000;
+            if (s >= minStart) {
+              out.push({
+                start: new Date(s).toISOString(),
+                end: new Date(s + duration * 60_000).toISOString(),
+                available: true,
+              });
+            }
+            if (m + 30 >= end) break;
+          }
+        }
+      }
+      // Busy filter — touching endpoints do NOT overlap (strict < / >).
+      return out.filter(slot => {
+        const st = Date.parse(slot.start);
+        const en = Date.parse(slot.end);
+        return !BUSY.some(b => st < b.end && en > b.start);
+      });
+    }
+
+    await keepwarmHandler();
+
+    const now = new Date();
+    const end = new Date(now.getTime() + FOUR_WEEKS_MS);
+    // ONE Freebusy query covering the run's exact 4-week horizon.
+    expect(googleMocks.freebusyQuery).toHaveBeenCalledTimes(1);
+    expect(googleMocks.freebusyQuery).toHaveBeenCalledWith({
+      requestBody: {
+        timeMin: now.toISOString(),
+        timeMax: end.toISOString(),
+        timeZone: 'Europe/Paris',
+        items: [{ id: 'primary' }],
+      },
+    });
+    // The manual read actually happened (non-empty upstream input).
+    expect(manualSlotsApi.fetchManualSlots).toHaveBeenCalledTimes(1);
+
+    for (const mode of WARM_MODES) {
+      for (const duration of WARM_DURATIONS) {
+        const key = buildAvailabilityCacheKey(mode, duration, 4, now);
+        const entry = (await blobsStore.store.get(key)) as {
+          slots: TimeSlot[];
+          expiresAt: number;
+        } | null;
+        expect(entry, `key ${key} must be warm`).not.toBeNull();
+        // The INDEPENDENT oracle — not a recomputation through the engine.
+        const expected = oracleSlots(mode, duration);
+        expect(
+          entry?.slots,
+          `key ${key}: written payload must equal the independent oracle`,
+        ).toEqual(expected);
+        // TTL 900 s — must outlast the 600 s cron cadence (unchanged).
+        const remainingTtlMs = (entry?.expiresAt ?? 0) - Date.now();
+        expect(remainingTtlMs).toBeLessThanOrEqual(900_000);
+        expect(remainingTtlMs).toBeGreaterThan(900_000 - 60_000);
+      }
+    }
+
+    // Readable effect assertions — the two seeded inputs MUST be visible in
+    // the output shape (they are also covered by the oracle equality above).
+    const inPerson60 = oracleSlots('in-person', 60);
+    const video60 = oracleSlots('video', 60);
+    // 1. Tuesday morning (manual) gained for in-person…
+    expect(inPerson60.some(s => s.start === '2026-11-17T09:00:00.000Z')).toBe(
+      true,
+    );
+    // 2. …and lost for video (no Tuesday-morning video slot).
+    expect(
+      video60.some(s => s.start.startsWith('2026-11-17T09') || s.start.startsWith('2026-11-17T10')),
+    ).toBe(false);
+    // 3. The Wednesday-morning busy overlap removes every candidate ≥ the
+    //    notice cutoff for in-person (the busy window swallows 09:00–10:30Z).
+    expect(
+      inPerson60.some(s => s.start.startsWith('2026-11-18T09') || s.start.startsWith('2026-11-18T10')),
+    ).toBe(false);
+  });
+
+  it('mock mode: snapshot performs ZERO I/O and the writes report skipped-no-store → {computed: 4, written: 0, failed: 0}', async () => {
+    // DEV + GOOGLE_CALENDAR_MOCK=true — the dev mock short-circuits BOTH the
+    // snapshot (empty, zero I/O) and the cache store ('skipped-no-store').
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('GOOGLE_CALENDAR_MOCK', 'true');
+    seedTokenRow(Date.now() + 60 * 60_000);
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // Zero upstream I/O: no manual read, no Freebusy, no client build.
+    expect(manualSlotsApi.fetchManualSlots).not.toHaveBeenCalled();
+    expect(googleMocks.freebusyQuery).not.toHaveBeenCalled();
+    expect(googleMocks.calendar).not.toHaveBeenCalled();
+    // No store write (mock short-circuit preserved) — and NOT a failure.
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
+    const logs = breadcrumbData('availability cache warm-up complete');
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toEqual({ computed: 4, written: 0, failed: 0 });
+    expect(sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it('DIRECT non-ok session (transient) → the internal guard refuses BEFORE any I/O: zero snapshot reads, zero writes (revue #154)', async () => {
+    // The handler path gates on 'ok' structurally, but warmAvailabilityCache
+    // is an exported entry point of its own: a direct caller passing a
+    // non-usable session must never start I/O with it (no manual read, no
+    // Freebusy, no calendar client, no cache write).
+    await warmAvailabilityCache({ status: 'transient', reason: 'test' });
+
+    expect(manualSlotsApi.fetchManualSlots).not.toHaveBeenCalled();
+    expect(googleMocks.calendar).not.toHaveBeenCalled();
+    expect(googleMocks.freebusyQuery).not.toHaveBeenCalled();
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
+    // The skip is visible in the logs (breadcrumb), not silent.
+    expect(breadcrumbMessages().join('\n')).toContain(
+      'availability warm-up skipped — session is not ok',
+    );
+  });
+
+  it('DIRECT non-ok session (auth-broken) → same zero-I/O refusal', async () => {
+    await warmAvailabilityCache({ status: 'auth-broken' });
+
+    expect(manualSlotsApi.fetchManualSlots).not.toHaveBeenCalled();
+    expect(googleMocks.freebusyQuery).not.toHaveBeenCalled();
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
   });
 });
 
@@ -1032,5 +1396,559 @@ describe('Sentry flush + failure capture (S4, ported from heartbeat)', () => {
     expect(sentry.captureException).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'supabase unavailable' }),
     );
+  });
+});
+
+// ===========================================================================
+// KeepwarmSession — 3 honest states + 6-min margin gate (issue #153 / SC2)
+//
+// keepTokenWarm returns a session carrying the authenticated client instead
+// of discarding it:
+//   ok          — token valid (≥ 15 min), OR refreshed (persist confirmed or
+//                 not), OR fall-through: refresh failed transiently but the
+//                 PERSISTED token keeps > WARMUP_MIN_TOKEN_VALIDITY_MS
+//                 (eager refresh threshold 5 min + 60 s warm-up budget =
+//                 6 min) → client.setCredentials straight from the row.
+//   transient   — the cron's own token-row READ fails (log « transient »,
+//                 NOT « no token row »), OR refresh failed with margin
+//                 ≤ threshold / token expired / expiry_date absent —
+//                 warm-up skipped, NO alert of any kind.
+//   auth-broken — unchanged #132 behavior (no row / null refresh_token /
+//                 invalid_grant + cooled alert).
+//
+// The ok session's client is observable through the setCredentials spy, the
+// ONE google.calendar({ version: 'v3', auth }) construction inside the REAL
+// loadAvailabilitySnapshot (T6 mono-snapshot), and the 4 confirmed cache
+// writes the run produces from the ONE snapshot.
+//
+// Margin boundaries need a FROZEN clock: real-time drift between seeding the
+// row and the in-run margin check would flip the exact "6 min + 1 ms" case.
+// ===========================================================================
+
+describe('KeepwarmSession — 3 states + 6-min margin gate (SC2)', () => {
+  /** Frozen clock instant shared by the boundary cases. */
+  const T0 = new Date('2026-09-13T02:00:00Z').getTime();
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Seeds a row that TRIGGERS the refresh, then fails it transiently. */
+  function seedRowAndFailRefresh(expiryDate: number | null): void {
+    seedTokenRow(expiryDate);
+    googleMocks.refreshAccessToken.mockRejectedValueOnce(
+      transientRefreshError(),
+    );
+  }
+
+  it('fall-through (> 6 min persisted margin) → ok: warm-up client carries the ROW credentials, ONE calendar built from it, ≤ 1 token-endpoint call', async () => {
+    const rowExpiry = T0 + 10 * 60_000; // 10 min: refresh fires (<15), margin >6
+    seedRowAndFailRefresh(rowExpiry);
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // Token-endpoint budget: exactly the ONE (failed) refresh — no hidden or
+    // retried token-endpoint interaction while the 4 warm-up calls run.
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    // Fall-through identity: the session client is set straight from the row.
+    expect(googleMocks.setCredentials).toHaveBeenLastCalledWith({
+      access_token: 'ya29.old',
+      refresh_token: '1//persisted-rt',
+      expiry_date: rowExpiry,
+    });
+    // ONE calendar client built from the session's authenticated OAuth2Client
+    // — inside loadAvailabilitySnapshot since T6 (no cron-side construction).
+    expect(googleMocks.calendar).toHaveBeenCalledTimes(1);
+    const built = googleMocks.calendar.mock.calls[0][0] as {
+      version: string;
+      auth: { credentials: Record<string, unknown> };
+    };
+    expect(built.version).toBe('v3');
+    expect(
+      built.auth.credentials.access_token,
+      'fall-through identity: client.credentials.access_token === row.access_token',
+    ).toBe('ya29.old');
+    // The ONE snapshot served the whole warm-up: 1 Freebusy query, 4 writes.
+    expect(googleMocks.freebusyQuery).toHaveBeenCalledTimes(1);
+    expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
+  });
+
+  it('still-valid token (≥ 15 min) → ok with credentials from the row, ZERO token-endpoint calls', async () => {
+    seedTokenRow(T0 + 60 * 60_000);
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(googleMocks.refreshAccessToken).not.toHaveBeenCalled();
+    expect(googleMocks.setCredentials).toHaveBeenCalledWith({
+      access_token: 'ya29.old',
+      refresh_token: '1//persisted-rt',
+      expiry_date: T0 + 60 * 60_000,
+    });
+    expect(googleMocks.calendar).toHaveBeenCalledTimes(1);
+    expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
+  });
+
+  it('6 min + 1 ms of persisted margin → transient is avoided: ok, warm-up runs', async () => {
+    seedRowAndFailRefresh(T0 + 6 * 60_000 + 1);
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
+    // No alert on the transient refresh failure.
+    expect(resendSend).not.toHaveBeenCalled();
+    expect(sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it('6 min exactly of persisted margin → transient: warm-up skipped, no alert', async () => {
+    seedRowAndFailRefresh(T0 + 6 * 60_000);
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // The refresh WAS attempted — the skip is attributable to the margin
+    // gate, not an earlier abort.
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    // Warm-up skipped BEFORE the snapshot: no Freebusy, no writes.
+    expect(googleMocks.freebusyQuery).not.toHaveBeenCalled();
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
+    // « aucune alerte » = no EMAIL (invalid_grant only) — but the under-margin
+    // branch emits a durable SANITIZED Sentry capture (revue #154): the run
+    // stays green and the cron monitor only detects missed runs, so a
+    // persistent non-invalid_grant failure would otherwise be invisible.
+    expect(resendSend).not.toHaveBeenCalled();
+    expect(sentry.captureMessage).not.toHaveBeenCalled();
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    const underMarginCapture = String(
+      sentry.captureException.mock.calls[0][0] ?? '',
+    );
+    expect(underMarginCapture).toContain('margin insufficient');
+    // Sanitized: the raw transient error (whose config/response payloads
+    // embed test secrets) must never travel.
+    expect(underMarginCapture).not.toContain('RAW_CLIENT_SECRET');
+    expect(underMarginCapture).not.toContain('network glitch');
+  });
+
+  it('4 min of persisted margin → transient: warm-up skipped', async () => {
+    seedRowAndFailRefresh(T0 + 4 * 60_000);
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
+    expect(resendSend).not.toHaveBeenCalled();
+    // Durable sanitized capture on the under-margin branch (revue #154).
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(String(sentry.captureException.mock.calls[0][0])).toContain(
+      'margin insufficient',
+    );
+  });
+
+  it('expired persisted token → transient: warm-up skipped', async () => {
+    seedRowAndFailRefresh(T0 - 60_000);
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
+    expect(resendSend).not.toHaveBeenCalled();
+    // Expired token → under-margin branch → durable sanitized capture.
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(String(sentry.captureException.mock.calls[0][0])).toContain(
+      'margin insufficient',
+    );
+  });
+
+  it('unknown expiry (null expiry_date) → transient: warm-up skipped', async () => {
+    seedRowAndFailRefresh(null);
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
+    expect(resendSend).not.toHaveBeenCalled();
+    // Unknown expiry → under-margin branch → durable sanitized capture.
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(String(sentry.captureException.mock.calls[0][0])).toContain(
+      'remainingMs=null',
+    );
+  });
+
+  it('cron token-row read failure (504) → transient: log « transient », NOT « no token row », no email', async () => {
+    supabaseQuery.mockResolvedValueOnce({
+      ...EMPTY_RESULT,
+      error: { code: '504', message: 'gateway timeout' },
+    });
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // Precondition: the read really ran and nothing downstream followed.
+    expect(supabaseQuery).toHaveBeenCalledTimes(1);
+    expect(googleMocks.refreshAccessToken).not.toHaveBeenCalled();
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
+    // No EMAIL on a transient read failure (invalid_grant only) — but a
+    // durable sanitized capture exists (revue #154): persistent DB outages
+    // must stay visible.
+    expect(resendSend).not.toHaveBeenCalled();
+    expect(sentry.captureMessage).toHaveBeenCalledTimes(1);
+    const readFailureCapture = String(
+      sentry.captureMessage.mock.calls[0][0] ?? '',
+    );
+    expect(readFailureCapture).toContain('token row read failed');
+    // Sanitized: the raw error details never travel.
+    expect(readFailureCapture).not.toContain('504');
+    expect(readFailureCapture).not.toContain('gateway timeout');
+    // Log wording (spec SC2): the run logs « transient », never the #132
+    // « no token row » wording on a fetch failure.
+    const logs = breadcrumbMessages().join('\n');
+    expect(logs).toContain('transient');
+    expect(logs).not.toContain('no token row');
+  });
+
+  it('PGRST116 (genuinely no row) on the cron select → auth-broken, unchanged #132 behavior', async () => {
+    supabaseQuery.mockResolvedValueOnce({
+      ...EMPTY_RESULT,
+      error: {
+        code: 'PGRST116',
+        message: 'JSON object requested, multiple (or no) rows returned',
+      },
+    });
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // No row is DEFINITIVE (not transient): the #132 contract holds — Sentry
+    // capture at level 'error' with the « no token row » wording, warm-up
+    // skipped.
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('no token row'),
+      'error',
+    );
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// CAS updated_at on the refresh persist (issue #153 / SC8) — CRON writer
+//
+// The conditional UPDATE may only overwrite the row AS READ (`.eq('updated_at',
+// <value read at select time>)`): a newer write — the reconnexion callback or
+// a concurrent refresh — must SURVIVE.
+//   miss (PGRST116, 0 rows matched) → reconciliation re-read, log
+//     « CAS miss — ligne récente préservée », run continues ok on the
+//     in-memory credentials — never fatal, never an alert;
+//   infra error (non-PGRST116) on the UPDATE → transient handling +
+//     reconciliation re-read, NEVER collision/CAS wording.
+// ===========================================================================
+
+describe('CAS updated_at on the refresh persist (SC8) — cron writer', () => {
+  const T1 = '2026-09-13T01:00:00.000Z';
+  const T2 = '2026-09-13T01:05:00.000Z';
+
+  const PGRST116 = {
+    code: 'PGRST116',
+    message: 'JSON object requested, multiple (or no) rows returned',
+  };
+
+  /** Seeds the v1 row (expired → the refresh fires) with updated_at = T1. */
+  function seedV1Row(): void {
+    supabaseQuery.mockResolvedValueOnce({
+      ...EMPTY_RESULT,
+      data: {
+        refresh_token: '1//rt-v1',
+        access_token: 'ya29.v1',
+        expiry_date: Date.now() - 60_000,
+        updated_at: T1,
+      },
+    });
+  }
+
+  it('race: v2 lands after the read → UPDATE conditioned on updated_at=T1 matches 0 rows → v2 preserved, CAS-miss logged, run continues ok', async () => {
+    seedV1Row();
+    // Refresh succeeds (default mock → ya29.new / 1//new-rt).
+    // Persist confirm: the conditional UPDATE matched 0 rows (v2 landed).
+    supabaseQuery.mockResolvedValueOnce({
+      ...EMPTY_RESULT,
+      data: null,
+      error: PGRST116,
+    });
+    // Reconciliation re-read observes the SURVIVING v2 row.
+    supabaseQuery.mockResolvedValueOnce({
+      ...EMPTY_RESULT,
+      data: {
+        refresh_token: '1//rt-v2',
+        access_token: 'ya29.v2',
+        expiry_date: Date.now() + 3_600_000,
+        updated_at: T2,
+      },
+    });
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // The UPDATE was CAS-conditioned on the value READ at select time —
+    // asserted on the UPDATE chain specifically (verb-aware recording, revue
+    // #154): the global array is trivially satisfied by the SELECT.
+    expect(supabaseUpdateEqCalls).toContainEqual(['updated_at', T1]);
+    expect(supabaseUpdateEqCalls).toContainEqual(['id', 'therapist']);
+    // The SET payload carries the refreshed credentials.
+    expect(supabaseUpdatePayloads).toHaveLength(1);
+    expect(supabaseUpdatePayloads[0]).toMatchObject({
+      access_token: 'ya29.new',
+      refresh_token: '1//new-rt',
+    });
+    // 3 selects: v1 read, persist confirm, reconciliation re-read (v2 back).
+    expect(supabaseQuery).toHaveBeenCalledTimes(3);
+    // CAS-miss logged with the spec wording; a miss is benign — no alert.
+    const logs = breadcrumbMessages().join('\n');
+    expect(logs).toContain('CAS miss — ligne récente préservée');
+    expect(resendSend).not.toHaveBeenCalled();
+    expect(sentry.captureMessage).not.toHaveBeenCalled();
+    // Run continues 'ok' on the in-memory credentials → warm-up ran.
+    expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
+  });
+
+  it('infra error (non-PGRST116) on the conditional UPDATE → reconciliation re-read, transient handling, NO CAS/collision wording', async () => {
+    seedV1Row();
+    supabaseQuery.mockResolvedValueOnce({
+      ...EMPTY_RESULT,
+      data: null,
+      error: { code: 'XX000', message: 'connection terminated unexpectedly' },
+    });
+    // Reconciliation re-read (row state unknown — tolerated).
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(supabaseUpdateEqCalls).toContainEqual(['updated_at', T1]);
+    expect(supabaseUpdatePayloads).toHaveLength(1);
+    expect(supabaseUpdatePayloads[0]).toMatchObject({
+      access_token: 'ya29.new',
+      refresh_token: '1//new-rt',
+    });
+    expect(supabaseQuery).toHaveBeenCalledTimes(3);
+    const logs = breadcrumbMessages().join('\n');
+    expect(logs).not.toContain('CAS');
+    expect(logs).not.toContain('collision');
+    // Transient infra observability (W2 wording kept).
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('NOT confirmed persisted'),
+      'warning',
+    );
+    // Run continues 'ok' → warm-up ran.
+    expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
+  });
+});
+
+// ===========================================================================
+// Empty persisted access_token — admission gates (revue #154).
+//
+// google-auth-library treats `access_token: ''` as ABSENT and refreshes
+// hiddenly on the next signed call — a row persisted by a writer whose
+// Google response omitted the token must never be admitted as 'ok', or the
+// warm-up's Freebusy call violates SC2's one-token-endpoint-interaction
+// budget. Three gates:
+//   trigger  — an empty token forces the proactive refresh even with ample
+//              expiry;
+//   response — a refresh response WITHOUT an access token is rejected
+//              (transient) and NEVER persisted;
+//   fall-thru — on a transient refresh failure, an empty persisted token
+//              refuses the margin fall-through (transient, warm-up skipped).
+// ===========================================================================
+
+describe('empty persisted access_token — admission gates (revue #154)', () => {
+  const T0 = new Date('2026-11-16T08:00:00Z').getTime();
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('empty token + ample expiry → the refresh trigger fires anyway; on success the row is repopulated and the warm-up runs', async () => {
+    seedTokenRow(T0 + 60 * 60_000, '');
+    // Persist confirm: conditional UPDATE matched the row.
+    supabaseQuery.mockResolvedValueOnce({
+      ...EMPTY_RESULT,
+      data: { id: 'therapist' },
+    });
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // The trigger covered the unusable credential — refresh attempted…
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    // …the fresh NON-empty token is persisted (the row is un-poisoned)…
+    expect(supabaseUpdatePayloads).toHaveLength(1);
+    expect(supabaseUpdatePayloads[0]).toMatchObject({
+      access_token: 'ya29.new',
+    });
+    // …and the session is admitted: the warm-up ran (4 writes).
+    expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
+  });
+
+  it('refresh response WITHOUT access_token → transient, NO persist (the row must never be poisoned), warm-up skipped', async () => {
+    seedTokenRow(T0 - 60_000, 'ya29.old'); // expired → refresh attempted
+    googleMocks.refreshAccessToken.mockResolvedValueOnce({
+      credentials: {
+        // access_token absent — an unusable response.
+        refresh_token: '1//echoed-rt',
+        expiry_date: T0 + 3_600_000,
+      },
+    });
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    // Zero UPDATE statements — `access_token: ''` never reaches the row.
+    expect(supabaseUpdatePayloads).toHaveLength(0);
+    // Warm-up skipped: no snapshot, no writes.
+    expect(googleMocks.freebusyQuery).not.toHaveBeenCalled();
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
+    // Durable, sanitized warning — not an email (transient, not invalid_grant).
+    expect(resendSend).not.toHaveBeenCalled();
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('returned no access_token'),
+      'warning',
+    );
+  });
+
+  it('empty token + transient refresh failure + ample margin → fall-through REFUSED: transient, warm-up skipped', async () => {
+    // 10 min of apparent validity: refresh fires (< 15 min) and the margin
+    // alone (> 6 min) would admit the fall-through — the empty token must
+    // veto it.
+    seedTokenRow(T0 + 10 * 60_000, '');
+    googleMocks.refreshAccessToken.mockRejectedValueOnce(
+      transientRefreshError(),
+    );
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+    // No client was ever seeded with the empty token for the warm-up: zero
+    // Freebusy, zero writes.
+    expect(googleMocks.freebusyQuery).not.toHaveBeenCalled();
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
+    // No email; one durable SANITIZED capture (the raw error's config/response
+    // payloads carry test secrets and must not travel).
+    expect(resendSend).not.toHaveBeenCalled();
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    const capture = String(sentry.captureException.mock.calls[0][0]);
+    expect(capture).toContain('access_token empty');
+    expect(capture).not.toContain('RAW_CLIENT_SECRET');
+    expect(capture).not.toContain('network glitch');
+  });
+});
+
+// ===========================================================================
+// run deadline — global abort arm (revue #154)
+//
+// deadline.race() only bounds the promises HANDED to it; calls receiving
+// only deadline.signal (the token-row Supabase read, the snapshot's Supabase
+// stage) could otherwise outlive the 8 s budget and get killed by Netlify
+// without classification or Sentry flush. createRunDeadline() therefore arms
+// a GLOBAL timer at creation that aborts the controller at the deadline, and
+// keepwarm() disposes it in a finally (a finished run must not leave a live
+// abort timer behind).
+// ===========================================================================
+
+describe('run deadline — global abort arm (revue #154)', () => {
+  const RUN_DEADLINE_MS = 8_000;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Never-settling promise that rejects only when `signal` aborts. */
+  function stallUntilAbort(signal: AbortSignal): Promise<never> {
+    return new Promise((_, reject) => {
+      signal.addEventListener('abort', () =>
+        reject(
+          Object.assign(new Error('The operation was aborted'), {
+            name: 'AbortError',
+          }),
+        ),
+      );
+    });
+  }
+
+  /**
+   * The deadline signal recorded by the chain mock's `.abortSignal()` — the
+   * very AbortController signal the run armed.
+   */
+  function recordedDeadlineSignal(): AbortSignal {
+    const recorded = supabaseAbortSignals[supabaseAbortSignals.length - 1];
+    expect(
+      recorded,
+      'the run deadline signal must have been recorded by the chain mock',
+    ).toBeDefined();
+    return recorded as AbortSignal;
+  }
+
+  it('token-row read stalled past the deadline → the GLOBAL timer aborts: run completes as transient, warm-up never runs', async () => {
+    // The FIRST supabase terminal call (the token-row read) hangs until the
+    // deadline signal aborts — without the global abort timer this promise
+    // never settles and this test hangs to the vitest timeout.
+    supabaseQuery.mockImplementationOnce(() =>
+      stallUntilAbort(recordedDeadlineSignal()),
+    );
+
+    const run = keepwarmHandler();
+    await vi.advanceTimersByTimeAsync(RUN_DEADLINE_MS);
+    await expect(run).resolves.toBeUndefined();
+
+    // Classified transient with the token-row-read wording — never a
+    // platform kill, never a monitor error.
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('token row read failed'),
+      'warning',
+    );
+    expect(sentry.captureException).not.toHaveBeenCalled();
+    // The warm-up never ran: no snapshot, no cache write.
+    expect(googleMocks.freebusyQuery).not.toHaveBeenCalled();
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
+  });
+
+  it('snapshot Freebusy leaf stalled past the deadline → global abort, shared-stage failure, ZERO cache writes', async () => {
+    // Valid token row (≥ 15 min) → the run goes straight to the warm-up; the
+    // snapshot's Freebusy leaf hangs until the deadline signal aborts.
+    seedTokenRow(Date.now() + 60 * 60_000);
+    googleMocks.freebusyQuery.mockImplementationOnce(() =>
+      stallUntilAbort(recordedDeadlineSignal()),
+    );
+
+    const run = keepwarmHandler();
+    await vi.advanceTimersByTimeAsync(RUN_DEADLINE_MS);
+    await expect(run).resolves.toBeUndefined();
+
+    // Precondition: the snapshot really reached the Freebusy leaf.
+    expect(googleMocks.freebusyQuery).toHaveBeenCalledTimes(1);
+    // Shared-stage failure (SC5): NOTHING written, stage named in the logs.
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('availability snapshot failed'),
+      'warning',
+    );
+    // No invalid_grant alert from the snapshot path.
+    expect(resendSend).not.toHaveBeenCalled();
+  });
+
+  it('healthy run finishing before the deadline → dispose() released the global abort timer', async () => {
+    seedTokenRow(Date.now() + 60 * 60_000);
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // All deps are mocked: the ONLY timer armed during the run was the
+    // deadline's global abort timer — the `finally { deadline.dispose() }`
+    // must leave zero pending timers (removing the finally fails this test:
+    // a late 8 s abort stays armed after the run returned).
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
