@@ -31,6 +31,11 @@ interface RendezVousViewProps {
   appointments: Appointment[];
   /** Demande de focus venue de la Synthèse (id + nonce pour re-déclencher). */
   focus: FocusRequest | null;
+  /**
+   * Explicit data refetch after a successful mutation (#165) — forwarded to
+   * the appointment detail (consumed in place of `window.location.reload()`).
+   */
+  onRefresh?: () => void;
 }
 
 type Partition = 'upcoming' | 'history';
@@ -92,7 +97,7 @@ function rowId(id: string): string {
   return `wb-rdv-row-${id}`;
 }
 
-export function RendezVousView({ appointments, focus }: RendezVousViewProps) {
+export function RendezVousView({ appointments, focus, onRefresh }: RendezVousViewProps) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterKey>('all');
   const [partition, setPartition] = useState<Partition>('upcoming');
@@ -409,6 +414,7 @@ export function RendezVousView({ appointments, focus }: RendezVousViewProps) {
                 patient={selectedPatient}
                 variant="pane"
                 onClose={() => setSelectedId(null)}
+                onRefresh={onRefresh}
               />
             ) : (
               <p className="py-10 text-center text-sm text-sage-500 font-sans">
@@ -435,6 +441,7 @@ export function RendezVousView({ appointments, focus }: RendezVousViewProps) {
               patient={selectedPatient}
               variant="sheet"
               onClose={() => setSelectedId(null)}
+              onRefresh={onRefresh}
             />
           </ModalOverlay>
         </div>

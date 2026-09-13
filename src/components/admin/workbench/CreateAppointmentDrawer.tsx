@@ -32,6 +32,12 @@ interface CreateAppointmentDrawerProps {
   appointments: Appointment[];
   prefill?: PrefillData | null;
   onClose: () => void;
+  /**
+   * Explicit data refetch after a successful creation (#165) — replaces the
+   * `window.location.reload()` call site (wired from the Workbench polling
+   * hook). Consumed in a follow-up slice.
+   */
+  onRefresh?: () => void;
 }
 
 interface FormState {

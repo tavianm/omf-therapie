@@ -37,6 +37,12 @@ interface AppointmentDetailProps {
   patient?: AppointmentPatientSummary | PatientAggregate | null;
   variant: 'pane' | 'sheet';
   onClose?: () => void;
+  /**
+   * Explicit data refetch after a successful mutation (#165) — replaces the
+   * `window.location.reload()` call sites (wired through RendezVousView from
+   * the Workbench polling hook). Consumed in a follow-up slice.
+   */
+  onRefresh?: () => void;
 }
 
 function euros(cents: number): string {
