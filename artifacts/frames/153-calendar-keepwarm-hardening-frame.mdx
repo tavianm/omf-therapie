@@ -1,0 +1,57 @@
+---
+title: "Calendar keepwarm — durcissement post-production : correctif token OAuth, session partagée, batch unique, écritures cache vérifiées"
+issue: 153
+status: approved
+tier: F-lite
+date: 2026-09-13
+---
+
+## Problem
+
+Incident de production 2026-09-13 (01:50–02:20), premier jour du cron `calendar-keepwarm` fusionné (#132). Le run de 02:20 produit des issues contradictoires **au sein d'une même invocation** : la phase token déclare le token valide (52 min restantes) pendant qu'une branche du warm-up meurt sur un 504 PostgREST (manual slots) et qu'une autre meurt sur un « OAuth consent revoked » fantôme. Cause racine tracée dans `src/lib/google-calendar.ts:186-206` : `getPersistedOAuthClient` ignore l'erreur de fetch (`let { data: tokens }`), traite une panne transitoire comme une absence de ligne, et bascule sur le bootstrap env `GOOGLE_OAUTH_REFRESH_TOKEN` — token obsolète révoqué — dont la branche **upsert la valeur obsolète par-dessus la ligne fraîche avant même de tenter le refresh**. Chemin de corruption latent de la ligne `google_oauth_tokens`.
+
+Trois amplificateurs rendent l'incident probable et le diagnostic incohérent :
+
+1. **Fan-out ×4** : `warmAvailabilityCache()` lance 4 pipelines `getAvailableSlots` parallèles et identiques — 12 appels amont par run (4 lectures manual slots + 4 lectures token + 4 Freebusy) pour des données (busy periods, manual slots) qui ne dépendent ni du mode ni de la durée. Chaque panne transitoire a 8 chances de mordre.
+2. **Session jetée** : `keepTokenWarm()` rafraîchit un client OAuth puis le discard ; le warm-up se ré-authentifie depuis zéro (double refresh possible dans le même run sur persist non confirmé).
+3. **Télémétrie mensongère** : `setCachedAvailability` avale toutes ses erreurs et `getAvailabilityStore()` épingle une init Blobs échouée à `null` pour la vie de l'instance — `warmed: 4` signifie « 4 calculs », jamais « 4 écritures ».
+
+Sources : `artifacts/analyses/132-calendar-keepwarm-production-hardening-analysis.mdx` (analyse post-prod) + revue contradictoire croisée des deux analyses (session 2026-09-13) — la solution réconciliée P0 fait foi.
+
+## Who
+
+- **Primary :** le patient consultant /rendez-vous — en cas d'écriture de cache vide (poisoning) ou de gap TTL, il subit créneaux manquants ou 503 sur le chemin availability.
+- **Secondary :** la thérapeute — reçoit des alertes « re-autorisation requise » fantômes (chemin non cadencé de `getPersistedOAuthClient`) et doit re-reconnecter suite à une corruption de ligne token.
+- **Tertiary :** l'opérateur/dev — télémétrie `warmed` faussement positive, signaux Sentry contradictoires par clé, diagnostic inter-run impossible.
+
+## Constraints
+
+- Runtime Node pur pour le cron (`process.env` uniquement) ; code partagé `src/lib/google-calendar.ts` / `calendar-cache.ts` utilisé côté Astro — toute extension passe par le seam DI existant (`CalendarClientOptions`, précédent #126/#129).
+- Plafond Netlify scheduled functions : 30 s (docs courantes ; le commentaire « 10 s » du header #132 est périmé). Budget interne : rester bien sous 10 s.
+- Ne pas régresser le chemin patient : cache-hit re-filtre déjà les busy periods DB (`availability.ts`) ; le warm-up ne doit pas écraser une invalidation récente ni baker le busy DB dans les entrées chaudes (design #132 inchangé).
+- Les 4 clés chaudes doivent rester synchronisées avec les options du wizard (`{in-person, video} × {60, 90}`, weeks=4).
+- Mock mode `GOOGLE_CALENDAR_MOCK=true` doit continuer à fonctionner (dev sans Google).
+- Quotas : le batch réduit de 12 à ~3 appels amont par run — marge confortable.
+- Langue : code/commentaires EN, user-facing FR, commits FR présent.
+
+## Out of Scope
+
+- CAS `updated_at` sur les écritures token, centralisation du cooldown d'alerte invalid_grant, `maxRuntime` Sentry — suivis P1 distincts.
+- Imports allégés (`@googleapis/calendar` / `google-auth-library`), lazy-load de la stack email d'alerte — suivi P2 (mesures séparées).
+- Re-filtre 24 h sur cache-hit, classification typée des freebusy response-level errors, stale-if-error grace, révision/monotonic revision du cache — suivis P1/P2.
+- Suppression du miroir `_lib/` (#136) — orthogonal.
+
+## Premise Validity
+
+**Success in 6 months:** Chaque run `calendar-keepwarm` en production montre exactement 1 lecture token + 1 lecture manual slots + 1 appel Freebusy ; `warmed` ne compte que des écritures Blobs confirmées (échec d'écriture = compteur `failed` explicite) ; une panne transitoire Supabase/Google ne peut ni corrompre la ligne `google_oauth_tokens` ni produire un « consent revoked » fantôme. Vérifiable dans les logs JSON structurés du cron.
+
+**Failure in 6 months:** Récurrence du pattern d'incident 2026-09-13 dans les 6 mois : échecs contradictoires intra-run lors d'une panne transitoire, écrasement de la ligne token par un refresh/bootstrap obsolète, ou `warmed: 4` rapporté alors qu'une écriture cache a échoué.
+
+**Simplest alternative:** Corriger uniquement le bug #1 (classification erreur de fetch vs absence de ligne + neutralisation de l'upsert bootstrap env) — patch chirurgical de quelques lignes.
+**Why not simplest:** Le symptôme disparaît mais les amplificateurs demeurent : 12 appels amont par run (surface de panne 504, quota), session rafraîchie jetée puis double refresh éventuel, et télémétrie `warmed` incapable de distinguer calcul et écriture — le prochain incident transitoire redevient indiagnosticable.
+
+## Complexity
+
+**Tier: F-lite** — domaine unique (availability/keepwarm + lib calendar partagée), périmètre arrêté par un incident de production réel et deux analyses croisées ; ~5–7 fichiers, extension du seam DI existant plutôt que nouvelle architecture.
+
+Signals : label `Size: M` ; domaine unique ; pas d'inconnu architecturral (le pur `generateSlotsForRange` est déjà exporté et testé).
