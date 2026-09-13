@@ -1,0 +1,66 @@
+{
+  "issue": 153,
+  "rows": [
+    {
+      "sc_id": "SC1",
+      "sources": [
+        "src/lib/google-calendar.ts"
+      ],
+      "test_cmd": "powershell -NoProfile -Command \"New-Item -ItemType Junction -Path node_modules -Target 'C:\\Users\\Gindji\\.grok\\worktrees\\omf-therapie\\153-calendar-keepwarm-hardening\\node_modules' | Out-Null\"; node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/google-calendar.test.ts --maxWorkers=1; rc=$?; powershell -NoProfile -Command \"if (Test-Path node_modules) { [System.IO.Directory]::Delete('node_modules') }\"; exit $rc"
+    },
+    {
+      "sc_id": "SC2",
+      "sources": [
+        "netlify/functions/calendar-keepwarm.ts"
+      ],
+      "test_cmd": "powershell -NoProfile -Command \"New-Item -ItemType Junction -Path node_modules -Target 'C:\\Users\\Gindji\\.grok\\worktrees\\omf-therapie\\153-calendar-keepwarm-hardening\\node_modules' | Out-Null\"; node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/calendar-keepwarm.test.ts --maxWorkers=1; rc=$?; powershell -NoProfile -Command \"if (Test-Path node_modules) { [System.IO.Directory]::Delete('node_modules') }\"; exit $rc"
+    },
+    {
+      "sc_id": "SC3",
+      "sources": [
+        "netlify/functions/calendar-keepwarm.ts",
+        "src/lib/google-calendar.ts"
+      ],
+      "test_cmd": "powershell -NoProfile -Command \"New-Item -ItemType Junction -Path node_modules -Target 'C:\\Users\\Gindji\\.grok\\worktrees\\omf-therapie\\153-calendar-keepwarm-hardening\\node_modules' | Out-Null\"; node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/calendar-keepwarm.test.ts --maxWorkers=1; rc=$?; powershell -NoProfile -Command \"if (Test-Path node_modules) { [System.IO.Directory]::Delete('node_modules') }\"; exit $rc"
+    },
+    {
+      "sc_id": "SC4",
+      "sources": [
+        "src/lib/google-calendar.ts"
+      ],
+      "test_cmd": "powershell -NoProfile -Command \"New-Item -ItemType Junction -Path node_modules -Target 'C:\\Users\\Gindji\\.grok\\worktrees\\omf-therapie\\153-calendar-keepwarm-hardening\\node_modules' | Out-Null\"; node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/availability-batch.test.ts --maxWorkers=1; rc=$?; powershell -NoProfile -Command \"if (Test-Path node_modules) { [System.IO.Directory]::Delete('node_modules') }\"; exit $rc"
+    },
+    {
+      "sc_id": "SC5",
+      "sources": [
+        "src/lib/google-calendar.ts",
+        "netlify/functions/calendar-keepwarm.ts",
+        "src/pages/api/availability.ts"
+      ],
+      "test_cmd": "powershell -NoProfile -Command \"New-Item -ItemType Junction -Path node_modules -Target 'C:\\Users\\Gindji\\.grok\\worktrees\\omf-therapie\\153-calendar-keepwarm-hardening\\node_modules' | Out-Null\"; node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/calendar-keepwarm.test.ts tests/unit/availability-api.test.ts --maxWorkers=1; rc=$?; powershell -NoProfile -Command \"if (Test-Path node_modules) { [System.IO.Directory]::Delete('node_modules') }\"; exit $rc"
+    },
+    {
+      "sc_id": "SC6",
+      "sources": [
+        "src/lib/calendar-cache.ts",
+        "netlify/functions/calendar-keepwarm.ts"
+      ],
+      "test_cmd": "powershell -NoProfile -Command \"New-Item -ItemType Junction -Path node_modules -Target 'C:\\Users\\Gindji\\.grok\\worktrees\\omf-therapie\\153-calendar-keepwarm-hardening\\node_modules' | Out-Null\"; node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/calendar-cache.test.ts tests/unit/calendar-keepwarm.test.ts --maxWorkers=1; rc=$?; powershell -NoProfile -Command \"if (Test-Path node_modules) { [System.IO.Directory]::Delete('node_modules') }\"; exit $rc"
+    },
+    {
+      "sc_id": "SC7",
+      "sources": [
+        "src/pages/api/availability.ts"
+      ],
+      "test_cmd": "powershell -NoProfile -Command \"New-Item -ItemType Junction -Path node_modules -Target 'C:\\Users\\Gindji\\.grok\\worktrees\\omf-therapie\\153-calendar-keepwarm-hardening\\node_modules' | Out-Null\"; node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/availability-api.test.ts --maxWorkers=1; rc=$?; powershell -NoProfile -Command \"if (Test-Path node_modules) { [System.IO.Directory]::Delete('node_modules') }\"; exit $rc"
+    },
+    {
+      "sc_id": "SC8",
+      "sources": [
+        "src/lib/google-calendar.ts",
+        "netlify/functions/calendar-keepwarm.ts"
+      ],
+      "test_cmd": "powershell -NoProfile -Command \"New-Item -ItemType Junction -Path node_modules -Target 'C:\\Users\\Gindji\\.grok\\worktrees\\omf-therapie\\153-calendar-keepwarm-hardening\\node_modules' | Out-Null\"; node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/google-calendar.test.ts tests/unit/calendar-keepwarm.test.ts --maxWorkers=1; rc=$?; powershell -NoProfile -Command \"if (Test-Path node_modules) { [System.IO.Directory]::Delete('node_modules') }\"; exit $rc"
+    }
+  ]
+}

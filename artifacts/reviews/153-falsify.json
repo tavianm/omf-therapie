@@ -1,0 +1,132 @@
+{
+  "schema_version": "1",
+  "issue": 153,
+  "head": "53cca1a1aec705a54e97da88832ac9a94da18cfc",
+  "runner_id": "run-falsify/1",
+  "oracle_ok": true,
+  "oracle_reason": "ok",
+  "rows": [
+    {
+      "sc_id": "SC1",
+      "sources": [
+        "src/lib/google-calendar.ts"
+      ],
+      "source_hashes": {
+        "src/lib/google-calendar.ts": "36e9d891d6d2d6957f11442a2f8817c34d3590a70c47bf9b8110170189870c9e"
+      },
+      "test_cmd": "powershell -NoProfile -Command \"New-Item -ItemType Junction -Path node_modules -Target 'C:\\Users\\Gindji\\.grok\\worktrees\\omf-therapie\\153-calendar-keepwarm-hardening\\node_modules' | Out-Null\"; node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/google-calendar.test.ts --maxWorkers=1; rc=$?; powershell -NoProfile -Command \"if (Test-Path node_modules) { [System.IO.Directory]::Delete('node_modules') }\"; exit $rc",
+      "fail_exit": 1,
+      "pass_exit": 0,
+      "error": "FAIL exit=1: [build-env] wrote F:\\TEMP\\rf-fail.av9tfcv8\\netlify\\functions\\_lib\\build-env.ts (CONTEXT=development, COMMIT_REF=dev)  \u001b[1m\u001b[30m\u001b[46m RUN \u001b[49m\u001b[39m\u001b[22m \u001b[36mv4.1.10 \u001b[39m\u001b[90mF:/TEMP/rf-fail.av9tfcv8\u001b[39m   \u001b[31m\u276f\u001b[39m tests/unit/google-ca",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC2",
+      "sources": [
+        "netlify/functions/calendar-keepwarm.ts"
+      ],
+      "source_hashes": {
+        "netlify/functions/calendar-keepwarm.ts": "de3346345cb947a1cbde3c76d5a0f76e5f0db3f808b824a8a4c1fefb901e0725"
+      },
+      "test_cmd": "powershell -NoProfile -Command \"New-Item -ItemType Junction -Path node_modules -Target 'C:\\Users\\Gindji\\.grok\\worktrees\\omf-therapie\\153-calendar-keepwarm-hardening\\node_modules' | Out-Null\"; node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/calendar-keepwarm.test.ts --maxWorkers=1; rc=$?; powershell -NoProfile -Command \"if (Test-Path node_modules) { [System.IO.Directory]::Delete('node_modules') }\"; exit $rc",
+      "fail_exit": 1,
+      "pass_exit": 0,
+      "error": "FAIL exit=1: [build-env] wrote F:\\TEMP\\rf-fail.m9n0blv2\\netlify\\functions\\_lib\\build-env.ts (CONTEXT=development, COMMIT_REF=dev)  \u001b[1m\u001b[30m\u001b[46m RUN \u001b[49m\u001b[39m\u001b[22m \u001b[36mv4.1.10 \u001b[39m\u001b[90mF:/TEMP/rf-fail.m9n0blv2\u001b[39m   \u001b[31m\u276f\u001b[39m tests/unit/calendar-",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC3",
+      "sources": [
+        "netlify/functions/calendar-keepwarm.ts",
+        "src/lib/google-calendar.ts"
+      ],
+      "source_hashes": {
+        "netlify/functions/calendar-keepwarm.ts": "de3346345cb947a1cbde3c76d5a0f76e5f0db3f808b824a8a4c1fefb901e0725",
+        "src/lib/google-calendar.ts": "36e9d891d6d2d6957f11442a2f8817c34d3590a70c47bf9b8110170189870c9e"
+      },
+      "test_cmd": "powershell -NoProfile -Command \"New-Item -ItemType Junction -Path node_modules -Target 'C:\\Users\\Gindji\\.grok\\worktrees\\omf-therapie\\153-calendar-keepwarm-hardening\\node_modules' | Out-Null\"; node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/calendar-keepwarm.test.ts --maxWorkers=1; rc=$?; powershell -NoProfile -Command \"if (Test-Path node_modules) { [System.IO.Directory]::Delete('node_modules') }\"; exit $rc",
+      "fail_exit": 1,
+      "pass_exit": 0,
+      "error": "FAIL exit=1: [build-env] wrote F:\\TEMP\\rf-fail.4kscij5g\\netlify\\functions\\_lib\\build-env.ts (CONTEXT=development, COMMIT_REF=dev)  \u001b[1m\u001b[30m\u001b[46m RUN \u001b[49m\u001b[39m\u001b[22m \u001b[36mv4.1.10 \u001b[39m\u001b[90mF:/TEMP/rf-fail.4kscij5g\u001b[39m   \u001b[31m\u276f\u001b[39m tests/unit/calendar-",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC4",
+      "sources": [
+        "src/lib/google-calendar.ts"
+      ],
+      "source_hashes": {
+        "src/lib/google-calendar.ts": "36e9d891d6d2d6957f11442a2f8817c34d3590a70c47bf9b8110170189870c9e"
+      },
+      "test_cmd": "powershell -NoProfile -Command \"New-Item -ItemType Junction -Path node_modules -Target 'C:\\Users\\Gindji\\.grok\\worktrees\\omf-therapie\\153-calendar-keepwarm-hardening\\node_modules' | Out-Null\"; node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/availability-batch.test.ts --maxWorkers=1; rc=$?; powershell -NoProfile -Command \"if (Test-Path node_modules) { [System.IO.Directory]::Delete('node_modules') }\"; exit $rc",
+      "fail_exit": 1,
+      "pass_exit": 0,
+      "error": "FAIL exit=1: [build-env] wrote F:\\TEMP\\rf-fail.j6zkdt7j\\netlify\\functions\\_lib\\build-env.ts (CONTEXT=development, COMMIT_REF=dev)  \u001b[1m\u001b[30m\u001b[46m RUN \u001b[49m\u001b[39m\u001b[22m \u001b[36mv4.1.10 \u001b[39m\u001b[90mF:/TEMP/rf-fail.j6zkdt7j\u001b[39m   \u001b[31m\u276f\u001b[39m tests/unit/availabil",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC5",
+      "sources": [
+        "src/lib/google-calendar.ts",
+        "netlify/functions/calendar-keepwarm.ts",
+        "src/pages/api/availability.ts"
+      ],
+      "source_hashes": {
+        "src/lib/google-calendar.ts": "36e9d891d6d2d6957f11442a2f8817c34d3590a70c47bf9b8110170189870c9e",
+        "netlify/functions/calendar-keepwarm.ts": "de3346345cb947a1cbde3c76d5a0f76e5f0db3f808b824a8a4c1fefb901e0725",
+        "src/pages/api/availability.ts": "386c277e7ee12a0f9c27d81c5ef13057a8b6e3de4d7f18ab08349c34e0bb28c9"
+      },
+      "test_cmd": "powershell -NoProfile -Command \"New-Item -ItemType Junction -Path node_modules -Target 'C:\\Users\\Gindji\\.grok\\worktrees\\omf-therapie\\153-calendar-keepwarm-hardening\\node_modules' | Out-Null\"; node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/calendar-keepwarm.test.ts tests/unit/availability-api.test.ts --maxWorkers=1; rc=$?; powershell -NoProfile -Command \"if (Test-Path node_modules) { [System.IO.Directory]::Delete('node_modules') }\"; exit $rc",
+      "fail_exit": 1,
+      "pass_exit": 0,
+      "error": "FAIL exit=1: [build-env] wrote F:\\TEMP\\rf-fail.ebu7s3v2\\netlify\\functions\\_lib\\build-env.ts (CONTEXT=development, COMMIT_REF=dev)  \u001b[1m\u001b[30m\u001b[46m RUN \u001b[49m\u001b[39m\u001b[22m \u001b[36mv4.1.10 \u001b[39m\u001b[90mF:/TEMP/rf-fail.ebu7s3v2\u001b[39m   \u001b[31m\u276f\u001b[39m tests/unit/calendar-",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC6",
+      "sources": [
+        "src/lib/calendar-cache.ts",
+        "netlify/functions/calendar-keepwarm.ts"
+      ],
+      "source_hashes": {
+        "src/lib/calendar-cache.ts": "02d31cd16b1ed27b066d975a9c6fe232eb511a71a9915b333ac344ca3c53ce93",
+        "netlify/functions/calendar-keepwarm.ts": "de3346345cb947a1cbde3c76d5a0f76e5f0db3f808b824a8a4c1fefb901e0725"
+      },
+      "test_cmd": "powershell -NoProfile -Command \"New-Item -ItemType Junction -Path node_modules -Target 'C:\\Users\\Gindji\\.grok\\worktrees\\omf-therapie\\153-calendar-keepwarm-hardening\\node_modules' | Out-Null\"; node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/calendar-cache.test.ts tests/unit/calendar-keepwarm.test.ts --maxWorkers=1; rc=$?; powershell -NoProfile -Command \"if (Test-Path node_modules) { [System.IO.Directory]::Delete('node_modules') }\"; exit $rc",
+      "fail_exit": 1,
+      "pass_exit": 0,
+      "error": "FAIL exit=1: [build-env] wrote F:\\TEMP\\rf-fail.1a7czkmv\\netlify\\functions\\_lib\\build-env.ts (CONTEXT=development, COMMIT_REF=dev)  \u001b[1m\u001b[30m\u001b[46m RUN \u001b[49m\u001b[39m\u001b[22m \u001b[36mv4.1.10 \u001b[39m\u001b[90mF:/TEMP/rf-fail.1a7czkmv\u001b[39m   \u001b[31m\u276f\u001b[39m tests/unit/calendar-",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC7",
+      "sources": [
+        "src/pages/api/availability.ts"
+      ],
+      "source_hashes": {
+        "src/pages/api/availability.ts": "386c277e7ee12a0f9c27d81c5ef13057a8b6e3de4d7f18ab08349c34e0bb28c9"
+      },
+      "test_cmd": "powershell -NoProfile -Command \"New-Item -ItemType Junction -Path node_modules -Target 'C:\\Users\\Gindji\\.grok\\worktrees\\omf-therapie\\153-calendar-keepwarm-hardening\\node_modules' | Out-Null\"; node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/availability-api.test.ts --maxWorkers=1; rc=$?; powershell -NoProfile -Command \"if (Test-Path node_modules) { [System.IO.Directory]::Delete('node_modules') }\"; exit $rc",
+      "fail_exit": 1,
+      "pass_exit": 0,
+      "error": "FAIL exit=1: [build-env] wrote F:\\TEMP\\rf-fail.uujkbce2\\netlify\\functions\\_lib\\build-env.ts (CONTEXT=development, COMMIT_REF=dev)  \u001b[1m\u001b[30m\u001b[46m RUN \u001b[49m\u001b[39m\u001b[22m \u001b[36mv4.1.10 \u001b[39m\u001b[90mF:/TEMP/rf-fail.uujkbce2\u001b[39m   \u001b[31m\u276f\u001b[39m tests/unit/availabil",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC8",
+      "sources": [
+        "src/lib/google-calendar.ts",
+        "netlify/functions/calendar-keepwarm.ts"
+      ],
+      "source_hashes": {
+        "src/lib/google-calendar.ts": "36e9d891d6d2d6957f11442a2f8817c34d3590a70c47bf9b8110170189870c9e",
+        "netlify/functions/calendar-keepwarm.ts": "de3346345cb947a1cbde3c76d5a0f76e5f0db3f808b824a8a4c1fefb901e0725"
+      },
+      "test_cmd": "powershell -NoProfile -Command \"New-Item -ItemType Junction -Path node_modules -Target 'C:\\Users\\Gindji\\.grok\\worktrees\\omf-therapie\\153-calendar-keepwarm-hardening\\node_modules' | Out-Null\"; node scripts/generate-build-env.mjs; node node_modules/vitest/vitest.mjs run tests/unit/google-calendar.test.ts tests/unit/calendar-keepwarm.test.ts --maxWorkers=1; rc=$?; powershell -NoProfile -Command \"if (Test-Path node_modules) { [System.IO.Directory]::Delete('node_modules') }\"; exit $rc",
+      "fail_exit": 1,
+      "pass_exit": 0,
+      "error": "FAIL exit=1: [build-env] wrote F:\\TEMP\\rf-fail.sjfnoiw0\\netlify\\functions\\_lib\\build-env.ts (CONTEXT=development, COMMIT_REF=dev)  \u001b[1m\u001b[30m\u001b[46m RUN \u001b[49m\u001b[39m\u001b[22m \u001b[36mv4.1.10 \u001b[39m\u001b[90mF:/TEMP/rf-fail.sjfnoiw0\u001b[39m   \u001b[31m\u276f\u001b[39m tests/unit/calendar-",
+      "status": "proven"
+    }
+  ]
+}
