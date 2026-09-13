@@ -79,8 +79,10 @@ import { createClient } from '@supabase/supabase-js';
 // google-auth-library's eager-refresh threshold (5 min): a signed API call
 // with less remaining validity triggers a HIDDEN token-endpoint refresh. The
 // root package does not re-export this constant — it lives in the authclient
-// submodule (google-auth-library is a direct dependency).
-import { DEFAULT_EAGER_REFRESH_THRESHOLD_MILLIS } from 'google-auth-library/build/src/auth/authclient';
+// submodule (google-auth-library is a direct dependency). The explicit .js
+// extension is load-bearing: the package is externalized in the deployed ESM
+// bundle, and Node's ESM resolver does no extension inference.
+import { DEFAULT_EAGER_REFRESH_THRESHOLD_MILLIS } from 'google-auth-library/build/src/auth/authclient.js';
 import { google } from 'googleapis';
 import ws from 'ws';
 // Leaf import for the invalid_grant email-cooldown state (see
