@@ -28,6 +28,7 @@ import { DisponibilitesView } from './disponibilites/DisponibilitesView';
 import { PatientsView } from './patients/PatientsView';
 import { RendezVousView } from './rdv/RendezVousView';
 import { SyntheseView } from './SyntheseView';
+import { FreshnessIndicator } from './ui';
 
 type Section = 'synthese' | 'rdv' | 'patients' | 'disponibilites';
 
@@ -99,12 +100,11 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
 
   // Live data (#165): SSR props are only the initial state — the list is now
   // owned by the Workbench and kept fresh by polling (visible-only, paused
-  // while the creation drawer is open). The hook also exposes
-  // `lastUpdated`/`isStale` for the freshness indicator (T6): destructure
-  // them here when wiring it.
-  const { appointments, refresh } = useAppointmentsPolling(initialAppointments, {
-    paused: createDrawer.open,
-  });
+  // while the creation drawer is open).
+  const { appointments, refresh, lastUpdated, isStale } = useAppointmentsPolling(
+    initialAppointments,
+    { paused: createDrawer.open },
+  );
 
   useEffect(() => {
     try {
@@ -294,6 +294,7 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
             <h1 id="heading-synthese" className="sr-only">
               Synthèse
             </h1>
+            <FreshnessIndicator lastUpdated={lastUpdated} isStale={isStale} />
             <SyntheseView appointments={appointments} onFocusAppointment={handleFocusAppointment} />
           </section>
 
