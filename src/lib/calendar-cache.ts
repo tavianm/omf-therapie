@@ -37,11 +37,12 @@ async function getAvailabilityStore(): Promise<AvailabilityStore | null> {
     .catch((err: unknown) => {
       // Reset the memoised promise — the next invocation retries init.
       _storePromise = null;
-      // Sanitized message only — never log the raw error object.
-      const message = err instanceof Error ? err.message : String(err);
+      // Fixed classification only (revue #154): a raw upstream message could
+      // embed credential-shaped content — the log carries the operation and
+      // the error class, never the message text or the raw error object.
       console.error(
         '[calendar-cache] Initialisation du store Blobs échouée — nouvelle tentative à la prochaine invocation :',
-        message,
+        err instanceof Error ? err.name : 'unknown',
       );
       return null;
     });
@@ -107,12 +108,13 @@ export async function setCachedAvailability(
     await store.setJSON(key, entry);
     return 'written';
   } catch (err: unknown) {
-    // Cache write failure remains non-fatal for callers, but it is no
-    // longer silent — sanitized message only, never the raw error object.
-    const message = err instanceof Error ? err.message : String(err);
+    // Cache write failure remains non-fatal for callers, but it is no longer
+    // silent — fixed classification only (revue #154): a raw upstream message
+    // could embed credential-shaped content — the log carries the operation
+    // and the error class, never the message text or the raw error object.
     console.error(
       "[calendar-cache] Échec d'écriture du cache de disponibilité :",
-      message,
+      err instanceof Error ? err.name : 'unknown',
     );
     return 'failed';
   }

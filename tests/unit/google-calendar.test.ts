@@ -36,6 +36,13 @@ const supabaseMock = vi.hoisted(() => ({
   // Every `.eq(...)` argument tuple — the SC8 CAS tests assert the UPDATE was
   // conditioned on `.eq('updated_at', <value read>)`.
   eqCalls: [] as Array<unknown[]>,
+  // Verb-aware recording (revue #154): the flattened builder previously let
+  // an `.eq(...)` land in `eqCalls` from ANY verb's chain, so a CAS assertion
+  // was trivially satisfiable by the SELECT. `updateEqCalls` only records
+  // tuples emitted on the chain of an `update()` statement.
+  updateEqCalls: [] as Array<unknown[]>,
+  // The SET payload of every update() call, in order.
+  updatePayloads: [] as Array<unknown>,
   // Write spies — a read path must never call these.
   update: vi.fn(),
   upsert: vi.fn(),
@@ -43,10 +50,19 @@ const supabaseMock = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/supabase', () => {
+  // Verb-aware eq recording (revue #154): `.eq(...)` tuples are attributed to
+  // the statement they actually condition — an `.eq` following update() is
+  // recorded in BOTH arrays, an `.eq` on a select/upsert/insert chain only in
+  // the global one.
+  let lastVerb: 'select' | 'update' | 'upsert' | 'insert' | null = null;
   const query = {
-    select: () => query,
+    select: () => {
+      lastVerb = 'select';
+      return query;
+    },
     eq: (...args: unknown[]) => {
       supabaseMock.eqCalls.push(args);
+      if (lastVerb === 'update') supabaseMock.updateEqCalls.push(args);
       return query;
     },
     single: async () => {
@@ -57,9 +73,19 @@ vi.mock('@/lib/supabase', () => {
       if (supabaseMock.singleCalls === 1) return supabaseMock.tokenSelect;
       return supabaseMock.singleQueue.shift() ?? supabaseMock.tokenSelect;
     },
-    update: supabaseMock.update,
-    upsert: supabaseMock.upsert,
-    insert: supabaseMock.insert,
+    update: (...args: unknown[]) => {
+      lastVerb = 'update';
+      supabaseMock.updatePayloads.push(args[0]);
+      return supabaseMock.update(...args);
+    },
+    upsert: (...args: unknown[]) => {
+      lastVerb = 'upsert';
+      return supabaseMock.upsert(...args);
+    },
+    insert: (...args: unknown[]) => {
+      lastVerb = 'insert';
+      return supabaseMock.insert(...args);
+    },
   };
   supabaseMock.update.mockReturnValue(query);
   supabaseMock.upsert.mockReturnValue(query);
@@ -463,6 +489,8 @@ describe('getPersistedOAuthClient — token-row read classification (SC1)', () =
     supabaseMock.singleQueue.length = 0;
     supabaseMock.singleCalls = 0;
     supabaseMock.eqCalls.length = 0;
+    supabaseMock.updateEqCalls.length = 0;
+    supabaseMock.updatePayloads.length = 0;
     supabaseMock.update.mockClear();
     supabaseMock.upsert.mockClear();
     supabaseMock.insert.mockClear();
@@ -603,6 +631,8 @@ describe('getPersistedOAuthClient — CAS on the refresh persist (SC8)', () => {
     supabaseMock.singleQueue.length = 0;
     supabaseMock.singleCalls = 0;
     supabaseMock.eqCalls.length = 0;
+    supabaseMock.updateEqCalls.length = 0;
+    supabaseMock.updatePayloads.length = 0;
     supabaseMock.update.mockClear();
     supabaseMock.upsert.mockClear();
     supabaseMock.insert.mockClear();
@@ -660,9 +690,18 @@ describe('getPersistedOAuthClient — CAS on the refresh persist (SC8)', () => {
     // credentials from the refresh (not the stale row, not v2).
     expect(client).not.toBeNull();
     expect(client?.credentials.access_token).toBe('ya29.refreshed');
-    // The UPDATE was CAS-conditioned on the value read at select time.
-    expect(supabaseMock.eqCalls).toContainEqual(['updated_at', T1]);
-    expect(supabaseMock.eqCalls).toContainEqual(['id', 'therapist']);
+    // The UPDATE was CAS-conditioned on the value read at select time —
+    // asserted on the UPDATE chain specifically (verb-aware recording, revue
+    // #154): the global eqCalls array is trivially satisfied by the SELECT.
+    expect(supabaseMock.updateEqCalls).toContainEqual(['updated_at', T1]);
+    expect(supabaseMock.updateEqCalls).toContainEqual(['id', 'therapist']);
+    // The SET payload carries the refreshed credentials (never asserted
+    // before — a persist of stale credentials passed green).
+    expect(supabaseMock.updatePayloads).toHaveLength(1);
+    expect(supabaseMock.updatePayloads[0]).toMatchObject({
+      access_token: 'ya29.refreshed',
+      refresh_token: '1//echoed-rt',
+    });
     // Exactly ONE write attempt — the conditional update; no other writes.
     expect(supabaseMock.update).toHaveBeenCalledTimes(1);
     expect(supabaseMock.upsert).not.toHaveBeenCalled();
@@ -696,7 +735,13 @@ describe('getPersistedOAuthClient — CAS on the refresh persist (SC8)', () => {
 
     expect(client).not.toBeNull();
     expect(client?.credentials.access_token).toBe('ya29.refreshed');
-    expect(supabaseMock.eqCalls).toContainEqual(['updated_at', T1]);
+    expect(supabaseMock.updateEqCalls).toContainEqual(['updated_at', T1]);
+    // The SET payload carries the refreshed credentials.
+    expect(supabaseMock.updatePayloads).toHaveLength(1);
+    expect(supabaseMock.updatePayloads[0]).toMatchObject({
+      access_token: 'ya29.refreshed',
+      refresh_token: '1//echoed-rt',
+    });
     expect(supabaseMock.singleCalls).toBe(3);
     const warned = warnSpy.mock.calls.map(c => String(c[0])).join('\n');
     expect(warned).not.toContain('CAS');
@@ -1097,6 +1142,147 @@ describe('loadAvailabilitySnapshot — shared snapshot + typed shared-stage erro
     expect(query).not.toHaveBeenCalled();
     // Zero I/O also means: no calendar client is ever built.
     expect(googleCalendarFactory.calendar).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Token-endpoint budget through the REAL auth transport (SC2, revue #154)
+//
+// The SC2 budget tests stub `freebusy.query` directly and count
+// `refreshAccessToken` — a mock that removes the very authentication behavior
+// whose interaction budget the criterion prices. A hidden token-endpoint
+// refresh performed INSIDE the real signed Freebusy request (google-auth-
+// library eagerly refreshes when the token is under its eager threshold) was
+// structurally invisible. This suite binds the REAL OAuth2Client + REAL
+// calendar client and mocks ONLY the HTTP transporter: every token-endpoint
+// interaction is observable by URL, and the total budget is priced end-to-end.
+// ---------------------------------------------------------------------------
+
+describe('token-endpoint budget through the real auth transport (SC2)', () => {
+  const CAL_ID = 'transport-test@group.calendar.google.com';
+  const RANGE_START = new Date('2026-06-15T00:00:00.000Z');
+  const RANGE_END = new Date('2026-06-22T00:00:00.000Z');
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  type TransportRequest = {
+    url?: string;
+    method?: string;
+  };
+
+  /**
+   * REAL OAuth2Client + REAL google.calendar client — only the HTTP
+   * transporter is mocked. Token-endpoint and Freebusy calls are counted by
+   * URL, exactly as a network-level oracle would.
+   */
+  async function buildRealTransportHarness(expiryInMs: number): Promise<{
+    calendar: calendar_v3.Calendar;
+    tokenEndpointCalls: ReturnType<typeof vi.fn>;
+    freebusyEndpointCalls: ReturnType<typeof vi.fn>;
+  }> {
+    const actual = await vi.importActual<typeof import('googleapis')>(
+      'googleapis',
+    );
+    const oauth2Client = new actual.google.auth.OAuth2(
+      'transport-client-id',
+      'transport-client-secret',
+      'https://developers.google.com/oauthplayground',
+    );
+    oauth2Client.setCredentials({
+      access_token: 'ya29.initial',
+      refresh_token: '1//transport-rt',
+      expiry_date: Date.now() + expiryInMs,
+    });
+
+    const tokenEndpointCalls = vi.fn();
+    const freebusyEndpointCalls = vi.fn();
+    const transport = async (opts: TransportRequest) => {
+      const url = String(opts.url ?? '');
+      if (url.includes('oauth2.googleapis.com/token')) {
+        tokenEndpointCalls();
+        return {
+          status: 200,
+          data: {
+            access_token: 'ya29.refreshed-at-transport',
+            refresh_token: '1//transport-rt',
+            expiry_date: Date.now() + 3_600_000,
+            token_type: 'Bearer',
+          },
+        };
+      }
+      if (url.includes('freeBusy')) {
+        freebusyEndpointCalls();
+        return {
+          status: 200,
+          data: { calendars: { [CAL_ID]: { busy: [] } } },
+        };
+      }
+      throw new Error(`unexpected transport call: ${url}`);
+    };
+    Object.assign(oauth2Client, { transporter: { request: transport } });
+
+    const calendar = actual.google.calendar({
+      version: 'v3',
+      auth: oauth2Client,
+    });
+    return { calendar, tokenEndpointCalls, freebusyEndpointCalls };
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-06-10T00:00:00.000Z'));
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('GOOGLE_CALENDAR_MOCK', 'false');
+    vi.stubEnv('GOOGLE_CALENDAR_ID', CAL_ID);
+    manualSlotsApi.fetchManualSlots.mockReset();
+    manualSlotsApi.fetchManualSlots.mockResolvedValue([]);
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
+  });
+
+  it('expiry inside the eager-refresh window → the signed Freebusy request costs EXACTLY ONE token-endpoint refresh, no hidden second one', async () => {
+    // 4 min < the library's 5 min eager-refresh threshold: the real client
+    // refreshes once BEFORE dispatching the signed request.
+    const { calendar, tokenEndpointCalls, freebusyEndpointCalls } =
+      await buildRealTransportHarness(4 * 60_000);
+
+    const slots = await getAvailableSlots(
+      RANGE_START,
+      RANGE_END,
+      60,
+      'in-person',
+      [],
+      { calendarId: CAL_ID, calendar },
+    );
+
+    // The signed Freebusy request went through the real transport…
+    expect(freebusyEndpointCalls).toHaveBeenCalledTimes(1);
+    // …and the TOTAL token-endpoint budget is ONE: the eager refresh. A
+    // second hidden refresh inside the request path fails this assertion.
+    expect(tokenEndpointCalls).toHaveBeenCalledTimes(1);
+    expect(slots.length).toBeGreaterThan(0);
+  });
+
+  it('fresh credentials (≥ eager threshold) → the signed Freebusy request costs ZERO token-endpoint calls', async () => {
+    const { calendar, tokenEndpointCalls, freebusyEndpointCalls } =
+      await buildRealTransportHarness(30 * 60_000);
+
+    const slots = await getAvailableSlots(
+      RANGE_START,
+      RANGE_END,
+      60,
+      'in-person',
+      [],
+      { calendarId: CAL_ID, calendar },
+    );
+
+    expect(freebusyEndpointCalls).toHaveBeenCalledTimes(1);
+    expect(tokenEndpointCalls).not.toHaveBeenCalled();
+    expect(slots.length).toBeGreaterThan(0);
   });
 });
 

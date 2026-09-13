@@ -90,14 +90,35 @@ const supabaseQuery = vi.fn(async () => ({ ...EMPTY_RESULT }));
 // Every `.eq(...)` argument tuple across all chains — the SC8 CAS tests assert
 // the UPDATE was conditioned on `.eq('updated_at', <value read>)`.
 const supabaseEqCalls: Array<unknown[]> = [];
+// Verb-aware recording (revue #154): `.eq(...)` tuples are attributed to the
+// statement they actually condition — the flattened builder previously let a
+// CAS assertion be satisfied by the SELECT's own `.eq('id', 'therapist')`.
+const supabaseUpdateEqCalls: Array<unknown[]> = [];
+// The SET payload of every update() call, in order.
+const supabaseUpdatePayloads: Array<unknown> = [];
 const supabaseFrom = vi.fn(() => {
+  let lastVerb: 'select' | 'insert' | 'update' | 'delete' | null = null;
   const chain = {
-    select: vi.fn(() => chain),
-    insert: vi.fn(() => chain),
-    update: vi.fn(() => chain),
-    delete: vi.fn(() => chain),
+    select: vi.fn(() => {
+      lastVerb = 'select';
+      return chain;
+    }),
+    insert: vi.fn((..._args: unknown[]) => {
+      lastVerb = 'insert';
+      return chain;
+    }),
+    update: vi.fn((...args: unknown[]) => {
+      lastVerb = 'update';
+      supabaseUpdatePayloads.push(args[0]);
+      return chain;
+    }),
+    delete: vi.fn(() => {
+      lastVerb = 'delete';
+      return chain;
+    }),
     eq: vi.fn((...args: unknown[]) => {
       supabaseEqCalls.push(args);
+      if (lastVerb === 'update') supabaseUpdateEqCalls.push(args);
       return chain;
     }),
     neq: vi.fn(() => chain),
@@ -425,6 +446,8 @@ function resetMocks(): void {
   supabaseQuery.mockClear();
   supabaseQuery.mockResolvedValue({ ...EMPTY_RESULT });
   supabaseEqCalls.length = 0;
+  supabaseUpdateEqCalls.length = 0;
+  supabaseUpdatePayloads.length = 0;
 
   resendSend.mockClear();
   resendSend.mockResolvedValue({ data: { id: 're_123' }, error: null });
@@ -1325,10 +1348,21 @@ describe('KeepwarmSession — 3 states + 6-min margin gate (SC2)', () => {
     // Warm-up skipped BEFORE the snapshot: no Freebusy, no writes.
     expect(googleMocks.freebusyQuery).not.toHaveBeenCalled();
     expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
-    // « aucune alerte » — no email, no Sentry message, no exception capture.
+    // « aucune alerte » = no EMAIL (invalid_grant only) — but the under-margin
+    // branch emits a durable SANITIZED Sentry capture (revue #154): the run
+    // stays green and the cron monitor only detects missed runs, so a
+    // persistent non-invalid_grant failure would otherwise be invisible.
     expect(resendSend).not.toHaveBeenCalled();
     expect(sentry.captureMessage).not.toHaveBeenCalled();
-    expect(sentry.captureException).not.toHaveBeenCalled();
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    const underMarginCapture = String(
+      sentry.captureException.mock.calls[0][0] ?? '',
+    );
+    expect(underMarginCapture).toContain('margin insufficient');
+    // Sanitized: the raw transient error (whose config/response payloads
+    // embed test secrets) must never travel.
+    expect(underMarginCapture).not.toContain('RAW_CLIENT_SECRET');
+    expect(underMarginCapture).not.toContain('network glitch');
   });
 
   it('4 min of persisted margin → transient: warm-up skipped', async () => {
@@ -1339,6 +1373,11 @@ describe('KeepwarmSession — 3 states + 6-min margin gate (SC2)', () => {
     expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
     expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
     expect(resendSend).not.toHaveBeenCalled();
+    // Durable sanitized capture on the under-margin branch (revue #154).
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(String(sentry.captureException.mock.calls[0][0])).toContain(
+      'margin insufficient',
+    );
   });
 
   it('expired persisted token → transient: warm-up skipped', async () => {
@@ -1349,7 +1388,11 @@ describe('KeepwarmSession — 3 states + 6-min margin gate (SC2)', () => {
     expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
     expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
     expect(resendSend).not.toHaveBeenCalled();
-    expect(sentry.captureException).not.toHaveBeenCalled();
+    // Expired token → under-margin branch → durable sanitized capture.
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(String(sentry.captureException.mock.calls[0][0])).toContain(
+      'margin insufficient',
+    );
   });
 
   it('unknown expiry (null expiry_date) → transient: warm-up skipped', async () => {
@@ -1360,9 +1403,14 @@ describe('KeepwarmSession — 3 states + 6-min margin gate (SC2)', () => {
     expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
     expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
     expect(resendSend).not.toHaveBeenCalled();
+    // Unknown expiry → under-margin branch → durable sanitized capture.
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(String(sentry.captureException.mock.calls[0][0])).toContain(
+      'remainingMs=null',
+    );
   });
 
-  it('cron token-row read failure (504) → transient: log « transient », NOT « no token row », no alert', async () => {
+  it('cron token-row read failure (504) → transient: log « transient », NOT « no token row », no email', async () => {
     supabaseQuery.mockResolvedValueOnce({
       ...EMPTY_RESULT,
       error: { code: '504', message: 'gateway timeout' },
@@ -1374,9 +1422,18 @@ describe('KeepwarmSession — 3 states + 6-min margin gate (SC2)', () => {
     expect(supabaseQuery).toHaveBeenCalledTimes(1);
     expect(googleMocks.refreshAccessToken).not.toHaveBeenCalled();
     expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
-    // No alert of any kind on a transient read failure.
+    // No EMAIL on a transient read failure (invalid_grant only) — but a
+    // durable sanitized capture exists (revue #154): persistent DB outages
+    // must stay visible.
     expect(resendSend).not.toHaveBeenCalled();
-    expect(sentry.captureMessage).not.toHaveBeenCalled();
+    expect(sentry.captureMessage).toHaveBeenCalledTimes(1);
+    const readFailureCapture = String(
+      sentry.captureMessage.mock.calls[0][0] ?? '',
+    );
+    expect(readFailureCapture).toContain('token row read failed');
+    // Sanitized: the raw error details never travel.
+    expect(readFailureCapture).not.toContain('504');
+    expect(readFailureCapture).not.toContain('gateway timeout');
     // Log wording (spec SC2): the run logs « transient », never the #132
     // « no token row » wording on a fetch failure.
     const logs = breadcrumbMessages().join('\n');
@@ -1463,9 +1520,17 @@ describe('CAS updated_at on the refresh persist (SC8) — cron writer', () => {
 
     await expect(keepwarmHandler()).resolves.toBeUndefined();
 
-    // The UPDATE was CAS-conditioned on the value READ at select time.
-    expect(supabaseEqCalls).toContainEqual(['updated_at', T1]);
-    expect(supabaseEqCalls).toContainEqual(['id', 'therapist']);
+    // The UPDATE was CAS-conditioned on the value READ at select time —
+    // asserted on the UPDATE chain specifically (verb-aware recording, revue
+    // #154): the global array is trivially satisfied by the SELECT.
+    expect(supabaseUpdateEqCalls).toContainEqual(['updated_at', T1]);
+    expect(supabaseUpdateEqCalls).toContainEqual(['id', 'therapist']);
+    // The SET payload carries the refreshed credentials.
+    expect(supabaseUpdatePayloads).toHaveLength(1);
+    expect(supabaseUpdatePayloads[0]).toMatchObject({
+      access_token: 'ya29.new',
+      refresh_token: '1//new-rt',
+    });
     // 3 selects: v1 read, persist confirm, reconciliation re-read (v2 back).
     expect(supabaseQuery).toHaveBeenCalledTimes(3);
     // CAS-miss logged with the spec wording; a miss is benign — no alert.
@@ -1488,7 +1553,12 @@ describe('CAS updated_at on the refresh persist (SC8) — cron writer', () => {
 
     await expect(keepwarmHandler()).resolves.toBeUndefined();
 
-    expect(supabaseEqCalls).toContainEqual(['updated_at', T1]);
+    expect(supabaseUpdateEqCalls).toContainEqual(['updated_at', T1]);
+    expect(supabaseUpdatePayloads).toHaveLength(1);
+    expect(supabaseUpdatePayloads[0]).toMatchObject({
+      access_token: 'ya29.new',
+      refresh_token: '1//new-rt',
+    });
     expect(supabaseQuery).toHaveBeenCalledTimes(3);
     const logs = breadcrumbMessages().join('\n');
     expect(logs).not.toContain('CAS');

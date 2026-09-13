@@ -384,7 +384,7 @@ export async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | nul
             to: adminEmail,
             subject: '⚠️ Google Calendar — re-autorisation requise',
             react: createElement(CalendarAuthAlert, {
-              reauthorizeUrl: `${siteUrl}/api/admin/google-oauth`,
+              reauthorizeUrl: `${siteUrl}/api/admin/google-oauth/`,
             }),
           }).catch((e: unknown) =>
             console.error(

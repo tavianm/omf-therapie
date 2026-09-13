@@ -104,9 +104,16 @@ describe('setCachedAvailability — CacheWriteResult (SC6)', () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
-  it("write failure — returns 'failed' and logs a sanitized French console.error (no raw error object)", async () => {
+  it("write failure — returns 'failed' and logs a fixed classification (no raw error object, no credential-shaped message text)", async () => {
     const store = createFakeStore();
-    store.setJSON.mockRejectedValue(new Error('blobs write timeout'));
+    // Credential-shaped sentinel: production logs err.message verbatim, a
+    // message carrying secrets would reach the log unchanged (revue #154 —
+    // the old assertion only checked the value's TYPE).
+    store.setJSON.mockRejectedValue(
+      new Error(
+        'blobs write timeout: refresh_token=1//SECRET_REFRESH_TOKEN client_secret=GOCSPX-SECRET',
+      ),
+    );
     blobsMock.getStore.mockReturnValue(store);
 
     const result = await cache.setCachedAvailability(CACHE_KEY, SLOTS, 900);
@@ -116,8 +123,34 @@ describe('setCachedAvailability — CacheWriteResult (SC6)', () => {
     const args = errorSpy.mock.calls[0] as unknown[];
     // Log prefix style: '[calendar-cache] …' with a French message.
     expect(String(args[0])).toContain('calendar-cache');
-    // Sanitized: the raw error object itself is never logged.
+    // Sanitized: the raw error object itself is never logged…
     expect(args.some(a => a instanceof Error)).toBe(false);
+    // …and neither is any sensitive content from its message (fixed
+    // classification only — error class, no message text).
+    const rendered = args.map(String).join(' ');
+    expect(rendered).not.toContain('SECRET_REFRESH_TOKEN');
+    expect(rendered).not.toContain('GOCSPX-SECRET');
+    expect(rendered).not.toContain('blobs write timeout');
+    expect(rendered).toContain('Error');
+  });
+
+  it('init failure log carries no credential-shaped content either', async () => {
+    blobsMock.getStore.mockRejectedValue(
+      new Error(
+        'getStore failed: Authorization: Bearer SECRET_BEARER_TOKEN',
+      ),
+    );
+
+    const result = await cache.setCachedAvailability(CACHE_KEY, SLOTS, 900);
+
+    expect(result).toBe('failed');
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const rendered = (errorSpy.mock.calls[0] as unknown[])
+      .map(String)
+      .join(' ');
+    expect(rendered).not.toContain('SECRET_BEARER_TOKEN');
+    expect(rendered).not.toContain('getStore failed');
+    expect(rendered).toContain('calendar-cache');
   });
 
   it("init failure then success — first call 'failed', init retried on next invocation, second call 'written'", async () => {

@@ -264,7 +264,7 @@ async function sendInvalidGrantAlert(
   // covered.
   if (!(await invalidGrantAlertDue())) return;
 
-  const reauthorizeUrl = `${siteUrl}/api/admin/google-oauth`;
+  const reauthorizeUrl = `${siteUrl}/api/admin/google-oauth/`;
 
   try {
     const resend = new Resend(resendApiKey);
@@ -547,11 +547,21 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<KeepwarmSession> {
   // (network, 5xx, timeout) is NOT "no row" — it must not be reported as
   // auth-broken. PGRST116 = .single() matched no row → definitively broken
   // (unchanged #132 behavior, handled by the guard below); anything else is
-  // transient infra: log « transient », NO alert, warm-up skipped this run.
+  // transient infra: log + capture sanitisée, PAS d'email (l'alerte email
+  // reste réservée à invalid_grant), warm-up skipped this run. La capture
+  // est le seul signal durable : le run reste vert et le moniteur cron ne
+  // détecte que les runs manquants, pas les runs no-op — une panne DB
+  // persistante serait sinon invisible (revue #154). La dédup server-side
+  // Sentry absorbe la répétition à chaque run.
   if (fetchError && fetchError.code !== 'PGRST116') {
     logger.warn(
       'calendar-keepwarm: token row read failed (transient) — warm-up skipped this run',
       { code: fetchError.code, message: fetchError.message },
+    );
+    // Sanitisée : seul le libellé fixe circule — jamais le message brut.
+    Sentry.captureMessage(
+      'calendar-keepwarm: token row read failed (transient) — warm-up skipped this run',
+      'warning',
     );
     return { status: 'transient', reason: 'token-row-read-failed' };
   }
@@ -738,13 +748,26 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<KeepwarmSession> {
       }
 
       // Below the margin (or unknown expiry): warm-up skipped this run.
-      // Log « transient », NO alert (no email, no Sentry capture) — the next
-      // run retries the refresh. Sanitized fields only.
+      // Log « transient », PAS d'email (l'alerte email reste réservée à
+      // invalid_grant) — mais capture Sentry sanitisée : le run reste vert
+      // et le moniteur cron ne détecte que les runs manquants, pas les runs
+      // no-op. Un échec PERSISTANT non-invalid_grant (invalid_client, panne
+      // soutenue) serait sinon totalement silencieux — régression vs l'ancien
+      // code qui capturait chaque échec transient (revue #154). La dédup
+      // server-side Sentry absorbe la répétition à chaque run.
       logger.warn(
         'calendar-keepwarm: token refresh failed (transient) — persisted margin insufficient, warm-up skipped this run',
         {
           remainingMs,
         },
+      );
+      // Sanitisée : message fixe + remainingMs (numérique) — le payload brut
+      // de l'erreur (config/response, peut porter client_secret /
+      // refresh_token) ne circule jamais.
+      Sentry.captureException(
+        new Error(
+          `Google OAuth token refresh failed (transient) — persisted margin insufficient, warm-up skipped (remainingMs=${remainingMs})`,
+        ),
       );
       return {
         status: 'transient',

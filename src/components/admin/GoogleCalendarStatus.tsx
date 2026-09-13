@@ -74,7 +74,7 @@ export default function GoogleCalendarStatus() {
   async function fetchStatus() {
     setState({ status: "loading" });
     try {
-      const res = await fetch("/api/admin/google-oauth/status");
+      const res = await fetch("/api/admin/google-oauth/status/");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: StatusResponse = await res.json();
       setState({ status: "success", data });
@@ -178,7 +178,7 @@ function StatusContent({ state, onRetry }: ContentProps) {
           </p>
         )}
         <a
-          href="/api/admin/google-oauth"
+          href="/api/admin/google-oauth/"
           className="
             ml-auto text-xs font-medium font-sans px-3 py-1.5
             rounded-lg border border-sage-200 text-sage-600
@@ -206,7 +206,7 @@ function StatusContent({ state, onRetry }: ContentProps) {
           </p>
         )}
         <a
-          href="/api/admin/google-oauth"
+          href="/api/admin/google-oauth/"
           className="
             ml-auto inline-flex items-center gap-1.5 text-xs font-medium font-sans px-3 py-1.5
             rounded-lg bg-orange-500 text-white border border-orange-500
@@ -231,7 +231,7 @@ function StatusContent({ state, onRetry }: ContentProps) {
         Action requise pour créer des rendez-vous avec lien Meet
       </p>
       <a
-        href="/api/admin/google-oauth"
+        href="/api/admin/google-oauth/"
         className="
           ml-auto inline-flex items-center gap-1.5 text-xs font-medium font-sans px-3 py-1.5
           rounded-lg bg-red-500 text-white border border-red-500

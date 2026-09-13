@@ -30,10 +30,12 @@
  *   - No calendar-cache interaction; error paths are out of scope (SC4).
  */
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Auth, calendar_v3 } from 'googleapis';
 import {
+  GoogleCalendarError,
   filterSlotsByBusy,
   generateSlotsForRange,
   getAvailableSlots,
@@ -86,16 +88,47 @@ const googleApis = vi.hoisted(() => {
   const calendarFactory = vi.fn(() => ({
     freebusy: { query: freebusyQuery },
   }));
-  return { state, freebusyQuery, calendarFactory };
+  // Class-level spies (revue #154): the no-options composition test asserts
+  // the persisted token row is served WITHOUT a refresh.
+  const authClient = {
+    setCredentials: vi.fn(),
+    refreshAccessToken: vi.fn(),
+  };
+  return { state, freebusyQuery, calendarFactory, authClient };
 });
+
+// Token-row seam for resolveCalendarAuth (revue #154): the LIVE patient path
+// (getAvailableSlots WITHOUT options) resolves auth via getPersistedOAuthClient
+// — previously zero coverage in the whole suite.
+const supabaseAuthRow = vi.hoisted(() => {
+  const from = vi.fn(() => {
+    const chain = {
+      select: () => chain,
+      eq: () => chain,
+      single: async () => supabaseAuthRow.row,
+    };
+    return chain;
+  });
+  return {
+    from,
+    row: { data: null as unknown, error: null as unknown },
+  };
+});
+
+vi.mock('@/lib/supabase', () => ({
+  supabaseAdmin: { from: supabaseAuthRow.from },
+}));
 
 vi.mock('googleapis', () => ({
   google: {
     auth: {
-      // Shape-only: getPersistedOAuthClient is never reached in this suite.
+      // Delegates to class-level spies so tests can observe the client the
+      // composition builds (the no-options path DOES reach this class now).
       OAuth2: class {
-        setCredentials = vi.fn();
-        refreshAccessToken = vi.fn();
+        setCredentials = (...args: unknown[]) =>
+          googleApis.authClient.setCredentials(...args);
+        refreshAccessToken = (...args: unknown[]) =>
+          googleApis.authClient.refreshAccessToken(...args);
       },
     },
     calendar: googleApis.calendarFactory,
@@ -128,7 +161,13 @@ interface AvailabilityFixture {
   expected: Record<string, TimeSlot[]>;
 }
 
-const FIXTURE_DIR = resolve(process.cwd(), 'tests/fixtures/availability');
+// Anchored to THIS module (revue #154): process.cwd() made the suite depend
+// on Vitest being launched from the repository root — IDE or parent-workspace
+// runners would fail with a false ENOENT.
+const FIXTURE_DIR = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../tests/fixtures/availability',
+);
 
 const FIXTURE_NAMES = [
   'manual-slots-week',
@@ -432,6 +471,111 @@ describe('getAvailableSlots — golden fixtures (characterization, SC4)', () => 
 // with the fixture range window (pre-refactor: 4 reads + 4 queries for the
 // full 4-game batch; SC3 reduces the cron to 1+1 via the shared snapshot).
 // ===========================================================================
+
+// ===========================================================================
+// LIVE COMPOSITION without options (revue #154) — the branch
+// /api/availability actually calls (src/pages/api/availability.ts:228):
+// resolveCalendarId + resolveCalendarAuth → getPersistedOAuthClient. The
+// golden suites above exercise the DI seam (options.calendar), which bypasses
+// the whole auth-resolution branch; a regression confined to it (e.g. the new
+// fail-closed null contract) used to leave every golden test green while prod
+// 503'd.
+// ===========================================================================
+
+describe('getAvailableSlots — LIVE composition without options (auth resolution covered)', () => {
+  it('reproduces the golden output through the prod composition: calendar id + auth resolved from the persisted token row, ONE Freebusy query, NO refresh', async () => {
+    const fixture = loadFixture('partial-busy-overlaps');
+    const { inputs } = fixture;
+
+    vi.stubEnv('DEV', inputs.mockMode);
+    vi.stubEnv('GOOGLE_CALENDAR_MOCK', inputs.mockMode ? 'true' : 'false');
+    vi.stubEnv('GOOGLE_CALENDAR_ID', inputs.calendarId);
+    // getPersistedOAuthClient env guard: without client id/secret it returns
+    // null before ever reading the row.
+    vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', 'test-client-id');
+    vi.stubEnv('GOOGLE_OAUTH_CLIENT_SECRET', 'test-client-secret');
+    vi.setSystemTime(new Date(inputs.frozenNow));
+
+    manualSlots.fetchManualSlots.mockReset();
+    manualSlots.fetchManualSlots.mockResolvedValue(
+      inputs.manualSlotRows.map(row => ({ ...row })),
+    );
+    googleApis.state.calendarId = inputs.calendarId;
+    googleApis.state.busy = inputs.freebusyBusyPeriods.map(b => ({ ...b }));
+    googleApis.freebusyQuery.mockClear();
+    googleApis.calendarFactory.mockClear();
+    googleApis.authClient.setCredentials.mockClear();
+    googleApis.authClient.refreshAccessToken.mockClear();
+    supabaseAuthRow.from.mockClear();
+    // Token row valid at the frozen clock → client served from the row, no
+    // token-endpoint interaction.
+    supabaseAuthRow.row = {
+      data: {
+        access_token: 'ya29.row',
+        refresh_token: '1//row-rt',
+        expiry_date: new Date(inputs.frozenNow).getTime() + 3_600_000,
+        updated_at: inputs.frozenNow,
+      },
+      error: null,
+    };
+
+    const start = new Date(inputs.range.start);
+    const end = new Date(inputs.range.end);
+    // NO options — the exact call shape of the patient route.
+    const slots = await getAvailableSlots(
+      start,
+      end,
+      60,
+      'in-person',
+      inputs.dbBusyPeriods,
+    );
+
+    // Golden equivalence holds through the real composition.
+    expect(slots).toEqual(fixture.expected['in-person/60']);
+    // SC3 budget: one manual read + one Freebusy query.
+    expect(manualSlots.fetchManualSlots).toHaveBeenCalledTimes(1);
+    expect(googleApis.freebusyQuery).toHaveBeenCalledTimes(1);
+    // The auth seam really ran: the persisted token row was read and the
+    // client carried its credentials — with zero token-endpoint interaction.
+    expect(supabaseAuthRow.from).toHaveBeenCalledWith('google_oauth_tokens');
+    expect(googleApis.authClient.setCredentials).toHaveBeenCalledWith(
+      expect.objectContaining({
+        access_token: 'ya29.row',
+        refresh_token: '1//row-rt',
+      }),
+    );
+    expect(googleApis.authClient.refreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('throws the typed shared-stage error through the real composition when the persisted client is absent (fail-closed, no Freebusy)', async () => {
+    const fixture = loadFixture('partial-busy-overlaps');
+    const { inputs } = fixture;
+
+    vi.stubEnv('DEV', inputs.mockMode);
+    vi.stubEnv('GOOGLE_CALENDAR_MOCK', inputs.mockMode ? 'true' : 'false');
+    vi.stubEnv('GOOGLE_CALENDAR_ID', inputs.calendarId);
+    vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', 'test-client-id');
+    vi.stubEnv('GOOGLE_OAUTH_CLIENT_SECRET', 'test-client-secret');
+    vi.setSystemTime(new Date(inputs.frozenNow));
+    manualSlots.fetchManualSlots.mockReset();
+    manualSlots.fetchManualSlots.mockResolvedValue([]);
+    // No persisted client (no row) → resolveCalendarAuth throws BEFORE any
+    // Google I/O: the patient path must not issue a Freebusy query.
+    supabaseAuthRow.row = { data: null, error: null };
+    googleApis.freebusyQuery.mockClear();
+    googleApis.calendarFactory.mockClear();
+    supabaseAuthRow.from.mockClear();
+
+    const start = new Date(inputs.range.start);
+    const end = new Date(inputs.range.end);
+
+    await expect(
+      getAvailableSlots(start, end, 60, 'in-person', inputs.dbBusyPeriods),
+    ).rejects.toBeInstanceOf(GoogleCalendarError);
+    expect(googleApis.freebusyQuery).not.toHaveBeenCalled();
+    expect(googleApis.calendarFactory).not.toHaveBeenCalled();
+  });
+});
 
 describe('external I/O contract pinned by the characterization', () => {
   it('per game: exactly one manual-slots read and one Freebusy query with the fixture range window', async () => {

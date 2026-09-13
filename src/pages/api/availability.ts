@@ -12,6 +12,8 @@
 
 import type { APIRoute } from 'astro';
 import {
+  CalendarAuthError,
+  CalendarPermissionError,
   filterSlotsByBusy,
   getAvailableSlots,
   GoogleCalendarError,
@@ -130,10 +132,16 @@ async function fetchDbBusyPeriods(
 // Helpers
 // ---------------------------------------------------------------------------
 
-function jsonError(message: string, status: number): Response {
+function jsonError(message: string, status: number, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify({ error: message }), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      // Même rationale que jsonSuccess : aucune réponse d'erreur ne doit
+      // être mise en cache (CDN ni navigateur).
+      'Cache-Control': 'no-store',
+      ...headers,
+    },
   });
 }
 
@@ -233,7 +241,18 @@ export const GET: APIRoute = async ({ request }) => {
     // reste NON fatal mais n'est plus silencieux (SC6) : log, réponse
     // inchangée.
     const writeResult = await setCachedAvailability(cacheKey, slots).catch(
-      () => 'failed' as const,
+      (err: unknown): 'failed' => {
+        // Ce catch est défensif (setCachedAvailability résout sur tous ses
+        // chemins aujourd'hui) : si un jour il tire, le rejet est signalé —
+        // classification fixe uniquement, le message brut d'une erreur
+        // pourrait embarquer du contenu sensible (même règle que
+        // calendar-cache, revue #154).
+        console.error(
+          "[api/availability] Rejet inattendu de la promesse d'écriture cache (non fatale) :",
+          err instanceof Error ? err.name : 'unknown',
+        );
+        return 'failed' as const;
+      },
     );
     if (writeResult === 'failed') {
       console.error(
@@ -245,21 +264,34 @@ export const GET: APIRoute = async ({ request }) => {
     return jsonSuccess(slots);
   } catch (err: unknown) {
     if (err instanceof GoogleCalendarError) {
-      // Erreur métier Google Calendar (quota, config, permissions)
+      // Cause sanitisée : seuls les champs de classification circulent dans
+      // le log — le payload brut de err.cause peut embarquer des secrets
+      // OAuth (GaxiosError.config porte l'en-tête Authorization).
+      const cause = err.cause as Record<string, unknown> | undefined;
       console.error(
         '[api/availability] GoogleCalendarError :',
         err.message,
-        // err.cause intentionally NOT logged — may contain OAuth credentials via GaxiosError
-        err.cause instanceof Error
-          ? err.cause.message
-          : typeof err.cause === 'object' && err.cause !== null
-            ? ((err.cause as Record<string, unknown>)['googleErrorCode'] ??
-              'unknown')
-            : String(err.cause ?? ''),
+        typeof cause === 'object' && cause !== null
+          ? { googleErrorCode: cause.googleErrorCode, status: cause.status }
+          : undefined,
       );
+      if (
+        err instanceof CalendarAuthError ||
+        err instanceof CalendarPermissionError
+      ) {
+        // Non transitoire : l'admin doit re-autoriser / corriger les
+        // permissions — un 503 « réessayez » induirait le patient en erreur.
+        // Message patient générique : aucun état OAuth ne fuite.
+        return jsonError(
+          'Une erreur interne est survenue. Veuillez réessayer ultérieurement.',
+          500,
+        );
+      }
+      // Transitoire (quota, réseau, échec de stage partagé) : 503 + Retry-After.
       return jsonError(
         'Le service de disponibilités est temporairement indisponible.',
         503,
+        { 'Retry-After': '60' },
       );
     }
 

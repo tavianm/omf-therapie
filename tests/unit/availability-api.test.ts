@@ -395,10 +395,13 @@ describe('GET /api/availability — cache write failures are non-fatal (SC6)', (
 
     expect(response.status).toBe(200);
     await expect(readJson(response)).resolves.toEqual({ slots: [FREE_SLOT] });
-    expect(consoleError).toHaveBeenCalledTimes(1);
+    // TWO sanitized logs (revue #154): the defensive catch now reports the
+    // rejection reason, then the 'failed' write-result log follows.
+    expect(consoleError).toHaveBeenCalledTimes(2);
     const logged = consoleError.mock.calls
       .map(c => c.map(String).join(' '))
       .join('\n');
+    expect(logged).toContain('Rejet inattendu');
     expect(logged).toContain("Échec de l'écriture du cache");
     // The thrown error object/payload is never transported to the logs.
     expect(logged).not.toContain('SECRET_PAYLOAD');
