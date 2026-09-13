@@ -726,42 +726,47 @@ export async function loadAvailabilitySnapshot(
 }
 
 /**
- * Exécute les DEUX stages I/O du snapshot — exactement UNE lecture
- * `manual_time_slots` et UNE requête Freebusy — et classe toute erreur comme
- * échec de stage partagé (issue #153 / SC5).
- *
- * Une erreur response-level Freebusy (HTTP 200 dont `calendars[id].errors`
- * est non vide) n'est PAS « agenda vide » : elle était autrefois avalée en
- * résultat vide, empoisonnant les caches avec des disponibilités fantômes.
- * Elle lève désormais une erreur typée. Messages et causes sanitisés : les
- * payloads bruts Google/PostgREST ne circulent jamais (risque d'y trouver
- * client_secret / refresh_token).
+ * Stage 1 du snapshot — la lecture unique `manual_time_slots`. Toute erreur
+ * est classée échec de stage partagé (issue #153 / SC5). Message sanitisé :
+ * le détail PostgREST n'est loggué que côté serveur, jamais transporté dans
+ * l'erreur typée.
  */
-async function loadSnapshotWithCalendar(
+async function fetchManualSlotsStage(
+  startDate: Date,
+  endDate: Date,
+): Promise<Array<{ slot_date: string; period: Period }>> {
+  return fetchManualSlots(startDate, endDate).catch((err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(
+      '[google-calendar] Échec de la lecture manual_time_slots (stage partagé) :',
+      message,
+    );
+    throw new CalendarSharedStageError(
+      'Échec du stage partagé availability-snapshot : lecture manual_time_slots impossible.',
+    );
+  });
+}
+
+/**
+ * Stage 2 du snapshot — la requête Freebusy unique pour toute la plage.
+ *
+ * Contrat strict (issue #153 / SC5) : la réponse est VALIDE seulement si
+ * l'agenda demandé est présent dans `calendars` ET que `busy` est un tableau
+ * d'intervalles structurellement corrects. Une entrée absente, un `busy`
+ * manquant ou un intervalle malformé ne sont PAS « agenda vide » : traiter
+ * ces réponses comme fail-open empoisonnerait les caches avec des
+ * disponibilités fantômes → erreur typée de stage partagé. Une erreur
+ * response-level (`calendars[id].errors` non vide sur HTTP 200) lève
+ * également. Messages et causes sanitisés : les payloads bruts
+ * Google/PostgREST ne circulent jamais (risque d'y trouver client_secret /
+ * refresh_token).
+ */
+async function fetchBusyPeriodsStage(
   calendar: calendar_v3.Calendar,
   calendarId: string,
   startDate: Date,
   endDate: Date,
-): Promise<AvailabilitySnapshot> {
-  // Stage 1 — slots manuels (UNE lecture).
-  const manualRecords = await fetchManualSlots(startDate, endDate).catch(
-    (err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(
-        '[google-calendar] Échec de la lecture manual_time_slots (stage partagé) :',
-        message,
-      );
-      // Message sanitisé : le détail PostgREST n'est loggué que côté serveur,
-      // jamais transporté dans l'erreur typée.
-      throw new CalendarSharedStageError(
-        'Échec du stage partagé availability-snapshot : lecture manual_time_slots impossible.',
-      );
-    },
-  );
-
-  // Stage 2 — Freebusy (UNE seule requête pour toute la plage).
-  let busyPeriods: Array<{ start: string; end: string }> = [];
-
+): Promise<Array<{ start: string; end: string }>> {
   try {
     const response = await calendar.freebusy.query({
       requestBody: {
@@ -773,12 +778,18 @@ async function loadSnapshotWithCalendar(
     });
 
     const calendarData = response.data.calendars?.[calendarId];
-    if (calendarData?.errors && calendarData.errors.length > 0) {
+    if (!calendarData) {
+      // HTTP 200 mais l'agenda demandé n'est pas dans la réponse — impossible
+      // de distinguer « vide » d'une réponse tronquée : fail-closed.
+      throw new CalendarSharedStageError(
+        "Échec du stage partagé availability-snapshot : agenda demandé absent de la réponse Freebusy.",
+      );
+    }
+
+    if (calendarData.errors && calendarData.errors.length > 0) {
       // HTTP 200 mais Google signale une erreur sur cet agenda (permissions,
-      // introuvable…). Classer ça comme « agenda vide » empoisonnerait tous
-      // les caches en aval avec des créneaux libres fictifs (issue #153 /
-      // SC5) → erreur typée de stage partagé. Seuls les codes `reason`
-      // circulent — jamais les payloads bruts.
+      // introuvable…). Seuls les codes `reason` circulent — jamais les
+      // payloads bruts.
       const reasons = calendarData.errors
         .map(e => (typeof e?.reason === 'string' ? e.reason : 'unknown'))
         .join(',');
@@ -792,10 +803,24 @@ async function loadSnapshotWithCalendar(
       );
     }
 
-    busyPeriods = (calendarData?.busy ?? []).filter(
-      (b): b is { start: string; end: string } =>
-        typeof b.start === 'string' && typeof b.end === 'string',
-    );
+    const busy: unknown = calendarData.busy;
+    if (!Array.isArray(busy)) {
+      throw new CalendarSharedStageError(
+        'Échec du stage partagé availability-snapshot : réponse Freebusy malformée (busy absent ou non tableau).',
+      );
+    }
+    if (
+      !busy.every(
+        (b): b is { start: string; end: string } =>
+          typeof (b as { start?: unknown } | null)?.start === 'string' &&
+          typeof (b as { end?: unknown } | null)?.end === 'string',
+      )
+    ) {
+      throw new CalendarSharedStageError(
+        'Échec du stage partagé availability-snapshot : réponse Freebusy malformée (intervalle busy invalide).',
+      );
+    }
+    return busy;
   } catch (err: unknown) {
     if (err instanceof CalendarSharedStageError) throw err; // déjà classée
     // Gestion gracieuse : timeout, quota dépassé, réseau… — même classement
@@ -810,7 +835,26 @@ async function loadSnapshotWithCalendar(
       { status: (err as { response?: { status?: number } })?.response?.status },
     );
   }
+}
 
+/**
+ * Exécute les DEUX stages I/O du snapshot — exactement UNE lecture
+ * `manual_time_slots` et UNE requête Freebusy — et classe toute erreur comme
+ * échec de stage partagé (issue #153 / SC5).
+ */
+async function loadSnapshotWithCalendar(
+  calendar: calendar_v3.Calendar,
+  calendarId: string,
+  startDate: Date,
+  endDate: Date,
+): Promise<AvailabilitySnapshot> {
+  const manualRecords = await fetchManualSlotsStage(startDate, endDate);
+  const busyPeriods = await fetchBusyPeriodsStage(
+    calendar,
+    calendarId,
+    startDate,
+    endDate,
+  );
   return { manualSlots: indexManualSlots(manualRecords), busyPeriods };
 }
 
@@ -845,12 +889,14 @@ export function filterSlotsByBusy(
  * Retourne les créneaux disponibles en vérifiant Google Calendar Freebusy.
  * Les créneaux qui chevauchent un événement existant sont filtrés du résultat.
  *
- * Délègue ses deux stages I/O au cœur partagé du snapshot
- * (`loadSnapshotWithCalendar`) : UNE lecture manual slots + UNE requête
- * Freebusy, chaque échec typé erreur de stage partagé (issue #153 / SC5). En
- * particulier, une erreur response-level Freebusy lève désormais (→ 503 sur
- * /api/availability) au lieu de retourner [] — un résultat vide qui était
- * autrefois persisté par les writers comme disponibilités fantômes.
+ * Chemin patient (issue #153 / SC7) : les candidats sont dérivés depuis la
+ * lecture unique `manual_time_slots` AVANT la requête Freebusy — une plage
+ * sans créneau éligible retourne [] sans consommer d'appel Freebusy ni
+ * risquer un 503 pendant une panne Google. Sinon, UNE requête Freebusy dont
+ * tout échec est typé erreur de stage partagé (SC5) : en particulier, une
+ * réponse tronquée/malformée ou une erreur response-level lève désormais
+ * (→ 503 sur /api/availability) au lieu de retourner [] — un résultat vide
+ * qui était autrefois persisté par les writers comme disponibilités fantômes.
  */
 export async function getAvailableSlots(
   startDate: Date,
@@ -883,35 +929,40 @@ export async function getAvailableSlots(
 
   const calendarId = await resolveCalendarId(options.calendarId);
 
-  const calendar =
-    options.calendar ??
-    google.calendar({ version: 'v3', auth: await resolveCalendarAuth() });
-
-  // Batch mono-snapshot (issue #153 / SC3) : UNE lecture manual slots et UNE
-  // requête Freebusy, échecs classés erreur de stage partagé (SC5).
-  const snapshot = await loadSnapshotWithCalendar(
-    calendar,
-    calendarId,
-    startDate,
-    endDate,
-  );
-
+  // Stage 1 — slots manuels, puis dérivation des candidats. L'early return
+  // précède la requête Freebusy : zéro appel API quand la plage n'offre
+  // aucun créneau éligible (comportement d'avant le batch mono-snapshot).
+  const manualRecords = await fetchManualSlotsStage(startDate, endDate);
   const candidates = generateSlotsForRange({
     startDate,
     endDate,
     duration,
     mode,
     now: new Date(),
-    manualSlots: snapshot.manualSlots,
+    manualSlots: indexManualSlots(manualRecords),
   });
 
   if (candidates.length === 0) {
     return [];
   }
 
+  // Stage 2 — la résolution d'auth et la requête Freebusy ne tournent que
+  // s'il y a des candidats à filtrer. Échecs classés erreur de stage partagé
+  // (SC5), contrat fail-closed strict sur la réponse (voir
+  // fetchBusyPeriodsStage).
+  const calendar =
+    options.calendar ??
+    google.calendar({ version: 'v3', auth: await resolveCalendarAuth() });
+  const busyPeriods = await fetchBusyPeriodsStage(
+    calendar,
+    calendarId,
+    startDate,
+    endDate,
+  );
+
   // Filtre les créneaux occupés (Freebusy + RDV DB)
   return filterSlotsByBusy(candidates, [
-    ...snapshot.busyPeriods,
+    ...busyPeriods,
     ...dbBusyPeriods,
   ]);
 }

@@ -772,6 +772,7 @@ describe('loadAvailabilitySnapshot — shared snapshot + typed shared-stage erro
   afterEach(() => {
     errorSpy.mockRestore();
     vi.unstubAllEnvs();
+    vi.useRealTimers();
   });
 
   it('happy path: returns manual periods + busy periods with EXACTLY 1 manual read and 1 Freebusy query (SC3)', async () => {
@@ -779,14 +780,14 @@ describe('loadAvailabilitySnapshot — shared snapshot + typed shared-stage erro
       data: {
         calendars: {
           [CAL_ID]: {
+            // Healthy response: the requested entry is present with a
+            // structurally valid busy array (strict fail-closed contract —
+            // malformed entries are REJECTED, see the negative tests below).
             busy: [
               {
                 start: '2026-06-16T10:00:00+02:00',
                 end: '2026-06-16T11:00:00+02:00',
               },
-              // Malformed entries are dropped, exactly like the pre-refactor
-              // response handling.
-              { start: 12, end: null },
             ],
           },
         },
@@ -873,6 +874,10 @@ describe('loadAvailabilitySnapshot — shared snapshot + typed shared-stage erro
   });
 
   it('getAvailableSlots converts the SAME response-level condition into the typed error — never an empty array (SC5)', async () => {
+    // Frozen clock BEFORE the range: with the SC7 early return restored, a
+    // past range would yield zero candidates and never reach Freebusy.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-06-10T00:00:00.000Z'));
     const { calendar, query } = freebusyCalendar(() => ({
       data: {
         calendars: {
@@ -901,6 +906,113 @@ describe('loadAvailabilitySnapshot — shared snapshot + typed shared-stage erro
     // Same I/O budget on the patient path (shared snapshot core).
     expect(manualSlotsApi.fetchManualSlots).toHaveBeenCalledTimes(1);
     expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('Freebusy 200 with the requested calendar ABSENT from calendars → typed shared-stage error, NOT empty-busy (SC5 fail-closed)', async () => {
+    // A truncated/absent entry must never be conflated with a valid
+    // empty-busy calendar: both writers would otherwise cache every
+    // candidate as free (review #154 — fail-open hole).
+    const { calendar, query } = freebusyCalendar(() => ({
+      data: { calendars: {} },
+    }));
+    googleCalendarFactory.calendar.mockReturnValue(calendar);
+
+    const err: unknown = await loadAvailabilitySnapshot(
+      fakeOAuth2Client,
+      SNAPSHOT_START,
+      SNAPSHOT_END,
+    ).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CalendarSharedStageError);
+    expect(err).toBeInstanceOf(GoogleCalendarError);
+    expect((err as Error).message).toContain('stage partagé');
+    // No raw payload attached as cause.
+    expect((err as { cause?: unknown }).cause).toBeUndefined();
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('Freebusy 200 with a malformed busy array → typed shared-stage error — malformed entries REJECTED, not silently dropped', async () => {
+    // Malformed busy content (non-array busy, or an interval whose bounds
+    // are not strings) is a protocol violation: treating it as empty would
+    // poison downstream caches with fake free availability.
+    for (const payload of [
+      { data: { calendars: { [CAL_ID]: { busy: 'not-an-array' } } } },
+      {
+        data: {
+          calendars: {
+            [CAL_ID]: {
+              busy: [
+                {
+                  start: '2026-06-16T10:00:00+02:00',
+                  end: '2026-06-16T11:00:00+02:00',
+                },
+                { start: 12, end: null },
+              ],
+            },
+          },
+        },
+      },
+      { data: { calendars: { [CAL_ID]: {} } } },
+    ]) {
+      const { calendar, query } = freebusyCalendar(() => payload);
+      googleCalendarFactory.calendar.mockReturnValue(calendar);
+
+      const err: unknown = await loadAvailabilitySnapshot(
+        fakeOAuth2Client,
+        SNAPSHOT_START,
+        SNAPSHOT_END,
+      ).catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(CalendarSharedStageError);
+      expect((err as Error).message).toContain('malformée');
+      expect(query).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('getAvailableSlots with the requested calendar ABSENT → typed shared-stage error, never an empty array (SC5 patient path)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-06-10T00:00:00.000Z'));
+    const { calendar, query } = freebusyCalendar(() => ({
+      data: { calendars: {} },
+    }));
+
+    const err: unknown = await getAvailableSlots(
+      SNAPSHOT_START,
+      SNAPSHOT_END,
+      60,
+      'in-person',
+      [],
+      { calendarId: CAL_ID, calendar },
+    ).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CalendarSharedStageError);
+    expect(err).toBeInstanceOf(GoogleCalendarError);
+    expect((err as Error).message).toContain('stage partagé');
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('getAvailableSlots with zero eligible candidates → [] with NO Freebusy query and NO client build (SC7 early return)', async () => {
+    // 2026-06-20 is a Saturday: the derivation engine only emits weekday
+    // slots, so the candidate set is empty and the Freebusy stage must never
+    // run (the pre-snapshot refactor behavior is restored for the patient
+    // path — a short empty window costs zero Google I/O).
+    const { calendar, query } = freebusyCalendar(() => {
+      throw new Error('Freebusy must never be called without candidates');
+    });
+    googleCalendarFactory.calendar.mockReturnValue(calendar);
+
+    const slots = await getAvailableSlots(
+      new Date('2026-06-20T00:00:00.000Z'),
+      new Date('2026-06-21T00:00:00.000Z'),
+      60,
+      'in-person',
+      [],
+      { calendarId: CAL_ID, calendar },
+    );
+
+    expect(slots).toEqual([]);
+    expect(manualSlotsApi.fetchManualSlots).toHaveBeenCalledTimes(1);
+    expect(query).not.toHaveBeenCalled();
   });
 
   it('manual-slots read failure surfacing through the snapshot → typed shared-stage error, sanitized, NO Freebusy call', async () => {

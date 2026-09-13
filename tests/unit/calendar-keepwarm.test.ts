@@ -155,7 +155,10 @@ const googleMocks = vi.hoisted(() => ({
   })),
   setCredentials: vi.fn(),
   freebusyQuery: vi.fn(async () => ({
-    data: { calendars: {} },
+    // Healthy Freebusy response: the requested calendar entry MUST be present
+    // with a structurally valid busy array (strict fail-closed contract — a
+    // missing entry now throws a typed shared-stage error).
+    data: { calendars: { primary: { busy: [] } } },
     error: null,
   })),
   // T6 (issue #153): ONE calendar built by the snapshot loader from the
@@ -438,7 +441,7 @@ function resetMocks(): void {
   googleMocks.freebusyQuery.mockClear();
   googleMocks.calendar.mockClear();
   googleMocks.freebusyQuery.mockResolvedValue({
-    data: { calendars: {} },
+    data: { calendars: { primary: { busy: [] } } },
     error: null,
   });
 
