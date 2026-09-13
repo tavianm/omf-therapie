@@ -23,7 +23,7 @@
  * so the mock chain resolves `then` with { data: rows, error: null } → 200 or
  * { data: null, error } → 502 (see `setQueryResult`).
  */
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // --- Hoisted shared state (mock factories need it at hoist time) ------------
 
@@ -204,6 +204,12 @@ beforeEach(() => {
 // (a) Auth guard — miroir exact du guard POST, AVANT tout appel DB
 // ---------------------------------------------------------------------------
 describe('GET /api/admin/appointments/ — liste admin authentifiée (issue #165, SC1)', () => {
+  // Safety net: a test that installs a console.error spy but throws before
+  // its inline mockRestore must not leak the spy into the next test.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('returns 401 {"error":"Non authentifié"} with no-store, NO appointments key, and ZERO DB call when there is no session', async () => {
     // Arrange — session absente/expirée.
     h.getSession.mockResolvedValue(null);
@@ -307,7 +313,9 @@ describe('GET /api/admin/appointments/ — liste admin authentifiée (issue #165
       expect.stringContaining(
         '[admin/appointments] Erreur fetch rendez-vous :',
       ),
-      'connection reset by peer',
+      // The structured Supabase error is logged WHOLE (message + code/details/
+      // hint when present) — not flattened to error.message.
+      { message: 'connection reset by peer' },
     );
     errorSpy.mockRestore();
   });
