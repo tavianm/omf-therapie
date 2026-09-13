@@ -21,6 +21,25 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      # Real PostgreSQL for the integration suite (tests/integration) — the
+      # revue-#149 oracle: migrations 000-local→019 applied, then the credits
+      # invariants exercised under real concurrency (restore once, single
+      # cancel winner). Vanilla postgres + supabase/local/000_local_compat.sql
+      # (auth stub + roles) applied by the test itself.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: omf_therapie
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -52,6 +71,10 @@ jobs:
         run: npm run lint
       - name: Test
         run: npm run test
+      - name: Test (PostgreSQL integration)
+        run: npm run test:integration
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/omf_therapie
       - name: Build
         run: npm run build
 

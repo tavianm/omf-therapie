@@ -63,7 +63,7 @@ docs: synchronisation doc PRs #85, #66, #65
 git pull origin main                           # avoid drift
 git checkout -b feat/<issue#>-<slug>
 npm install                                    # if deps changed
-npm run db:start                               # Postgres + Mailpit
+npm run db:start                               # Postgres + PostgREST + supabase-rest + Mailpit
 npm run dev -- --port 4321                     # Astro dev server
 
 # In another terminal:

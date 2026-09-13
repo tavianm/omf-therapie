@@ -7,6 +7,7 @@ import { supabaseAdmin } from '../../../../lib/supabase';
 import { calculatePrice } from '../../../../lib/pricing';
 import { getAvailableCredit, consumeCredits } from '../../../../lib/credits';
 import { hasAppointmentConflict } from '../../../../lib/appointment-conflicts';
+import { isSchedulingConflictError } from '../../../../lib/scheduling-settings';
 import type { AppointmentType } from '../../../../types/appointment';
 import { invalidateAvailabilityCache } from '../../../../lib/calendar-cache.js';
 import { isCabinetEligibleSlot } from '../../../../lib/appointment-eligibility';
@@ -299,6 +300,10 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
   if (dbError || !appointment) {
     console.error('[admin/appointments] DB insert error:', dbError);
+    // Trigger 015 : le créneau mord sur la marge d'une séance adjacente.
+    if (isSchedulingConflictError(dbError)) {
+      return errorResponse(409, 'Ce créneau chevauche un rendez-vous existant (marge entre les séances incluse). Veuillez sélectionner un autre horaire.');
+    }
     return errorResponse(500, 'Erreur lors de la création du rendez-vous');
   }
 

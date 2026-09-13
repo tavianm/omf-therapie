@@ -14,11 +14,12 @@ npm run lint             # ESLint (eslint.config.js, flat config)
 npm run typecheck        # `astro check` — advisory in CI (see #68 for ~20 residual errors)
 npm run test             # Vitest (tests/unit/**, node env)
 npm run test:watch       # Vitest watch mode
+npm run test:integration # Vitest integration (tests/integration/**) — real PostgreSQL, skips without DB
 npm run test:low         # Vitest capped to 1 worker — use for local full-suite runs in WSL (see guard below)
 npm run format           # Prettier — write (singleQuote, arrowParens:avoid)
 npm run format:check     # Prettier — check only (advisory; not in CI gate)
 npm run audit:a11y       # Pa11y WCAG audit (needs dev server running) — REQUIRED before UI PRs
-npm run db:start         # Start Postgres + Mailpit via docker compose
+npm run db:start         # Start Postgres + PostgREST + supabase-rest + Mailpit via docker compose
 npm run db:reset         # ⚠️ Drops & re-creates schema, replays ONLY 001_init.sql
 ```
 

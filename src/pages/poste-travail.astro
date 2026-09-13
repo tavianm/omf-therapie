@@ -1,0 +1,69 @@
+---
+/**
+ * /poste-travail — espace de gestion admin, proposition B (issue #148).
+ *
+ * Seconde proposition de refonte du tableau de bord (Figma « Refonte admin »),
+ * livrée sur une route dédiée pour comparaison A/B avec /mes-rdvs (proposition A).
+ * Garde auth et chargement des données identiques à /mes-rdvs ; le rendu
+ * interactif est délégué à l'island React Workbench.
+ */
+
+export const prerender = false;
+
+import Layout from '../layouts/Layout.astro';
+import { Workbench } from '../components/admin/workbench/Workbench';
+import { auth } from '../lib/auth';
+import { isAdminSession } from '../lib/authz';
+import { supabaseAdmin } from '../lib/supabase';
+import type { Appointment } from '../types/appointment';
+
+// ── Auth guard ───────────────────────────────────────────────────────────────
+const session = await auth.api.getSession({ headers: Astro.request.headers });
+if (!session) {
+  return Astro.redirect('/login/?redirect=/poste-travail/');
+}
+if (!isAdminSession(session)) {
+  return Astro.redirect('/login/?error=acces-refuse');
+}
+
+const practitionerName = session.user?.name ?? 'Oriane Montabonnet';
+
+// ── Fetch appointments ───────────────────────────────────────────────────────
+// Colonnes explicites identiques à /mes-rdvs : exclut les champs sensibles non
+// nécessaires à l'island Workbench. Évite la sérialisation de données
+// PII/cliniques superflues dans les props Astro.
+const APPOINTMENT_COLUMNS = [
+  'id', 'status', 'scheduled_at', 'rescheduled_to',
+  'appointment_type', 'appointment_mode', 'duration',
+  'base_price', 'discount', 'final_price', 'is_first_session',
+  'patient_name', 'patient_email', 'patient_phone', 'patient_postal_code',
+  'patient_city', 'patient_reason', 'therapist_notes',
+  'video_link', 'google_calendar_event_id',
+  'stripe_payment_link_url', 'stripe_payment_link_id',
+  'created_at', 'updated_at',
+].join(',');
+
+const { data: rows, error } = await supabaseAdmin
+  .from('appointments')
+  .select(APPOINTMENT_COLUMNS)
+  .is('deleted_at', null)
+  .order('scheduled_at', { ascending: false });
+
+if (error) {
+  console.error('[poste-travail] Erreur Supabase :', error);
+}
+
+// Cast applies only on the verified-success branch: the Supabase error shape
+// (GenericStringError) does not overlap with Appointment, so the cast must not
+// run when `error` is truthy — an empty array renders a degraded dashboard
+// instead of masking the error as fake Appointment rows.
+const appointments: Appointment[] = error ? [] : (rows as unknown as Appointment[]);
+---
+
+<Layout
+  title="Poste de travail — OMF Thérapie"
+  description="Espace de gestion des rendez-vous, des patients et du planning."
+  noindex={true}
+>
+  <Workbench client:load appointments={appointments} practitionerName={practitionerName} />
+</Layout>

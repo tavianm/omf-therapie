@@ -1,5 +1,32 @@
 import { supabaseAdmin } from './supabase';
-import type { ManualTimeSlot, CreateManualSlotData, UpdateManualSlotData } from '@/types/manual-slots';
+import type {
+  ManualTimeSlot,
+  CreateManualSlotData,
+  UpdateManualSlotData,
+} from '@/types/manual-slots';
+
+export class ManualSlotDuplicateError extends Error {
+  constructor() {
+    super('Cette présence existe déjà pour cette période.');
+    this.name = 'ManualSlotDuplicateError';
+  }
+}
+
+export class ManualSlotNotFoundError extends Error {
+  constructor() {
+    super('Créneau introuvable.');
+    this.name = 'ManualSlotNotFoundError';
+  }
+}
+
+function isUniqueConstraintViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === '23505'
+  );
+}
 
 /**
  * Fetch manual time slots for a date range
@@ -7,7 +34,10 @@ import type { ManualTimeSlot, CreateManualSlotData, UpdateManualSlotData } from 
  * @param to - End date (inclusive)
  * @returns Array of manual time slots
  */
-export async function fetchManualSlots(from: Date, to: Date): Promise<ManualTimeSlot[]> {
+export async function fetchManualSlots(
+  from: Date,
+  to: Date,
+): Promise<ManualTimeSlot[]> {
   const { data, error } = await supabaseAdmin
     .from('manual_time_slots')
     .select('*')
@@ -28,7 +58,22 @@ export async function fetchManualSlots(from: Date, to: Date): Promise<ManualTime
  * @param data - Slot data to create
  * @returns Created manual time slot
  */
-export async function createManualSlot(data: CreateManualSlotData): Promise<ManualTimeSlot> {
+export async function createManualSlot(
+  data: CreateManualSlotData,
+): Promise<ManualTimeSlot> {
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from('manual_time_slots')
+    .select('id')
+    .eq('slot_date', data.slot_date)
+    .eq('period', data.period)
+    .is('deleted_at', null)
+    .limit(1);
+
+  if (existingError) {
+    throw new Error(`Failed to check manual slot: ${existingError.message}`);
+  }
+  if ((existing ?? []).length > 0) throw new ManualSlotDuplicateError();
+
   const { data: slot, error } = await supabaseAdmin
     .from('manual_time_slots')
     .insert({
@@ -39,6 +84,9 @@ export async function createManualSlot(data: CreateManualSlotData): Promise<Manu
     .single();
 
   if (error) {
+    if (isUniqueConstraintViolation(error)) {
+      throw new ManualSlotDuplicateError();
+    }
     throw new Error(`Failed to create manual slot: ${error.message}`);
   }
 
@@ -51,7 +99,10 @@ export async function createManualSlot(data: CreateManualSlotData): Promise<Manu
  * @param data - Updated slot data
  * @returns Updated manual time slot
  */
-export async function updateManualSlot(id: string, data: UpdateManualSlotData): Promise<ManualTimeSlot> {
+export async function updateManualSlot(
+  id: string,
+  data: UpdateManualSlotData,
+): Promise<ManualTimeSlot> {
   const { data: slot, error } = await supabaseAdmin
     .from('manual_time_slots')
     .update({
@@ -64,6 +115,15 @@ export async function updateManualSlot(id: string, data: UpdateManualSlotData): 
     .single();
 
   if (error) {
+    // A period change or deleted_at restoration can collide with the partial
+    // unique index (slot_date, period) WHERE deleted_at IS NULL (migration 016).
+    if (isUniqueConstraintViolation(error)) {
+      throw new ManualSlotDuplicateError();
+    }
+    // PGRST116: .single() matched no row with this id.
+    if (error.code === 'PGRST116') {
+      throw new ManualSlotNotFoundError();
+    }
     throw new Error(`Failed to update manual slot: ${error.message}`);
   }
 
@@ -75,16 +135,21 @@ export async function updateManualSlot(id: string, data: UpdateManualSlotData): 
  * @param id - Slot ID to delete
  */
 export async function deleteManualSlot(id: string): Promise<void> {
-  const { error } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from('manual_time_slots')
     .update({
       deleted_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
-    .eq('id', id);
+    .eq('id', id)
+    .select('id');
 
   if (error) {
     throw new Error(`Failed to delete manual slot: ${error.message}`);
+  }
+  // Without a row-count check a DELETE on an unknown id would report success.
+  if (!data || data.length === 0) {
+    throw new ManualSlotNotFoundError();
   }
 }
 
