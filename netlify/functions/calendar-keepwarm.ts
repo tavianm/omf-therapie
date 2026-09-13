@@ -478,10 +478,11 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<KeepwarmSession> {
     env.redirectUri,
   );
 
-  // Load persisted token from DB.
+  // Load persisted token from DB. `updated_at` is the CAS witness for the
+  // refresh persist below (issue #153 / SC8).
   const { data: tokens, error: fetchError } = await supabase
     .from('google_oauth_tokens')
-    .select('refresh_token, access_token, expiry_date')
+    .select('refresh_token, access_token, expiry_date, updated_at')
     .eq('id', 'therapist')
     .single();
 
@@ -545,30 +546,37 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<KeepwarmSession> {
         updated_at: new Date().toISOString(),
       };
 
-      // Verify the write: PostgREST answers 2xx + no error even when the
-      // UPDATE matches ZERO rows, so an error check alone would report
-      // success on a silently-missed persist. Chaining .select('id').single()
-      // surfaces a zero-row update as null data.
+      // Verify the write AND guard it with CAS (issue #153 / SC8): the UPDATE
+      // may only overwrite the row AS READ — `.eq('updated_at', <value read
+      // at select time>)` — so a newer write (reconnexion callback,
+      // concurrent refresh) always survives. Chaining .select('id').single()
+      // surfaces a zero-row conditional update as PGRST116.
       const { data: persisted, error: updateError } = await supabase
         .from('google_oauth_tokens')
         .update(updated)
         .eq('id', 'therapist')
+        .eq('updated_at', tokens.updated_at)
         .select('id')
         .single();
 
-      if (updateError || !persisted) {
-        // Persist NOT confirmed. NOT 'auth-broken': the in-memory token is
-        // fresh (refreshAccessToken() set it on the client), and the DB row
-        // still holds the previous access token. The next run self-heals
-        // (the stale row's expiry stays under the threshold → refresh
-        // retried). No retry here: sanitized fields only, no raw error
-        // object.
+      if (updateError && updateError.code !== 'PGRST116') {
+        // Infra error on the conditional UPDATE (5xx / timeout / network) —
+        // a TRANSIENT error, NEVER a collision: reconcile with a re-read and
+        // keep the W2 observability. NOT 'auth-broken': the in-memory token
+        // is fresh (refreshAccessToken() set it on the client) and the next
+        // run self-heals. Sanitized fields only, no raw error object.
         logger.error(
-          'calendar-keepwarm: refreshed token NOT confirmed persisted',
+          'calendar-keepwarm: refreshed token NOT confirmed persisted (transient infra)',
           {
-            persistError: updateError?.message ?? 'zero rows matched',
+            persistError: updateError.message,
           },
         );
+        await supabase
+          .from('google_oauth_tokens')
+          .select('updated_at')
+          .eq('id', 'therapist')
+          .single()
+          .catch(() => null);
         // The run still succeeds ('ok' → warm-up proceeds), so the Sentry
         // monitor stays green: a persist failure recurring every 10 min
         // would otherwise never surface. Sanitized fields only.
@@ -576,6 +584,25 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<KeepwarmSession> {
           'calendar-keepwarm: refreshed token NOT confirmed persisted — warm-up proceeds on the persisted token',
           'warning',
         );
+        return { status: 'ok', oauth2Client };
+      }
+
+      if (!persisted) {
+        // CAS MISS: zero rows matched — a NEWER version of the row exists
+        // (reconnexion callback or a concurrent writer). Benign by design:
+        // reconcile (re-read for the log), preserve the recent row, and
+        // continue on the in-memory credentials. Never fatal, never an alert;
+        // the next run re-reads the fresh row anyway.
+        const reread = await supabase
+          .from('google_oauth_tokens')
+          .select('updated_at')
+          .eq('id', 'therapist')
+          .single()
+          .catch(() => null);
+        logger.warn('calendar-keepwarm: CAS miss — ligne récente préservée', {
+          readUpdatedAt: tokens.updated_at,
+          currentUpdatedAt: reread?.data?.updated_at ?? 'unavailable',
+        });
         return { status: 'ok', oauth2Client };
       }
 

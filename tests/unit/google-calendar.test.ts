@@ -21,6 +21,16 @@ const supabaseMock = vi.hoisted(() => ({
     data: null as unknown,
     error: null as { code?: string; message?: string } | null,
   },
+  // Queue consumed by successive `.single()` calls (persist confirm,
+  // reconciliation re-reads); falls back to tokenSelect when empty.
+  singleQueue: [] as Array<{
+    data: unknown;
+    error: { code?: string; message?: string } | null;
+  }>,
+  singleCalls: 0,
+  // Every `.eq(...)` argument tuple — the SC8 CAS tests assert the UPDATE was
+  // conditioned on `.eq('updated_at', <value read>)`.
+  eqCalls: [] as Array<unknown[]>,
   // Write spies — a read path must never call these.
   update: vi.fn(),
   upsert: vi.fn(),
@@ -30,8 +40,18 @@ const supabaseMock = vi.hoisted(() => ({
 vi.mock('@/lib/supabase', () => {
   const query = {
     select: () => query,
-    eq: () => query,
-    single: async () => supabaseMock.tokenSelect,
+    eq: (...args: unknown[]) => {
+      supabaseMock.eqCalls.push(args);
+      return query;
+    },
+    single: async () => {
+      supabaseMock.singleCalls += 1;
+      // The FIRST `.single()` of every flow is the token-row READ (seeded via
+      // tokenSelect); later calls are persist confirms / reconciliation
+      // re-reads and consume the queue.
+      if (supabaseMock.singleCalls === 1) return supabaseMock.tokenSelect;
+      return supabaseMock.singleQueue.shift() ?? supabaseMock.tokenSelect;
+    },
     update: supabaseMock.update,
     upsert: supabaseMock.upsert,
     insert: supabaseMock.insert,
@@ -43,6 +63,39 @@ vi.mock('@/lib/supabase', () => {
     supabaseAdmin: { from: (_table: string) => query },
   };
 });
+
+// Minimal googleapis mock: the SC8 tests drive getPersistedOAuthClient into
+// refreshAccessToken(), which must never hit the real token endpoint. The
+// stub client records credentials so tests can assert the in-memory identity.
+const googleOAuth = vi.hoisted(() => ({
+  refreshAccessToken: vi.fn(async () => ({
+    credentials: {
+      access_token: 'ya29.refreshed',
+      refresh_token: '1//echoed-rt',
+      expiry_date: Date.now() + 3_600_000,
+    },
+  })),
+}));
+
+vi.mock('googleapis', () => ({
+  google: {
+    auth: {
+      OAuth2: class {
+        credentials: Record<string, unknown> = {};
+        constructor(
+          _clientId?: string,
+          _clientSecret?: string,
+          _redirectUri?: string,
+        ) {}
+        setCredentials(creds: Record<string, unknown>) {
+          this.credentials = { ...creds };
+        }
+        refreshAccessToken = googleOAuth.refreshAccessToken;
+      },
+    },
+    calendar: vi.fn(() => ({})),
+  },
+}));
 
 // ---------------------------------------------------------------------------
 // Paris-timezone helpers (deterministic regardless of the host's local TZ).
@@ -379,6 +432,9 @@ describe('getPersistedOAuthClient — token-row read classification (SC1)', () =
 
   beforeEach(() => {
     supabaseMock.tokenSelect = { data: null, error: null };
+    supabaseMock.singleQueue.length = 0;
+    supabaseMock.singleCalls = 0;
+    supabaseMock.eqCalls.length = 0;
     supabaseMock.update.mockClear();
     supabaseMock.upsert.mockClear();
     supabaseMock.insert.mockClear();
@@ -487,5 +543,148 @@ describe('getPersistedOAuthClient — token-row read classification (SC1)', () =
     // And the null path triggers no write either.
     expect(supabaseMock.upsert).not.toHaveBeenCalled();
     expect(supabaseMock.update).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getPersistedOAuthClient — CAS updated_at on the refresh persist (SC8) —
+// PATIENT writer.
+//
+// The conditional UPDATE may only overwrite the row AS READ (`.eq('updated_at',
+// <value read at select time>)`): a newer write — the reconnexion callback or
+// the cron — must SURVIVE.
+//   miss (PGRST116, 0 rows matched) → reconciliation re-read, warn
+//     « CAS miss — ligne récente préservée », client returned on the
+//     in-memory credentials — never fatal;
+//   infra error (non-PGRST116) on the UPDATE → transient handling +
+//     reconciliation re-read, NEVER collision/CAS wording.
+// ---------------------------------------------------------------------------
+
+describe('getPersistedOAuthClient — CAS on the refresh persist (SC8)', () => {
+  const T1 = '2026-09-13T01:00:00.000Z';
+  const T2 = '2026-09-13T01:05:00.000Z';
+  const ENV_KEYS = [
+    'GOOGLE_OAUTH_CLIENT_ID',
+    'GOOGLE_OAUTH_CLIENT_SECRET',
+  ] as const;
+  let savedEnv: Record<string, string | undefined>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    supabaseMock.tokenSelect = { data: null, error: null };
+    supabaseMock.singleQueue.length = 0;
+    supabaseMock.singleCalls = 0;
+    supabaseMock.eqCalls.length = 0;
+    supabaseMock.update.mockClear();
+    supabaseMock.upsert.mockClear();
+    supabaseMock.insert.mockClear();
+    savedEnv = Object.fromEntries(ENV_KEYS.map(key => [key, process.env[key]]));
+    process.env.GOOGLE_OAUTH_CLIENT_ID = 'test-client-id';
+    process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'test-client-secret';
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+    for (const [key, value] of Object.entries(savedEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  /** Seeds a near-expiry v1 row (updated_at = T1) → the refresh branch runs. */
+  function seedV1Row(): void {
+    supabaseMock.tokenSelect = {
+      data: {
+        access_token: 'ya29.old',
+        refresh_token: '1//rt-v1',
+        expiry_date: Date.now() + 60_000,
+        updated_at: T1,
+      },
+      error: null,
+    };
+  }
+
+  it('race: v2 lands after the read → conditional UPDATE misses (PGRST116) → v2 preserved, CAS-miss logged, client returned on in-memory credentials', async () => {
+    seedV1Row();
+    // Persist confirm: the CAS-guarded UPDATE matched 0 rows (v2 landed).
+    supabaseMock.singleQueue.push({
+      data: null,
+      error: {
+        code: 'PGRST116',
+        message: 'JSON object requested, multiple (or no) rows returned',
+      },
+    });
+    // Reconciliation re-read observes the SURVIVING v2 row.
+    supabaseMock.singleQueue.push({
+      data: {
+        access_token: 'ya29.v2',
+        refresh_token: '1//rt-v2',
+        expiry_date: Date.now() + 3_600_000,
+        updated_at: T2,
+      },
+      error: null,
+    });
+
+    const client = await getPersistedOAuthClient();
+
+    // Never fatal: the client comes back carrying the FRESH IN-MEMORY
+    // credentials from the refresh (not the stale row, not v2).
+    expect(client).not.toBeNull();
+    expect(client?.credentials.access_token).toBe('ya29.refreshed');
+    // The UPDATE was CAS-conditioned on the value read at select time.
+    expect(supabaseMock.eqCalls).toContainEqual(['updated_at', T1]);
+    expect(supabaseMock.eqCalls).toContainEqual(['id', 'therapist']);
+    // Exactly ONE write attempt — the conditional update; no other writes.
+    expect(supabaseMock.update).toHaveBeenCalledTimes(1);
+    expect(supabaseMock.upsert).not.toHaveBeenCalled();
+    expect(supabaseMock.insert).not.toHaveBeenCalled();
+    // 3 selects: v1 read, persist confirm, reconciliation re-read.
+    expect(supabaseMock.singleCalls).toBe(3);
+    // CAS-miss logged with the spec wording.
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(String(warnSpy.mock.calls[0]?.[0])).toContain(
+      'CAS miss — ligne récente préservée',
+    );
+  });
+
+  it('infra error (non-PGRST116) on the conditional UPDATE → reconciliation re-read, NO CAS/collision wording, client still returned', async () => {
+    seedV1Row();
+    supabaseMock.singleQueue.push({
+      data: null,
+      error: { code: 'XX000', message: 'connection terminated unexpectedly' },
+    });
+    supabaseMock.singleQueue.push({
+      data: {
+        access_token: 'ya29.v2',
+        refresh_token: '1//rt-v2',
+        expiry_date: Date.now() + 3_600_000,
+        updated_at: T2,
+      },
+      error: null,
+    });
+
+    const client = await getPersistedOAuthClient();
+
+    expect(client).not.toBeNull();
+    expect(client?.credentials.access_token).toBe('ya29.refreshed');
+    expect(supabaseMock.eqCalls).toContainEqual(['updated_at', T1]);
+    expect(supabaseMock.singleCalls).toBe(3);
+    const warned = warnSpy.mock.calls.map(c => String(c[0])).join('\n');
+    expect(warned).not.toContain('CAS');
+    expect(warned).not.toContain('collision');
+  });
+
+  it('clean confirm (1 row matched) → no CAS-miss log, no reconciliation re-read', async () => {
+    seedV1Row();
+    supabaseMock.singleQueue.push({ data: { id: 'therapist' }, error: null });
+
+    const client = await getPersistedOAuthClient();
+
+    expect(client).not.toBeNull();
+    // Only the initial read + the persist confirm — no re-read.
+    expect(supabaseMock.singleCalls).toBe(2);
+    expect(supabaseMock.eqCalls).toContainEqual(['updated_at', T1]);
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 });

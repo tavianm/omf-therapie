@@ -90,13 +90,19 @@ const MOCK_SLOT = {
 // (`.single()` / `.maybeSingle()` / awaited-then) resolve via `supabaseQuery`,
 // so per-test seeding is a `supabaseQuery.mockResolvedValueOnce({ data })`.
 const supabaseQuery = vi.fn(async () => ({ ...EMPTY_RESULT }));
+// Every `.eq(...)` argument tuple across all chains — the SC8 CAS tests assert
+// the UPDATE was conditioned on `.eq('updated_at', <value read>)`.
+const supabaseEqCalls: Array<unknown[]> = [];
 const supabaseFrom = vi.fn(() => {
   const chain = {
     select: vi.fn(() => chain),
     insert: vi.fn(() => chain),
     update: vi.fn(() => chain),
     delete: vi.fn(() => chain),
-    eq: vi.fn(() => chain),
+    eq: vi.fn((...args: unknown[]) => {
+      supabaseEqCalls.push(args);
+      return chain;
+    }),
     neq: vi.fn(() => chain),
     gt: vi.fn(() => chain),
     gte: vi.fn(() => chain),
@@ -366,6 +372,16 @@ function stateStoreWriteKeys(): string[] {
 }
 
 /**
+ * The cron's logger.warn/info/error lines, observed through the Sentry
+ * breadcrumb each emits (PUBLIC_SENTRY_DSN is stubbed in beforeEach).
+ */
+function breadcrumbMessages(): string[] {
+  return sentry.addBreadcrumb.mock.calls.map(
+    call => (call[0] as { message?: string }).message ?? '',
+  );
+}
+
+/**
  * W1 — missing-required-env guards must surface the misconfiguration to
  * Sentry at level 'error', not only to the logs. Accepts Sentry's canonical
  * string level ('error') or an options object carrying level: 'error'.
@@ -399,6 +415,7 @@ function resetMocks(): void {
   supabaseFrom.mockClear();
   supabaseQuery.mockClear();
   supabaseQuery.mockResolvedValue({ ...EMPTY_RESULT });
+  supabaseEqCalls.length = 0;
 
   resendSend.mockClear();
   resendSend.mockResolvedValue({ data: { id: 're_123' }, error: null });
@@ -717,24 +734,32 @@ describe('warm-up fall-through contract (B1/B2/W2)', () => {
     expect(capturedMessage).not.toContain('RAW_REFRESH_TOKEN');
   });
 
-  it('still runs the warm-up when the refreshed token persist verification matches zero rows (W2)', async () => {
+  it('preserves the newer row when the CAS-guarded persist matches zero rows (SC8 miss, was W2 zero-rows)', async () => {
     seedTokenRow(Date.now() - 60_000); // expired → refresh is attempted
-    // W2: the persist step verifies via .select('id').single(); the mock's
-    // second queued resolution is that verification. data: null = zero rows
-    // matched = persist failure → warn + proceed, NOT abort.
-    supabaseQuery.mockResolvedValueOnce({ ...EMPTY_RESULT, data: null });
+    // CAS (SC8): the persist confirm surfaces a zero-row conditional UPDATE
+    // as PGRST116 — a NEWER row exists (reconnexion or concurrent writer).
+    // The miss is BENIGN: log + reconciliation re-read + continue on the
+    // in-memory credentials — no longer a Sentry warning.
+    supabaseQuery.mockResolvedValueOnce({
+      ...EMPTY_RESULT,
+      data: null,
+      error: {
+        code: 'PGRST116',
+        message: 'JSON object requested, multiple (or no) rows returned',
+      },
+    });
+    // The reconciliation re-read resolves via the resetMocks default.
 
     await expect(keepwarmHandler()).resolves.toBeUndefined();
 
     expect(googleMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
     expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
     expect(blobsStore.store.setJSON).toHaveBeenCalledTimes(4);
-    // W2 observability: the run still succeeds ('ok'), so the monitor stays
-    // green — the recurring persist failure must surface in Sentry.
-    expect(sentry.captureMessage).toHaveBeenCalledWith(
-      expect.stringContaining('NOT confirmed persisted'),
-      'warning',
-    );
+    const logs = breadcrumbMessages().join('\n');
+    expect(logs).toContain('CAS miss — ligne récente préservée');
+    // A miss is a benign race outcome — no alert of any kind.
+    expect(sentry.captureMessage).not.toHaveBeenCalled();
+    expect(resendSend).not.toHaveBeenCalled();
   });
 
   it('still runs the warm-up when persisting the refreshed token errors (W2)', async () => {
@@ -1098,12 +1123,6 @@ describe('KeepwarmSession — 3 states + 6-min margin gate (SC2)', () => {
     );
   }
 
-  function breadcrumbMessages(): string[] {
-    return sentry.addBreadcrumb.mock.calls.map(
-      call => (call[0] as { message?: string }).message ?? '',
-    );
-  }
-
   it('fall-through (> 6 min persisted margin) → ok: warm-up client carries the ROW credentials, ONE calendar built from it, ≤ 1 token-endpoint call', async () => {
     const rowExpiry = T0 + 10 * 60_000; // 10 min: refresh fires (<15), margin >6
     seedRowAndFailRefresh(rowExpiry);
@@ -1253,5 +1272,102 @@ describe('KeepwarmSession — 3 states + 6-min margin gate (SC2)', () => {
       'error',
     );
     expect(googleCalendar.getAvailableSlots).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// CAS updated_at on the refresh persist (issue #153 / SC8) — CRON writer
+//
+// The conditional UPDATE may only overwrite the row AS READ (`.eq('updated_at',
+// <value read at select time>)`): a newer write — the reconnexion callback or
+// a concurrent refresh — must SURVIVE.
+//   miss (PGRST116, 0 rows matched) → reconciliation re-read, log
+//     « CAS miss — ligne récente préservée », run continues ok on the
+//     in-memory credentials — never fatal, never an alert;
+//   infra error (non-PGRST116) on the UPDATE → transient handling +
+//     reconciliation re-read, NEVER collision/CAS wording.
+// ===========================================================================
+
+describe('CAS updated_at on the refresh persist (SC8) — cron writer', () => {
+  const T1 = '2026-09-13T01:00:00.000Z';
+  const T2 = '2026-09-13T01:05:00.000Z';
+
+  const PGRST116 = {
+    code: 'PGRST116',
+    message: 'JSON object requested, multiple (or no) rows returned',
+  };
+
+  /** Seeds the v1 row (expired → the refresh fires) with updated_at = T1. */
+  function seedV1Row(): void {
+    supabaseQuery.mockResolvedValueOnce({
+      ...EMPTY_RESULT,
+      data: {
+        refresh_token: '1//rt-v1',
+        access_token: 'ya29.v1',
+        expiry_date: Date.now() - 60_000,
+        updated_at: T1,
+      },
+    });
+  }
+
+  it('race: v2 lands after the read → UPDATE conditioned on updated_at=T1 matches 0 rows → v2 preserved, CAS-miss logged, run continues ok', async () => {
+    seedV1Row();
+    // Refresh succeeds (default mock → ya29.new / 1//new-rt).
+    // Persist confirm: the conditional UPDATE matched 0 rows (v2 landed).
+    supabaseQuery.mockResolvedValueOnce({
+      ...EMPTY_RESULT,
+      data: null,
+      error: PGRST116,
+    });
+    // Reconciliation re-read observes the SURVIVING v2 row.
+    supabaseQuery.mockResolvedValueOnce({
+      ...EMPTY_RESULT,
+      data: {
+        refresh_token: '1//rt-v2',
+        access_token: 'ya29.v2',
+        expiry_date: Date.now() + 3_600_000,
+        updated_at: T2,
+      },
+    });
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // The UPDATE was CAS-conditioned on the value READ at select time.
+    expect(supabaseEqCalls).toContainEqual(['updated_at', T1]);
+    expect(supabaseEqCalls).toContainEqual(['id', 'therapist']);
+    // 3 selects: v1 read, persist confirm, reconciliation re-read (v2 back).
+    expect(supabaseQuery).toHaveBeenCalledTimes(3);
+    // CAS-miss logged with the spec wording; a miss is benign — no alert.
+    const logs = breadcrumbMessages().join('\n');
+    expect(logs).toContain('CAS miss — ligne récente préservée');
+    expect(resendSend).not.toHaveBeenCalled();
+    expect(sentry.captureMessage).not.toHaveBeenCalled();
+    // Run continues 'ok' on the in-memory credentials → warm-up ran.
+    expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
+  });
+
+  it('infra error (non-PGRST116) on the conditional UPDATE → reconciliation re-read, transient handling, NO CAS/collision wording', async () => {
+    seedV1Row();
+    supabaseQuery.mockResolvedValueOnce({
+      ...EMPTY_RESULT,
+      data: null,
+      error: { code: 'XX000', message: 'connection terminated unexpectedly' },
+    });
+    // Reconciliation re-read (row state unknown — tolerated).
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    expect(supabaseEqCalls).toContainEqual(['updated_at', T1]);
+    expect(supabaseQuery).toHaveBeenCalledTimes(3);
+    const logs = breadcrumbMessages().join('\n');
+    expect(logs).not.toContain('CAS');
+    expect(logs).not.toContain('collision');
+    // Transient infra observability (W2 wording kept).
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('NOT confirmed persisted'),
+      'warning',
+    );
+    // Run continues 'ok' → warm-up ran.
+    expect(googleCalendar.getAvailableSlots).toHaveBeenCalledTimes(4);
   });
 });

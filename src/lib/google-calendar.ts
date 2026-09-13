@@ -298,10 +298,51 @@ export async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | nul
         expiry_date: credentials.expiry_date ?? Date.now() + 3600 * 1000,
         updated_at: new Date().toISOString(),
       };
-      await supabaseAdmin
+      // Persist with CAS (issue #153 / SC8): the UPDATE may only overwrite
+      // the row AS READ — `.eq('updated_at', <value read at select time>)` —
+      // so a newer write (reconnexion callback, cron refresh) always
+      // survives. The .select('id').single() confirm surfaces a zero-row
+      // conditional update as PGRST116.
+      const { data: persisted, error: updateError } = await supabaseAdmin
         .from('google_oauth_tokens')
         .update(updated)
-        .eq('id', 'therapist');
+        .eq('id', 'therapist')
+        .eq('updated_at', tokens.updated_at)
+        .select('id')
+        .single();
+
+      if (updateError && updateError.code !== 'PGRST116') {
+        // Infra error on the conditional UPDATE (5xx / timeout / network) —
+        // a TRANSIENT error, NEVER a collision: reconcile with a re-read,
+        // then continue on the in-memory credentials (the refresh itself
+        // succeeded). Sanitized: no raw error object is logged.
+        console.warn(
+          '[google-calendar] Persist du token non confirmé (erreur infra transitoire) — relecture de réconciliation.',
+        );
+        await supabaseAdmin
+          .from('google_oauth_tokens')
+          .select('updated_at')
+          .eq('id', 'therapist')
+          .single()
+          .catch(() => null);
+      } else if (!persisted) {
+        // CAS MISS: zero rows matched — a NEWER version of the row exists
+        // (reconnexion callback or the keepwarm cron). Benign by design:
+        // reconcile (re-read for the log), preserve the recent row, and
+        // continue on the in-memory credentials. Never fatal.
+        const reread = await supabaseAdmin
+          .from('google_oauth_tokens')
+          .select('updated_at')
+          .eq('id', 'therapist')
+          .single()
+          .catch(() => null);
+        console.warn(
+          '[google-calendar] CAS miss — ligne récente préservée',
+          reread?.data?.updated_at
+            ? { currentUpdatedAt: reread.data.updated_at }
+            : undefined,
+        );
+      }
       oauth2Client.setCredentials(credentials);
       return oauth2Client;
     } catch (err: unknown) {
