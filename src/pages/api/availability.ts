@@ -12,6 +12,7 @@
 
 import type { APIRoute } from 'astro';
 import {
+  filterSlotsByBusy,
   getAvailableSlots,
   GoogleCalendarError,
   type AppointmentDuration,
@@ -147,21 +148,8 @@ function jsonSuccess(slots: TimeSlot[]): Response {
   });
 }
 
-function filterSlotsByBusy(
-  slots: TimeSlot[],
-  busyPeriods: Array<{ start: string; end: string }>,
-): TimeSlot[] {
-  if (busyPeriods.length === 0) return slots;
-  return slots.filter(slot => {
-    const slotStart = new Date(slot.start).getTime();
-    const slotEnd = new Date(slot.end).getTime();
-    return !busyPeriods.some(busy => {
-      const busyStart = new Date(busy.start).getTime();
-      const busyEnd = new Date(busy.end).getTime();
-      return slotStart < busyEnd && slotEnd > busyStart;
-    });
-  });
-}
+// filterSlotsByBusy vit dans src/lib/google-calendar.ts (export partagé,
+// issue #153) et est réutilisée telle quelle ici — plus de copie locale.
 
 // ---------------------------------------------------------------------------
 // Handler principal
@@ -239,7 +227,20 @@ export const GET: APIRoute = async ({ request }) => {
 
     const slots = await getAvailableSlots(now, endDate, duration, mode, dbBusy);
 
-    await setCachedAvailability(cacheKey, slots).catch(() => {});
+    // Zéro écriture vide (issue #153 / SC5) : getAvailableSlots lève une
+    // erreur typée de stage partagé sur tout échec amont, cette écriture ne
+    // voit donc que des créneaux réellement calculés. Un échec d'écriture
+    // reste NON fatal mais n'est plus silencieux (SC6) : log, réponse
+    // inchangée.
+    const writeResult = await setCachedAvailability(cacheKey, slots).catch(
+      () => 'failed' as const,
+    );
+    if (writeResult === 'failed') {
+      console.error(
+        "[api/availability] Échec de l'écriture du cache de disponibilités (non fatale) :",
+        cacheKey,
+      );
+    }
 
     return jsonSuccess(slots);
   } catch (err: unknown) {
