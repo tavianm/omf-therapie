@@ -1,13 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CalendarNetworkError,
+  CalendarSharedStageError,
   createCalendarEvent,
+  filterSlotsByBusy,
   generateSlotsForRange,
+  getAvailableSlots,
   getPersistedOAuthClient,
   GoogleCalendarError,
+  loadAvailabilitySnapshot,
   type GenerateSlotsInput,
 } from '@/lib/google-calendar';
 import type { Period } from '@/types/manual-slots';
+import type { Auth, calendar_v3 } from 'googleapis';
 
 // ---------------------------------------------------------------------------
 // Supabase mock (idiom: tests/unit/manual-slots.test.ts) — a chainable query
@@ -77,6 +82,13 @@ const googleOAuth = vi.hoisted(() => ({
   })),
 }));
 
+// The calendar() FACTORY is hoisted too so the shared-snapshot tests (SC3/SC5)
+// can inject a counting Freebusy fake as the client built from the injected
+// OAuth2Client. Default return keeps the previous inert `{}`.
+const googleCalendarFactory = vi.hoisted(() => ({
+  calendar: vi.fn((): unknown => ({})),
+}));
+
 vi.mock('googleapis', () => ({
   google: {
     auth: {
@@ -93,8 +105,24 @@ vi.mock('googleapis', () => ({
         refreshAccessToken = googleOAuth.refreshAccessToken;
       },
     },
-    calendar: vi.fn(() => ({})),
+    calendar: googleCalendarFactory.calendar,
   },
+}));
+
+// Manual-slots mock at its module boundary (same idiom as
+// tests/unit/availability-batch.test.ts): the shared snapshot's stage 1 is
+// observed/failure-seeded here, never through the DB.
+const manualSlotsApi = vi.hoisted(() => ({
+  fetchManualSlots: vi.fn(
+    async (
+      _from: Date,
+      _to: Date,
+    ): Promise<Array<Record<string, unknown>>> => [],
+  ),
+}));
+
+vi.mock('@/lib/manual-slots', () => ({
+  fetchManualSlots: manualSlotsApi.fetchManualSlots,
 }));
 
 // ---------------------------------------------------------------------------
@@ -686,5 +714,314 @@ describe('getPersistedOAuthClient — CAS on the refresh persist (SC8)', () => {
     expect(supabaseMock.singleCalls).toBe(2);
     expect(supabaseMock.eqCalls).toContainEqual(['updated_at', T1]);
     expect(warnSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadAvailabilitySnapshot — shared availability batch (issue #153 / SC3+SC5)
+//
+// The snapshot is the ONE upstream I/O unit shared by the keepwarm cron
+// (T6) and the patient path: exactly ONE `manual_time_slots` read and ONE
+// Freebusy query per call, served from the injected authenticated client.
+// Every stage failure — transport, OR a response-level calendar error on an
+// HTTP 200 (`calendars[id].errors` non-empty) — must throw a TYPED
+// shared-stage error so NO writer ever persists the failure as empty
+// availability (SC5: the old `return []` on response-level errors poisoned
+// downstream caches). Mock mode: empty snapshot, ZERO I/O.
+// All error messages are sanitized: no raw GaxiosError/PostgREST payload is
+// ever attached (may embed client_secret / refresh_token).
+// ---------------------------------------------------------------------------
+
+describe('loadAvailabilitySnapshot — shared snapshot + typed shared-stage errors (SC3/SC5)', () => {
+  const CAL_ID = 'cal-test@group.calendar.google.com';
+  const SNAPSHOT_START = new Date('2026-06-15T00:00:00.000Z');
+  const SNAPSHOT_END = new Date('2026-06-29T00:00:00.000Z');
+
+  // The client is only threaded into the (mocked) google.calendar factory —
+  // a bare object is enough to assert the threading via the factory call.
+  const fakeOAuth2Client = {
+    credentials: {},
+  } as unknown as Auth.OAuth2Client;
+
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  /** Builds a fake calendar whose freebusy.query is a counting mock. */
+  function freebusyCalendar(impl: () => unknown): {
+    calendar: calendar_v3.Calendar;
+    query: ReturnType<typeof vi.fn>;
+  } {
+    const query = vi.fn(impl);
+    const calendar = {
+      freebusy: { query },
+    } as unknown as calendar_v3.Calendar;
+    return { calendar, query };
+  }
+
+  beforeEach(() => {
+    // Real path by default (same env idiom as availability-batch.test.ts —
+    // vi.stubEnv covers both import.meta.env and process.env).
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('GOOGLE_CALENDAR_MOCK', 'false');
+    vi.stubEnv('GOOGLE_CALENDAR_ID', CAL_ID);
+    manualSlotsApi.fetchManualSlots.mockReset();
+    manualSlotsApi.fetchManualSlots.mockResolvedValue([]);
+    googleCalendarFactory.calendar.mockReset();
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+    vi.unstubAllEnvs();
+  });
+
+  it('happy path: returns manual periods + busy periods with EXACTLY 1 manual read and 1 Freebusy query (SC3)', async () => {
+    const { calendar, query } = freebusyCalendar(() => ({
+      data: {
+        calendars: {
+          [CAL_ID]: {
+            busy: [
+              {
+                start: '2026-06-16T10:00:00+02:00',
+                end: '2026-06-16T11:00:00+02:00',
+              },
+              // Malformed entries are dropped, exactly like the pre-refactor
+              // response handling.
+              { start: 12, end: null },
+            ],
+          },
+        },
+      },
+    }));
+    googleCalendarFactory.calendar.mockReturnValue(calendar);
+    manualSlotsApi.fetchManualSlots.mockResolvedValue([
+      { slot_date: '2026-06-17', period: 'morning', id: 'm1' },
+      { slot_date: '2026-06-17', period: 'afternoon', id: 'm2' },
+      { slot_date: '2026-06-18', period: 'all_day', id: 'm3' },
+    ]);
+
+    const snapshot = await loadAvailabilitySnapshot(
+      fakeOAuth2Client,
+      SNAPSHOT_START,
+      SNAPSHOT_END,
+    );
+
+    // --- I/O budget: exactly 1 + 1.
+    expect(manualSlotsApi.fetchManualSlots).toHaveBeenCalledTimes(1);
+    expect(manualSlotsApi.fetchManualSlots).toHaveBeenCalledWith(
+      SNAPSHOT_START,
+      SNAPSHOT_END,
+    );
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledWith({
+      requestBody: {
+        timeMin: SNAPSHOT_START.toISOString(),
+        timeMax: SNAPSHOT_END.toISOString(),
+        timeZone: 'Europe/Paris',
+        items: [{ id: CAL_ID }],
+      },
+    });
+    // The client built from the INJECTED OAuth2Client is used (no re-auth).
+    expect(googleCalendarFactory.calendar).toHaveBeenCalledTimes(1);
+
+    // --- Snapshot content.
+    expect(snapshot.busyPeriods).toEqual([
+      {
+        start: '2026-06-16T10:00:00+02:00',
+        end: '2026-06-16T11:00:00+02:00',
+      },
+    ]);
+    expect(snapshot.manualSlots.get('2026-06-17')).toEqual(
+      new Set<Period>(['morning', 'afternoon']),
+    );
+    expect(snapshot.manualSlots.get('2026-06-18')).toEqual(
+      new Set<Period>(['all_day']),
+    );
+  });
+
+  it('Freebusy 200 with calendars[id].errors non-empty → typed shared-stage error, sanitized cause', async () => {
+    const { calendar, query } = freebusyCalendar(() => ({
+      data: {
+        calendars: {
+          [CAL_ID]: {
+            errors: [
+              { domain: 'global', reason: 'notFound', message: 'Not Found' },
+            ],
+          },
+        },
+      },
+    }));
+    googleCalendarFactory.calendar.mockReturnValue(calendar);
+
+    const err: unknown = await loadAvailabilitySnapshot(
+      fakeOAuth2Client,
+      SNAPSHOT_START,
+      SNAPSHOT_END,
+    ).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CalendarSharedStageError);
+    // Subclass of GoogleCalendarError → the existing /api/availability catch
+    // maps it to 503 without any change there.
+    expect(err).toBeInstanceOf(GoogleCalendarError);
+    const message = (err as Error).message;
+    expect(message).toContain('stage partagé');
+    // Sanitized: only the reason code travels in the cause — never raw
+    // response payloads.
+    expect((err as { cause?: unknown }).cause).toEqual({
+      googleErrorCode: 'notFound',
+    });
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('getAvailableSlots converts the SAME response-level condition into the typed error — never an empty array (SC5)', async () => {
+    const { calendar, query } = freebusyCalendar(() => ({
+      data: {
+        calendars: {
+          [CAL_ID]: { errors: [{ domain: 'global', reason: 'forbidden' }] },
+        },
+      },
+    }));
+
+    const outcome: { slots?: unknown; err?: unknown } = await getAvailableSlots(
+      SNAPSHOT_START,
+      SNAPSHOT_END,
+      60,
+      'in-person',
+      [],
+      { calendarId: CAL_ID, calendar },
+    ).then(
+      slots => ({ slots }),
+      (e: unknown) => ({ err: e }),
+    );
+
+    // The pre-refactor behavior returned [] here — that empty result used to
+    // be persisted downstream as fake free availability (issue #153).
+    expect(outcome.err).toBeInstanceOf(CalendarSharedStageError);
+    expect(outcome.slots).toBeUndefined();
+    expect(Array.isArray(outcome.err)).toBe(false);
+    // Same I/O budget on the patient path (shared snapshot core).
+    expect(manualSlotsApi.fetchManualSlots).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('manual-slots read failure surfacing through the snapshot → typed shared-stage error, sanitized, NO Freebusy call', async () => {
+    const { calendar, query } = freebusyCalendar(() => ({
+      data: { calendars: { [CAL_ID]: { busy: [] } } },
+    }));
+    googleCalendarFactory.calendar.mockReturnValue(calendar);
+    manualSlotsApi.fetchManualSlots.mockRejectedValue(
+      new Error('Failed to fetch manual slots: 504 Gateway timeout'),
+    );
+
+    const err: unknown = await loadAvailabilitySnapshot(
+      fakeOAuth2Client,
+      SNAPSHOT_START,
+      SNAPSHOT_END,
+    ).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CalendarSharedStageError);
+    expect(err).toBeInstanceOf(GoogleCalendarError);
+    const message = (err as Error).message;
+    expect(message).toContain('stage partagé');
+    // Sanitized: the raw upstream message must NOT leak into the typed error.
+    expect(message).not.toContain('Gateway timeout');
+    expect(message).not.toContain('Failed to fetch manual slots');
+    // No raw error object attached as cause.
+    expect((err as { cause?: unknown }).cause).toBeUndefined();
+    // Stage isolation: the Freebusy stage never runs after a failed read.
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('Freebusy transport failure (504) → typed shared-stage error, sanitized status-only cause', async () => {
+    // Shaped like a GaxiosError: response.status is the only safe field —
+    // the rest (config/data) may embed OAuth credentials and must not travel.
+    const gaxiosLike = Object.assign(
+      new Error('Request failed with status code 504'),
+      {
+        response: {
+          status: 504,
+          data: { secret: 'client_secret=GOCSPX-should-never-leak' },
+        },
+      },
+    );
+    const { calendar, query } = freebusyCalendar(() => {
+      throw gaxiosLike;
+    });
+    googleCalendarFactory.calendar.mockReturnValue(calendar);
+
+    const err: unknown = await loadAvailabilitySnapshot(
+      fakeOAuth2Client,
+      SNAPSHOT_START,
+      SNAPSHOT_END,
+    ).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CalendarSharedStageError);
+    expect((err as Error).message).toContain('stage partagé');
+    // Sanitized cause: status only. The secret-bearing payload never travels.
+    expect((err as { cause?: unknown }).cause).toEqual({ status: 504 });
+    expect((err as Error).message).not.toContain('GOCSPX-should-never-leak');
+    expect(errorSpy.mock.calls.map(String).join('\n')).not.toContain(
+      'GOCSPX-should-never-leak',
+    );
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('mock mode → empty snapshot with ZERO I/O (no manual read, no Freebusy, no client build)', async () => {
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('GOOGLE_CALENDAR_MOCK', 'true');
+    const { calendar, query } = freebusyCalendar(() => {
+      throw new Error('must never be called in mock mode');
+    });
+    googleCalendarFactory.calendar.mockReturnValue(calendar);
+
+    const snapshot = await loadAvailabilitySnapshot(
+      fakeOAuth2Client,
+      SNAPSHOT_START,
+      SNAPSHOT_END,
+    );
+
+    expect(snapshot.manualSlots.size).toBe(0);
+    expect(snapshot.busyPeriods).toEqual([]);
+    expect(manualSlotsApi.fetchManualSlots).not.toHaveBeenCalled();
+    expect(query).not.toHaveBeenCalled();
+    // Zero I/O also means: no calendar client is ever built.
+    expect(googleCalendarFactory.calendar).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// filterSlotsByBusy — shared pure filter (deduplicates the availability.ts
+// local copy; T7 swaps that copy for this export).
+// ---------------------------------------------------------------------------
+
+describe('filterSlotsByBusy — shared pure overlap filter', () => {
+  const SLOT = (start: string, end: string) => ({
+    start,
+    end,
+    available: true,
+  });
+
+  it('drops every slot overlapping a busy period, keeps the rest untouched', () => {
+    const slots = [
+      SLOT('2026-06-16T09:00:00+02:00', '2026-06-16T10:30:00+02:00'),
+      SLOT('2026-06-16T10:00:00+02:00', '2026-06-16T11:00:00+02:00'),
+      SLOT('2026-06-16T11:30:00+02:00', '2026-06-16T12:30:00+02:00'),
+    ];
+    const busy = [
+      { start: '2026-06-16T10:30:00+02:00', end: '2026-06-16T11:30:00+02:00' },
+    ];
+
+    const kept = filterSlotsByBusy(slots, busy);
+
+    // Slot 2 overlaps ([10:00,11:00] × [10:30,11:30]); slots 1 and 3 only
+    // TOUCH the busy window (end === busy.start, start === busy.end) —
+    // touching endpoints do NOT overlap.
+    expect(kept).toEqual([slots[0], slots[2]]);
+  });
+
+  it('returns the input unchanged when there is no busy period (same reference)', () => {
+    const slots = [
+      SLOT('2026-06-16T09:00:00+02:00', '2026-06-16T10:00:00+02:00'),
+    ];
+    expect(filterSlotsByBusy(slots, [])).toBe(slots);
   });
 });

@@ -68,6 +68,24 @@ export class CalendarNetworkError extends GoogleCalendarError {
   }
 }
 
+/**
+ * Shared-stage failure (issue #153 / SC5): one of the two I/O stages of the
+ * shared availability snapshot — the `manual_time_slots` read or the Google
+ * Freebusy query — failed (transport error, or a response-level calendar
+ * error on an HTTP 200). The snapshot is unusable, so EVERY caller (keepwarm
+ * cron, patient path) must treat the whole batch as failed: ZERO cache
+ * writes, existing entries preserved. Messages and causes are sanitized —
+ * raw GaxiosError / PostgREST payloads are never attached (they may embed
+ * client_secret / refresh_token).
+ */
+export class CalendarSharedStageError extends GoogleCalendarError {
+  readonly type = 'CalendarSharedStageError' as const;
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+    this.name = 'CalendarSharedStageError';
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Error parser + retry helper
 // ---------------------------------------------------------------------------
@@ -324,7 +342,10 @@ export async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | nul
           .select('updated_at')
           .eq('id', 'therapist')
           .single()
-          .catch(() => null);
+          .then(
+            () => undefined,
+            () => undefined,
+          );
       } else if (!persisted) {
         // CAS MISS: zero rows matched — a NEWER version of the row exists
         // (reconnexion callback or the keepwarm cron). Benign by design:
@@ -335,7 +356,10 @@ export async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | nul
           .select('updated_at')
           .eq('id', 'therapist')
           .single()
-          .catch(() => null);
+          .then(
+            result => result,
+            () => null,
+          );
         console.warn(
           '[google-calendar] CAS miss — ligne récente préservée',
           reread?.data?.updated_at
@@ -534,8 +558,8 @@ export interface GenerateSlotsInput {
  *
  * Fonction pure (sans I/O, sans Date.now()) — entièrement déterministe via
  * `now` et `manualSlots`. C'est le cœur testable de la génération : la couche
- * async `generateCandidateSlots` se contente d'hydrater `manualSlots` depuis
- * Supabase puis de déléguer ici.
+ * async (`loadAvailabilitySnapshot`) se contente d'hydrater `manualSlots`
+ * depuis Supabase puis de déléguer ici.
  *
  * Règle d'éligibilité (additive, visio = inverse du cabinet) :
  *   in-person → périodes cabinet-eligibles
@@ -637,19 +661,14 @@ function generatePeriodSlots(
 }
 
 /**
- * Wrapper async : hydrate les slots manuels depuis Supabase puis délègue à la
- * fonction pure `generateSlotsForRange`.
+ * Indexe les lignes de slots manuels par date Paris (YYYY-MM-DD) → périodes
+ * couvertes — la forme consommée par la fonction pure `generateSlotsForRange`.
  */
-export async function generateCandidateSlots(
-  startDate: Date,
-  endDate: Date,
-  duration: AppointmentDuration,
-  mode: AppointmentMode,
-): Promise<TimeSlot[]> {
-  const manualRecords = await fetchManualSlots(startDate, endDate);
-
+function indexManualSlots(
+  records: Array<{ slot_date: string; period: Period }>,
+): Map<string, Set<Period>> {
   const manualSlots = new Map<string, Set<Period>>();
-  for (const record of manualRecords) {
+  for (const record of records) {
     let periods = manualSlots.get(record.slot_date);
     if (!periods) {
       periods = new Set();
@@ -657,25 +676,181 @@ export async function generateCandidateSlots(
     }
     periods.add(record.period);
   }
+  return manualSlots;
+}
 
-  return generateSlotsForRange({
-    startDate,
-    endDate,
-    duration,
-    mode,
-    now: new Date(),
-    manualSlots,
+// ---------------------------------------------------------------------------
+// Snapshot de disponibilité partagé (issue #153 — batch mono-snapshot)
+// ---------------------------------------------------------------------------
+
+/**
+ * Tout ce dont la dérivation pure a besoin : les périodes de présence manuel
+ * indexées par date Paris, et les périodes occupées Freebusy de la fenêtre.
+ * Produit par `loadAvailabilitySnapshot` — mock mode → snapshot vide, zéro
+ * I/O.
+ */
+export interface AvailabilitySnapshot {
+  /** Slots manuels indexés par date (YYYY-MM-DD) → périodes couvertes. */
+  manualSlots: Map<string, Set<Period>>;
+  /** Périodes occupées Freebusy (ISO 8601) sur la fenêtre demandée. */
+  busyPeriods: Array<{ start: string; end: string }>;
+}
+
+/**
+ * Charge le snapshot de disponibilité partagé pour une fenêtre : UNE lecture
+ * `manual_time_slots` et UNE requête Freebusy (issue #153 / SC3), servies par
+ * le client OAuth authentifié injecté. Mock mode → snapshot vide, ZÉRO I/O.
+ *
+ * Tout échec de stage (lecture manuel slots, Freebusy transport ou erreur
+ * response-level) lève une erreur typée de stage partagé (SC5) : l'appelant
+ * — cron comme chemin patient — ne doit alors écrire AUCUNE entrée cache.
+ */
+export async function loadAvailabilitySnapshot(
+  oauth2Client: Auth.OAuth2Client,
+  startDate: Date,
+  endDate: Date,
+): Promise<AvailabilitySnapshot> {
+  if (isCalendarMockEnabled()) {
+    return { manualSlots: new Map(), busyPeriods: [] };
+  }
+
+  if (!oauth2Client) {
+    throw new GoogleCalendarError(
+      'Client OAuth absent : impossible de charger le snapshot de disponibilités.',
+    );
+  }
+
+  const calendarId = await resolveCalendarId();
+  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  return loadSnapshotWithCalendar(calendar, calendarId, startDate, endDate);
+}
+
+/**
+ * Exécute les DEUX stages I/O du snapshot — exactement UNE lecture
+ * `manual_time_slots` et UNE requête Freebusy — et classe toute erreur comme
+ * échec de stage partagé (issue #153 / SC5).
+ *
+ * Une erreur response-level Freebusy (HTTP 200 dont `calendars[id].errors`
+ * est non vide) n'est PAS « agenda vide » : elle était autrefois avalée en
+ * résultat vide, empoisonnant les caches avec des disponibilités fantômes.
+ * Elle lève désormais une erreur typée. Messages et causes sanitisés : les
+ * payloads bruts Google/PostgREST ne circulent jamais (risque d'y trouver
+ * client_secret / refresh_token).
+ */
+async function loadSnapshotWithCalendar(
+  calendar: calendar_v3.Calendar,
+  calendarId: string,
+  startDate: Date,
+  endDate: Date,
+): Promise<AvailabilitySnapshot> {
+  // Stage 1 — slots manuels (UNE lecture).
+  const manualRecords = await fetchManualSlots(startDate, endDate).catch(
+    (err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(
+        '[google-calendar] Échec de la lecture manual_time_slots (stage partagé) :',
+        message,
+      );
+      // Message sanitisé : le détail PostgREST n'est loggué que côté serveur,
+      // jamais transporté dans l'erreur typée.
+      throw new CalendarSharedStageError(
+        'Échec du stage partagé availability-snapshot : lecture manual_time_slots impossible.',
+      );
+    },
+  );
+
+  // Stage 2 — Freebusy (UNE seule requête pour toute la plage).
+  let busyPeriods: Array<{ start: string; end: string }> = [];
+
+  try {
+    const response = await calendar.freebusy.query({
+      requestBody: {
+        timeMin: startDate.toISOString(),
+        timeMax: endDate.toISOString(),
+        timeZone: TIMEZONE,
+        items: [{ id: calendarId }],
+      },
+    });
+
+    const calendarData = response.data.calendars?.[calendarId];
+    if (calendarData?.errors && calendarData.errors.length > 0) {
+      // HTTP 200 mais Google signale une erreur sur cet agenda (permissions,
+      // introuvable…). Classer ça comme « agenda vide » empoisonnerait tous
+      // les caches en aval avec des créneaux libres fictifs (issue #153 /
+      // SC5) → erreur typée de stage partagé. Seuls les codes `reason`
+      // circulent — jamais les payloads bruts.
+      const reasons = calendarData.errors
+        .map(e => (typeof e?.reason === 'string' ? e.reason : 'unknown'))
+        .join(',');
+      console.error(
+        '[google-calendar] Erreur freebusy response-level pour le calendrier (stage partagé) :',
+        reasons,
+      );
+      throw new CalendarSharedStageError(
+        "Échec du stage partagé availability-snapshot : erreur response-level Freebusy sur l'agenda.",
+        { googleErrorCode: reasons },
+      );
+    }
+
+    busyPeriods = (calendarData?.busy ?? []).filter(
+      (b): b is { start: string; end: string } =>
+        typeof b.start === 'string' && typeof b.end === 'string',
+    );
+  } catch (err: unknown) {
+    if (err instanceof CalendarSharedStageError) throw err; // déjà classée
+    // Gestion gracieuse : timeout, quota dépassé, réseau… — même classement
+    // échec de stage partagé. Cause sanitisée au seul champ sûr (status).
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(
+      "[google-calendar] Impossible d'interroger Freebusy (stage partagé) :",
+      message,
+    );
+    throw new CalendarSharedStageError(
+      'Échec du stage partagé availability-snapshot : requête Freebusy impossible.',
+      { status: (err as { response?: { status?: number } })?.response?.status },
+    );
+  }
+
+  return { manualSlots: indexManualSlots(manualRecords), busyPeriods };
+}
+
+/**
+ * Filtre pur de chevauchement — exclut tout créneau recouvrant une période
+ * occupée. Partagé par le chemin patient (`/api/availability`), la dérivation
+ * du cron keepwarm et la branche mock ; déduplique les 3 copies historiques
+ * (issue #153). Les extrémités qui se touchent (slot.end === busy.start) ne
+ * chevauchent PAS.
+ */
+export function filterSlotsByBusy(
+  slots: TimeSlot[],
+  busyPeriods: Array<{ start: string; end: string }>,
+): TimeSlot[] {
+  if (busyPeriods.length === 0) return slots;
+  return slots.filter(slot => {
+    const slotStart = new Date(slot.start).getTime();
+    const slotEnd = new Date(slot.end).getTime();
+    return !busyPeriods.some(busy => {
+      const busyStart = new Date(busy.start).getTime();
+      const busyEnd = new Date(busy.end).getTime();
+      return slotStart < busyEnd && slotEnd > busyStart;
+    });
   });
 }
 
 // ---------------------------------------------------------------------------
-// Freebusy query
+// Freebusy query — chemin patient
 // ---------------------------------------------------------------------------
 
 /**
  * Retourne les créneaux disponibles en vérifiant Google Calendar Freebusy.
- * Les créneaux qui chevauchent un événement existant sont marqués `available: false`
- * et filtrés du résultat final.
+ * Les créneaux qui chevauchent un événement existant sont filtrés du résultat.
+ *
+ * Délègue ses deux stages I/O au cœur partagé du snapshot
+ * (`loadSnapshotWithCalendar`) : UNE lecture manual slots + UNE requête
+ * Freebusy, chaque échec typé erreur de stage partagé (issue #153 / SC5). En
+ * particulier, une erreur response-level Freebusy lève désormais (→ 503 sur
+ * /api/availability) au lieu de retourner [] — un résultat vide qui était
+ * autrefois persisté par les writers comme disponibilités fantômes.
  */
 export async function getAvailableSlots(
   startDate: Date,
@@ -703,94 +878,42 @@ export async function getAvailableSlots(
       manualSlots: EMPTY_PERIOD_MAP,
     });
 
-    if (dbBusyPeriods.length === 0) return candidates;
-
-    return candidates.filter(slot => {
-      const slotStart = new Date(slot.start).getTime();
-      const slotEnd = new Date(slot.end).getTime();
-      return !dbBusyPeriods.some(busy => {
-        const busyStart = new Date(busy.start).getTime();
-        const busyEnd = new Date(busy.end).getTime();
-        return slotStart < busyEnd && slotEnd > busyStart;
-      });
-    });
+    return filterSlotsByBusy(candidates, dbBusyPeriods);
   }
 
   const calendarId = await resolveCalendarId(options.calendarId);
-
-  const candidates = await generateCandidateSlots(
-    startDate,
-    endDate,
-    duration,
-    mode,
-  );
-
-  if (candidates.length === 0) {
-    return [];
-  }
 
   const calendar =
     options.calendar ??
     google.calendar({ version: 'v3', auth: await resolveCalendarAuth() });
 
-  // Une seule requête Freebusy pour toute la plage
-  let busyPeriods: Array<{ start: string; end: string }> = [];
+  // Batch mono-snapshot (issue #153 / SC3) : UNE lecture manual slots et UNE
+  // requête Freebusy, échecs classés erreur de stage partagé (SC5).
+  const snapshot = await loadSnapshotWithCalendar(
+    calendar,
+    calendarId,
+    startDate,
+    endDate,
+  );
 
-  try {
-    const response = await calendar.freebusy.query({
-      requestBody: {
-        timeMin: startDate.toISOString(),
-        timeMax: endDate.toISOString(),
-        timeZone: TIMEZONE,
-        items: [{ id: calendarId }],
-      },
-    });
+  const candidates = generateSlotsForRange({
+    startDate,
+    endDate,
+    duration,
+    mode,
+    now: new Date(),
+    manualSlots: snapshot.manualSlots,
+  });
 
-    const calendarData = response.data.calendars?.[calendarId];
-    if (calendarData?.errors && calendarData.errors.length > 0) {
-      // L'agenda est inaccessible (ex: permissions) → on log et retourne vide
-      console.error(
-        '[google-calendar] Erreur freebusy pour le calendrier :',
-        calendarData.errors,
-      );
-      return [];
-    }
-
-    busyPeriods = (calendarData?.busy ?? []).filter(
-      (b): b is { start: string; end: string } =>
-        typeof b.start === 'string' && typeof b.end === 'string',
-    );
-  } catch (err: unknown) {
-    // Gestion gracieuse : timeout, quota dépassé, réseau…
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(
-      "[google-calendar] Impossible d'interroger Freebusy :",
-      message,
-    );
-    throw new GoogleCalendarError(
-      'Impossible de vérifier les disponibilités. Veuillez réessayer.',
-      err,
-    );
+  if (candidates.length === 0) {
+    return [];
   }
 
-  // Marque les créneaux occupés et filtre
-  const allBusy = [...busyPeriods, ...dbBusyPeriods];
-
-  return candidates
-    .map(slot => {
-      const slotStart = new Date(slot.start).getTime();
-      const slotEnd = new Date(slot.end).getTime();
-
-      const isBusy = allBusy.some(busy => {
-        const busyStart = new Date(busy.start).getTime();
-        const busyEnd = new Date(busy.end).getTime();
-        // Chevauchement : (slotStart < busyEnd) && (slotEnd > busyStart)
-        return slotStart < busyEnd && slotEnd > busyStart;
-      });
-
-      return { ...slot, available: !isBusy };
-    })
-    .filter(slot => slot.available);
+  // Filtre les créneaux occupés (Freebusy + RDV DB)
+  return filterSlotsByBusy(candidates, [
+    ...snapshot.busyPeriods,
+    ...dbBusyPeriods,
+  ]);
 }
 
 // ---------------------------------------------------------------------------

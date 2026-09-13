@@ -576,7 +576,10 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<KeepwarmSession> {
           .select('updated_at')
           .eq('id', 'therapist')
           .single()
-          .catch(() => null);
+          .then(
+            () => undefined,
+            () => undefined,
+          );
         // The run still succeeds ('ok' → warm-up proceeds), so the Sentry
         // monitor stays green: a persist failure recurring every 10 min
         // would otherwise never surface. Sanitized fields only.
@@ -598,7 +601,10 @@ async function keepTokenWarm(env: TokenKeepwarmEnv): Promise<KeepwarmSession> {
           .select('updated_at')
           .eq('id', 'therapist')
           .single()
-          .catch(() => null);
+          .then(
+            result => result,
+            () => null,
+          );
         logger.warn('calendar-keepwarm: CAS miss — ligne récente préservée', {
           readUpdatedAt: tokens.updated_at,
           currentUpdatedAt: reread?.data?.updated_at ?? 'unavailable',
