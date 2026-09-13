@@ -187,6 +187,8 @@ interface RunDeadline {
   msRemaining(): number;
   /** Binds a non-abortable promise to the deadline (blobs writes, refresh). */
   race<T>(stage: string, promise: Promise<T>): Promise<T>;
+  /** Releases the global deadline timer (call once the run's I/O is done). */
+  dispose(): void;
 }
 
 function createRunDeadline(): RunDeadline {
@@ -195,9 +197,18 @@ function createRunDeadline(): RunDeadline {
   const fire = (): void => {
     if (!controller.signal.aborted) controller.abort();
   };
+  // race() alone only bounds the promises handed to it; this global timer
+  // guarantees the controller fires at the deadline even for signal-only I/O
+  // (the token-row read, the snapshot's Supabase stage) — a stall becomes a
+  // classified transient, never a platform kill. keepwarm() releases the
+  // timer in its finally once the run's I/O is done.
+  const timer = setTimeout(fire, RUN_DEADLINE_MS);
   return {
     signal: controller.signal,
     msRemaining: () => Math.max(0, deadlineAt - Date.now()),
+    dispose: (): void => {
+      clearTimeout(timer);
+    },
     race<T>(stage: string, promise: Promise<T>): Promise<T> {
       const remaining = deadlineAt - Date.now();
       if (remaining <= 0) {
@@ -652,9 +663,12 @@ async function keepTokenWarm(
       .single();
   } catch (err: unknown) {
     // Deadline abort on the read: same transient classification as a fetch
-    // error. ANY other throw keeps the S4 contract (capture + rethrow — the
-    // monitor run is marked errored).
-    if (!(deadline.signal.aborted && err instanceof Error && err.name === 'AbortError')) {
+    // error. Classified on the signal ALONE (revue #154): upstream clients
+    // may represent an abort differently than `name === 'AbortError'`, and
+    // once the run deadline has fired the read's outcome is a deadline
+    // overrun by definition. ANY other throw keeps the S4 contract (capture +
+    // rethrow — the monitor run is marked errored).
+    if (!deadline.signal.aborted) {
       throw err;
     }
     logger.warn(
@@ -665,7 +679,7 @@ async function keepTokenWarm(
       'calendar-keepwarm: token row read failed (transient) — warm-up skipped this run',
       'warning',
     );
-    return { status: 'transient', reason: 'token-row-read-failed' };
+    return { status: 'transient', reason: 'deadline-exceeded' };
   }
   const { data: tokens, error: fetchError } = tokensResult;
 
@@ -860,6 +874,14 @@ async function keepTokenWarm(
         return { status: 'auth-broken' };
       }
 
+      // Run out of time — no fall-through admission once the deadline fired
+      // (revue #154): the remaining budget is reserved for classification and
+      // the Sentry flush. The invalid_grant branch above keeps priority — a
+      // definitive auth error arriving at the deadline must still alert.
+      if (deadline.signal.aborted) {
+        return { status: 'transient', reason: 'deadline-exceeded' };
+      }
+
       // Transient failure (network blip, Google 5xx, quota…). The fall-through
       // GATE (issue #153 / SC2): admit 'ok' ONLY if the PERSISTED token still
       // keeps > WARMUP_MIN_TOKEN_VALIDITY_MS of validity — otherwise the
@@ -1048,21 +1070,28 @@ async function keepwarm(): Promise<void> {
   //    it is handed to warmAvailabilityCache(), which loads ONE shared
   //    availability snapshot from it (mono-snapshot, issue #153 / SC3).
   //    warmAvailabilityCache() skips itself when GOOGLE_CALENDAR_ID is unset.
-  const session = await keepTokenWarm(
-    {
-      clientId,
-      clientSecret,
-      redirectUri,
-      supabaseUrl,
-      serviceRoleKey,
-      adminEmail,
-      siteUrl,
-      resendApiKey,
-      fromEmail,
-    },
-    deadline,
-  );
-  if (session.status === 'ok') {
-    await warmAvailabilityCache(session, deadline);
+  //    The finally releases the deadline's global abort timer: a finished run
+  //    (including a throw — the S4 rethrow path) must not leave a live timer
+  //    behind it (revue #154).
+  try {
+    const session = await keepTokenWarm(
+      {
+        clientId,
+        clientSecret,
+        redirectUri,
+        supabaseUrl,
+        serviceRoleKey,
+        adminEmail,
+        siteUrl,
+        resendApiKey,
+        fromEmail,
+      },
+      deadline,
+    );
+    if (session.status === 'ok') {
+      await warmAvailabilityCache(session, deadline);
+    }
+  } finally {
+    deadline.dispose();
   }
 }

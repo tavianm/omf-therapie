@@ -770,6 +770,168 @@ describe('getPersistedOAuthClient — CAS on the refresh persist (SC8)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// getPersistedOAuthClient — refresh response validation (revue #154)
+//
+// A refresh response without a USABLE access token (key absent, null, blank)
+// must be rejected BEFORE any persist: writing `access_token: ''` over a
+// healthy row poisons it. Symmetrically, a row persisted with an EMPTY
+// access_token must FORCE the proactive refresh even with a comfortable
+// expiry (google-auth-library treats '' as absent → hidden eager refresh on
+// the first signed call).
+// ---------------------------------------------------------------------------
+
+describe('getPersistedOAuthClient — refresh response validation (revue #154)', () => {
+  const T1 = '2026-09-13T01:00:00.000Z';
+  const ENV_KEYS = [
+    'GOOGLE_OAUTH_CLIENT_ID',
+    'GOOGLE_OAUTH_CLIENT_SECRET',
+  ] as const;
+  let savedEnv: Record<string, string | undefined>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    supabaseMock.tokenSelect = { data: null, error: null };
+    supabaseMock.singleQueue.length = 0;
+    supabaseMock.singleCalls = 0;
+    supabaseMock.eqCalls.length = 0;
+    supabaseMock.updateEqCalls.length = 0;
+    supabaseMock.updatePayloads.length = 0;
+    supabaseMock.update.mockClear();
+    supabaseMock.upsert.mockClear();
+    supabaseMock.insert.mockClear();
+    googleOAuth.refreshAccessToken.mockClear();
+    savedEnv = Object.fromEntries(ENV_KEYS.map(key => [key, process.env[key]]));
+    process.env.GOOGLE_OAUTH_CLIENT_ID = 'test-client-id';
+    process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'test-client-secret';
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+    for (const [key, value] of Object.entries(savedEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  /** Seeds a near-expiry row (updated_at = T1) → the refresh branch runs. */
+  function seedNearExpiryRow(): void {
+    supabaseMock.tokenSelect = {
+      data: {
+        access_token: 'ya29.old',
+        refresh_token: '1//rt-v1',
+        expiry_date: Date.now() + 60_000,
+        updated_at: T1,
+      },
+      error: null,
+    };
+  }
+
+  async function expectRejectedAndUnpersisted(): Promise<void> {
+    const err: unknown = await getPersistedOAuthClient().catch(
+      (e: unknown) => e,
+    );
+
+    expect(err).toBeInstanceOf(CalendarNetworkError);
+    // Pin the sanitized English wording.
+    expect((err as Error).message).toBe(
+      'Google OAuth refresh returned no usable access token.',
+    );
+
+    // ZERO writes of any kind — a tokenless refresh response must never
+    // reach the table (persisting `access_token: ''` poisons the row).
+    expect(supabaseMock.update).not.toHaveBeenCalled();
+    expect(supabaseMock.upsert).not.toHaveBeenCalled();
+    expect(supabaseMock.insert).not.toHaveBeenCalled();
+    // Exactly ONE select — the initial token-row read. No persist-confirm,
+    // no reconciliation re-read: the existing row is left untouched.
+    expect(supabaseMock.singleCalls).toBe(1);
+  }
+
+  it('refresh response with the access_token key ABSENT → CalendarNetworkError, ZERO writes, row untouched', async () => {
+    seedNearExpiryRow();
+    googleOAuth.refreshAccessToken.mockResolvedValueOnce({
+      credentials: {
+        refresh_token: '1//echoed-rt',
+        expiry_date: Date.now() + 3_600_000,
+      },
+    });
+
+    await expectRejectedAndUnpersisted();
+    // Precondition: the refresh was really attempted (the rejection is
+    // attributable to the response validation, not an earlier abort).
+    expect(googleOAuth.refreshAccessToken).toHaveBeenCalledTimes(1);
+  });
+
+  it('refresh response with access_token NULL → CalendarNetworkError, ZERO writes, row untouched', async () => {
+    seedNearExpiryRow();
+    googleOAuth.refreshAccessToken.mockResolvedValueOnce({
+      credentials: {
+        access_token: null,
+        refresh_token: '1//echoed-rt',
+        expiry_date: Date.now() + 3_600_000,
+      },
+    });
+
+    await expectRejectedAndUnpersisted();
+    expect(googleOAuth.refreshAccessToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("refresh response with a BLANK access_token ('' or whitespace) → CalendarNetworkError, ZERO writes, row untouched", async () => {
+    for (const blank of ['', '   ']) {
+      supabaseMock.singleCalls = 0;
+      supabaseMock.updatePayloads.length = 0;
+      googleOAuth.refreshAccessToken.mockClear();
+      seedNearExpiryRow();
+      googleOAuth.refreshAccessToken.mockResolvedValueOnce({
+        credentials: {
+          access_token: blank,
+          refresh_token: '1//echoed-rt',
+          expiry_date: Date.now() + 3_600_000,
+        },
+      });
+
+      await expectRejectedAndUnpersisted();
+      expect(googleOAuth.refreshAccessToken).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('persisted row with an EMPTY access_token but comfortable expiry → refresh IS triggered and the row is repopulated', async () => {
+    // The trigger must fire on the empty token even though the expiry is
+    // far from the 5-minute window (removing `!tokens.access_token?.trim()`
+    // from the trigger fails this test).
+    supabaseMock.tokenSelect = {
+      data: {
+        access_token: '',
+        refresh_token: '1//rt-v1',
+        expiry_date: Date.now() + 3_600_000,
+        updated_at: T1,
+      },
+      error: null,
+    };
+    // Persist confirm: the CAS-guarded UPDATE matched the row.
+    supabaseMock.singleQueue.push({
+      data: { id: 'therapist' },
+      error: null,
+    });
+
+    const client = await getPersistedOAuthClient();
+
+    expect(client).not.toBeNull();
+    // The refresh was really triggered by the empty token.
+    expect(googleOAuth.refreshAccessToken).toHaveBeenCalledTimes(1);
+    // The refreshed (usable) token is persisted — the row is un-poisoned.
+    expect(supabaseMock.updatePayloads).toHaveLength(1);
+    expect(supabaseMock.updatePayloads[0]).toMatchObject({
+      access_token: 'ya29.refreshed',
+      refresh_token: '1//echoed-rt',
+    });
+    // The returned client carries the refreshed in-memory credentials.
+    expect(client?.credentials.access_token).toBe('ya29.refreshed');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // loadAvailabilitySnapshot — shared availability batch (issue #153 / SC3+SC5)
 //
 // The snapshot is the ONE upstream I/O unit shared by the keepwarm cron

@@ -96,6 +96,11 @@ const supabaseEqCalls: Array<unknown[]> = [];
 const supabaseUpdateEqCalls: Array<unknown[]> = [];
 // The SET payload of every update() call, in order.
 const supabaseUpdatePayloads: Array<unknown> = [];
+// Run-deadline signals seen by the chains (revue #154): production chains
+// `.abortSignal(deadline.signal)` before the terminal call, so recording the
+// signal lets tests bind a stalled I/O leaf to the very AbortController the
+// run deadline armed.
+const supabaseAbortSignals: Array<unknown> = [];
 const supabaseFrom = vi.fn(() => {
   let lastVerb: 'select' | 'insert' | 'update' | 'delete' | null = null;
   const chain = {
@@ -123,8 +128,12 @@ const supabaseFrom = vi.fn(() => {
     }),
     // Run-deadline plumbing (revue #154): production chains
     // `.abortSignal(signal)` before the terminal call on every keepwarm
-    // supabase statement — the mock accepts and ignores it.
-    abortSignal: vi.fn(() => chain),
+    // supabase statement — the mock accepts it AND records the signal so the
+    // global-abort tests can stall a leaf until the deadline fires.
+    abortSignal: vi.fn((signal?: unknown) => {
+      supabaseAbortSignals.push(signal);
+      return chain;
+    }),
     neq: vi.fn(() => chain),
     gt: vi.fn(() => chain),
     gte: vi.fn(() => chain),
@@ -451,6 +460,7 @@ function resetMocks(): void {
   supabaseEqCalls.length = 0;
   supabaseUpdateEqCalls.length = 0;
   supabaseUpdatePayloads.length = 0;
+  supabaseAbortSignals.length = 0;
 
   resendSend.mockClear();
   resendSend.mockResolvedValue({ data: { id: 're_123' }, error: null });
@@ -1830,5 +1840,115 @@ describe('empty persisted access_token — admission gates (revue #154)', () => 
     expect(capture).toContain('access_token empty');
     expect(capture).not.toContain('RAW_CLIENT_SECRET');
     expect(capture).not.toContain('network glitch');
+  });
+});
+
+// ===========================================================================
+// run deadline — global abort arm (revue #154)
+//
+// deadline.race() only bounds the promises HANDED to it; calls receiving
+// only deadline.signal (the token-row Supabase read, the snapshot's Supabase
+// stage) could otherwise outlive the 8 s budget and get killed by Netlify
+// without classification or Sentry flush. createRunDeadline() therefore arms
+// a GLOBAL timer at creation that aborts the controller at the deadline, and
+// keepwarm() disposes it in a finally (a finished run must not leave a live
+// abort timer behind).
+// ===========================================================================
+
+describe('run deadline — global abort arm (revue #154)', () => {
+  const RUN_DEADLINE_MS = 8_000;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Never-settling promise that rejects only when `signal` aborts. */
+  function stallUntilAbort(signal: AbortSignal): Promise<never> {
+    return new Promise((_, reject) => {
+      signal.addEventListener('abort', () =>
+        reject(
+          Object.assign(new Error('The operation was aborted'), {
+            name: 'AbortError',
+          }),
+        ),
+      );
+    });
+  }
+
+  /**
+   * The deadline signal recorded by the chain mock's `.abortSignal()` — the
+   * very AbortController signal the run armed.
+   */
+  function recordedDeadlineSignal(): AbortSignal {
+    const recorded = supabaseAbortSignals[supabaseAbortSignals.length - 1];
+    expect(
+      recorded,
+      'the run deadline signal must have been recorded by the chain mock',
+    ).toBeDefined();
+    return recorded as AbortSignal;
+  }
+
+  it('token-row read stalled past the deadline → the GLOBAL timer aborts: run completes as transient, warm-up never runs', async () => {
+    // The FIRST supabase terminal call (the token-row read) hangs until the
+    // deadline signal aborts — without the global abort timer this promise
+    // never settles and this test hangs to the vitest timeout.
+    supabaseQuery.mockImplementationOnce(() =>
+      stallUntilAbort(recordedDeadlineSignal()),
+    );
+
+    const run = keepwarmHandler();
+    await vi.advanceTimersByTimeAsync(RUN_DEADLINE_MS);
+    await expect(run).resolves.toBeUndefined();
+
+    // Classified transient with the token-row-read wording — never a
+    // platform kill, never a monitor error.
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('token row read failed'),
+      'warning',
+    );
+    expect(sentry.captureException).not.toHaveBeenCalled();
+    // The warm-up never ran: no snapshot, no cache write.
+    expect(googleMocks.freebusyQuery).not.toHaveBeenCalled();
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
+  });
+
+  it('snapshot Freebusy leaf stalled past the deadline → global abort, shared-stage failure, ZERO cache writes', async () => {
+    // Valid token row (≥ 15 min) → the run goes straight to the warm-up; the
+    // snapshot's Freebusy leaf hangs until the deadline signal aborts.
+    seedTokenRow(Date.now() + 60 * 60_000);
+    googleMocks.freebusyQuery.mockImplementationOnce(() =>
+      stallUntilAbort(recordedDeadlineSignal()),
+    );
+
+    const run = keepwarmHandler();
+    await vi.advanceTimersByTimeAsync(RUN_DEADLINE_MS);
+    await expect(run).resolves.toBeUndefined();
+
+    // Precondition: the snapshot really reached the Freebusy leaf.
+    expect(googleMocks.freebusyQuery).toHaveBeenCalledTimes(1);
+    // Shared-stage failure (SC5): NOTHING written, stage named in the logs.
+    expect(blobsStore.store.setJSON).not.toHaveBeenCalled();
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('availability snapshot failed'),
+      'warning',
+    );
+    // No invalid_grant alert from the snapshot path.
+    expect(resendSend).not.toHaveBeenCalled();
+  });
+
+  it('healthy run finishing before the deadline → dispose() released the global abort timer', async () => {
+    seedTokenRow(Date.now() + 60 * 60_000);
+
+    await expect(keepwarmHandler()).resolves.toBeUndefined();
+
+    // All deps are mocked: the ONLY timer armed during the run was the
+    // deadline's global abort timer — the `finally { deadline.dispose() }`
+    // must leave zero pending timers (removing the finally fails this test:
+    // a late 8 s abort stays armed after the run returned).
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

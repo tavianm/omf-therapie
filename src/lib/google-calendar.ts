@@ -302,13 +302,34 @@ export async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | nul
     return null;
   }
 
-  // 3. Proactive refresh: refresh if token expires within 5 minutes
-  if (!tokens.expiry_date || tokens.expiry_date < Date.now() + 5 * 60 * 1000) {
+  // 3. Proactive refresh: refresh if token expires within 5 minutes. An EMPTY
+  //    or blank persisted access_token forces the refresh too (revue #154):
+  //    google-auth-library treats '' as absent (`!this.credentials.access_token`
+  //    → eager refresh), so a client seeded with '' would refresh hiddenly on
+  //    its first signed call — the same gate the keepwarm cron enforces.
+  if (
+    !tokens.expiry_date ||
+    tokens.expiry_date < Date.now() + 5 * 60 * 1000 ||
+    !tokens.access_token?.trim()
+  ) {
     oauth2Client.setCredentials({ refresh_token: tokens.refresh_token });
     try {
       const { credentials } = await oauth2Client.refreshAccessToken();
+      // A refresh response WITHOUT a usable access token must never reach the
+      // persist below: writing '' (or a blank token) over a healthy row would
+      // poison it. Refuse BEFORE any write — transient, the next run retries.
+      const accessToken = credentials.access_token?.trim();
+
+      if (!accessToken) {
+        console.warn(
+          '[google-calendar] Réponse de refresh sans access_token — écriture refusée.',
+        );
+        throw new CalendarNetworkError(
+          'Google OAuth refresh returned no usable access token.',
+        );
+      }
       const updated = {
-        access_token: credentials.access_token ?? '',
+        access_token: accessToken,
         // google-auth-library's refreshAccessToken() never surfaces a
         // server-rotated refresh token: it echoes back the credential it was
         // given, so this persists the same refresh_token we loaded. Google
@@ -377,6 +398,11 @@ export async function getPersistedOAuthClient(): Promise<Auth.OAuth2Client | nul
       oauth2Client.setCredentials(credentials);
       return oauth2Client;
     } catch (err: unknown) {
+      // refreshAccessToken() itself never throws CalendarNetworkError, so this
+      // rethrow only passes through our own validation rejection above — the
+      // write was refused BEFORE any persistence and stays classified
+      // transient instead of being re-wrapped as a generic refresh failure.
+      if (err instanceof CalendarNetworkError) throw err;
       const errData = (err as { response?: { data?: { error?: string } } })
         ?.response?.data;
       if (errData?.error === 'invalid_grant') {
