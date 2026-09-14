@@ -74,6 +74,7 @@ Pas de nouvelle affordance UI/API — table de câblage plateforme :
 
   ```yaml
   priced:  "aucune vulnérabilité connue critical/high dans les dépendances de production"
+  claim:   fail-closed
   not:     "code de sortie global de npm audit à 0 (les moderates prod peuvent subsister sans faire échouer le gate à --audit-level=high)"
   oracles: ["astro@5.18.2 dans l'arbre → le gate échoue", "nodemailer@9.0.3 dans l'arbre → le gate échoue", "un high uniquement atteint via devDependencies → le gate passe"]
   ```
@@ -86,6 +87,7 @@ Pas de nouvelle affordance UI/API — table de câblage plateforme :
 
   ```yaml
   priced:  "les routes SSR restent exécutables côté serveur après l'upgrade (prerender=false honoré, externals tracés), sur un environnement non-productif"
+  claim:   fail-closed
   not:     "build exit 0 (le build CI n'exerce jamais le packaging des fonctions Netlify)"
   oracles: ["fonction Netlify levant 'Cannot find module nodemailer' au cold start → échec", "route API prérendue en statique sous output:'static' → échec", "preview branché sur les vars prod (clé Stripe live, agenda réel) → le smoke ne doit PAS être exécuté tant que l'env n'est pas corrigée"]
   ```
