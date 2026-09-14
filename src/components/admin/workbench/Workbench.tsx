@@ -403,7 +403,6 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
               onRefresh={refresh}
             />
           </section>
-          </section>
 
           {/* Patients (en-tête intégré à la vue) */}
           <section
