@@ -19,8 +19,8 @@
   directory = "netlify/functions"
 
 [build.environment]
-  # Node version: resolved from .nvmrc (Netlify's native fallback) — do not
-  # re-introduce NODE_VERSION here, .nvmrc is the single source of truth.
+  # Node version: Netlify resolves .nvmrc from the repo root natively — keep
+  # that file as the single source of truth, no version assignment here.
   # ---------------------------------------------------------------------------
   # Variables d'environnement requises
   # (à configurer dans le dashboard Netlify — NE PAS committer de valeurs ici)
