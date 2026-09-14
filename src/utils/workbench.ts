@@ -152,7 +152,8 @@ export interface TomorrowSessionsSummary {
 
 /**
  * Active sessions of the next Paris day — day key +1 via `shiftParisDay`,
- * DST-safe by construction (a 25-hour day is still one day-key step).
+ * DST-safe by construction (a 23-hour spring-forward day is still one
+ * day-key step).
  */
 export function getTomorrowSessions(
   appointments: Appointment[],

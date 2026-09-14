@@ -436,8 +436,11 @@ export function RendezVousView({ appointments, focus, onRefresh }: RendezVousVie
         >
           {FILTERS.map(({ key, label, dot }) => {
             const count = statusCounts[key] ?? 0;
-            if (key !== 'all' && count === 0) return null;
             const isActive = filter === key;
+            // Une pilule active reste visible même à 0 résultat : le filtre
+            // peut être engagé depuis l'extérieur (clic KPI « Demandes ») et
+            // doit rester nommable.
+            if (key !== 'all' && count === 0 && !isActive) return null;
             return (
               <button
                 key={key}

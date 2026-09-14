@@ -30,12 +30,15 @@ const LAST_MONTH = '2026-08-20T10:00:00.000Z'; // 20 août
 
 /**
  * Instants et heures de séance additionnels (#164) : bornes de week-end pour
- * « Ma semaine » et nuit du changement d'heure pour « Demain » (jour de 25 h).
+ * « Ma semaine » et nuit du changement d'heure pour « Demain » (jour de 23 h).
  */
 const SATURDAY_NOW = Date.parse('2026-09-12T13:00:00.000Z'); // samedi 12 sept, 15:00 Paris
 const SUNDAY_NOW = Date.parse('2026-09-13T13:00:00.000Z'); // dimanche 13 sept, 15:00 Paris
 // Samedi 28 mars, 15:00 Paris (CET) — l'Europe/Paris passe à l'heure d'été dans la nuit du 28 au 29.
 const NOW_DST = Date.parse('2026-03-28T14:00:00.000Z');
+// 23:30 Paris (CET) le 28 — soirée avant la bascule : l'arithmétique civile
+// (+1 jour) donne le 29 là où le mutant naïf en instants (+24 h) donne le 30.
+const NOW_DST_EVE = Date.parse('2026-03-28T22:30:00.000Z');
 const LAST_MONDAY_0900 = '2026-09-07T07:00:00.000Z'; // 09:00 Paris le lundi 7 — jour passé de la semaine en cours
 const SATURDAY_0900 = '2026-09-12T07:00:00.000Z'; // 09:00 Paris le samedi 12
 const SUNDAY_0900 = '2026-09-13T07:00:00.000Z'; // 09:00 Paris le dimanche 13
@@ -43,7 +46,7 @@ const NEXT_MONDAY_0900 = '2026-09-14T07:00:00.000Z'; // 09:00 Paris le lundi 14
 const NEXT_SUNDAY_0900 = '2026-09-20T07:00:00.000Z'; // 09:00 Paris le dimanche 20 — dernier jour de la semaine suivante
 const TOMORROW_1400 = '2026-09-12T12:00:00.000Z'; // 14:00 Paris le 12
 const DST_TODAY_EVENING = '2026-03-28T17:00:00.000Z'; // 18:00 Paris (CET) le 28 — même jour Paris que NOW_DST
-const DST_TOMORROW_0900 = '2026-03-29T07:00:00.000Z'; // 09:00 Paris (CEST) le 29 — matin du jour de 25 h
+const DST_TOMORROW_0900 = '2026-03-29T07:00:00.000Z'; // 09:00 Paris (CEST) le 29 — matin du jour de 23 h
 
 function makeAppointment(overrides: Partial<Appointment> = {}): Appointment {
   return {
@@ -625,10 +628,13 @@ describe('getTomorrowSessions', () => {
     expect(result.firstStartIso).toBeNull();
   });
 
-  it('gère le jour de 25 h : après la bascule DST, demain est la clé de jour +1, jamais +24 h', () => {
-    // Arrange — NOW_DST = samedi 28 mars 15:00 Paris (CET) ; le 29 à 07:00Z = 09:00 Paris CEST.
-    // Une arithmétique en instants (+24 h) raterait ce matin-là ou empiéterait sur le jour en cours.
-    const result = getTomorrowSessions(
+  it('gère le jour de 23 h (passage à l’heure d’été) : demain est la clé de jour +1, jamais +24 h', () => {
+    // Arrange — deux « now » avant la bascule DST de la nuit du 28 au 29 mars :
+    // - à 15:00 Paris (NOW_DST), le mutant naïf en instants (+24 h) retombe
+    //   lui aussi sur le 29 (16:00 CEST) : ce fixture seul ne le tue pas ;
+    // - à 23:30 Paris (NOW_DST_EVE), le mutant atterrit sur le 30 (00:30 CEST)
+    //   et rate la séance du 29 matin — c'est lui qui tue le mutant.
+    const afternoon = getTomorrowSessions(
       [
         makeAppointment({ id: 'dst-ce-soir', scheduled_at: DST_TODAY_EVENING }),
         makeAppointment({
@@ -638,8 +644,20 @@ describe('getTomorrowSessions', () => {
       ],
       NOW_DST,
     );
+    const evening = getTomorrowSessions(
+      [
+        makeAppointment({ id: 'dst2-ce-soir', scheduled_at: DST_TODAY_EVENING }),
+        makeAppointment({
+          id: 'dst2-demain-0900',
+          scheduled_at: DST_TOMORROW_0900,
+        }),
+      ],
+      NOW_DST_EVE,
+    );
     // Assert
-    expect(result.sessions.map(s => s.id)).toEqual(['dst-demain-0900']);
-    expect(result.firstStartIso).toBe(DST_TOMORROW_0900);
+    expect(afternoon.sessions.map(s => s.id)).toEqual(['dst-demain-0900']);
+    expect(afternoon.firstStartIso).toBe(DST_TOMORROW_0900);
+    expect(evening.sessions.map(s => s.id)).toEqual(['dst2-demain-0900']);
+    expect(evening.firstStartIso).toBe(DST_TOMORROW_0900);
   });
 });
