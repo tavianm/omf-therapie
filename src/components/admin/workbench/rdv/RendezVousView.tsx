@@ -154,17 +154,22 @@ export function RendezVousView({ appointments, focus, onRefresh }: RendezVousVie
   //    aucune ligne montée (revue #149). La page est recalculée sur
   //    appointments brut : deferredQuery ne suit pas encore la réinitialisation.
   //  - kind 'filter' → présélectionne le filtre « Demandes de RDV » dans la
-  //    partition À venir (déterministe : le compteur KPI porte sur toute la
-  //    file, les demandes en retard restent atteignables via Historique),
-  //    vide la recherche, repagine à 1 et annule tout focus en attente
-  //    (#164, SC3 ; composition partition — retour de test PR #167).
+  //    partition qui contient effectivement des demandes : « À venir » si la
+  //    file en compte au moins une, sinon « Historique » directement (les
+  //    demandes en retard deviennent visibles sans second clic) — vide la
+  //    recherche, repagine à 1 et annule tout focus en attente (#164, SC3 ;
+  //    évolution test PR #167).
   useEffect(() => {
     if (!focus || handledRequestNonceRef.current === focus.nonce) return;
     if (focus.kind === 'filter') {
       handledRequestNonceRef.current = focus.nonce;
       setQuery('');
       setFilter('demandes');
-      setPartition('upcoming');
+      setPartition(
+        getDemandItems(appointments).some(a => isUpcoming(a.scheduled_at))
+          ? 'upcoming'
+          : 'history',
+      );
       setPage(1);
       setPendingFocusId(null);
       return;
