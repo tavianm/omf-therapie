@@ -99,10 +99,10 @@ function KpiCard({
   const body = (
     <>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-semibold font-sans uppercase tracking-wider text-sage-500 truncate">
+        <p className="text-[10px] font-semibold font-sans uppercase tracking-wider text-sage-600 truncate">
           {label}
         </p>
-        <span className={isWarning ? 'text-amber-500' : 'text-sage-400'}>
+        <span className={isWarning ? 'text-amber-700' : 'text-sage-600'}>
           {icon}
         </span>
       </div>
@@ -123,7 +123,7 @@ function KpiCard({
         )}
       </p>
       <p
-        className={`mt-1.5 text-xs font-sans ${isWarning ? 'text-amber-800' : 'text-sage-500'}`}
+        className={`mt-1.5 text-xs font-sans ${isWarning ? 'text-amber-800' : 'text-sage-600'}`}
       >
         {detail}
       </p>
@@ -383,13 +383,13 @@ export function SyntheseView({
               <span className="ml-1.5">({nextUpcoming.length})</span>
             )}
           </h2>
-          <span className="ml-auto text-[10px] font-semibold font-sans uppercase tracking-wider text-sage-400">
+          <span className="ml-auto text-[10px] font-semibold font-sans uppercase tracking-wider text-sage-600">
             Séances à venir
           </span>
         </header>
 
         {nextUpcoming.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-sage-300 px-4 py-5 text-sm text-sage-500 font-sans text-center">
+          <p className="rounded-xl border border-dashed border-sage-300 px-4 py-5 text-sm text-sage-600 font-sans text-center">
             Aucun rendez-vous à venir.
           </p>
         ) : (
@@ -419,7 +419,7 @@ export function SyntheseView({
                         </span>
                       )}
                     </span>
-                    <span className="block text-xs text-sage-500 font-sans mt-0.5 truncate">
+                    <span className="block text-xs text-sage-600 font-sans mt-0.5 truncate">
                       {getTypeLabel(appointment.appointment_type)} ·{' '}
                       {appointment.appointment_mode === 'video'
                         ? 'Téléconsultation'
@@ -496,7 +496,7 @@ export function SyntheseView({
         </header>
 
         {demands.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-sage-300 px-4 py-5 text-sm text-sage-500 font-sans text-center">
+          <p className="rounded-xl border border-dashed border-sage-300 px-4 py-5 text-sm text-sage-600 font-sans text-center">
             Aucune demande en attente — tout est à jour.
           </p>
         ) : (
