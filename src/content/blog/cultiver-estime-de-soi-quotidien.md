@@ -1,5 +1,5 @@
 ---
-id: "5"
+postId: "5"
 title: "Cultiver l'estime de soi au quotidien"
 excerpt: "Des pratiques simples mais puissantes pour développer une relation positive avec soi-même et renforcer sa confiance."
 date: "15 mars 2025"

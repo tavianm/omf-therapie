@@ -1,5 +1,5 @@
 ---
-id: "7"
+postId: "7"
 title: "Accompagner les transitions de vie avec sérénité"
 excerpt: "Comment traverser les périodes de changement avec plus de confiance et transformer les défis en opportunités de croissance."
 date: "1 février 2025"

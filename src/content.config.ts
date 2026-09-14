@@ -1,9 +1,10 @@
 import { defineCollection, z } from 'astro:content';
+import { glob } from 'astro/loaders';
 
 const blog = defineCollection({
-  type: 'content',
+  loader: glob({ pattern: '**/*.md', base: './src/content/blog' }),
   schema: z.object({
-    id: z.string(),
+    postId: z.string(),
     title: z.string(),
     excerpt: z.string(),
     date: z.string(), // French date format: "15 février 2025"

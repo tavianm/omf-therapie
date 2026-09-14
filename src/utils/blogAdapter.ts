@@ -3,9 +3,9 @@ import type { BlogPost } from '../types/blog';
 
 export function collectionEntryToBlogPost(entry: CollectionEntry<'blog'>): BlogPost {
   return {
-    id: entry.data.id,
+    id: entry.data.postId,
     title: entry.data.title,
-    slug: entry.id.replace(/\.md$/, ''), // strip .md extension (Astro 5: entry.id includes extension)
+    slug: entry.id, // glob loader: entry.id is the file path relative to base, without extension (= URL slug)
     excerpt: entry.data.excerpt,
     content: entry.body ?? '', // raw markdown body
     date: entry.data.date,
