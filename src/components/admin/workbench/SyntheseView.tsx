@@ -29,7 +29,7 @@ import {
   getTomorrowSessions,
   getWeekSessions,
 } from '../../../utils/workbench';
-import { AppointmentRow, DarkTimeBadge } from './ui';
+import { AppointmentRow, DarkTimeBadge, StatusChip } from './ui';
 
 interface SyntheseViewProps {
   appointments: Appointment[];
@@ -413,6 +413,7 @@ export function SyntheseView({
                       <span className="font-serif text-base font-semibold text-sage-900 truncate">
                         {appointment.patient_name}
                       </span>
+                      <StatusChip status={appointment.status} />
                       {minutes !== null && minutes < 120 && (
                         <span className="inline-flex items-center rounded-full bg-mint-100 px-2 py-0.5 text-[10px] font-bold font-sans uppercase tracking-wide text-mint-800">
                           Dans {minutes} min
