@@ -199,9 +199,6 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
           <p className="font-serif text-lg font-semibold text-sage-900 truncate">
             {practitionerName}
           </p>
-          <p className="text-[11px] font-semibold font-sans uppercase tracking-wider text-sage-400 mt-0.5">
-            Psychologue clinicienne
-          </p>
         </div>
 
         {/* CTA création */}
