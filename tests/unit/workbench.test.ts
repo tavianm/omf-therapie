@@ -10,7 +10,7 @@ import {
   isActiveAppointment,
   isReschedulable,
   describeSlot,
-  // Issue #164 — contrats écrits en premier (RED) : exports pas encore implémentés.
+  // Issue #164 — file « Demandes de RDV », KPI « Ma semaine » et « Demain ».
   getDemandItems,
   getTomorrowSessions,
   getWeekSessions,
@@ -357,8 +357,7 @@ describe('isReschedulable', () => {
 
 // ---------------------------------------------------------------------------
 // Issue #164 — file « Demandes de RDV » (SC2), KPI « Ma semaine » (SC4),
-// KPI « Demain » (SC5). Contrats écrits en premier : ces helpers n'existent
-// pas encore dans `src/utils/workbench.ts` (échec attendu au vert futur).
+// KPI « Demain » (SC5). Contrats implémentés dans `src/utils/workbench.ts`.
 // ---------------------------------------------------------------------------
 
 describe('getDemandItems', () => {
