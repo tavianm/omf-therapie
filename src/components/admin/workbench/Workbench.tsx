@@ -22,11 +22,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Appointment } from '../../../types/appointment';
 import type { PrefillData } from '../../../types/patient';
+import { useAppointmentsPolling } from '../../../hooks/useAppointmentsPolling';
 import { CreateAppointmentDrawer } from './CreateAppointmentDrawer';
 import { DisponibilitesView } from './disponibilites/DisponibilitesView';
 import { PatientsView } from './patients/PatientsView';
 import { RendezVousView } from './rdv/RendezVousView';
 import { SyntheseView } from './SyntheseView';
+import { FreshnessIndicator } from './ui';
 
 type Section = 'synthese' | 'rdv' | 'patients' | 'disponibilites';
 
@@ -87,7 +89,7 @@ function SectionIcon({ section, className }: { section: Section; className: stri
 // Main component
 // ---------------------------------------------------------------------------
 
-export function Workbench({ appointments, practitionerName }: WorkbenchProps) {
+export function Workbench({ appointments: initialAppointments, practitionerName }: WorkbenchProps) {
   // État initial identique serveur/client (Synthèse) : la section sauvegardée
   // est restaurée APRÈS hydratation, sinon React détecte un mismatch et laisse
   // les attributs `hidden` du rendu serveur en place (revue #148).
@@ -95,6 +97,14 @@ export function Workbench({ appointments, practitionerName }: WorkbenchProps) {
   const [focus, setFocus] = useState<FocusRequest | null>(null);
   const [createDrawer, setCreateDrawer] = useState<CreateDrawerState>({ open: false, prefill: null });
   const [isSigningOut, setIsSigningOut] = useState(false);
+
+  // Live data (#165): SSR props are only the initial state — the list is now
+  // owned by the Workbench and kept fresh by polling (visible-only, paused
+  // while the creation drawer is open).
+  const { appointments, refresh, lastUpdated, isStale } = useAppointmentsPolling(
+    initialAppointments,
+    { paused: createDrawer.open },
+  );
 
   useEffect(() => {
     try {
@@ -284,12 +294,13 @@ export function Workbench({ appointments, practitionerName }: WorkbenchProps) {
             <h1 id="heading-synthese" className="sr-only">
               Synthèse
             </h1>
+            <FreshnessIndicator lastUpdated={lastUpdated} isStale={isStale} />
             <SyntheseView appointments={appointments} onFocusAppointment={handleFocusAppointment} />
           </section>
 
           {/* Rendez-vous (en-tête intégré à la vue) */}
           <section id="section-rdv" hidden={section !== 'rdv'} aria-label="Rendez-vous">
-            <RendezVousView appointments={appointments} focus={focus} />
+            <RendezVousView appointments={appointments} focus={focus} onRefresh={refresh} />
           </section>
 
           {/* Patients (en-tête intégré à la vue) */}
@@ -357,6 +368,7 @@ export function Workbench({ appointments, practitionerName }: WorkbenchProps) {
         appointments={appointments}
         prefill={createDrawer.prefill}
         onClose={closeCreateDrawer}
+        onRefresh={refresh}
       />
     </div>
   );

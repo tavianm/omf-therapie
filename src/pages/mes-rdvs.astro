@@ -18,8 +18,7 @@ import { PatientList } from '../components/admin/PatientList';
 import { TimeSlotManager } from '../components/admin/TimeSlotManager';
 import { auth } from '../lib/auth';
 import { isAdminSession } from '../lib/authz';
-import { supabaseAdmin } from '../lib/supabase';
-import type { Appointment } from '../types/appointment';
+import { fetchActiveAppointments } from '../lib/admin-appointments';
 
 // ── Auth guard ───────────────────────────────────────────────────────────────
 const session = await auth.api.getSession({ headers: Astro.request.headers });
@@ -31,35 +30,16 @@ if (!isAdminSession(session)) {
 }
 
 // ── Fetch appointments ───────────────────────────────────────────────────────
-// Colonnes explicites : exclut les champs sensibles non nécessaires à l'island
-// AppointmentsManager (et à AppointmentCard en vue dépliée). Évite la sérialisation
-// de données PII/cliniques dans les props Astro.
-const APPOINTMENT_COLUMNS = [
-  'id', 'status', 'scheduled_at', 'rescheduled_to',
-  'appointment_type', 'appointment_mode', 'duration',
-  'base_price', 'discount', 'final_price', 'is_first_session',
-  'patient_name', 'patient_email', 'patient_phone', 'patient_postal_code',
-  'patient_city', 'patient_reason', 'therapist_notes',
-  'video_link', 'google_calendar_event_id',
-  'stripe_payment_link_url', 'stripe_payment_link_id',
-  'created_at', 'updated_at',
-].join(',');
-
-const { data: rows, error } = await supabaseAdmin
-  .from('appointments')
-  .select(APPOINTMENT_COLUMNS)
-  .is('deleted_at', null)
-  .order('scheduled_at', { ascending: false });
+// Requête partagée (mêmes colonnes explicites — exclut les champs sensibles non
+// nécessaires à l'island AppointmentsManager —, soft-delete exclu, tri
+// identique que /poste-travail) : voir src/lib/admin-appointments.ts. En cas
+// d'erreur, la page est rendue avec une liste vide — dégradation identique à
+// l'extraction.
+const { appointments, error } = await fetchActiveAppointments();
 
 if (error) {
   console.error('[mes-rdvs] Erreur Supabase :', error);
 }
-
-// Cast applies only on the verified-success branch: the Supabase error shape
-// (GenericStringError) does not overlap with Appointment, so the cast must not
-// run when `error` is truthy — an empty array renders a degraded dashboard
-// instead of masking the error as fake Appointment rows.
-const appointments: Appointment[] = error ? [] : (rows as unknown as Appointment[]);
 
 // ── Comptages par statut (pour l'en-tête de page : « N · X en attente ») ───────
 const counts: Record<string, number> = { all: appointments.length };

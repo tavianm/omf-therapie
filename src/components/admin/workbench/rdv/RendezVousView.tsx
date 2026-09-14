@@ -31,6 +31,11 @@ interface RendezVousViewProps {
   appointments: Appointment[];
   /** Demande de focus venue de la Synthèse (id + nonce pour re-déclencher). */
   focus: FocusRequest | null;
+  /**
+   * Explicit data refetch after a successful mutation (#165) — forwarded to
+   * the appointment detail (consumed in place of the former full-page reload).
+   */
+  onRefresh?: () => void;
 }
 
 type Partition = 'upcoming' | 'history';
@@ -92,7 +97,7 @@ function rowId(id: string): string {
   return `wb-rdv-row-${id}`;
 }
 
-export function RendezVousView({ appointments, focus }: RendezVousViewProps) {
+export function RendezVousView({ appointments, focus, onRefresh }: RendezVousViewProps) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterKey>('all');
   const [partition, setPartition] = useState<Partition>('upcoming');
@@ -132,6 +137,16 @@ export function RendezVousView({ appointments, focus }: RendezVousViewProps) {
     setPage(index >= 0 ? Math.floor(index / PAGE_SIZE) + 1 : 1);
     setPendingFocusId(target.id);
   }, [focus, appointments]);
+
+  // SC5 — an open appointment that vanished from the refreshed payload
+  // (soft-delete elsewhere) closes the detail explicitly: the selection is
+  // cleared instead of being left dangling. A poll whose data CHANGED keeps
+  // the detail open on the same id (keyed by selected.id, local state kept).
+  useEffect(() => {
+    if (selectedId && !appointments.some((a) => a.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [appointments, selectedId]);
 
   const { filtered, statusCounts, upcomingCount, historyCount } = useMemo(() => {
     const q = deferredQuery.toLowerCase().trim();
@@ -409,6 +424,7 @@ export function RendezVousView({ appointments, focus }: RendezVousViewProps) {
                 patient={selectedPatient}
                 variant="pane"
                 onClose={() => setSelectedId(null)}
+                onRefresh={onRefresh}
               />
             ) : (
               <p className="py-10 text-center text-sm text-sage-500 font-sans">
@@ -435,6 +451,7 @@ export function RendezVousView({ appointments, focus }: RendezVousViewProps) {
               patient={selectedPatient}
               variant="sheet"
               onClose={() => setSelectedId(null)}
+              onRefresh={onRefresh}
             />
           </ModalOverlay>
         </div>

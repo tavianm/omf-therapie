@@ -8,6 +8,7 @@ import { calculatePrice } from '../../../../lib/pricing';
 import { getAvailableCredit, consumeCredits } from '../../../../lib/credits';
 import { hasAppointmentConflict } from '../../../../lib/appointment-conflicts';
 import { isSchedulingConflictError } from '../../../../lib/scheduling-settings';
+import { fetchActiveAppointments } from '../../../../lib/admin-appointments';
 import type { AppointmentType } from '../../../../types/appointment';
 import { invalidateAvailabilityCache } from '../../../../lib/calendar-cache.js';
 import { isCabinetEligibleSlot } from '../../../../lib/appointment-eligibility';
@@ -408,4 +409,62 @@ export const POST: APIRoute = async ({ request, locals }) => {
     status: 201,
     headers: { 'Content-Type': 'application/json' },
   });
+};
+
+// ---------------------------------------------------------------------------
+// GET — liste des rendez-vous actifs (rafraîchissement auto du poste de
+// travail, issue #165)
+// ---------------------------------------------------------------------------
+
+// SC1 (#165) : AUCUNE réponse de ce endpoint n'est cacheable — succès comme
+// erreurs partent avec `Cache-Control: no-store`, sans compter sur un
+// middleware global. `errorResponse` reste inchangée (POST ne bouge pas) :
+// ce wrapper en reprend la forme de corps `{ error, field }` et y ajoute
+// l'en-tête.
+function noStoreErrorResponse(
+  status: number,
+  message: string,
+  field?: string,
+): Response {
+  const response = errorResponse(status, message, field);
+  response.headers.set('Cache-Control', 'no-store');
+  return response;
+}
+
+export const GET: APIRoute = async ({ request }) => {
+  // 1. Auth guard — admin seulement (miroir exact du guard POST)
+  const session = await auth.api.getSession({ headers: request.headers });
+  if (!session?.user) {
+    return noStoreErrorResponse(401, 'Non authentifié');
+  }
+  if (!isAdminSession(session)) {
+    return noStoreErrorResponse(403, 'Accès refusé');
+  }
+
+  // 2. Requête partagée (mêmes colonnes explicites, soft-delete exclu, tri
+  // `scheduled_at desc` que le SSR de /mes-rdvs et /poste-travail). Échec DB
+  // → 502 : JAMAIS 200 avec des données vides — le poller client doit
+  // distinguer « liste vide légitime » d'« erreur amont ».
+  const { appointments, error } = await fetchActiveAppointments();
+  if (error !== null) {
+    console.error('[admin/appointments] Erreur fetch rendez-vous :', error);
+    return noStoreErrorResponse(
+      502,
+      'Erreur lors de la récupération des rendez-vous',
+    );
+  }
+
+  // 3. 200 — enveloppe { appointments, fetchedAt } : fetchedAt (ISO 8601,
+  // généré serveur) sert de marqueur monotone d'application des snapshots
+  // côté client (course lecture-après-écriture, issue #165).
+  return new Response(
+    JSON.stringify({ appointments, fetchedAt: new Date().toISOString() }),
+    {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+      },
+    },
+  );
 };

@@ -42,6 +42,28 @@ export function StatusChip({ status }: { status: AppointmentStatus }) {
   );
 }
 
+/**
+ * Freshness indicator of the live appointments list (#165) — discreet text in
+ * the Synthèse header zone. Renders nothing until the first successful poll,
+ * then switches to the offline wording while polls keep failing (SC4, V3).
+ */
+export function FreshnessIndicator({
+  lastUpdated,
+  isStale,
+}: {
+  lastUpdated: string | null;
+  isStale: boolean;
+}) {
+  if (lastUpdated === null) return null;
+  return (
+    <p aria-live="polite" className="mb-3 text-right text-xs text-sage-500 font-sans">
+      {isStale
+        ? `Données du ${formatTimeParis(lastUpdated)} — hors ligne`
+        : `Mis à jour à ${formatTimeParis(lastUpdated)}`}
+    </p>
+  );
+}
+
 /** Derived "EN RETARD" badge — past-dated appointment still needing action. */
 export function LateBadge() {
   return (

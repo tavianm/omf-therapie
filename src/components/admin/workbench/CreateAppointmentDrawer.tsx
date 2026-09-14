@@ -32,6 +32,12 @@ interface CreateAppointmentDrawerProps {
   appointments: Appointment[];
   prefill?: PrefillData | null;
   onClose: () => void;
+  /**
+   * Explicit data refetch after a successful creation (#165) — replaces the
+   * former full-page reload call site (wired from the Workbench polling
+   * hook). Fires once the drawer is closed, past the polling pause.
+   */
+  onRefresh?: () => void;
 }
 
 interface FormState {
@@ -96,7 +102,7 @@ const DURATION_OPTIONS: { value: number | 'custom'; label: string }[] = [
   { value: 'custom', label: 'Personnalisée…' },
 ];
 
-export function CreateAppointmentDrawer({ open, appointments, prefill, onClose }: CreateAppointmentDrawerProps) {
+export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, onRefresh }: CreateAppointmentDrawerProps) {
   const [form, setForm] = useState<FormState>(INITIAL_STATE);
   const [selectedPatientEmail, setSelectedPatientEmail] = useState<string | null>(null);
   const [chooserDismissed, setChooserDismissed] = useState(false);
@@ -107,6 +113,16 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose }
   const [showOptions, setShowOptions] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Post-creation refresh deferred to the actual close (SC5/SC6): polling is
+  // paused while the drawer is open, and the pause flag reaches the hook via
+  // the parent state — one render after onClose().
+  const [pendingRefresh, setPendingRefresh] = useState(false);
+
+  useEffect(() => {
+    if (open || !pendingRefresh) return;
+    setPendingRefresh(false);
+    onRefresh?.();
+  }, [open, pendingRefresh, onRefresh]);
 
   // (Ré)initialisation à l'ouverture, avec pré-remplissage éventuel (fiche patient).
   useEffect(() => {
@@ -278,7 +294,13 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose }
         }
         throw new Error(data.error ?? `Erreur ${res.status}`);
       }
-      window.location.reload();
+      // Success — was a full page reload. The form resets on next
+      // open (reset-on-open effect), the drawer closes, and the fresh list
+      // (with the new appointment) arrives via the poller once the pause
+      // lifts (single writer, #165).
+      setLoading(false);
+      setPendingRefresh(true);
+      onClose();
     } catch (e) {
       setError(
         e instanceof TypeError
