@@ -1,0 +1,108 @@
+{
+  "schema_version": "1",
+  "issue": 170,
+  "head": "c3c29b7f8c08f2b51482d8bd4e771f8c4779073a",
+  "runner_id": "run-falsify/1",
+  "oracle_ok": true,
+  "oracle_reason": "ok",
+  "rows": [
+    {
+      "sc_id": "SC2",
+      "sources": [
+        "package-lock.json"
+      ],
+      "source_hashes": {
+        "package-lock.json": "3c66cbe6071944f9a2c64cc9a8be138ea0a2673b0f6e809936aa73a8d75d8349"
+      },
+      "test_cmd": "npm audit --omit=dev --audit-level=high",
+      "fail_exit": 1,
+      "pass_exit": 0,
+      "error": "FAIL exit=1: bash: warning: setlocale: LC_ALL: cannot change locale (fr_FR.UTF-8) npm error code ENOLOCK npm error audit This command requires an existing lockfile. npm error audit Try creating one first with: npm i --package-lock-only npm error audit O",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC4",
+      "sources": [
+        "src/content.config.ts"
+      ],
+      "source_hashes": {
+        "src/content.config.ts": "05f576332b997d0fd41629ce4f5bfb337f0abc232a17e9a068da7801c9894f48"
+      },
+      "test_cmd": "test -f src/content.config.ts && ! grep -q \"type: 'content'\" src/content.config.ts && grep -q \"astro/zod\" src/content.config.ts",
+      "fail_exit": 1,
+      "pass_exit": 0,
+      "error": "FAIL exit=1: bash: warning: setlocale: LC_ALL: cannot change locale (fr_FR.UTF-8) ",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC11",
+      "sources": [
+        "astro.config.mjs"
+      ],
+      "source_hashes": {
+        "astro.config.mjs": "fd206b5b3c7c3b87d193921acf0f1bb7ac481f0e7c9c6c874a0aa7fdb04e4e01"
+      },
+      "test_cmd": "grep -q 'compressHTML: true' astro.config.mjs",
+      "fail_exit": 2,
+      "pass_exit": 0,
+      "error": "FAIL exit=2: bash: warning: setlocale: LC_ALL: cannot change locale (fr_FR.UTF-8) grep: astro.config.mjs: No such file or directory ",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC12",
+      "sources": [
+        ".nvmrc"
+      ],
+      "source_hashes": {
+        ".nvmrc": "c42fcf0db5a550bda2f566fcdc21955df3e5a8ec3aeb90ac533f3776e7fce32a"
+      },
+      "test_cmd": "cat .nvmrc | grep -qE '^v?22\\.' && ! grep -q NODE_VERSION netlify.toml && test \"$(grep -c 'node-version-file' .github/workflows/ci.yml)\" = \"2\"",
+      "fail_exit": 1,
+      "pass_exit": 0,
+      "error": "FAIL exit=1: bash: warning: setlocale: LC_ALL: cannot change locale (fr_FR.UTF-8) cat: .nvmrc: No such file or directory ",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC13",
+      "sources": [
+        ".github/workflows/ci.yml"
+      ],
+      "source_hashes": {
+        ".github/workflows/ci.yml": "61421eb15352912e606ffdcc63070b1c0b92154ec63714022ff3f67666013fe2"
+      },
+      "test_cmd": "grep -q 'audit-level=high' .github/workflows/ci.yml",
+      "fail_exit": 2,
+      "pass_exit": 0,
+      "error": "FAIL exit=2: bash: warning: setlocale: LC_ALL: cannot change locale (fr_FR.UTF-8) grep: .github/workflows/ci.yml: No such file or directory ",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC15",
+      "sources": [
+        "package-lock.json"
+      ],
+      "source_hashes": {
+        "package-lock.json": "3c66cbe6071944f9a2c64cc9a8be138ea0a2673b0f6e809936aa73a8d75d8349"
+      },
+      "test_cmd": "grep -A1 '\"node_modules/nodemailer\"' package-lock.json | grep -q '9\\.1\\.'",
+      "fail_exit": 1,
+      "pass_exit": 0,
+      "error": "FAIL exit=1: bash: warning: setlocale: LC_ALL: cannot change locale (fr_FR.UTF-8) grep: package-lock.json: No such file or directory ",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC1",
+      "sources": [
+        "astro.config.mjs"
+      ],
+      "source_hashes": {
+        "astro.config.mjs": "fd206b5b3c7c3b87d193921acf0f1bb7ac481f0e7c9c6c874a0aa7fdb04e4e01"
+      },
+      "test_cmd": "npm ci --silent && npm run build",
+      "fail_exit": 1,
+      "pass_exit": 0,
+      "error": "FAIL exit=1:  > omf-therapie@1.0.0 prebuild > node scripts/generate-build-env.mjs  [build-env] wrote netlify/functions/_lib/build-env.ts (CONTEXT=development, COMMIT_REF=dev)  > omf-therapie@1.0.0 build > astro build  bash: warning: setlocale: LC_ALL: c",
+      "status": "proven"
+    }
+  ]
+}
