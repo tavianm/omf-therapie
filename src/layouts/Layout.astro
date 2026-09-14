@@ -70,10 +70,11 @@ const jsonLdArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
     <link rel="manifest" href="/assets/site.webmanifest" />
 
     {/* Sentry browser SDK — error tracking.
-        This is a NORMAL processed <script> (NOT is:inline) so Vite/Rollup
+        This is a NORMAL processed <script> (NOT is:inline) so Vite/Rolldown
         bundles it: the `import * as Sentry from '@sentry/browser'` specifier
-        is rewritten to a hashed chunk under /_astro/ and manualChunks groups it
-        into the cacheable 'sentry' chunk. (An is:inline script would emit the
+        is rewritten to a hashed chunk under /_astro/ and the advancedChunks
+        'sentry' group (astro.config.mjs) splits it into a cacheable chunk.
+        (An is:inline script would emit the
         bare specifier verbatim and the browser would fail to resolve it —
         `TypeError: Failed to resolve module specifier`.)
         Gated on PUBLIC_SENTRY_DSN so local dev and any environment without a

@@ -8,6 +8,10 @@ export default defineConfig({
   site: 'https://omf-therapie.fr',
   trailingSlash: 'ignore',
   output: 'static',
+  // Astro 6+ flipped the default: compressHTML is now true out of the box.
+  // Pin it explicitly so the shipped markup stays byte-stable across the
+  // Astro 5 -> 7 bump (issue #170) regardless of future default changes.
+  compressHTML: true,
   adapter: netlify(),
   integrations: [
     react(),
@@ -50,19 +54,20 @@ export default defineConfig({
     build: {
       rollupOptions: {
         output: {
-          // Function form: the object form above ('react-vendor', 'motion',
-          // 'ui', 'sentry') is silently ignored for Astro's hoisted client
-          // scripts (Astro runs its own Rollup pass for them), so none of the
-          // named chunks were ever emitted. The function form is invoked for
-          // every module and reliably splits @sentry/browser into its own
-          // cacheable chunk — keeping the ~70KB SDK out of the per-layout
-          // script hash so it stays cached across deploys. We only special-case
-          // Sentry here; the other vendor hints above are left as documentation
-          // of intent (single-importer modules are inlined regardless).
-          manualChunks: (id) => {
-            if (id.includes('node_modules/@sentry/browser')) {
-              return 'sentry';
-            }
+          // Vite 8 (Rolldown) silently ignores the `manualChunks` function
+          // form — the Sentry SDK split moved to Rolldown's `advancedChunks`
+          // groups API. Same intent as the pre-#170 manualChunks: split
+          // @sentry/browser into its own cacheable chunk so the ~70KB SDK
+          // stays out of the per-layout script hash and remains cached across
+          // deploys. We only special-case Sentry; single-importer vendor
+          // modules are inlined regardless.
+          advancedChunks: {
+            groups: [
+              {
+                name: 'sentry',
+                test: /node_modules[\\/]@sentry[\\/]browser/,
+              },
+            ],
           },
         },
       },
