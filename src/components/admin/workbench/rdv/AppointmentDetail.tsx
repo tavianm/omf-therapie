@@ -105,7 +105,12 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
   // l'API `reschedule` expire le Payment Link d'origine et en régénère un
   // à l'acceptation, plutôt qu'un refus + re-création. La date d'origine
   // ne bloque pas ; seule la NOUVELLE date doit être future (contrôle API).
-  const canReschedule = isReschedulable(appointment);
+  // Exception « rescheduled » : une proposition de report est déjà en
+  // attente côté patient — rouvrir le formulaire écraserait silencieusement
+  // la proposition courante ; « Annuler le report » reste l'action dédiée
+  // (aligné sur <AppointmentCard/>, retour de test PR #167).
+  const canReschedule =
+    isReschedulable(appointment) && appointment.status !== 'rescheduled';
   const canCancel = isCancellableByTherapist(appointment);
 
   async function callPatch(payload: Record<string, unknown>, key: string) {

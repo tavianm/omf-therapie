@@ -99,7 +99,7 @@ export function TimeBlock({ time, duration }: { time: string; duration: number }
   return (
     <span className="inline-flex flex-col items-center justify-center rounded-xl bg-mint-100 px-2.5 py-1.5 shrink-0">
       <span className="font-sans text-sm font-bold text-sage-900 tabular-nums leading-tight">{time}</span>
-      <span className="font-sans text-[10px] text-sage-500 leading-tight">{duration} min</span>
+      <span className="font-sans text-[10px] text-sage-600 leading-tight">{duration} min</span>
     </span>
   );
 }
@@ -118,7 +118,7 @@ export function DarkTimeBadge({ time, day }: { time: string; day: string }) {
 export function Prochainement({ issue }: { issue: number }) {
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full bg-sage-100 px-2 py-0.5 text-[10px] font-semibold font-sans uppercase tracking-wide text-sage-500"
+      className="inline-flex items-center gap-1 rounded-full bg-sage-100 px-2 py-0.5 text-[10px] font-semibold font-sans uppercase tracking-wide text-sage-600"
       title={`Fonctionnalité prévue par la maquette — à construire (issue #${issue})`}
     >
       Prochainement · #{issue}
@@ -264,7 +264,7 @@ export function AppointmentRow({ appointment, onClick, selected = false, ariaLab
           {late && <LateBadge />}
           <StatusChip status={appointment.status} />
         </span>
-        <span className="block text-xs text-sage-500 font-sans mt-0.5 truncate">
+        <span className="block text-xs text-sage-600 font-sans mt-0.5 truncate">
           {getTypeLabel(appointment.appointment_type)} · {getModeLabel(appointment.appointment_mode)}
         </span>
       </span>

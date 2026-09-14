@@ -12,14 +12,14 @@
  *    préserver l'état entre changements de section
  *  - tiroir « Nouveau rendez-vous » (drawer ≥ sm / bottom sheet mobile)
  *    partagé par la barre latérale, le FAB et la fiche patient
- *  - focus croisé : la file « À traiter » de la Synthèse révèle un RDV
- *    dans la section Rendez-vous (id + nonce)
+ *  - focus croisé : la Synthèse pilote la section Rendez-vous via un canal
+ *    unique de requêtes (focus RDV ou filtre « demandes », nonce monotone)
  *
  * Les fonctionnalités de la maquette sans backend sont rendues désactivées
  * avec la référence de l'issue de suivi — jamais simulées.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Appointment } from '../../../types/appointment';
 import type { PrefillData } from '../../../types/patient';
 import { useAppointmentsPolling } from '../../../hooks/useAppointmentsPolling';
@@ -37,11 +37,18 @@ interface WorkbenchProps {
   practitionerName: string;
 }
 
-/** Non-null when the Synthèse asked to reveal an appointment; nonce re-triggers. */
-export interface FocusRequest {
-  id: string;
-  nonce: number;
-}
+/**
+ * Canal unique des demandes Synthèse → Rendez-vous (SC3) : chaque demande
+ * (focus RDV ou filtre « demandes ») porte un nonce issu d'un compteur
+ * monotone unique côté Workbench — un filtre ne peut pas avaler un focus
+ * (et inversement) par collision de nonce.
+ */
+export type WorkbenchRequest =
+  | { kind: 'focus'; id: string; nonce: number }
+  | { kind: 'filter'; filter: 'demandes'; nonce: number };
+
+/** Alias de migration — consommateur actuel : `rdv/RendezVousView` (canal focus). */
+export type FocusRequest = WorkbenchRequest;
 
 interface CreateDrawerState {
   open: boolean;
@@ -61,7 +68,13 @@ const SECTION_STORAGE_KEY = 'poste-travail-section';
 // Icons (Heroicons outline, 24 viewBox)
 // ---------------------------------------------------------------------------
 
-function SectionIcon({ section, className }: { section: Section; className: string }) {
+function SectionIcon({
+  section,
+  className,
+}: {
+  section: Section;
+  className: string;
+}) {
   const paths: Record<Section, string> = {
     synthese:
       'M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z',
@@ -84,7 +97,6 @@ function SectionIcon({ section, className }: { section: Section; className: stri
   );
 }
 
-
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -94,8 +106,11 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
   // est restaurée APRÈS hydratation, sinon React détecte un mismatch et laisse
   // les attributs `hidden` du rendu serveur en place (revue #148).
   const [section, setSection] = useState<Section>('synthese');
-  const [focus, setFocus] = useState<FocusRequest | null>(null);
-  const [createDrawer, setCreateDrawer] = useState<CreateDrawerState>({ open: false, prefill: null });
+  const [request, setRequest] = useState<WorkbenchRequest | null>(null);
+  const [createDrawer, setCreateDrawer] = useState<CreateDrawerState>({
+    open: false,
+    prefill: null,
+  });
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   // Live data (#165): SSR props are only the initial state — the list is now
@@ -109,7 +124,7 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
   useEffect(() => {
     try {
       const saved = window.sessionStorage.getItem(SECTION_STORAGE_KEY);
-      if (SECTIONS.some((s) => s.key === saved)) setSection(saved as Section);
+      if (SECTIONS.some(s => s.key === saved)) setSection(saved as Section);
     } catch {
       // sessionStorage indisponible (navigation privée) — Synthèse par défaut.
     }
@@ -124,21 +139,36 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
     }
   }, []);
 
+  // Compteur monotone unique (SC3) : toute demande — focus ou filtre — passe
+  // par nextNonce(), les collisions entre canaux sont donc impossibles.
+  const nonceRef = useRef(0);
+  const nextNonce = useCallback(() => {
+    nonceRef.current += 1;
+    return nonceRef.current;
+  }, []);
+
   // Synthèse → Rendez-vous : révèle le RDV dans la liste.
   const handleFocusAppointment = useCallback(
     (appointmentId: string) => {
-      setFocus((prev) => ({ id: appointmentId, nonce: (prev?.nonce ?? 0) + 1 }));
+      setRequest({ kind: 'focus', id: appointmentId, nonce: nextNonce() });
       handleSectionChange('rdv');
     },
-    [handleSectionChange],
+    [handleSectionChange, nextNonce],
   );
+
+  // Synthèse (KPI « Demandes de RDV ») → Rendez-vous avec le filtre
+  // « Demandes de RDV » présélectionné (R1).
+  const handleOpenDemandes = useCallback(() => {
+    setRequest({ kind: 'filter', filter: 'demandes', nonce: nextNonce() });
+    handleSectionChange('rdv');
+  }, [handleSectionChange, nextNonce]);
 
   const openCreateDrawer = useCallback((prefill: PrefillData | null = null) => {
     setCreateDrawer({ open: true, prefill });
   }, []);
 
   const closeCreateDrawer = useCallback(() => {
-    setCreateDrawer((current) => ({ ...current, open: false }));
+    setCreateDrawer(current => ({ ...current, open: false }));
   }, []);
 
   async function handleSignout() {
@@ -166,9 +196,8 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
       >
         {/* Profil */}
         <div>
-          <p className="font-serif text-lg font-semibold text-sage-900 truncate">{practitionerName}</p>
-          <p className="text-[11px] font-semibold font-sans uppercase tracking-wider text-sage-400 mt-0.5">
-            Psychologue clinicienne
+          <p className="font-serif text-lg font-semibold text-sage-900 truncate">
+            {practitionerName}
           </p>
         </div>
 
@@ -183,8 +212,17 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
             transition-colors min-h-[44px]
           "
         >
-          <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-            <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+          <svg
+            className="w-4 h-4"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              fillRule="evenodd"
+              d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
+              clipRule="evenodd"
+            />
           </svg>
           Nouveau rendez-vous
         </button>
@@ -225,8 +263,19 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
             href="/mes-rdvs/"
             className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-sans text-sage-500 hover:bg-mint-50 hover:text-sage-700 transition-colors focus:outline-none focus:ring-2 focus:ring-mint-400"
           >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+            <svg
+              className="w-4 h-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"
+              />
             </svg>
             Interface actuelle (mes RDV)
           </a>
@@ -234,8 +283,19 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
             href="/"
             className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-sans text-sage-500 hover:bg-mint-50 hover:text-sage-700 transition-colors focus:outline-none focus:ring-2 focus:ring-mint-400"
           >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+            <svg
+              className="w-4 h-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"
+              />
             </svg>
             Retour au site public
           </a>
@@ -250,8 +310,19 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
               disabled:opacity-60 disabled:cursor-not-allowed
             "
           >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+            <svg
+              className="w-4 h-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9"
+              />
             </svg>
             Déconnexion
           </button>
@@ -261,8 +332,12 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
       {/* ── En-tête mobile (< lg) ──────────────────────────────────────── */}
       <header className="lg:hidden sticky top-0 z-30 flex items-center justify-between gap-3 bg-white/95 backdrop-blur border-b border-sage-200 px-4 py-3">
         <div className="min-w-0">
-          <p className="font-serif text-base font-semibold text-sage-900">Poste de travail</p>
-          <p className="text-xs text-sage-500 font-sans truncate">{practitionerName}</p>
+          <p className="font-serif text-base font-semibold text-sage-900">
+            Poste de travail
+          </p>
+          <p className="text-xs text-sage-500 font-sans truncate">
+            {practitionerName}
+          </p>
         </div>
         <button
           type="button"
@@ -276,8 +351,19 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
           "
           aria-label="Se déconnecter"
         >
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+          <svg
+            className="w-4 h-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.8}
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9"
+            />
           </svg>
         </button>
       </header>
@@ -295,21 +381,44 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
               Synthèse
             </h1>
             <FreshnessIndicator lastUpdated={lastUpdated} isStale={isStale} />
-            <SyntheseView appointments={appointments} onFocusAppointment={handleFocusAppointment} />
+            <SyntheseView
+              appointments={appointments}
+              onFocusAppointment={handleFocusAppointment}
+              onOpenDemandes={handleOpenDemandes}
+            />
           </section>
 
           {/* Rendez-vous (en-tête intégré à la vue) */}
-          <section id="section-rdv" hidden={section !== 'rdv'} aria-label="Rendez-vous">
-            <RendezVousView appointments={appointments} focus={focus} onRefresh={refresh} />
+          <section
+            id="section-rdv"
+            hidden={section !== 'rdv'}
+            aria-label="Rendez-vous"
+          >
+            <RendezVousView
+              appointments={appointments}
+              focus={request}
+              onRefresh={refresh}
+            />
           </section>
 
           {/* Patients (en-tête intégré à la vue) */}
-          <section id="section-patients" hidden={section !== 'patients'} aria-label="Patients">
-            <PatientsView appointments={appointments} onPlanAppointment={openCreateDrawer} />
+          <section
+            id="section-patients"
+            hidden={section !== 'patients'}
+            aria-label="Patients"
+          >
+            <PatientsView
+              appointments={appointments}
+              onPlanAppointment={openCreateDrawer}
+            />
           </section>
 
           {/* Disponibilités (en-tête intégré à la vue) */}
-          <section id="section-disponibilites" hidden={section !== 'disponibilites'} aria-label="Disponibilités et calendrier">
+          <section
+            id="section-disponibilites"
+            hidden={section !== 'disponibilites'}
+            aria-label="Disponibilités et calendrier"
+          >
             <DisponibilitesView />
           </section>
         </div>
@@ -356,8 +465,17 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
           focus:ring-offset-2 transition-colors min-h-[48px]
         "
       >
-        <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-          <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+        <svg
+          className="w-4 h-4"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path
+            fillRule="evenodd"
+            d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
+            clipRule="evenodd"
+          />
         </svg>
         Nouveau RDV
       </button>
