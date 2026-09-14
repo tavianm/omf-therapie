@@ -127,8 +127,16 @@ const INLINE_SCRIPT_PLACEHOLDER = 'INLINE-SCRIPT-BODY';
 // Mechanical normalizations (string level, both sides)
 // ---------------------------------------------------------------------------
 
+/**
+ * Asset paths under /_astro/: normalize the ENTIRE basename (hash included),
+ * keeping only the final extension — Rolldown (v7/Vite 8) renames the shared
+ * CSS chunk after a different entry (`a-propos.HASH.css` → `Layout.HASH.css`),
+ * and hoisted JS bundles reshuffle too. The extension is preserved so a CSS↔JS
+ * reference swap still flags. (The hash sits in the middle of the basename and
+ * must NOT leak into the placeholder.)
+ */
 const ASTRO_ASSET_RE =
-  /(\/_astro\/[^"'\s<>()]+?)\.([A-Za-z0-9_-]{6,12})((?:\.[A-Za-z0-9]{1,10})+)\b/g;
+  /(\/_astro\/)([^"'\s<>()]+?)((?:\.[A-Za-z0-9]{1,4})+)(?=["'\s<>()])/g;
 
 const ASTRO_ISLAND_UID_RE = /(<astro-island\b[^>]*?\buid=")[^"]*(")/g;
 
@@ -179,10 +187,10 @@ function normalizeHtml(html) {
   // Rule 4: scoped-style hashes (class form; attr form handled in parseAttrs).
   out = out.replace(ASTRO_SCOPED_HASH_RE, 'astro-CID');
 
-  // Rule 1: asset hashes.
+  // Rule 1: asset paths (basename + hash normalized, extension preserved).
   out = out.replace(
     ASTRO_ASSET_RE,
-    (_m, pre, _hash, ext) => `${pre}.HASH${ext}`,
+    (_m, pre, _base, ext) => `${pre}ASSET-FILE${ext}`,
   );
 
   return out;
@@ -266,7 +274,10 @@ function parseAttrs(str, isBaseline) {
     let name = m[1].toLowerCase();
     let value = m[2] ?? m[3] ?? m[4] ?? '';
     if (name.startsWith('data-astro-cid-')) name = 'astro-cid-CID'; // rule 4
-    value = value.replace(/\s+/g, ' ').trim();
+    // Decode entities in attribute values too: astro 7 escapes `&` uniformly
+    // (`&amp;`) where v5 emitted it raw (image URLs, titles) — the decoded
+    // values must compare equal.
+    value = decodeEntities(value.replace(/\s+/g, ' ').trim());
     if (name === 'class') {
       value = isBaseline ? mapBaselineClassValue(value) : value;
     }
@@ -533,8 +544,21 @@ function urlToRelPath(loc) {
  * @type {Array<{url: RegExp, hunk: RegExp}>}
  */
 const ALLOWLISTED_DIFFS = [
-  // Example shape:
-  // { url: /^\/blog\/$/, hunk: /some reviewed astro 7 churn/ },
+  // Astro 7's slugger keeps a trailing dash for the trailing `?` of the
+  // heading « Comment choisir son thérapeute ? » — the anchor id gains a `-`.
+  // No internal links target this anchor (no TOC on the page); documented in
+  // the PR as a deep-link change for external referrers.
+  {
+    url: /^\/blog\/deconstruire-tabous-therapie\/$/,
+    hunk: /«id=comment-choisir-son-thérapeute»/,
+  },
+  // Markdown processor fix: v7 emits the correct closing guillemet (`… »`
+  // instead of `… «`) in two list items — a visible micro-correction. The
+  // baseline-side hunk carries the wrong U+201C char.
+  {
+    url: /^\/blog\/renforcer-communication-couple\/$/,
+    hunk: /“/,
+  },
 ];
 
 function isAllowlisted(urlPath, hunk) {
