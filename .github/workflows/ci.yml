@@ -46,10 +46,12 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
       - name: Install
         run: npm ci
+      - name: Audit prod dependencies (blocking)
+        run: npm audit --omit=dev --audit-level=high
       - name: Verify google-auth-library dedupe
         # Guard against a future googleapis bump silently re-splitting
         # google-auth-library, which re-introduces the ts2322/2769 overload
@@ -90,7 +92,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
       - name: Install
         run: npm ci
