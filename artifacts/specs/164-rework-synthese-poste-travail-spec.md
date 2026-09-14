@@ -69,9 +69,9 @@ Aucun changement de données ni d'API. Helpers **purs** (convention `nowMs` inje
 | K4 | KPI « Volume mensuel » | (inchangé) | `getMonthlyVolume` |
 | L1 | Liste « Demandes de RDV » | lignes → focus existant (`{kind:'focus'}`) | `getDemandItems` |
 | L2 | Section « Prochains rendez-vous » | inchangée, repositionnée 1ʳᵉ | `getNextSessions` |
-| R1 | `RendezVousView` — filtre « Demandes de RDV » | nouveau `FilterKey 'demandes'` : prédicat = appartenance à `getDemandItems`, **partition-agnostique** (bascule À venir/Historique masquée pendant ce filtre, groupes de jours fusionnés) + pilule dédiée dans `FILTERS` ; effet requête : `setFilter('demandes')`, `setQuery('')`, `setPage(1)` (garde nonce unique) | `getDemandItems`, requête union |
+| R1 | `RendezVousView` — filtre « Demandes de RDV » | nouveau `FilterKey 'demandes'` : prédicat = appartenance à `getDemandItems` **composé avec la partition courante** (retour de test PR #167 : la bascule À venir/Historique reste visible et délimite le périmètre ; le filtre ne fusionne plus les deux partitions) + pilule dédiée dans `FILTERS` ; effet requête : `setFilter('demandes')`, `setPartition('upcoming')`, `setQuery('')`, `setPage(1)` (garde nonce unique) | `getDemandItems`, requête union |
 
-Le prédicat `matchesFilter('demandes')` est l'appartenance à la file (et non `status === 'pending'`) : les demandes en retard (partition Historique) et les reports expirés restent visibles — la file cliquée est la file affichée.
+Le prédicat `matchesFilter('demandes')` est l'appartenance à la file (et non `status === 'pending'`), évaluée dans la partition affichée. Révision (retour de test PR #167) : la version initiale « partition-agnostique » (bascule masquée, partitions fusionnées) est abandonnée — le filtre se compose avec À venir / Historique ; les demandes en retard restent visibles via la partition Historique et la file fusionnée reste affichée sur la Synthèse.
 
 ## Slices
 
@@ -100,7 +100,7 @@ oracles: ["fixture payment_pending seule → liste vide + KPI 0", "fixture resch
 claim:   fail-closed
 ```
 
-- [ ] **SC3 — Click-through « Demandes de RDV »** : la carte KPI est un `<button>` ; à l'activation, la section Rendez-vous affiche le filtre « Demandes de RDV » (pilule active) et **toutes** les demandes de la file SC2 sont visibles — y compris les demandes en retard et les reports expirés (le filtre est partition-agnostique) — recherche vidée, pagination à 1. Canal unique : requête union `{kind:'filter'}`, un compteur de nonce côté Workbench, un ref de garde côté RendezVousView — un clic KPI n'avale pas un focus de ligne et inversement ; opérable au clavier, nom accessible explicite.
+- [ ] **SC3 — Click-through « Demandes de RDV »** : la carte KPI est un `<button>` ; à l'activation, la section Rendez-vous affiche le filtre « Demandes de RDV » (pilule active) **dans la partition À venir** — révisé (retour de test PR #167) : le filtre se compose avec la bascule, les demandes en retard restent atteignables via Historique et la file fusionnée reste sur la Synthèse — recherche vidée, pagination à 1. Canal unique : requête union `{kind:'filter'}`, un compteur de nonce côté Workbench, un ref de garde côté RendezVousView — un clic KPI n'avale pas un focus de ligne et inversement ; opérable au clavier, nom accessible explicite.
 
 - [ ] **SC4 — KPI « Ma semaine »** : la carte occupe la 2ᵉ position de la grille ; `getParisISOWeekday(now)` ≤ 5 → libellé « Ma semaine », compte = séances actives de la semaine civile Paris en cours (lundi→dimanche, jours passés inclus) ; weekday ∈ {6, 7} → libellé « Ma semaine à venir », compte = semaine suivante ; détail = intervalle « D–D month » des clés de jour comptées ; aucune carte « Remplissage » dans le DOM.
 

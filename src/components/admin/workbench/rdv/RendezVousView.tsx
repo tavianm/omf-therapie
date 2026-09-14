@@ -8,8 +8,9 @@
  *  - groupes par jour Paris avec libellé relatif et compteur de séances
  *  - pagination « Page N sur M »
  *  - filtre « Demandes de RDV » (#164) : appartenance à la file
- *    getDemandItems — partition-agnostique (bascule masquée, groupes de
- *    jours fusionnés), déclenché par la carte KPI de la Synthèse
+ *    getDemandItems, composé avec la partition courante (À venir /
+ *    Historique — retour de test PR #167), déclenché par la carte KPI
+ *    de la Synthèse
  *  - ≥ lg : split-view avec fiche détail permanente à droite ;
  *    < lg : la fiche s'ouvre en bottom sheet
  *
@@ -98,9 +99,10 @@ function matchesFilter(
 ): boolean {
   if (filter === 'all') return true;
   // « Demandes de RDV » : appartenance à la file du thérapeute (et non une
-  // égalité de statut) — les demandes en retard (partition historique) et
-  // les reports expirés restent visibles : la file cliquée est la file
-  // affichée (#164, SC3).
+  // égalité de statut), composée avec la partition courante — la bascule
+  // À venir / Historique reste le périmètre parent de tous les filtres
+  // (retour de test PR #167) ; la file fusionnée, elle, reste visible sur
+  // la Synthèse.
   if (filter === 'demandes') return demandIds.has(a.id);
   if (filter === 'cancelled_refused')
     return a.status === 'cancelled' || a.status === 'declined';
@@ -151,14 +153,18 @@ export function RendezVousView({ appointments, focus, onRefresh }: RendezVousVie
   //    « page 1 » peut le laisser hors écran, scrollIntoView ne trouvant alors
   //    aucune ligne montée (revue #149). La page est recalculée sur
   //    appointments brut : deferredQuery ne suit pas encore la réinitialisation.
-  //  - kind 'filter' → présélectionne le filtre « Demandes de RDV », vide la
-  //    recherche, repagine à 1 et annule tout focus en attente (#164, SC3).
+  //  - kind 'filter' → présélectionne le filtre « Demandes de RDV » dans la
+  //    partition À venir (déterministe : le compteur KPI porte sur toute la
+  //    file, les demandes en retard restent atteignables via Historique),
+  //    vide la recherche, repagine à 1 et annule tout focus en attente
+  //    (#164, SC3 ; composition partition — retour de test PR #167).
   useEffect(() => {
     if (!focus || handledRequestNonceRef.current === focus.nonce) return;
     if (focus.kind === 'filter') {
       handledRequestNonceRef.current = focus.nonce;
       setQuery('');
       setFilter('demandes');
+      setPartition('upcoming');
       setPage(1);
       setPendingFocusId(null);
       return;
@@ -207,7 +213,7 @@ export function RendezVousView({ appointments, focus, onRefresh }: RendezVousVie
     [appointments],
   );
 
-  const { filtered, searched, statusCounts, upcomingCount, historyCount } =
+  const { filtered, statusCounts, upcomingCount, historyCount } =
     useMemo(() => {
       const q = deferredQuery.toLowerCase().trim();
       const searched = q
@@ -233,36 +239,25 @@ export function RendezVousView({ appointments, focus, onRefresh }: RendezVousVie
         if (a.status === 'cancelled' || a.status === 'declined')
           counts.cancelled_refused += 1;
       }
-      // Exception : « Demandes de RDV » est partition-agnostique — son compteur
-      // porte sur les deux partitions (recherche appliquée), comme la liste
-      // fusionnée qu'il affiche (#164).
-      counts.demandes = searched.filter(a => demandIds.has(a.id)).length;
+      // « Demandes de RDV » suit la même règle que les pastilles de statut :
+      // son compteur reflète la partition affichée (recherche appliquée) —
+      // retour de test PR #167 : le filtre se compose avec À venir /
+      // Historique au lieu de fusionner les deux partitions.
+      counts.demandes = partitionList.filter(a => demandIds.has(a.id)).length;
       return {
         filtered: partitionList,
-        searched,
         statusCounts: counts,
         upcomingCount: upcoming.length,
         historyCount: history.length,
       };
     }, [appointments, deferredQuery, partition, demandIds]);
 
-  // Vue « Demandes de RDV » : les deux partitions fusionnées en une seule
-  // liste chronologique ascendante — groupByDay fusionne les groupes à
-  // cheval sur la frontière à venir/historique (#164, SC3). Sinon : liste
-  // de la partition courante, inchangée.
-  const listBase = useMemo(
-    () =>
-      filter === 'demandes'
-        ? [...searched].sort((a, b) =>
-            a.scheduled_at.localeCompare(b.scheduled_at),
-          )
-        : filtered,
-    [filter, searched, filtered],
-  );
-
+  // Toutes les vues — « Demandes de RDV » comprise — opèrent dans la
+  // partition courante (À venir / Historique), déjà triée par la partition
+  // (ascendante à venir, descendante historique) : retour de test PR #167.
   const listFiltered = useMemo(
-    () => listBase.filter(a => matchesFilter(a, filter, demandIds)),
-    [listBase, filter, demandIds],
+    () => filtered.filter(a => matchesFilter(a, filter, demandIds)),
+    [filtered, filter, demandIds],
   );
 
   const totalPages = Math.max(1, Math.ceil(listFiltered.length / PAGE_SIZE));
@@ -332,47 +327,44 @@ export function RendezVousView({ appointments, focus, onRefresh }: RendezVousVie
             de consultation
           </p>
         </div>
-        {/* Bascule À venir / Historique — masquée par le filtre « Demandes
-            de RDV » (partition-agnostique, #164) ; la partition choisie est
-            restaurée telle quelle à la sortie du filtre. */}
-        {filter !== 'demandes' && (
-          <div
-            className="inline-flex rounded-full bg-mint-100 p-1"
-            role="group"
-            aria-label="Période affichée"
-          >
-            {[
-              {
-                key: 'upcoming' as Partition,
-                label: `À venir (${upcomingCount})`,
-              },
-              {
-                key: 'history' as Partition,
-                label: `Historique (${historyCount})`,
-              },
-            ].map(({ key, label }) => {
-              const isActive = partition === key;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => {
-                    setPartition(key);
-                    setPage(1);
-                  }}
-                  aria-pressed={isActive}
-                  className={`
+        {/* Bascule À venir / Historique — périmètre parent de tous les
+            filtres, « Demandes de RDV » compris (retour de test PR #167). */}
+        <div
+          className="inline-flex rounded-full bg-mint-100 p-1"
+          role="group"
+          aria-label="Période affichée"
+        >
+          {[
+            {
+              key: 'upcoming' as Partition,
+              label: `À venir (${upcomingCount})`,
+            },
+            {
+              key: 'history' as Partition,
+              label: `Historique (${historyCount})`,
+            },
+          ].map(({ key, label }) => {
+            const isActive = partition === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  setPartition(key);
+                  setPage(1);
+                }}
+                aria-pressed={isActive}
+                className={`
                     px-4 py-2 rounded-full text-sm font-medium font-sans transition-colors
                     focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[40px]
                     ${isActive ? 'bg-sage-900 text-white shadow-sm' : 'text-sage-600 hover:text-sage-900'}
                   `}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        )}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* ── Recherche + pastilles ─────────────────────────────────────────── */}
@@ -484,7 +476,9 @@ export function RendezVousView({ appointments, focus, onRefresh }: RendezVousVie
               {filter === 'demandes'
                 ? deferredQuery
                   ? 'Aucune demande ne correspond à cette recherche.'
-                  : 'Aucune demande en attente — tout est à jour.'
+                  : partition === 'upcoming'
+                    ? 'Aucune demande à venir — tout est à jour.'
+                    : 'Aucune demande dans l’historique.'
                 : `Aucun rendez-vous ${partition === 'upcoming' ? 'à venir' : 'dans l’historique'}${
                     deferredQuery || filter !== 'all'
                       ? ' pour cette recherche.'
