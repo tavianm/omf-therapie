@@ -23,6 +23,14 @@ export default defineConfig({
     }),
   ],
   vite: {
+    // Pre-bundle the admin islands' dependency graph. Without this, a cold
+    // dev server discovers react-hot-toast / lucide-react late (first load of
+    // /poste-travail/ after /mes-rdvs/) and re-optimizes on EVERY navigation:
+    // each load 504s the island's module ("Outdated Optimize Dep") and the
+    // page renders without hydration until luck settles the cache.
+    optimizeDeps: {
+      include: ['react', 'react-dom', 'react-hot-toast', 'lucide-react'],
+    },
     // Keep Vite optimizations from the old config where applicable
     build: {
       rollupOptions: {
