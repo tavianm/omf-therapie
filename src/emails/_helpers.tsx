@@ -7,7 +7,7 @@ import type { CSSProperties } from 'react';
 import { Hr, Text } from '@react-email/components';
 
 // ---------------------------------------------------------------------------
-// Palette (miroir de tailwind.config.js + BaseLayout)
+// Palette (miroir du @theme de src/index.css + BaseLayout)
 // ---------------------------------------------------------------------------
 
 export const COLORS = {

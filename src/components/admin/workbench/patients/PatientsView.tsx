@@ -142,7 +142,7 @@ export function PatientsView({ appointments, onPlanAppointment }: PatientsViewPr
               type="checkbox"
               checked={includeInactive}
               onChange={(e) => setIncludeInactive(e.target.checked)}
-              className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+              className="h-4 w-4 rounded-sm border-sage-300 text-mint-600 focus:ring-mint-400"
             />
             Inclure les inactifs
           </label>
@@ -183,7 +183,7 @@ export function PatientsView({ appointments, onPlanAppointment }: PatientsViewPr
             className="
               w-full pl-10 pr-4 py-2.5 text-sm text-sage-900 placeholder-sage-400 font-sans
               border border-sage-200 rounded-xl bg-white
-              focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent
+              focus:outline-hidden focus:ring-2 focus:ring-mint-400 focus:border-transparent
               transition-colors min-h-[44px]
             "
           />
@@ -195,7 +195,7 @@ export function PatientsView({ appointments, onPlanAppointment }: PatientsViewPr
             aria-pressed={letter === null}
             className={`
               shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-full text-sm font-semibold font-sans
-              transition-colors focus:outline-none focus:ring-2 focus:ring-mint-400
+              transition-colors focus:outline-hidden focus:ring-2 focus:ring-mint-400
               ${letter === null ? 'bg-sage-900 text-white' : 'bg-white text-sage-600 border border-sage-200 hover:border-mint-400'}
             `}
           >
@@ -210,7 +210,7 @@ export function PatientsView({ appointments, onPlanAppointment }: PatientsViewPr
                 aria-pressed={letter === l}
                 className={`
                   shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-full text-sm font-semibold font-sans
-                  transition-colors focus:outline-none focus:ring-2 focus:ring-mint-400
+                  transition-colors focus:outline-hidden focus:ring-2 focus:ring-mint-400
                   ${letter === l ? 'bg-sage-900 text-white' : 'bg-white text-sage-600 border border-sage-200 hover:border-mint-400'}
                 `}
               >
@@ -250,8 +250,8 @@ export function PatientsView({ appointments, onPlanAppointment }: PatientsViewPr
                       aria-label={`Ouvrir le dossier de ${patient.name}`}
                       className={`
                         w-full flex items-center gap-3 px-4 py-3 text-left rounded-2xl border bg-white
-                        shadow-sm transition-colors hover:border-mint-300
-                        focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[64px]
+                        shadow-xs transition-colors hover:border-mint-300
+                        focus:outline-hidden focus:ring-2 focus:ring-mint-400 min-h-[64px]
                         ${isSelected ? 'border-l-4 border-l-sage-900 border-sage-200' : 'border-sage-200'}
                       `}
                     >
@@ -289,7 +289,7 @@ export function PatientsView({ appointments, onPlanAppointment }: PatientsViewPr
 
         {/* Dossier — panneau permanent ≥ lg */}
         <aside className="hidden lg:block lg:sticky lg:top-6 min-w-0" aria-label="Dossier du patient sélectionné">
-          <div className="rounded-2xl border border-sage-200 bg-white p-5 shadow-sm">
+          <div className="rounded-2xl border border-sage-200 bg-white p-5 shadow-xs">
             {selected ? (
               dossier
             ) : (
@@ -353,7 +353,7 @@ function Dossier({ patient, onClose, onPlan }: DossierProps) {
           aria-label="Fermer le dossier"
           className="
             inline-flex items-center justify-center w-9 h-9 rounded-full text-sage-400
-            hover:text-sage-700 hover:bg-sage-100 focus:outline-none focus:ring-2 focus:ring-mint-400
+            hover:text-sage-700 hover:bg-sage-100 focus:outline-hidden focus:ring-2 focus:ring-mint-400
             transition-colors shrink-0
           "
         >
@@ -370,7 +370,7 @@ function Dossier({ patient, onClose, onPlan }: DossierProps) {
             <svg className="w-4 h-4 text-sage-400 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
               <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
             </svg>
-            <a href={`tel:${patient.phone}`} className="hover:text-mint-700 transition-colors focus:outline-none focus:ring-2 focus:ring-mint-400 rounded">
+            <a href={`tel:${patient.phone}`} className="hover:text-mint-700 transition-colors focus:outline-hidden focus:ring-2 focus:ring-mint-400 rounded-sm">
               {patient.phone}
             </a>
             <span className="ml-auto text-xs text-sage-500">Mobile principal</span>
@@ -381,7 +381,7 @@ function Dossier({ patient, onClose, onPlan }: DossierProps) {
             <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
             <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
           </svg>
-          <a href={`mailto:${patient.email}`} className="hover:text-mint-700 transition-colors break-all focus:outline-none focus:ring-2 focus:ring-mint-400 rounded">
+          <a href={`mailto:${patient.email}`} className="hover:text-mint-700 transition-colors break-all focus:outline-hidden focus:ring-2 focus:ring-mint-400 rounded-sm">
             {patient.email}
           </a>
           <span className="ml-auto shrink-0 text-xs text-sage-500">Courriel</span>
@@ -436,7 +436,7 @@ function Dossier({ patient, onClose, onPlan }: DossierProps) {
         onClick={onPlan}
         className="
           mt-4 w-full inline-flex flex-col items-center justify-center px-4 py-3 rounded-xl
-          bg-sage-900 text-white hover:bg-sage-800 focus:outline-none focus:ring-2
+          bg-sage-900 text-white hover:bg-sage-800 focus:outline-hidden focus:ring-2
           focus:ring-mint-400 focus:ring-offset-1 transition-colors min-h-[56px]
         "
       >
@@ -455,7 +455,7 @@ function Dossier({ patient, onClose, onPlan }: DossierProps) {
         className="
           mt-2.5 w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm
           font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50
-          focus:outline-none focus:ring-2 focus:ring-mint-400 transition-colors min-h-[44px]
+          focus:outline-hidden focus:ring-2 focus:ring-mint-400 transition-colors min-h-[44px]
         "
       >
         Envoyer un email

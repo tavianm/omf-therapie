@@ -90,7 +90,7 @@ const ServicesSection = () => {
           {services.map((service, index) => (
             <div
               key={index}
-              className={`bg-white p-8 rounded-lg shadow-sm hover:shadow-md transition-shadow${index === 4 ? ' lg:col-start-2' : ''}`}
+              className={`bg-white p-8 rounded-lg shadow-xs hover:shadow-md transition-shadow${index === 4 ? ' lg:col-start-2' : ''}`}
             >
               <service.icon className="h-12 w-12 text-mint-600 mb-6" />
               <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-4">

@@ -183,7 +183,7 @@ const pageDescription = variant === 'payment-success'
 
       <!-- Récapitulatif (si params URL fournis) -->
       {hasRecap && (
-        <div class="bg-white rounded-2xl border border-sage-100 shadow-sm px-6 py-5 mb-8 font-sans">
+        <div class="bg-white rounded-2xl border border-sage-100 shadow-xs px-6 py-5 mb-8 font-sans">
           <h2 class="text-sm font-semibold text-sage-500 uppercase tracking-wide mb-4">
             Récapitulatif
           </h2>
@@ -261,7 +261,7 @@ const pageDescription = variant === 'payment-success'
             inline-flex items-center gap-2 px-6 py-3 rounded-xl
             bg-mint-600 text-white font-medium font-sans text-sm
             hover:bg-mint-700 active:bg-mint-800
-            focus:outline-none focus:ring-2 focus:ring-mint-400 focus:ring-offset-2
+            focus:outline-hidden focus:ring-2 focus:ring-mint-400 focus:ring-offset-2
             transition-colors min-h-[44px]
           "
         >

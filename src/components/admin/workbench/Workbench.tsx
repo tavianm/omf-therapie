@@ -207,8 +207,8 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
           onClick={() => openCreateDrawer()}
           className="
             w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm
-            font-semibold font-sans rounded-xl bg-sage-900 text-white shadow-sm hover:bg-sage-800
-            focus:outline-none focus:ring-2 focus:ring-mint-400 focus:ring-offset-1
+            font-semibold font-sans rounded-xl bg-sage-900 text-white shadow-xs hover:bg-sage-800
+            focus:outline-hidden focus:ring-2 focus:ring-mint-400 focus:ring-offset-1
             transition-colors min-h-[44px]
           "
         >
@@ -244,7 +244,7 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
                     className={`
                       w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm
                       font-medium font-sans transition-colors
-                      focus:outline-none focus:ring-2 focus:ring-mint-400
+                      focus:outline-hidden focus:ring-2 focus:ring-mint-400
                       ${isActive ? 'bg-mint-100 text-sage-900' : 'text-sage-600 hover:bg-mint-50 hover:text-sage-900'}
                     `}
                   >
@@ -261,7 +261,7 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
         <div className="mt-auto space-y-1 border-t border-sage-200 pt-4">
           <a
             href="/mes-rdvs/"
-            className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-sans text-sage-500 hover:bg-mint-50 hover:text-sage-700 transition-colors focus:outline-none focus:ring-2 focus:ring-mint-400"
+            className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-sans text-sage-500 hover:bg-mint-50 hover:text-sage-700 transition-colors focus:outline-hidden focus:ring-2 focus:ring-mint-400"
           >
             <svg
               className="w-4 h-4"
@@ -281,7 +281,7 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
           </a>
           <a
             href="/"
-            className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-sans text-sage-500 hover:bg-mint-50 hover:text-sage-700 transition-colors focus:outline-none focus:ring-2 focus:ring-mint-400"
+            className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-sans text-sage-500 hover:bg-mint-50 hover:text-sage-700 transition-colors focus:outline-hidden focus:ring-2 focus:ring-mint-400"
           >
             <svg
               className="w-4 h-4"
@@ -306,7 +306,7 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
             className="
               w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-sans
               text-sage-500 hover:bg-mint-50 hover:text-sage-700 transition-colors
-              focus:outline-none focus:ring-2 focus:ring-mint-400
+              focus:outline-hidden focus:ring-2 focus:ring-mint-400
               disabled:opacity-60 disabled:cursor-not-allowed
             "
           >
@@ -346,7 +346,7 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
           className="
             inline-flex items-center justify-center w-10 h-10 rounded-xl border border-sage-300
             text-sage-600 hover:bg-sage-50 transition-colors
-            focus:outline-none focus:ring-2 focus:ring-mint-400
+            focus:outline-hidden focus:ring-2 focus:ring-mint-400
             disabled:opacity-60 disabled:cursor-not-allowed shrink-0
           "
           aria-label="Se déconnecter"
@@ -441,7 +441,7 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
                   className={`
                     w-full flex flex-col items-center gap-1 px-1 pt-2.5 pb-2 text-[11px]
                     font-medium font-sans transition-colors
-                    focus:outline-none focus:ring-2 focus:ring-inset focus:ring-mint-400
+                    focus:outline-hidden focus:ring-2 focus:ring-inset focus:ring-mint-400
                     ${isActive ? 'text-sage-900 font-semibold' : 'text-sage-500 hover:text-sage-700'}
                   `}
                 >
@@ -461,7 +461,7 @@ export function Workbench({ appointments: initialAppointments, practitionerName 
         className="
           lg:hidden fixed bottom-20 right-4 z-40 inline-flex items-center gap-2 px-5 py-3
           text-sm font-semibold font-sans rounded-full bg-sage-900 text-white shadow-lg
-          hover:bg-sage-800 focus:outline-none focus:ring-2 focus:ring-mint-400
+          hover:bg-sage-800 focus:outline-hidden focus:ring-2 focus:ring-mint-400
           focus:ring-offset-2 transition-colors min-h-[48px]
         "
       >

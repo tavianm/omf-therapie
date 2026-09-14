@@ -1,8 +1,8 @@
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
-import tailwind from '@astrojs/tailwind';
 import sitemap from '@astrojs/sitemap';
 import netlify from '@astrojs/netlify';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   site: 'https://omf-therapie.fr',
@@ -11,7 +11,6 @@ export default defineConfig({
   adapter: netlify(),
   integrations: [
     react(),
-    tailwind({ applyBaseStyles: false }), // We manage base styles in src/index.css
     sitemap({
       filter: (page) => ![
         'https://omf-therapie.fr/Tarifs/',
@@ -23,6 +22,10 @@ export default defineConfig({
     }),
   ],
   vite: {
+    // Tailwind v4 via the official Vite plugin (replaces the old Astro
+    // integration). Base styles are still managed in src/index.css via
+    // `@import "tailwindcss"` — no automatic base injection anymore.
+    plugins: [tailwindcss()],
     // Pre-bundle every bare specifier (and hydration sub-path) reachable from
     // a client island. An allowlist naming only the deps seen in one repro
     // lets the same failure class resurface one page later: a late-discovered

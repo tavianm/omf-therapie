@@ -200,7 +200,7 @@ export function TimeSlotManager() {
 				<button
 					type="button"
 					onClick={openCreateModal}
-					className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl bg-mint-600 text-white hover:bg-mint-700 focus:outline-none focus:ring-2 focus:ring-mint-400 focus:ring-offset-1 transition-colors min-h-[40px]"
+					className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl bg-mint-600 text-white hover:bg-mint-700 focus:outline-hidden focus:ring-2 focus:ring-mint-400 focus:ring-offset-1 transition-colors min-h-[40px]"
 				>
 					Ajouter une plage
 				</button>
@@ -262,7 +262,7 @@ export function TimeSlotManager() {
 											<button
 												type="button"
 												onClick={() => openEditModal(slot)}
-												className="inline-flex items-center px-3 py-1.5 text-sm font-medium font-sans rounded-lg border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors"
+												className="inline-flex items-center px-3 py-1.5 text-sm font-medium font-sans rounded-lg border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-hidden focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors"
 												aria-label={`Modifier la plage du ${formatDate(slot.slot_date)}`}
 											>
 												Modifier
@@ -270,7 +270,7 @@ export function TimeSlotManager() {
 											<button
 												type="button"
 												onClick={() => setDeleteConfirmSlot(slot)}
-												className="inline-flex items-center px-3 py-1.5 text-sm font-medium font-sans rounded-lg border border-red-300 text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors"
+												className="inline-flex items-center px-3 py-1.5 text-sm font-medium font-sans rounded-lg border border-red-300 text-red-700 hover:bg-red-50 focus:outline-hidden focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors"
 												aria-label={`Supprimer la plage du ${formatDate(slot.slot_date)}`}
 											>
 												Supprimer
@@ -306,7 +306,7 @@ export function TimeSlotManager() {
 								required
 								min={fromDate}
 								max={toDate}
-								className="w-full px-4 py-2.5 rounded-xl border border-sage-200 bg-sage-50 text-sage-900 placeholder-sage-400 font-sans text-sm focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent transition-colors"
+								className="w-full px-4 py-2.5 rounded-xl border border-sage-200 bg-sage-50 text-sage-900 placeholder-sage-400 font-sans text-sm focus:outline-hidden focus:ring-2 focus:ring-mint-400 focus:border-transparent transition-colors"
 							/>
 						</div>
 
@@ -321,7 +321,7 @@ export function TimeSlotManager() {
 								id="slot-period"
 								value={formData.period}
 								onChange={(e) => setFormData({ ...formData, period: e.target.value as Period })}
-								className="w-full px-4 py-2.5 rounded-xl border border-sage-200 bg-sage-50 text-sage-900 font-sans text-sm focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent transition-colors"
+								className="w-full px-4 py-2.5 rounded-xl border border-sage-200 bg-sage-50 text-sage-900 font-sans text-sm focus:outline-hidden focus:ring-2 focus:ring-mint-400 focus:border-transparent transition-colors"
 							>
 								<option value="morning">Matin</option>
 								<option value="afternoon">Après-midi</option>

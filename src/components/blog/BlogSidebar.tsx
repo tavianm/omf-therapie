@@ -23,7 +23,7 @@ export const BlogSidebar = ({
 
   return (
     <motion.aside {...fadeIn()} className="space-y-8">
-      <div className="bg-white p-6 rounded-lg shadow-sm">
+      <div className="bg-white p-6 rounded-lg shadow-xs">
         <h2 className="text-xl font-serif font-semibold text-sage-800 mb-4 flex items-center">
           <Tag className="h-5 w-5 mr-2 text-mint-600" />
           Catégories

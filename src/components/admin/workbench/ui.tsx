@@ -210,9 +210,9 @@ export function ModalOverlay({ label, onClose, panelClassName, children }: Modal
         aria-label="Fermer"
         tabIndex={-1}
         onClick={onClose}
-        className="absolute inset-0 w-full h-full bg-black/40 cursor-default focus:outline-none"
+        className="absolute inset-0 w-full h-full bg-black/40 cursor-default focus:outline-hidden"
       />
-      <div ref={panelRef} tabIndex={-1} className={`focus:outline-none ${panelClassName}`}>
+      <div ref={panelRef} tabIndex={-1} className={`focus:outline-hidden ${panelClassName}`}>
         {children}
       </div>
     </div>
@@ -249,8 +249,8 @@ export function AppointmentRow({ appointment, onClick, selected = false, ariaLab
       aria-label={ariaLabel}
       className={`
         w-full flex items-center gap-3 px-4 py-3 text-left rounded-2xl
-        border bg-white shadow-sm transition-colors
-        hover:border-mint-300 focus:outline-none focus:ring-2 focus:ring-mint-400
+        border bg-white shadow-xs transition-colors
+        hover:border-mint-300 focus:outline-hidden focus:ring-2 focus:ring-mint-400
         min-h-[64px]
         ${selected ? 'border-l-4 border-l-sage-900 border-sage-200' : late ? 'border-l-4 border-l-amber-400 border-sage-200' : 'border-sage-200'}
       `}

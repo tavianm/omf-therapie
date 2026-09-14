@@ -15,7 +15,7 @@ export const BlogPostCard = ({ post }: BlogPostCardProps) => {
   return (
     <motion.article
       {...fadeInUp()}
-      className="bg-white rounded-lg shadow-sm overflow-hidden"
+      className="bg-white rounded-lg shadow-xs overflow-hidden"
     >
       <div className="p-6">
         <div className="flex flex-wrap gap-2 mb-3">

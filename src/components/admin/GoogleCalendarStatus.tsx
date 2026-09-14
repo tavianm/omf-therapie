@@ -52,13 +52,13 @@ function formatDateTime(iso: string): string {
 function LoadingSkeleton() {
   return (
     <div
-      className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-sage-200 shadow-sm animate-pulse"
+      className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-sage-200 shadow-xs animate-pulse"
       aria-busy="true"
       aria-label="Chargement du statut Google Calendar"
     >
       <div className="h-4 w-4 rounded-full bg-sage-200" />
-      <div className="h-3.5 w-40 rounded bg-sage-200" />
-      <div className="h-3 w-24 rounded bg-sage-100 ml-auto" />
+      <div className="h-3.5 w-40 rounded-sm bg-sage-200" />
+      <div className="h-3 w-24 rounded-sm bg-sage-100 ml-auto" />
     </div>
   );
 }
@@ -138,7 +138,7 @@ function StatusContent({ state, onRetry }: ContentProps) {
   // ── Error ───────────────────────────────────────────────────────────────────
   if (state.status === "error") {
     return (
-      <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-white rounded-xl border border-red-200 shadow-sm">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-white rounded-xl border border-red-200 shadow-xs">
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
           ✗ Google Calendar
         </span>
@@ -152,7 +152,7 @@ function StatusContent({ state, onRetry }: ContentProps) {
             ml-auto text-xs font-medium font-sans px-3 py-1.5
             rounded-lg border border-sage-200 text-sage-600
             hover:bg-sage-50 hover:text-sage-800
-            focus:outline-none focus:ring-2 focus:ring-sage-300
+            focus:outline-hidden focus:ring-2 focus:ring-sage-300
             transition-colors
           "
         >
@@ -168,7 +168,7 @@ function StatusContent({ state, onRetry }: ContentProps) {
   // Connected and token valid
   if (data.connected && data.tokenValid) {
     return (
-      <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-white rounded-xl border border-sage-200 shadow-sm">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-white rounded-xl border border-sage-200 shadow-xs">
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
           ● Google Calendar connecté
         </span>
@@ -183,7 +183,7 @@ function StatusContent({ state, onRetry }: ContentProps) {
             ml-auto text-xs font-medium font-sans px-3 py-1.5
             rounded-lg border border-sage-200 text-sage-600
             hover:bg-sage-50 hover:text-sage-800
-            focus:outline-none focus:ring-2 focus:ring-sage-300
+            focus:outline-hidden focus:ring-2 focus:ring-sage-300
             transition-colors
           "
         >
@@ -196,7 +196,7 @@ function StatusContent({ state, onRetry }: ContentProps) {
   // Connected but token expired
   if (data.connected && !data.tokenValid) {
     return (
-      <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-white rounded-xl border border-yellow-200 shadow-sm">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-white rounded-xl border border-yellow-200 shadow-xs">
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
           ⚠ Token expiré
         </span>
@@ -211,7 +211,7 @@ function StatusContent({ state, onRetry }: ContentProps) {
             ml-auto inline-flex items-center gap-1.5 text-xs font-medium font-sans px-3 py-1.5
             rounded-lg bg-orange-500 text-white border border-orange-500
             hover:bg-orange-600 hover:border-orange-600
-            focus:outline-none focus:ring-2 focus:ring-orange-400
+            focus:outline-hidden focus:ring-2 focus:ring-orange-400
             transition-colors
           "
         >
@@ -223,7 +223,7 @@ function StatusContent({ state, onRetry }: ContentProps) {
 
   // Not connected
   return (
-    <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-white rounded-xl border border-red-200 shadow-sm">
+    <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-white rounded-xl border border-red-200 shadow-xs">
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
         ✗ Google Calendar déconnecté
       </span>
@@ -236,7 +236,7 @@ function StatusContent({ state, onRetry }: ContentProps) {
           ml-auto inline-flex items-center gap-1.5 text-xs font-medium font-sans px-3 py-1.5
           rounded-lg bg-red-500 text-white border border-red-500
           hover:bg-red-600 hover:border-red-600
-            focus:outline-none focus:ring-2 focus:ring-red-400
+            focus:outline-hidden focus:ring-2 focus:ring-red-400
             transition-colors
           "
         >
