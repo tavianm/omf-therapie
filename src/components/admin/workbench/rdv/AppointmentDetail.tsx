@@ -21,9 +21,12 @@ import {
   formatTimeParis,
   getRelativeDayLabel,
   isCancellableByTherapist,
-  isUpcoming,
 } from '../../../../utils/date';
-import { isReschedulable, type PatientAggregate } from '../../../../utils/workbench';
+import {
+  canJoinVideoConsultation,
+  isReschedulable,
+  type PatientAggregate,
+} from '../../../../utils/workbench';
 import { Avatar, StatusChip, WB_STATUS_LABELS } from '../ui';
 
 /** Minimal patient context for the subtitle — derived by the caller. */
@@ -56,7 +59,13 @@ function paymentLabel(appointment: Appointment): string {
   return 'Lien à envoyer';
 }
 
-function InfoCard({ label, children }: { label: string; children: React.ReactNode }) {
+function InfoCard({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="rounded-xl bg-mint-50 px-4 py-3">
       <p className="text-[10px] font-semibold font-sans uppercase tracking-wider text-sage-500">
@@ -67,7 +76,13 @@ function InfoCard({ label, children }: { label: string; children: React.ReactNod
   );
 }
 
-export function AppointmentDetail({ appointment, patient, variant, onClose, onRefresh }: AppointmentDetailProps) {
+export function AppointmentDetail({
+  appointment,
+  patient,
+  variant,
+  onClose,
+  onRefresh,
+}: AppointmentDetailProps) {
   // IDs uniques par instance : le détail est monté deux fois (panneau ≥ lg + sheet < lg),
   // des ids fixes dupliqueraient les associations label/contrôle (revue #148).
   const instanceId = useId();
@@ -80,9 +95,12 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
     firstSession: appointment.is_first_session,
     solidarity: false,
   });
-  const [openPanel, setOpenPanel] = useState<'reschedule' | 'decline' | 'cancel' | null>(null);
+  const [openPanel, setOpenPanel] = useState<
+    'reschedule' | 'decline' | 'cancel' | null
+  >(null);
   const [rescheduleDate, setRescheduleDate] = useState('');
   const [actionMessage, setActionMessage] = useState('');
+  const [reviewSent, setReviewSent] = useState(false);
 
   // SC6 — notes re-align to the server value ONLY when no unsaved local edit
   // is in progress: a poll or a post-action refresh may bring new server
@@ -94,12 +112,15 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
     const previousServerNotes = serverNotesRef.current;
     serverNotesRef.current = serverNotes;
     if (serverNotes === previousServerNotes) return;
-    setNotes((current) => (current === previousServerNotes ? serverNotes : current));
+    setNotes(current =>
+      current === previousServerNotes ? serverNotes : current,
+    );
   }, [appointment.therapist_notes]);
 
   const isVideo = appointment.appointment_mode === 'video';
   const isDirectReschedule =
-    appointment.status === 'confirmed' || appointment.status === 'payment_received';
+    appointment.status === 'confirmed' ||
+    appointment.status === 'payment_received';
   // Report possible depuis tout statut non terminal — y compris une
   // téléconsultation impayée, même en retard (port de 43fb1ac, #133) :
   // l'API `reschedule` expire le Payment Link d'origine et en régénère un
@@ -112,6 +133,30 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
   const canReschedule =
     isReschedulable(appointment) && appointment.status !== 'rescheduled';
   const canCancel = isCancellableByTherapist(appointment);
+  const canJoinVideo = canJoinVideoConsultation(appointment);
+
+  async function handleSendReview() {
+    setActionLoading('review');
+    setError(null);
+    try {
+      const res = await fetch('/api/send-review-email/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ appointmentId: appointment.id }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? `Erreur HTTP ${res.status}`);
+      }
+      setReviewSent(true);
+      setTimeout(() => setReviewSent(false), 4000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erreur inconnue');
+    } finally {
+      setActionLoading(null);
+    }
+  }
 
   async function callPatch(payload: Record<string, unknown>, key: string) {
     setActionLoading(key);
@@ -169,15 +214,20 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
     setActionLoading('regenerate');
     setError(null);
     try {
-      const res = await fetch(`/api/admin/appointments/${appointment.id}/regenerate-calendar/`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      const res = await fetch(
+        `/api/admin/appointments/${appointment.id}/regenerate-calendar/`,
+        {
+          method: 'POST',
+          credentials: 'include',
+        },
+      );
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
-        throw new Error(data.error === 'oauth_required'
-          ? 'Google Calendar non connecté — reconnectez-le depuis le tableau de bord.'
-          : data.error ?? 'Erreur lors de la génération du lien.');
+        throw new Error(
+          data.error === 'oauth_required'
+            ? 'Google Calendar non connecté — reconnectez-le depuis le tableau de bord.'
+            : (data.error ?? 'Erreur lors de la génération du lien.'),
+        );
       }
       // Success — was a full page reload: the regenerated video link
       // arrives via the poller (single writer, #165).
@@ -191,15 +241,16 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
 
   const relativeDay = getRelativeDayLabel(appointment.scheduled_at);
   const dateLabel = `${relativeDay ?? formatDayHeader(appointment.scheduled_at)}, ${formatTimeParis(appointment.scheduled_at)} – ${formatTimeParis(
-    new Date(new Date(appointment.scheduled_at).getTime() + appointment.duration * 60_000).toISOString(),
+    new Date(
+      new Date(appointment.scheduled_at).getTime() +
+        appointment.duration * 60_000,
+    ).toISOString(),
   )}`;
 
   return (
     <article
       className={
-        variant === 'sheet'
-          ? 'flex flex-col max-h-[92dvh]'
-          : 'flex flex-col'
+        variant === 'sheet' ? 'flex flex-col max-h-[92dvh]' : 'flex flex-col'
       }
       aria-label={`Détail du rendez-vous de ${appointment.patient_name}`}
     >
@@ -230,8 +281,17 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
               focus:outline-none focus:ring-2 focus:ring-mint-400 transition-colors shrink-0
             "
           >
-            <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+            <svg
+              className="w-5 h-5"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                fillRule="evenodd"
+                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                clipRule="evenodd"
+              />
             </svg>
           </button>
         )}
@@ -247,7 +307,12 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
             focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[40px]
           "
         >
-          <svg className="w-4 h-4 text-sage-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <svg
+            className="w-4 h-4 text-sage-400"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            aria-hidden="true"
+          >
             <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
             <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
           </svg>
@@ -262,7 +327,12 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
               focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[40px]
             "
           >
-            <svg className="w-4 h-4 text-sage-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <svg
+              className="w-4 h-4 text-sage-400"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
               <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
             </svg>
             {appointment.patient_phone}
@@ -274,13 +344,19 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
       <div className="mt-3 grid grid-cols-2 gap-2.5">
         <InfoCard label="Date & heure">
           <p className="font-medium">{dateLabel}</p>
-          <p className="text-sage-500 text-xs mt-0.5">Durée {appointment.duration} min</p>
+          <p className="text-sage-500 text-xs mt-0.5">
+            Durée {appointment.duration} min
+          </p>
         </InfoCard>
         <InfoCard label="Modalité">
-          <p className="font-medium">{getModeLabel(appointment.appointment_mode)}</p>
+          <p className="font-medium">
+            {getModeLabel(appointment.appointment_mode)}
+          </p>
         </InfoCard>
         <InfoCard label="Type de séance">
-          <p className="font-medium">{getTypeLabel(appointment.appointment_type)}</p>
+          <p className="font-medium">
+            {getTypeLabel(appointment.appointment_type)}
+          </p>
         </InfoCard>
         <InfoCard label="Règlement">
           <p className="font-medium">
@@ -293,12 +369,26 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
       <div className="mt-3 rounded-xl bg-mint-50 p-4 flex items-center gap-3">
         <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-white shadow-sm text-mint-800 shrink-0">
           {isVideo ? (
-            <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <svg
+              className="w-5 h-5"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
               <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14 8.5l2.77-1.85A1 1 0 0118.3 7.5v5a1 1 0 01-1.53.85L14 11.5v-3z" />
             </svg>
           ) : (
-            <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+            <svg
+              className="w-5 h-5"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                fillRule="evenodd"
+                d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
+                clipRule="evenodd"
+              />
             </svg>
           )}
         </span>
@@ -308,8 +398,10 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
           </p>
           <p className="text-xs text-sage-500 font-sans truncate">
             {isVideo
-              ? appointment.video_link ?? 'Lien visio non encore généré'
-              : [appointment.patient_postal_code, appointment.patient_city].filter(Boolean).join(' ') || 'Séance au cabinet'}
+              ? (appointment.video_link ?? 'Lien visio non encore généré')
+              : [appointment.patient_postal_code, appointment.patient_city]
+                  .filter(Boolean)
+                  .join(' ') || 'Séance au cabinet'}
           </p>
         </div>
       </div>
@@ -325,7 +417,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
         <textarea
           id={`${instanceId}-notes`}
           value={notes}
-          onChange={(e) => setNotes(e.target.value)}
+          onChange={e => setNotes(e.target.value)}
           rows={3}
           placeholder="Notes visibles uniquement par vous…"
           className="
@@ -338,7 +430,9 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
           <button
             type="button"
             onClick={handleSaveNotes}
-            disabled={notesSaving || notes === (appointment.therapist_notes ?? '')}
+            disabled={
+              notesSaving || notes === (appointment.therapist_notes ?? '')
+            }
             className="
               inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold font-sans
               rounded-xl bg-sage-900 text-white hover:bg-sage-800 focus:outline-none
@@ -346,15 +440,22 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
               disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]
             "
           >
-            {notesSaved ? '✓ Enregistrées' : notesSaving ? 'Enregistrement…' : 'Sauvegarder'}
+            {notesSaved
+              ? '✓ Enregistrées'
+              : notesSaving
+                ? 'Enregistrement…'
+                : 'Sauvegarder'}
           </button>
         </div>
       </section>
 
       {/* ── Actions contextuelles ─────────────────────────────────────────── */}
-      <section className="mt-4 space-y-2.5" aria-label="Actions sur le rendez-vous">
+      <section
+        className="mt-4 space-y-2.5"
+        aria-label="Actions sur le rendez-vous"
+      >
         {/* Rejoindre la visio */}
-        {isVideo && appointment.video_link && isUpcoming(appointment.scheduled_at) && (
+        {canJoinVideo && (
           <a
             href={appointment.video_link}
             target="_blank"
@@ -369,6 +470,33 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
             Rejoindre la visio
           </a>
         )}
+        {(appointment.status === 'confirmed' ||
+          appointment.status === 'payment_received') && (
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleSendReview}
+              disabled={actionLoading === 'review'}
+              className="
+                inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium
+                font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50
+                focus:outline-none focus:ring-2 focus:ring-mint-400 focus:ring-offset-1
+                transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px]
+              "
+            >
+              {actionLoading === 'review' ? 'Envoi…' : 'Envoyer rappel avis'}
+            </button>
+            {reviewSent && (
+              <span
+                role="status"
+                aria-live="polite"
+                className="text-sm font-sans text-mint-800"
+              >
+                Email envoyé
+              </span>
+            )}
+          </div>
+        )}
         {isVideo && !appointment.video_link && (
           <button
             type="button"
@@ -381,31 +509,36 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
               transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px]
             "
           >
-            {actionLoading === 'regenerate' ? 'Génération…' : 'Générer le lien visio'}
+            {actionLoading === 'regenerate'
+              ? 'Génération…'
+              : 'Générer le lien visio'}
           </button>
         )}
-        {appointment.status === 'payment_pending' && appointment.stripe_payment_link_url && (
-          <button
-            type="button"
-            onClick={() => {
-              navigator.clipboard
-                ?.writeText(appointment.stripe_payment_link_url ?? '')
-                .then(() => {
-                  setNotesSaved(false);
-                  setError(null);
-                })
-                .catch(() => setError('Copie impossible — le lien est dans Stripe.'));
-            }}
-            className="
+        {appointment.status === 'payment_pending' &&
+          appointment.stripe_payment_link_url && (
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard
+                  ?.writeText(appointment.stripe_payment_link_url ?? '')
+                  .then(() => {
+                    setNotesSaved(false);
+                    setError(null);
+                  })
+                  .catch(() =>
+                    setError('Copie impossible — le lien est dans Stripe.'),
+                  );
+              }}
+              className="
               w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm
               font-medium font-sans rounded-xl border border-sage-300 text-sage-700
               hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-mint-400
               transition-colors min-h-[44px]
             "
-          >
-            Copier le lien de paiement
-          </button>
-        )}
+            >
+              Copier le lien de paiement
+            </button>
+          )}
 
         {/* Confirmer (pending) — mêmes drapeaux tarifaires que la proposition A */}
         {appointment.status === 'pending' && (
@@ -414,7 +547,12 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
               <input
                 type="checkbox"
                 checked={confirmFlags.firstSession}
-                onChange={(e) => setConfirmFlags((f) => ({ ...f, firstSession: e.target.checked }))}
+                onChange={e =>
+                  setConfirmFlags(f => ({
+                    ...f,
+                    firstSession: e.target.checked,
+                  }))
+                }
                 className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
               />
               Tarifier comme 1<sup>re</sup> séance
@@ -423,7 +561,9 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
               <input
                 type="checkbox"
                 checked={confirmFlags.solidarity}
-                onChange={(e) => setConfirmFlags((f) => ({ ...f, solidarity: e.target.checked }))}
+                onChange={e =>
+                  setConfirmFlags(f => ({ ...f, solidarity: e.target.checked }))
+                }
                 className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
               />
               Tarif solidaire
@@ -448,7 +588,9 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
                 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px]
               "
             >
-              {actionLoading === 'confirm' ? 'Confirmation…' : 'Confirmer le rendez-vous'}
+              {actionLoading === 'confirm'
+                ? 'Confirmation…'
+                : 'Confirmer le rendez-vous'}
             </button>
           </div>
         )}
@@ -458,7 +600,9 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
           {canReschedule && (
             <button
               type="button"
-              onClick={() => setOpenPanel(openPanel === 'reschedule' ? null : 'reschedule')}
+              onClick={() =>
+                setOpenPanel(openPanel === 'reschedule' ? null : 'reschedule')
+              }
               aria-expanded={openPanel === 'reschedule'}
               className="
                 flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm
@@ -473,7 +617,9 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
           {appointment.status === 'rescheduled' && (
             <button
               type="button"
-              onClick={() => callPatch({ action: 'cancel_reschedule' }, 'cancel_reschedule')}
+              onClick={() =>
+                callPatch({ action: 'cancel_reschedule' }, 'cancel_reschedule')
+              }
               disabled={actionLoading === 'cancel_reschedule'}
               className="
                 flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm
@@ -485,10 +631,13 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
               Annuler le report
             </button>
           )}
-          {(appointment.status === 'pending' || appointment.status === 'payment_pending') && (
+          {(appointment.status === 'pending' ||
+            appointment.status === 'payment_pending') && (
             <button
               type="button"
-              onClick={() => setOpenPanel(openPanel === 'decline' ? null : 'decline')}
+              onClick={() =>
+                setOpenPanel(openPanel === 'decline' ? null : 'decline')
+              }
               aria-expanded={openPanel === 'decline'}
               className="
                 flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm
@@ -503,7 +652,9 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
           {canCancel && appointment.status !== 'pending' && (
             <button
               type="button"
-              onClick={() => setOpenPanel(openPanel === 'cancel' ? null : 'cancel')}
+              onClick={() =>
+                setOpenPanel(openPanel === 'cancel' ? null : 'cancel')
+              }
               aria-expanded={openPanel === 'cancel'}
               className="
                 flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm
@@ -532,23 +683,36 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
         {/* Panneau reprogrammation */}
         {openPanel === 'reschedule' && (
           <div className="rounded-xl border border-sage-200 bg-white p-3 space-y-2.5">
-            <label htmlFor={`${instanceId}-reschedule`} className="block text-sm font-medium font-sans text-sage-700">
+            <label
+              htmlFor={`${instanceId}-reschedule`}
+              className="block text-sm font-medium font-sans text-sage-700"
+            >
               Nouveau créneau
             </label>
             {appointment.status === 'payment_pending' && (
               <p className="flex items-start gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs font-sans text-amber-800">
-                <svg className="w-3.5 h-3.5 shrink-0 mt-px" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                <svg
+                  className="w-3.5 h-3.5 shrink-0 mt-px"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                    clipRule="evenodd"
+                  />
                 </svg>
-                Séance impayée : le lien de paiement du créneau d'origine sera expiré, un nouveau
-                sera envoyé lorsque le patient acceptera la proposition.
+                Séance impayée : le lien de paiement du créneau d'origine sera
+                expiré, un nouveau sera envoyé lorsque le patient acceptera la
+                proposition.
               </p>
             )}
             <input
               id={`${instanceId}-reschedule`}
               type="datetime-local"
               value={rescheduleDate}
-              onChange={(e) => setRescheduleDate(e.target.value)}
+              onChange={e => setRescheduleDate(e.target.value)}
               className="
                 w-full rounded-xl border border-sage-200 px-3 py-2 text-sm font-sans text-sage-900
                 focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[44px]
@@ -561,7 +725,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
               id={`${instanceId}-reschedule-msg`}
               type="text"
               value={actionMessage}
-              onChange={(e) => setActionMessage(e.target.value)}
+              onChange={e => setActionMessage(e.target.value)}
               placeholder="Message pour le patient (optionnel)"
               className="
                 w-full rounded-xl border border-sage-200 px-3 py-2 text-sm font-sans text-sage-900
@@ -574,9 +738,13 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
               onClick={() =>
                 callPatch(
                   {
-                    action: isDirectReschedule ? 'reschedule_paid' : 'reschedule',
+                    action: isDirectReschedule
+                      ? 'reschedule_paid'
+                      : 'reschedule',
                     rescheduled_to: new Date(rescheduleDate).toISOString(),
-                    ...(actionMessage ? { therapist_notes: actionMessage } : {}),
+                    ...(actionMessage
+                      ? { therapist_notes: actionMessage }
+                      : {}),
                   },
                   'reschedule',
                 )
@@ -588,7 +756,9 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
                 disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px]
               "
             >
-              {actionLoading === 'reschedule' ? 'Reprogrammation…' : 'Valider le nouveau créneau'}
+              {actionLoading === 'reschedule'
+                ? 'Reprogrammation…'
+                : 'Valider le nouveau créneau'}
             </button>
           </div>
         )}
@@ -596,14 +766,19 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
         {/* Panneau refus / annulation (message optionnel) */}
         {(openPanel === 'decline' || openPanel === 'cancel') && (
           <div className="rounded-xl border border-red-200 bg-red-50 p-3 space-y-2.5">
-            <label htmlFor={`${instanceId}-action-msg`} className="block text-sm font-medium font-sans text-red-800">
-              {openPanel === 'decline' ? 'Refuser la demande' : 'Annuler le rendez-vous'}
+            <label
+              htmlFor={`${instanceId}-action-msg`}
+              className="block text-sm font-medium font-sans text-red-800"
+            >
+              {openPanel === 'decline'
+                ? 'Refuser la demande'
+                : 'Annuler le rendez-vous'}
             </label>
             <input
               id={`${instanceId}-action-msg`}
               type="text"
               value={actionMessage}
-              onChange={(e) => setActionMessage(e.target.value)}
+              onChange={e => setActionMessage(e.target.value)}
               placeholder="Message pour le patient (optionnel)"
               className="
                 w-full rounded-xl border border-red-200 px-3 py-2 text-sm font-sans text-sage-900
@@ -617,7 +792,9 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
                 callPatch(
                   {
                     action: openPanel,
-                    ...(actionMessage ? { therapist_notes: actionMessage } : {}),
+                    ...(actionMessage
+                      ? { therapist_notes: actionMessage }
+                      : {}),
                   },
                   openPanel,
                 )
@@ -639,7 +816,10 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
         )}
 
         {error && (
-          <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 font-sans">
+          <p
+            role="alert"
+            className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 font-sans"
+          >
             {error}
           </p>
         )}
