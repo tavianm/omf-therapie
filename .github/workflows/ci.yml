@@ -80,9 +80,11 @@ jobs:
       - name: Build
         run: npm run build
       - name: Verify HTML non-regression gate
-        # The production v5 baseline is intentionally local-only. This
-        # deterministic fixture suite exercises the gate's fail-closed paths
-        # on every CI run without depending on that cache.
+        # Compare the freshly built site to the versioned Astro 5 baseline.
+        # A missing baseline is a setup failure (exit 2), never a skipped gate.
+        run: npm run diff:html-170
+      - name: Verify HTML gate failure modes
+        # Companion fixtures prove the comparator itself fails closed.
         run: npm run test:html-diff-170
 
   # Blocking gate member — type errors fail the run. The codebase previously

@@ -8,7 +8,7 @@ Guide complet pour démarrer, développer et tester le projet en local avec Dock
 
 | Outil | Version minimale |
 |-------|-----------------|
-| Node.js | 20+ |
+| Node.js | 22.23.2 (pin `.nvmrc`) |
 | Docker + Docker Compose | 24+ |
 | Git | 2.x |
 
@@ -240,12 +240,12 @@ npx playwright show-report public/reports/playwright
 
 ```bash
 npm run lint              # ESLint
-npm run typecheck         # astro check (advisory — voir #68 pour les erreurs résiduelles)
+npm run typecheck         # astro check (gate CI bloquant)
 npm run test              # Vitest (tests unit/integration)
 npm run audit:a11y        # Audit pa11y (nécessite le dev server actif)
 ```
 
-> **CI** (`.github/workflows/ci.yml`) : `lint → test → build` bloquants, `typecheck` advisory. Node 20 via `.nvmrc`.
+> **CI** (`.github/workflows/ci.yml`) : `lint → test → build → diff HTML` et `typecheck` sont bloquants. Node 22.23.2 via `.nvmrc`.
 
 ---
 

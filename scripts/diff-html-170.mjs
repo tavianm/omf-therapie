@@ -5,7 +5,7 @@
  * The source of truth for compared URLs is `dist/sitemap-0.xml`: every <loc>
  * maps to `<dist>/<path>/index.html` (root -> `<dist>/index.html`). Each page
  * of the post-upgrade build is token-diffed against the pre-upgrade baseline
- * captured under `node_modules/.cache/170-baseline/html/`.
+ * versioned under `artifacts/reviews/170-html-diff/baseline-v5/`.
  *
  * Usage:
  *   node scripts/diff-html-170.mjs [--baseline <dir>] [--dist <dir>]
@@ -16,8 +16,8 @@
  * Exit codes:
  *   0  no diff (or only allowlisted diffs)
  *   1  at least one non-allowlisted diff
- *   2  setup error - most commonly: baseline missing, run the baseline
- *      capture first; also: dist/ or dist/sitemap-0.xml missing
+ *   2  setup error - most commonly: the versioned baseline is missing; also:
+ *      dist/ or dist/sitemap-0.xml missing
  *
  * ---------------------------------------------------------------------------
  * MECHANICAL NORMALIZATION ALLOWLIST (applied to BOTH sides before tokenizing,
@@ -81,7 +81,7 @@ import { parseArgs } from 'node:util';
 // ---------------------------------------------------------------------------
 
 /** Directory holding the pre-upgrade capture (mirrors dist/ layout). */
-const DEFAULT_BASELINE_DIR = 'node_modules/.cache/170-baseline/html';
+const DEFAULT_BASELINE_DIR = 'artifacts/reviews/170-html-diff/baseline-v5';
 
 /**
  * Tailwind 4 renames, see T6. The baseline was captured BEFORE the source
@@ -104,7 +104,11 @@ const EXPECTED_CLASS_RENAMES = new Map([
 ]);
 
 /** Pages excluded from the diff (too dynamic to arbitrate mechanically). */
-const EXCLUDED_PATHS = new Set(['/mes-rdvs/', '/reports/latest/', '/reports/playwright/']);
+const EXCLUDED_PATHS = new Set([
+  '/mes-rdvs/',
+  '/reports/latest/',
+  '/reports/playwright/',
+]);
 
 /** Max diff hunks printed per URL. */
 const MAX_DIFFS_PER_URL = 10;
@@ -674,7 +678,7 @@ async function main() {
   if (!(await pathExists(baselineDir))) {
     console.error(
       `ERROR: baseline not found at ${relative(repoRoot, baselineDir)}\n` +
-        'Run the baseline capture first (node_modules/.cache/170-baseline/html/).',
+        'Restore the versioned baseline (artifacts/reviews/170-html-diff/baseline-v5/).',
     );
     process.exit(2);
   }
@@ -705,7 +709,11 @@ async function main() {
       const loc = locs.find(u => pathnameOf(u) === p);
       return loc
         ? { urlPath: p, relPath: urlToRelPath(loc) }
-        : { urlPath: p, relPath: p === '/' ? 'index.html' : `${p.replace(/\/+$/, '')}/index.html` };
+        : {
+            urlPath: p,
+            relPath:
+              p === '/' ? 'index.html' : `${p.replace(/\/+$/, '')}/index.html`,
+          };
     });
 
   /** @type {Array<{url: string, hunks: Array<object>}>} */
@@ -733,7 +741,12 @@ async function main() {
     if (relative(distDir, distPath).startsWith('..')) {
       urlDiffs.push({
         url: urlPath,
-        hunks: [{ baseline: '(sitemap <loc>)', dist: 'PATH ESCAPES DIST — refusing to read' }],
+        hunks: [
+          {
+            baseline: '(sitemap <loc>)',
+            dist: 'PATH ESCAPES DIST — refusing to read',
+          },
+        ],
       });
       continue;
     }

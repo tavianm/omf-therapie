@@ -228,7 +228,7 @@ La fonction `netlify/functions/send-reminders.ts` se déclenche **automatiquemen
 ```
 Build command  : npm run build
 Publish dir    : dist
-Node version   : 20
+Node version   : 22.23.2 (root .nvmrc; no NODE_VERSION override)
 ```
 
 ---

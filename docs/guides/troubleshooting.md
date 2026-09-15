@@ -65,9 +65,9 @@ The credits system (`008_credits.sql`) must be applied. After `db:reset`, manual
 
 ## CI
 
-### Typecheck fails with ~20 errors but CI is green
+### Typecheck fails
 
-This is expected (PR #85). Typecheck runs as `typecheck-advisory` with `continue-on-error: true`. The 20 residual errors are library-typing mismatches (googleapis, better-auth, stripe version drift, react-email) tracked in issue #68. Don't add **new** type errors; fixing existing ones is appreciated but out of scope for most PRs.
+`npm run typecheck` is a blocking CI gate. Fix the diagnostic before pushing; the historical residual errors tracked by #68 were cleared before this policy changed.
 
 ### `.nvmrc` or `.github/workflows/ci.yml` missing locally
 

@@ -66,8 +66,8 @@ Patient → /rendez-vous/ (Astro SSG wizard)
 
 - **Platform:** Netlify (auto-deploy from `main`)
 - **Build:** `npm run build` → `dist/`
-- **CI gate** (`.github/workflows/ci.yml`): `lint → test → build` blocking; `typecheck` advisory (see #68)
-- **Node:** 20 (`.nvmrc`, matches `netlify.toml`)
+- **CI gate** (`.github/workflows/ci.yml`): `lint → test → build → diff HTML` and `typecheck` blocking
+- **Node:** 22.23.2 (root `.nvmrc`, resolved natively by Netlify)
 - **Branch protection:** require `CI / build` after first run on `main`
 
 See `docs/guides/deployment.md` for prod setup and `docs/INFRA.md` for infra env vars.
@@ -80,4 +80,4 @@ See `docs/architecture/adr/` and `memory-bank/decisions.md`. Highlights:
 - **ADR-013:** `trailingSlash: 'always'` — every client-side URL ends with `/`.
 - **ADR-014:** Stripe only for `appointment_mode = 'video'`.
 - **ADR-015:** Internal avoirs (credits) instead of Stripe refunds.
-- **ADR-016:** CI blocking (lint+test+build), typecheck advisory.
+- **ADR-016:** historical CI decision; current workflow also blocks on typecheck and the HTML regression gate.
