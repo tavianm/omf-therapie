@@ -64,7 +64,7 @@ export function ConfirmModal({
                   setOverrideFirstSession(false);
                 }
               }}
-              className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+              className="h-4 w-4 rounded-sm border-sage-300 text-mint-600 focus:ring-mint-400"
             />
             <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
               Remise nouveau client{" "}
@@ -83,7 +83,7 @@ export function ConfirmModal({
                   setIsSolidarity(false);
                 }
               }}
-              className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+              className="h-4 w-4 rounded-sm border-sage-300 text-mint-600 focus:ring-mint-400"
             />
             <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
               Tarif solidaire{" "}
@@ -126,7 +126,7 @@ export function ConfirmModal({
             value={videoLink}
             onChange={(e) => setVideoLink(e.target.value)}
             placeholder="Laissez vide pour auto-génération Google Meet"
-            className="w-full px-4 py-2.5 rounded-xl border border-sage-200 bg-sage-50 text-sage-900 placeholder-sage-400 font-sans text-sm focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent transition-colors"
+            className="w-full px-4 py-2.5 rounded-xl border border-sage-200 bg-sage-50 text-sage-900 placeholder-sage-400 font-sans text-sm focus:outline-hidden focus:ring-2 focus:ring-mint-400 focus:border-transparent transition-colors"
           />
         </div>
       )}

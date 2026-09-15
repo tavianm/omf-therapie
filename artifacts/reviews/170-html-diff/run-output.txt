@@ -1,0 +1,3 @@
+
+Summary: 27 URLs compared, 3 excluded (/mes-rdvs/, /reports/latest/, /reports/playwright/), 4 SSR-only skipped (/login/, /poste-travail/, /rdv/accepter-report/, /rdv/merci/), 0 diff hunk(s) on 0 URL(s), 30 allowlisted
+OK: 0 non-allowlisted diffs.

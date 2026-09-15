@@ -1,5 +1,5 @@
 ---
-id: "9"
+postId: "9"
 title: "Déconstruire les tabous sur la thérapie : ce n'est pas seulement pour 'les autres'"
 excerpt: "Explorons ensemble pourquoi la thérapie n'est pas réservée aux personnes en difficulté et comment elle peut bénéficier à tous."
 date: "15 mai 2026"

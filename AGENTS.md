@@ -11,7 +11,7 @@ npm run dev              # Astro dev server (port 4321)
 npm run build            # Production build (SSG → dist/)
 npm run preview          # Preview built site
 npm run lint             # ESLint (eslint.config.js, flat config)
-npm run typecheck        # `astro check` — advisory in CI (see #68 for ~20 residual errors)
+npm run typecheck        # `astro check` — blocking in CI
 npm run test             # Vitest (tests/unit/**, node env)
 npm run test:watch       # Vitest watch mode
 npm run test:integration # Vitest integration (tests/integration/**) — real PostgreSQL, skips without DB
@@ -27,7 +27,7 @@ npm run db:reset         # ⚠️ Drops & re-creates schema, replays ONLY 001_in
 
 **Run `npm run audit:a11y` before any UI/visual PR** — accessibility (WCAG 2.1 AA) is a hard requirement, not a nice-to-have.
 
-**CI (`.github/workflows/ci.yml`, on `origin/main`):** `lint → test → build` is the blocking gate; `typecheck` runs as advisory (`continue-on-error: true`) until issue #68 clears residual type errors. Node 20 pinned via `.nvmrc` (matches `netlify.toml`). After the first workflow run on `main`, branch protection should require `CI / build`.
+**CI (`.github/workflows/ci.yml`, on `origin/main`):** `lint → test → build → diff HTML` and `typecheck` are blocking gates. Node v22.23.2 is pinned in the root `.nvmrc`, which Netlify resolves natively as the single source of truth. After the first workflow run on `main`, branch protection should require `CI / build`.
 
 > **Drift note:** local `main` may lag `origin/main`. If `.nvmrc` or `.github/workflows/` are missing from your working tree, run `git pull` / rebase before assuming CI config.
 

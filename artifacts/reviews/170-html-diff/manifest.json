@@ -1,0 +1,132 @@
+{
+ "generated_at": "2026-09-15T01:11:01Z",
+ "baseline_commit": "c5b22dc (pre-upgrade tree), re-captured post V1/V2 at 729301a build",
+ "note": "baseline HTML = astro 5.18 + TW4 (post-migration reference); dist = astro 7.3.2 final build",
+ "gate": "node scripts/diff-html-170.mjs (see run-output.txt, exit 0)",
+ "pages": {
+  "404.html": {
+   "baseline_sha256": "474538bc7e0261f8e631d982c99e882006be99095ec61d13681471e31b795d26",
+   "dist_sha256": "e9fda910f8de7e888b99760f0da63dbcf057ab4da4b5659835683091975b019e"
+  },
+  "a-propos/index.html": {
+   "baseline_sha256": "c431dbe7be6440b57faec86ab2fc6bd94d12c1dbdf5c6a1ebdf6ff5283806153",
+   "dist_sha256": "204eb6168f5c787b0c446b95eb21af9e373c48e88c957953481534dd424a042f"
+  },
+  "accessibilite/index.html": {
+   "baseline_sha256": "d5a5f8cd7390faa3c0ea356c2067c8acfd9ab423447c4cc00f1247df0b103955",
+   "dist_sha256": "0b95a84f8d380ad633e9dbe0d26f49c73285d7ffc199b55902bfca153408d12e"
+  },
+  "blog/accompagner-transitions-vie-serenite/index.html": {
+   "baseline_sha256": "20bc7abcaecb06fa414a197509cbe172e146204556324ae4a1a1937ba3626a45",
+   "dist_sha256": "18fdff2b184bf1fbcea2b2b57f14839d18c6ef22da828fed8c0650b1ffe9e570"
+  },
+  "blog/comprendre-langages-amour/index.html": {
+   "baseline_sha256": "7c3b4d5a4026824e48a9d6e85f7c669c4e1158f97cc18e6077a42647fa05e81c",
+   "dist_sha256": "13222aaa24012c5cbfe37576b2ddb1936c41704a7416a3044f5142d4a915532d"
+  },
+  "blog/cultiver-estime-de-soi-quotidien/index.html": {
+   "baseline_sha256": "3bff5d3b7664120d49d31aa5b0d79b0de65965a4805bf0857497351aaae66b48",
+   "dist_sha256": "d8a7049d1fb06e152597849de6a49a801ca223f798ece5f07306977fbbe6afcf"
+  },
+  "blog/deconstruire-tabous-therapie/index.html": {
+   "baseline_sha256": "50ffae6b975157389832b142ec75480d8e70aee47bc89f9e83fa8fc45653fae7",
+   "dist_sha256": "f77a88f4a65efaef4e0bbf5f3e9e5937ae01cc427f23126e4d6d090109855e24"
+  },
+  "blog/gerer-anxiete-quotidien-techniques-conseils/index.html": {
+   "baseline_sha256": "57c1ed4a6f370bddcfba480860128699d90e00e76de221155673f94f365dae0d",
+   "dist_sha256": "5b18021743ae947c1ca2e7531b64f694875d97747beaf184b53b59eee31a2cce"
+  },
+  "blog/gestion-stress-anxiete-montpellier/index.html": {
+   "baseline_sha256": "0778663df046b039685d81255c25ff95a87500b0ba7a4628563cf14d9811af94",
+   "dist_sha256": "b0d76e19dc3c0a6d35d6d021b8cf3b6766408719e4e560e8275a32494ae2dbc3"
+  },
+  "blog/impact-mots-langage-mal-etre/index.html": {
+   "baseline_sha256": "ecd84521a88c719fd88c30dc8986b76e8c508ef4479216f65db0422cd008460b",
+   "dist_sha256": "8cf45b48b508b8858128a3e5f564e67d4dacf53bdf088cce19954af9d185fb16"
+  },
+  "blog/index.html": {
+   "baseline_sha256": "a3db815d63b0a1f05e9c3ce51a749e560c6695f3238d3cb3dcc201a7b348a6b9",
+   "dist_sha256": "f8136b30c95354e61be1e7beb08c85a772056aa1126b8f62a340d183af366cda"
+  },
+  "blog/relation-alimentation-sante-mentale/index.html": {
+   "baseline_sha256": "7f131f8155ce7e9670448838f759d5be7a1d665066860f3e475dcc818c92ee05",
+   "dist_sha256": "a381a9077c15e8e17d53faf7dadce40e283600bf6c3fe7903db8123642a6fc53"
+  },
+  "blog/renforcer-communication-couple/index.html": {
+   "baseline_sha256": "c10838a76ec81cec8f64bf59802b261c939be311a06bcc17c65ba258f909e04a",
+   "dist_sha256": "09ae35506e4b05132f61f4b122d0d03eb870fa845344f329b88d4c2e1279b519"
+  },
+  "blog/therapie-couple-montpellier-guide/index.html": {
+   "baseline_sha256": "898743c115d4685fc5490bedd8f6d01235e4036fd1be49a10baec8e2745b9d03",
+   "dist_sha256": "b99892e7f64000ec10b8121e28902ce36c121b67d46b366ae88920e0163481a6"
+  },
+  "blog/troubles-comportement-alimentaire-comprendre-accompagner/index.html": {
+   "baseline_sha256": "3845e52a0a7af501b2ced1a69e8aa74544fa644e697976800b2ea85df21dedbc",
+   "dist_sha256": "4a4281b094ea47a9dcf70921829b4ad41fffccd9d9d9d839b9bd7bf9581ca90d"
+  },
+  "blog/trouver-psychopraticien-montpellier/index.html": {
+   "baseline_sha256": "32b859a58ec120f35eaa990800c8d8487eeee4b1be061404f88968ef3d1d6e35",
+   "dist_sha256": "c65af6cf29c4ad83f54009bdad19e21f50ba9c7a6b7054c65642c4812113c052"
+  },
+  "cgv/index.html": {
+   "baseline_sha256": "33a46ac7fc0d0398544acdbc18b48f67390e8037a6b7f3db9a59e743c5cb8075",
+   "dist_sha256": "2faf653f2a7cb40a3432649eb5d9387e15ea3742166070c6af34eb2c2b4f78d0"
+  },
+  "confidentialite/index.html": {
+   "baseline_sha256": "5e2ae4ef4c56385c536b86a5a56c3e70db1bc5858a63687c59fe555d55e1ca27",
+   "dist_sha256": "ef694eec5e7b57dd5da3c6712fb1e3a9f21e81c929c8f0026847bfccd76f6aa2"
+  },
+  "contact/index.html": {
+   "baseline_sha256": "8e5f6a70412ded2b50ac27003ae1be76c40e9be19e7d4265fdd308de9c9329a3",
+   "dist_sha256": "9b96a684316a65361d65881c44c602246fa6c926ab28df40f9a365b1eef8d915"
+  },
+  "index.html": {
+   "baseline_sha256": "e32100736291196f901a4d782aad9159bd2e78d50ddba9f408a7904eb087a86a",
+   "dist_sha256": "53677229ca3ca93e978f160241d492de7fbe756d3913edffddf1b7dc7bfca7f5"
+  },
+  "mentions-legales/index.html": {
+   "baseline_sha256": "22860747b79c383164b88a84c49e96eccc70808c6bf09ef6eb29b39c2a74d6c0",
+   "dist_sha256": "26f8a39b7520624a1348d74c80ff6013eb602a771072543e0972d10aff1ed792"
+  },
+  "rendez-vous/index.html": {
+   "baseline_sha256": "e5f5b1e405cf9331cc036f7c2539f3164e20757a46ed8f2c021ab35a091d2718",
+   "dist_sha256": "83cda24241501e321e58de30b522366d9cd2034f29fb59e166526c184f57de2f"
+  },
+  "reports/latest/index.html": {
+   "baseline_sha256": "2e06ae5699bd1eef884254863fb11bd13dfe800cb3396bc3ac8ed96619a175b3",
+   "dist_sha256": "2e06ae5699bd1eef884254863fb11bd13dfe800cb3396bc3ac8ed96619a175b3"
+  },
+  "reports/lighthouse.html": {
+   "baseline_sha256": "994f4bf657857652bf4ac4fd25a7e2a0b9f1b5db28b0cfa4ee89dce940c67cdb",
+   "dist_sha256": "994f4bf657857652bf4ac4fd25a7e2a0b9f1b5db28b0cfa4ee89dce940c67cdb"
+  },
+  "reports/playwright/index.html": {
+   "baseline_sha256": "ff9169aa58c1ccad9542d69de75423f5322e89263efcee4a76acdedf6d1257a8",
+   "dist_sha256": "ff9169aa58c1ccad9542d69de75423f5322e89263efcee4a76acdedf6d1257a8"
+  },
+  "services/anxiete-montpellier/index.html": {
+   "baseline_sha256": "fca2d2013c52198ee28a8005d939a86a5a1c5a7af5b2e037a4cc1509ff5537b7",
+   "dist_sha256": "726a94cd3b0d5ed2ec98f0ee74ed1889fc012f606fd1f00f3f645c43c0fa0473"
+  },
+  "services/index.html": {
+   "baseline_sha256": "4074c8182bbf35f154bb8f52dfdf0b308dc239e2c4cbc615705c5d2224722139",
+   "dist_sha256": "ce314d0695061fc11ffd87acfd449f86862827ad891a772695b09b61bcd203b3"
+  },
+  "services/therapie-de-couple/index.html": {
+   "baseline_sha256": "f15bcfaa0b2e74e6d19abd15a64cb6b1ec75be2d6546abe43da5d339d49fcc83",
+   "dist_sha256": "e80229314f14cb990e8684076e53f4055d50981eb25ddd5b8d7b442afcaae1b2"
+  },
+  "services/therapie-familiale/index.html": {
+   "baseline_sha256": "c180b1bdc670070c22183d36693aada1d6ba048803e60906c044f8ada6448ddf",
+   "dist_sha256": "6bb5e380087a16b152b707b3cbffbdc4c3bcdb4fa20938f675d0c323621e0f1e"
+  },
+  "services/therapie-individuelle/index.html": {
+   "baseline_sha256": "dd7966df8f272ec8c36bf308267fc6915a87eaedf529627a3354da68bd03119d",
+   "dist_sha256": "6edd4099451cde6b87b75c3e44a4e6dc2fb6680977bb86eb67443f5bd42306d4"
+  },
+  "services/troubles-alimentaires/index.html": {
+   "baseline_sha256": "c676f9e832bd323cbfb68b72e45542eb435b00b5b3b59835dc9ea85f8bb897ea",
+   "dist_sha256": "989a1b3c531717c11cb35acbc2e86c10cbcb1a1cd5c77994b0820b052325cf91"
+  }
+ }
+}

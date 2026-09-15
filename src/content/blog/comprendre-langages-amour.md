@@ -1,5 +1,5 @@
 ---
-id: "10"
+postId: "10"
 title: "Comprendre les langages de l'amour : une clé pour mieux aimer et être aimé"
 excerpt: "Découvrez comment les cinq langages de l'amour peuvent transformer votre façon de communiquer et d'exprimer vos sentiments dans vos relations."
 date: "7 mai 2026"

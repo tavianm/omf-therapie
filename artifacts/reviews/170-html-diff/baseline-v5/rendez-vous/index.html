@@ -1,0 +1,143 @@
+<!DOCTYPE html><html lang="fr"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="theme-color" content="#ffffff"><title>Prendre rendez-vous — OMF Thérapie</title><meta name="description" content="Prenez rendez-vous en ligne pour une séance de thérapie individuelle, de couple ou familiale. Consultations en présentiel le mercredi et en téléconsultation du lundi au vendredi."><link rel="canonical" href="https://omf-therapie.fr/rendez-vous"><!-- Open Graph --><meta property="og:type" content="website"><meta property="og:url" content="https://omf-therapie.fr/rendez-vous"><meta property="og:title" content="Prendre rendez-vous — OMF Thérapie"><meta property="og:description" content="Prenez rendez-vous en ligne pour une séance de thérapie individuelle, de couple ou familiale. Consultations en présentiel le mercredi et en téléconsultation du lundi au vendredi."><meta property="og:image" content="https://omf-therapie.fr/assets/about/oriane-montabonnet-1.webp"><meta property="og:locale" content="fr_FR"><meta property="og:site_name" content="OMF Thérapie — Oriane Montabonnet"><!-- Twitter Card --><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="Prendre rendez-vous — OMF Thérapie"><meta name="twitter:description" content="Prenez rendez-vous en ligne pour une séance de thérapie individuelle, de couple ou familiale. Consultations en présentiel le mercredi et en téléconsultation du lundi au vendredi."><meta name="twitter:image" content="https://omf-therapie.fr/assets/about/oriane-montabonnet-1.webp"><!-- JSON-LD Structured Data --><script type="application/ld+json">{"@context":"https://schema.org","@type":"HealthAndBeautyBusiness","name":"OMF Thérapie — Oriane Montabonnet","url":"https://omf-therapie.fr","telephone":"","address":{"@type":"PostalAddress","addressCountry":"FR"},"openingHoursSpecification":[{"@type":"OpeningHoursSpecification","dayOfWeek":["Wednesday"],"opens":"08:00","closes":"19:00"},{"@type":"OpeningHoursSpecification","dayOfWeek":["Monday","Tuesday","Thursday","Friday"],"opens":"08:00","closes":"19:00","description":"Téléconsultation uniquement"}],"hasMap":"","priceRange":"€€","description":"Thérapie individuelle, de couple et familiale. Séances en présentiel (mercredi) et en téléconsultation.","potentialAction":{"@type":"ReserveAction","target":{"@type":"EntryPoint","urlTemplate":"https://omf-therapie.fr/rendez-vous","inLanguage":"fr","actionPlatform":["http://schema.org/DesktopWebPlatform","http://schema.org/MobileWebPlatform"]},"result":{"@type":"Reservation","name":"Demande de rendez-vous OMF Thérapie"}}}</script><!-- Fonts --><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"><!-- Favicon --><link rel="icon" href="/assets/favicon.ico" sizes="32x32"><link rel="icon" type="image/svg+xml" href="/assets/favicon.svg"><link rel="icon" type="image/png" sizes="96x96" href="/assets/favicon-96x96.png"><link rel="apple-touch-icon" href="/assets/apple-touch-icon.png"><link rel="manifest" href="/assets/site.webmanifest"><script>
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){ window.dataLayer.push(arguments); }
+          gtag('consent', 'default', {
+            ad_storage: "denied",
+            ad_user_data: "denied", 
+            ad_personalization: "denied",
+            analytics_storage: "denied",
+            functionality_storage: "denied",
+            personalization_storage: "denied",
+            security_storage: "granted",
+            wait_for_update: 2000,
+          });
+          gtag('set', 'ads_data_redaction', true);
+          gtag('set', 'url_passthrough', true);
+
+          // Register the listener BEFORE CookieYes loads so we never miss the
+          // first consent signal (returning visitors get it very early).
+          //
+          // Expose a Promise that resolves the first time the visitor grants
+          // analytics consent. Page scripts (e.g. /rdv/merci conversions) await
+          // it before firing GA4 events.
+          //
+          // CookieYes emits the `cookieyes_consent_update` event on banner
+          // interaction, but NOT when it restores a returning visitor's consent
+          // on load — that path only updates Google Consent Mode. So we cannot
+          // rely on the event alone. Instead we resolve from any of three
+          // signals, whichever lands first:
+          //   1. the CookieYes event (first-time grant), or
+          //   2. a `gtag('consent','update',{analytics_storage:'granted'})`
+          //      entry observed in the dataLayer — vendor-agnostic and covers
+          //      the returning-visitor restore path.
+          // Polling the dataLayer array (rather than hooking .push or window.gtag)
+          // is race-free: nothing reassigns the array, and past entries persist.
+          window.__ckyAnalyticsReady = new Promise(function (resolve) {
+            function grantedInDataLayer() {
+              var dl = window.dataLayer || [];
+              for (var i = 0; i < dl.length; i++) {
+                var e = dl[i];
+                if (e && e[0] === 'consent' && e[1] === 'update' &&
+                    e[2] && e[2].analytics_storage === 'granted') {
+                  return true;
+                }
+              }
+              return false;
+            }
+            document.addEventListener('cookieyes_consent_update', function (e) {
+              var accepted = (e.detail && e.detail.accepted) || [];
+              if (accepted.indexOf('analytics') !== -1) resolve();
+            });
+            if (grantedInDataLayer()) { resolve(); return; }
+            var timer = setInterval(function () {
+              if (grantedInDataLayer()) { clearInterval(timer); resolve(); }
+            }, 150);
+            // Stop polling once consent is clearly settled without analytics.
+            setTimeout(function () { clearInterval(timer); }, 6000);
+          });
+        </script><script id="cookieyes" type="text/javascript" src="https://cdn-cookieyes.com/client_data/eca55ddc4625974185ff383e357080fb/script.js">
+        </script><script async src="https://www.googletagmanager.com/gtag/js?id=undefined"></script><script>(function(){const ga4Id = undefined;
+
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){ window.dataLayer.push(arguments); }
+          gtag('js', new Date());
+          gtag('config', ga4Id);
+        })();</script><link rel="stylesheet" href="/_astro/a-propos.BqBvhrlK.css"></head> <body>  <main class="min-h-screen bg-sage-50 py-12"> <div class="max-w-2xl mx-auto px-4"> <!-- En-tête --> <header class="mb-10 text-center"> <p class="mb-3 text-sm font-medium uppercase tracking-widest text-sage-500">
+OMF Thérapie
+</p> <h1 class="font-serif text-3xl font-semibold text-sage-800 sm:text-4xl">
+Prendre rendez-vous
+</h1> <p class="mx-auto mt-4 max-w-md text-sm text-sage-600">
+Remplissez ce formulaire en quelques minutes. Oriane vous confirmera
+          votre créneau par email sous 24–48&nbsp;h.
+</p> <div class="mt-5"> <a href="/" class="inline-flex items-center gap-2 text-sm font-medium text-sage-600 hover:text-mint-600 transition-colors">
+← Retour à l'accueil
+</a> </div> </header> <div id="booking-link-error" role="alert" class="hidden mb-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4"> <p class="text-sm font-semibold text-amber-800 mb-1">
+Lien invalide ou expiré
+</p> <p id="booking-link-error-message" class="text-sm text-amber-700">
+Ce lien de confirmation n'est plus valide.
+</p> <a href="/rendez-vous/" class="mt-3 inline-flex items-center gap-2 text-sm font-medium text-mint-700 hover:text-mint-800 transition-colors">
+Contacter la thérapeute
+</a> </div> <!-- Island React — formulaire multi-étapes --> <style>astro-island,astro-slot,astro-static-slot{display:contents}</style><script>(()=>{var e=async t=>{await(await t())()};(self.Astro||(self.Astro={})).load=e;window.dispatchEvent(new Event("astro:load"));})();</script><script>(()=>{var A=Object.defineProperty;var g=(i,o,a)=>o in i?A(i,o,{enumerable:!0,configurable:!0,writable:!0,value:a}):i[o]=a;var d=(i,o,a)=>g(i,typeof o!="symbol"?o+"":o,a);{let i={0:t=>m(t),1:t=>a(t),2:t=>new RegExp(t),3:t=>new Date(t),4:t=>new Map(a(t)),5:t=>new Set(a(t)),6:t=>BigInt(t),7:t=>new URL(t),8:t=>new Uint8Array(t),9:t=>new Uint16Array(t),10:t=>new Uint32Array(t),11:t=>1/0*t},o=t=>{let[l,e]=t;return l in i?i[l](e):void 0},a=t=>t.map(o),m=t=>typeof t!="object"||t===null?t:Object.fromEntries(Object.entries(t).map(([l,e])=>[l,o(e)]));class y extends HTMLElement{constructor(){super(...arguments);d(this,"Component");d(this,"hydrator");d(this,"hydrate",async()=>{var b;if(!this.hydrator||!this.isConnected)return;let e=(b=this.parentElement)==null?void 0:b.closest("astro-island[ssr]");if(e){e.addEventListener("astro:hydrate",this.hydrate,{once:!0});return}let c=this.querySelectorAll("astro-slot"),n={},h=this.querySelectorAll("template[data-astro-template]");for(let r of h){let s=r.closest(this.tagName);s!=null&&s.isSameNode(this)&&(n[r.getAttribute("data-astro-template")||"default"]=r.innerHTML,r.remove())}for(let r of c){let s=r.closest(this.tagName);s!=null&&s.isSameNode(this)&&(n[r.getAttribute("name")||"default"]=r.innerHTML)}let p;try{p=this.hasAttribute("props")?m(JSON.parse(this.getAttribute("props"))):{}}catch(r){let s=this.getAttribute("component-url")||"<unknown>",v=this.getAttribute("component-export");throw v&&(s+=` (export ${v})`),console.error(`[hydrate] Error parsing props for component ${s}`,this.getAttribute("props"),r),r}let u;await this.hydrator(this)(this.Component,p,n,{client:this.getAttribute("client")}),this.removeAttribute("ssr"),this.dispatchEvent(new CustomEvent("astro:hydrate"))});d(this,"unmount",()=>{this.isConnected||this.dispatchEvent(new CustomEvent("astro:unmount"))})}disconnectedCallback(){document.removeEventListener("astro:after-swap",this.unmount),document.addEventListener("astro:after-swap",this.unmount,{once:!0})}connectedCallback(){if(!this.hasAttribute("await-children")||document.readyState==="interactive"||document.readyState==="complete")this.childrenConnectedCallback();else{let e=()=>{document.removeEventListener("DOMContentLoaded",e),c.disconnect(),this.childrenConnectedCallback()},c=new MutationObserver(()=>{var n;((n=this.lastChild)==null?void 0:n.nodeType)===Node.COMMENT_NODE&&this.lastChild.nodeValue==="astro:end"&&(this.lastChild.remove(),e())});c.observe(this,{childList:!0}),document.addEventListener("DOMContentLoaded",e)}}async childrenConnectedCallback(){let e=this.getAttribute("before-hydration-url");e&&await import(e),this.start()}async start(){let e=JSON.parse(this.getAttribute("opts")),c=this.getAttribute("client");if(Astro[c]===void 0){window.addEventListener(`astro:${c}`,()=>this.start(),{once:!0});return}try{await Astro[c](async()=>{let n=this.getAttribute("renderer-url"),[h,{default:p}]=await Promise.all([import(this.getAttribute("component-url")),n?import(n):()=>()=>{}]),u=this.getAttribute("component-export")||"default";if(!u.includes("."))this.Component=h[u];else{this.Component=h;for(let f of u.split("."))this.Component=this.Component[f]}return this.hydrator=p,this.hydrate},e,this)}catch(n){console.error(`[astro-island] Error hydrating ${this.getAttribute("component-url")}`,n)}}attributeChangedCallback(){this.hydrate()}}d(y,"observedAttributes",["props"]),customElements.get("astro-island")||customElements.define("astro-island",y)}})();</script><astro-island uid="2udJhJ" prefix="r1" component-url="/_astro/BookingWizard.BdmYPXRz.js" component-export="default" renderer-url="/_astro/client.DepRUxGq.js" props="{}" ssr client="load" opts="{&quot;name&quot;:&quot;BookingWizard&quot;,&quot;value&quot;:true}" await-children><div tabindex="-1" class="rounded-2xl border border-sage-200 bg-white p-6 shadow-md sm:p-8 focus:outline-hidden"><nav aria-label="Étapes de la réservation" class="mb-8"><ol class="flex items-center justify-between"><li aria-current="step" class="flex flex-1 items-center"><div class="flex flex-col items-center gap-1"><span class="
+                    flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold
+                    transition-all duration-200
+                    
+                    text-white ring-2 ring-offset-2
+                    
+                  " style="background-color:#d4a96a;outline-color:#d4a96a"><span aria-hidden="true">1</span><span class="sr-only"> sur <!-- -->4<!-- -->, en cours</span></span><span class="text-xs font-medium block text-sage-800">Type &amp; Mode</span></div><div class="mx-2 h-0.5 flex-1 transition-colors duration-200 bg-sage-200"></div></li><li class="flex flex-1 items-center"><div class="flex flex-col items-center gap-1"><span class="
+                    flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold
+                    transition-all duration-200
+                    
+                    
+                    bg-sage-100 text-sage-400
+                  "><span aria-hidden="true">2</span></span><span class="text-xs font-medium hidden sm:block text-sage-400">Date &amp; Heure</span></div><div class="mx-2 h-0.5 flex-1 transition-colors duration-200 bg-sage-200"></div></li><li class="flex flex-1 items-center"><div class="flex flex-col items-center gap-1"><span class="
+                    flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold
+                    transition-all duration-200
+                    
+                    
+                    bg-sage-100 text-sage-400
+                  "><span aria-hidden="true">3</span></span><span class="text-xs font-medium hidden sm:block text-sage-400">Informations</span></div><div class="mx-2 h-0.5 flex-1 transition-colors duration-200 bg-sage-200"></div></li><li class="flex flex-1 items-center"><div class="flex flex-col items-center gap-1"><span class="
+                    flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold
+                    transition-all duration-200
+                    
+                    
+                    bg-sage-100 text-sage-400
+                  "><span aria-hidden="true">4</span></span><span class="text-xs font-medium hidden sm:block text-sage-400">Récapitulatif</span></div></li></ol></nav><div class="space-y-8"><fieldset><legend class="mb-4 text-base font-semibold text-sage-800">Type de thérapie</legend><div class="grid grid-cols-3 gap-3" role="radiogroup" aria-label="Type de thérapie"><button type="button" role="radio" aria-checked="false" class="
+                flex flex-col items-center gap-2 rounded-xl border-2 p-4 text-center transition-all duration-150
+                hover:border-sage-400 hover:bg-sage-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-sage-600
+                border-sage-200 bg-white
+              "><svg class="h-6 w-6 text-sage-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"></path></svg><span class="text-sm font-semibold text-sage-800">Individuelle</span><span class="text-xs text-sage-500">Séance en tête-à-tête</span></button><button type="button" role="radio" aria-checked="false" class="
+                flex flex-col items-center gap-2 rounded-xl border-2 p-4 text-center transition-all duration-150
+                hover:border-sage-400 hover:bg-sage-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-sage-600
+                border-sage-200 bg-white
+              "><svg class="h-6 w-6 text-sage-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"></path></svg><span class="text-sm font-semibold text-sage-800">Couple</span><span class="text-xs text-sage-500">Thérapie de couple</span></button><button type="button" role="radio" aria-checked="false" class="
+                flex flex-col items-center gap-2 rounded-xl border-2 p-4 text-center transition-all duration-150
+                hover:border-sage-400 hover:bg-sage-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-sage-600
+                border-sage-200 bg-white
+              "><svg class="h-6 w-6 text-sage-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"></path></svg><span class="text-sm font-semibold text-sage-800">Familiale</span><span class="text-xs text-sage-500">Thérapie familiale</span></button></div></fieldset><fieldset><legend class="mb-4 text-base font-semibold text-sage-800">Mode de consultation</legend><div class="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Mode de consultation"><button type="button" role="radio" aria-checked="false" class="
+                flex flex-col items-start gap-1 rounded-xl border-2 p-4 text-left transition-all duration-150
+                hover:border-sage-400 hover:bg-sage-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-sage-600
+                border-sage-200 bg-white
+              "><svg class="h-6 w-6 text-sage-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"></path></svg><span class="text-sm font-semibold text-sage-800">Présentiel</span><span class="text-xs text-sage-500">Mercredi uniquement — au cabinet</span></button><button type="button" role="radio" aria-checked="false" class="
+                flex flex-col items-start gap-1 rounded-xl border-2 p-4 text-left transition-all duration-150
+                hover:border-sage-400 hover:bg-sage-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-sage-600
+                border-sage-200 bg-white
+              "><svg class="h-6 w-6 text-sage-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"></path></svg><span class="text-sm font-semibold text-sage-800">Téléconsultation</span><span class="text-xs text-sage-500">Lundi au vendredi — en ligne</span></button></div></fieldset><fieldset><legend class="mb-4 text-base font-semibold text-sage-800">Durée de la séance</legend><div class="flex gap-3"><label class="
+                flex flex-1 cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-3 transition-all duration-150
+                hover:border-sage-400 hover:bg-sage-50
+                border-sage-200 bg-white
+              "><input type="radio" name="duration" class="accent-sage-600" value="60"/><span class="text-sm font-semibold text-sage-800">60<!-- --> min</span></label><label class="
+                flex flex-1 cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-3 transition-all duration-150
+                hover:border-sage-400 hover:bg-sage-50
+                border-sage-200 bg-white
+              "><input type="radio" name="duration" class="accent-sage-600" value="90"/><span class="text-sm font-semibold text-sage-800">90<!-- --> min</span></label></div></fieldset><label class="flex cursor-pointer items-center gap-3 rounded-xl border-2 border-mint-200 bg-mint-50 px-4 py-3"><input type="checkbox" class="h-4 w-4 accent-sage-600"/><span class="text-sm text-sage-700">C&#x27;est ma <span class="font-semibold">première consultation</span><span class="ml-1 text-xs text-sage-500">(−15€ de réduction)</span></span></label><div class="flex justify-end pt-2"><button type="button" disabled="" class="
+            inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold
+            text-white transition-all duration-150
+            focus:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2
+            disabled:cursor-not-allowed disabled:opacity-40
+          " style="background-color:#d4a96a">Choisir un créneau<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"></path></svg></button></div></div></div><!--astro:end--></astro-island> <!-- Informations pratiques --> <aside class="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2"> <div class="rounded-xl border border-sage-200 bg-white px-5 py-4"> <h2 class="mb-1.5 text-xs font-semibold uppercase tracking-widest text-sage-500">
+Présentiel
+</h2> <p class="text-sm text-sage-700">
+📍 Cabinet — <span class="font-medium">mercredi uniquement</span> </p> <p class="mt-0.5 text-xs text-sage-500">8h–12h et 14h–19h</p> </div> <div class="rounded-xl border border-sage-200 bg-white px-5 py-4"> <h2 class="mb-1.5 text-xs font-semibold uppercase tracking-widest text-sage-500">
+Téléconsultation
+</h2> <p class="text-sm text-sage-700">
+💻 En ligne — <span class="font-medium">lundi au vendredi</span> </p> <p class="mt-0.5 text-xs text-sage-500">Prépaiement Stripe requis</p> </div> </aside> </div> </main>  </body></html> <script type="module">const o=document.getElementById("booking-link-error"),r=document.getElementById("booking-link-error-message"),n=new URLSearchParams(window.location.search).get("error");if(o&&r&&n){const e={"lien-invalide":"Le lien de confirmation est invalide, expiré ou déjà utilisé.","rdv-introuvable":"Le rendez-vous demandé est introuvable."}[n];e&&(r.textContent=e,o.classList.remove("hidden"))}</script>

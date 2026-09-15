@@ -227,7 +227,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
             className="
               inline-flex items-center justify-center w-9 h-9 rounded-full
               text-sage-400 hover:text-sage-700 hover:bg-sage-100
-              focus:outline-none focus:ring-2 focus:ring-mint-400 transition-colors shrink-0
+              focus:outline-hidden focus:ring-2 focus:ring-mint-400 transition-colors shrink-0
             "
           >
             <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -243,8 +243,8 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
           href={`mailto:${appointment.patient_email}`}
           className="
             inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-sans
-            text-sage-700 shadow-sm hover:text-mint-700 transition-colors
-            focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[40px]
+            text-sage-700 shadow-xs hover:text-mint-700 transition-colors
+            focus:outline-hidden focus:ring-2 focus:ring-mint-400 min-h-[40px]
           "
         >
           <svg className="w-4 h-4 text-sage-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -258,8 +258,8 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
             href={`tel:${appointment.patient_phone}`}
             className="
               inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-sans
-              text-sage-700 shadow-sm hover:text-mint-700 transition-colors
-              focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[40px]
+              text-sage-700 shadow-xs hover:text-mint-700 transition-colors
+              focus:outline-hidden focus:ring-2 focus:ring-mint-400 min-h-[40px]
             "
           >
             <svg className="w-4 h-4 text-sage-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -291,7 +291,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
 
       {/* ── Lieu / visio ──────────────────────────────────────────────────── */}
       <div className="mt-3 rounded-xl bg-mint-50 p-4 flex items-center gap-3">
-        <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-white shadow-sm text-mint-800 shrink-0">
+        <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-white shadow-xs text-mint-800 shrink-0">
           {isVideo ? (
             <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
               <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14 8.5l2.77-1.85A1 1 0 0118.3 7.5v5a1 1 0 01-1.53.85L14 11.5v-3z" />
@@ -330,7 +330,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
           placeholder="Notes visibles uniquement par vous…"
           className="
             w-full rounded-xl border border-sage-200 bg-white px-3 py-2 text-sm font-sans
-            text-sage-900 placeholder-sage-400 focus:outline-none focus:ring-2 focus:ring-mint-400
+            text-sage-900 placeholder-sage-400 focus:outline-hidden focus:ring-2 focus:ring-mint-400
             focus:border-transparent transition-colors
           "
         />
@@ -341,7 +341,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
             disabled={notesSaving || notes === (appointment.therapist_notes ?? '')}
             className="
               inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold font-sans
-              rounded-xl bg-sage-900 text-white hover:bg-sage-800 focus:outline-none
+              rounded-xl bg-sage-900 text-white hover:bg-sage-800 focus:outline-hidden
               focus:ring-2 focus:ring-mint-400 focus:ring-offset-1 transition-colors
               disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]
             "
@@ -361,8 +361,8 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
             rel="noopener noreferrer"
             className="
               w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm
-              font-semibold font-sans rounded-xl bg-mint-700 text-white shadow-sm hover:bg-mint-800
-              focus:outline-none focus:ring-2 focus:ring-mint-400 focus:ring-offset-1
+              font-semibold font-sans rounded-xl bg-mint-700 text-white shadow-xs hover:bg-mint-800
+              focus:outline-hidden focus:ring-2 focus:ring-mint-400 focus:ring-offset-1
               transition-colors min-h-[44px]
             "
           >
@@ -376,8 +376,8 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
             disabled={actionLoading === 'regenerate'}
             className="
               w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm
-              font-semibold font-sans rounded-xl bg-mint-700 text-white shadow-sm hover:bg-mint-800
-              focus:outline-none focus:ring-2 focus:ring-mint-400 focus:ring-offset-1
+              font-semibold font-sans rounded-xl bg-mint-700 text-white shadow-xs hover:bg-mint-800
+              focus:outline-hidden focus:ring-2 focus:ring-mint-400 focus:ring-offset-1
               transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px]
             "
           >
@@ -399,7 +399,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
             className="
               w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm
               font-medium font-sans rounded-xl border border-sage-300 text-sage-700
-              hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-mint-400
+              hover:bg-sage-50 focus:outline-hidden focus:ring-2 focus:ring-mint-400
               transition-colors min-h-[44px]
             "
           >
@@ -415,7 +415,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
                 type="checkbox"
                 checked={confirmFlags.firstSession}
                 onChange={(e) => setConfirmFlags((f) => ({ ...f, firstSession: e.target.checked }))}
-                className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+                className="h-4 w-4 rounded-sm border-sage-300 text-mint-600 focus:ring-mint-400"
               />
               Tarifier comme 1<sup>re</sup> séance
             </label>
@@ -424,7 +424,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
                 type="checkbox"
                 checked={confirmFlags.solidarity}
                 onChange={(e) => setConfirmFlags((f) => ({ ...f, solidarity: e.target.checked }))}
-                className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+                className="h-4 w-4 rounded-sm border-sage-300 text-mint-600 focus:ring-mint-400"
               />
               Tarif solidaire
             </label>
@@ -444,7 +444,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
               className="
                 w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm
                 font-semibold font-sans rounded-xl bg-sage-900 text-white hover:bg-sage-800
-                focus:outline-none focus:ring-2 focus:ring-mint-400 focus:ring-offset-1
+                focus:outline-hidden focus:ring-2 focus:ring-mint-400 focus:ring-offset-1
                 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px]
               "
             >
@@ -463,7 +463,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
               className="
                 flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm
                 font-medium font-sans rounded-xl border border-sage-300 text-sage-700
-                hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-mint-400
+                hover:bg-sage-50 focus:outline-hidden focus:ring-2 focus:ring-mint-400
                 transition-colors min-h-[44px]
               "
             >
@@ -478,7 +478,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
               className="
                 flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm
                 font-medium font-sans rounded-xl border border-sage-300 text-sage-700
-                hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-mint-400
+                hover:bg-sage-50 focus:outline-hidden focus:ring-2 focus:ring-mint-400
                 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px]
               "
             >
@@ -493,7 +493,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
               className="
                 flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm
                 font-medium font-sans rounded-xl border border-red-200 text-red-700
-                hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300
+                hover:bg-red-50 focus:outline-hidden focus:ring-2 focus:ring-red-300
                 transition-colors min-h-[44px]
               "
             >
@@ -508,7 +508,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
               className="
                 flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm
                 font-medium font-sans rounded-xl border border-red-200 text-red-700
-                hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300
+                hover:bg-red-50 focus:outline-hidden focus:ring-2 focus:ring-red-300
                 transition-colors min-h-[44px]
               "
             >
@@ -551,7 +551,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
               onChange={(e) => setRescheduleDate(e.target.value)}
               className="
                 w-full rounded-xl border border-sage-200 px-3 py-2 text-sm font-sans text-sage-900
-                focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[44px]
+                focus:outline-hidden focus:ring-2 focus:ring-mint-400 min-h-[44px]
               "
             />
             <label htmlFor={`${instanceId}-reschedule-msg`} className="sr-only">
@@ -565,7 +565,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
               placeholder="Message pour le patient (optionnel)"
               className="
                 w-full rounded-xl border border-sage-200 px-3 py-2 text-sm font-sans text-sage-900
-                placeholder-sage-400 focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[44px]
+                placeholder-sage-400 focus:outline-hidden focus:ring-2 focus:ring-mint-400 min-h-[44px]
               "
             />
             <button
@@ -583,7 +583,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
               }
               className="
                 w-full inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold
-                font-sans rounded-xl bg-sage-900 text-white hover:bg-sage-800 focus:outline-none
+                font-sans rounded-xl bg-sage-900 text-white hover:bg-sage-800 focus:outline-hidden
                 focus:ring-2 focus:ring-mint-400 focus:ring-offset-1 transition-colors
                 disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px]
               "
@@ -607,7 +607,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
               placeholder="Message pour le patient (optionnel)"
               className="
                 w-full rounded-xl border border-red-200 px-3 py-2 text-sm font-sans text-sage-900
-                placeholder-sage-400 focus:outline-none focus:ring-2 focus:ring-red-300 min-h-[44px]
+                placeholder-sage-400 focus:outline-hidden focus:ring-2 focus:ring-red-300 min-h-[44px]
               "
             />
             <button
@@ -624,7 +624,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
               }
               className="
                 w-full inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold
-                font-sans rounded-xl bg-red-700 text-white hover:bg-red-800 focus:outline-none
+                font-sans rounded-xl bg-red-700 text-white hover:bg-red-800 focus:outline-hidden
                 focus:ring-2 focus:ring-red-300 focus:ring-offset-1 transition-colors
                 disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px]
               "

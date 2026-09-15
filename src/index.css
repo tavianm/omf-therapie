@@ -1,6 +1,36 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* Design tokens — migrated from tailwind.config.js (Tailwind 4 CSS-first config) */
+@theme {
+  /* Palette sage */
+  --color-sage-50: #f4f7f4;
+  --color-sage-100: #e6ede6;
+  --color-sage-200: #cfdccf;
+  --color-sage-300: #adc2ad;
+  --color-sage-400: #85a185;
+  --color-sage-500: #658465;
+  --color-sage-600: #4e674e;
+  --color-sage-700: #405440;
+  --color-sage-800: #364436;
+  --color-sage-900: #2e392e;
+
+  /* Palette mint */
+  --color-mint-50: #f2f8f6;
+  --color-mint-100: #e6f1ed;
+  --color-mint-200: #d1e5df;
+  --color-mint-300: #acd3c8;
+  --color-mint-400: #7eb6a7;
+  --color-mint-500: #5e9c8d;
+  --color-mint-600: #477a6d;
+  --color-mint-700: #3c6259;
+  --color-mint-800: #345049;
+  --color-mint-900: #2d423d;
+
+  /* Typography */
+  --font-sans: 'Inter', sans-serif;
+  --font-serif: 'Cormorant Garamond', serif;
+}
 
 @layer base {
   html {
@@ -15,7 +45,7 @@
 
 @layer components {
   .btn-primary {
-    @apply bg-mint-600 text-white px-6 py-3 rounded-lg hover:bg-mint-700 transition-colors duration-300 inline-flex items-center gap-2 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-mint-500;
+    @apply bg-mint-600 text-white px-6 py-3 rounded-lg hover:bg-mint-700 transition-colors duration-300 inline-flex items-center gap-2 min-h-[44px] focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-mint-500;
   }
 
   .section-title {
@@ -26,6 +56,30 @@
     @apply text-xl text-sage-600 mb-12 max-w-2xl mx-auto;
   }
 }
+
+/* Blog prose palette — ex-config typography plugin (tailwind.config.js), values unchanged.
+   Deliberately UNLAYERED: Tailwind 4 buckets the typography plugin's `--tw-prose-*`
+   defaults into @layer utilities, which beats @layer components — an in-layer override
+   dies in the cascade. Unlayered author declarations outrank every layer. */
+.prose-sage {
+  --tw-prose-body: var(--color-sage-600);
+  --tw-prose-headings: var(--color-sage-800);
+  --tw-prose-lead: var(--color-sage-700);
+  --tw-prose-links: var(--color-mint-600);
+  --tw-prose-bold: var(--color-sage-800);
+  --tw-prose-counters: var(--color-sage-500);
+  --tw-prose-bullets: var(--color-sage-400);
+  --tw-prose-hr: var(--color-sage-200);
+  --tw-prose-quotes: var(--color-sage-700);
+  --tw-prose-quote-borders: var(--color-mint-300);
+  --tw-prose-captions: var(--color-sage-500);
+  --tw-prose-code: var(--color-sage-800);
+  --tw-prose-pre-code: var(--color-sage-200);
+  --tw-prose-pre-bg: var(--color-sage-800);
+  --tw-prose-th-borders: var(--color-sage-300);
+  --tw-prose-td-borders: var(--color-sage-200);
+}
+
 
 /* Dans index.css — font fallback calibré pour Inter */
 @font-face {

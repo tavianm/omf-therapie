@@ -1,5 +1,5 @@
 ---
-id: "6"
+postId: "6"
 title: "Les troubles du comportement alimentaire : comprendre et accompagner"
 excerpt: "Un éclairage sur les différents troubles du comportement alimentaire, leurs manifestations et les approches thérapeutiques adaptées."
 date: "4 octobre 2025"

@@ -1,0 +1,211 @@
+<!DOCTYPE html><html lang="fr"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="theme-color" content="#ffffff"><title>Politique de confidentialité — OMF Thérapie</title><meta name="description" content="Politique de confidentialité d'OMF Thérapie conforme au RGPD (règlement UE 2016/679) et aux recommandations CNIL 2024."><link rel="canonical" href="https://omf-therapie.fr/confidentialite"><!-- Open Graph --><meta property="og:type" content="website"><meta property="og:url" content="https://omf-therapie.fr/confidentialite"><meta property="og:title" content="Politique de confidentialité — OMF Thérapie"><meta property="og:description" content="Politique de confidentialité d'OMF Thérapie conforme au RGPD (règlement UE 2016/679) et aux recommandations CNIL 2024."><meta property="og:image" content="https://omf-therapie.fr/assets/about/oriane-montabonnet-1.webp"><meta property="og:locale" content="fr_FR"><meta property="og:site_name" content="OMF Thérapie — Oriane Montabonnet"><!-- Twitter Card --><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="Politique de confidentialité — OMF Thérapie"><meta name="twitter:description" content="Politique de confidentialité d'OMF Thérapie conforme au RGPD (règlement UE 2016/679) et aux recommandations CNIL 2024."><meta name="twitter:image" content="https://omf-therapie.fr/assets/about/oriane-montabonnet-1.webp"><!-- JSON-LD Structured Data --><!-- Fonts --><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"><!-- Favicon --><link rel="icon" href="/assets/favicon.ico" sizes="32x32"><link rel="icon" type="image/svg+xml" href="/assets/favicon.svg"><link rel="icon" type="image/png" sizes="96x96" href="/assets/favicon-96x96.png"><link rel="apple-touch-icon" href="/assets/apple-touch-icon.png"><link rel="manifest" href="/assets/site.webmanifest"><script>
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){ window.dataLayer.push(arguments); }
+          gtag('consent', 'default', {
+            ad_storage: "denied",
+            ad_user_data: "denied", 
+            ad_personalization: "denied",
+            analytics_storage: "denied",
+            functionality_storage: "denied",
+            personalization_storage: "denied",
+            security_storage: "granted",
+            wait_for_update: 2000,
+          });
+          gtag('set', 'ads_data_redaction', true);
+          gtag('set', 'url_passthrough', true);
+
+          // Register the listener BEFORE CookieYes loads so we never miss the
+          // first consent signal (returning visitors get it very early).
+          //
+          // Expose a Promise that resolves the first time the visitor grants
+          // analytics consent. Page scripts (e.g. /rdv/merci conversions) await
+          // it before firing GA4 events.
+          //
+          // CookieYes emits the `cookieyes_consent_update` event on banner
+          // interaction, but NOT when it restores a returning visitor's consent
+          // on load — that path only updates Google Consent Mode. So we cannot
+          // rely on the event alone. Instead we resolve from any of three
+          // signals, whichever lands first:
+          //   1. the CookieYes event (first-time grant), or
+          //   2. a `gtag('consent','update',{analytics_storage:'granted'})`
+          //      entry observed in the dataLayer — vendor-agnostic and covers
+          //      the returning-visitor restore path.
+          // Polling the dataLayer array (rather than hooking .push or window.gtag)
+          // is race-free: nothing reassigns the array, and past entries persist.
+          window.__ckyAnalyticsReady = new Promise(function (resolve) {
+            function grantedInDataLayer() {
+              var dl = window.dataLayer || [];
+              for (var i = 0; i < dl.length; i++) {
+                var e = dl[i];
+                if (e && e[0] === 'consent' && e[1] === 'update' &&
+                    e[2] && e[2].analytics_storage === 'granted') {
+                  return true;
+                }
+              }
+              return false;
+            }
+            document.addEventListener('cookieyes_consent_update', function (e) {
+              var accepted = (e.detail && e.detail.accepted) || [];
+              if (accepted.indexOf('analytics') !== -1) resolve();
+            });
+            if (grantedInDataLayer()) { resolve(); return; }
+            var timer = setInterval(function () {
+              if (grantedInDataLayer()) { clearInterval(timer); resolve(); }
+            }, 150);
+            // Stop polling once consent is clearly settled without analytics.
+            setTimeout(function () { clearInterval(timer); }, 6000);
+          });
+        </script><script id="cookieyes" type="text/javascript" src="https://cdn-cookieyes.com/client_data/eca55ddc4625974185ff383e357080fb/script.js">
+        </script><script async src="https://www.googletagmanager.com/gtag/js?id=undefined"></script><script>(function(){const ga4Id = undefined;
+
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){ window.dataLayer.push(arguments); }
+          gtag('js', new Date());
+          gtag('config', ga4Id);
+        })();</script><link rel="stylesheet" href="/_astro/a-propos.BqBvhrlK.css"></head> <body>  <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded-sm">
+Aller au contenu principal
+</a> <style>astro-island,astro-slot,astro-static-slot{display:contents}</style><script>(()=>{var e=async t=>{await(await t())()};(self.Astro||(self.Astro={})).load=e;window.dispatchEvent(new Event("astro:load"));})();</script><script>(()=>{var A=Object.defineProperty;var g=(i,o,a)=>o in i?A(i,o,{enumerable:!0,configurable:!0,writable:!0,value:a}):i[o]=a;var d=(i,o,a)=>g(i,typeof o!="symbol"?o+"":o,a);{let i={0:t=>m(t),1:t=>a(t),2:t=>new RegExp(t),3:t=>new Date(t),4:t=>new Map(a(t)),5:t=>new Set(a(t)),6:t=>BigInt(t),7:t=>new URL(t),8:t=>new Uint8Array(t),9:t=>new Uint16Array(t),10:t=>new Uint32Array(t),11:t=>1/0*t},o=t=>{let[l,e]=t;return l in i?i[l](e):void 0},a=t=>t.map(o),m=t=>typeof t!="object"||t===null?t:Object.fromEntries(Object.entries(t).map(([l,e])=>[l,o(e)]));class y extends HTMLElement{constructor(){super(...arguments);d(this,"Component");d(this,"hydrator");d(this,"hydrate",async()=>{var b;if(!this.hydrator||!this.isConnected)return;let e=(b=this.parentElement)==null?void 0:b.closest("astro-island[ssr]");if(e){e.addEventListener("astro:hydrate",this.hydrate,{once:!0});return}let c=this.querySelectorAll("astro-slot"),n={},h=this.querySelectorAll("template[data-astro-template]");for(let r of h){let s=r.closest(this.tagName);s!=null&&s.isSameNode(this)&&(n[r.getAttribute("data-astro-template")||"default"]=r.innerHTML,r.remove())}for(let r of c){let s=r.closest(this.tagName);s!=null&&s.isSameNode(this)&&(n[r.getAttribute("name")||"default"]=r.innerHTML)}let p;try{p=this.hasAttribute("props")?m(JSON.parse(this.getAttribute("props"))):{}}catch(r){let s=this.getAttribute("component-url")||"<unknown>",v=this.getAttribute("component-export");throw v&&(s+=` (export ${v})`),console.error(`[hydrate] Error parsing props for component ${s}`,this.getAttribute("props"),r),r}let u;await this.hydrator(this)(this.Component,p,n,{client:this.getAttribute("client")}),this.removeAttribute("ssr"),this.dispatchEvent(new CustomEvent("astro:hydrate"))});d(this,"unmount",()=>{this.isConnected||this.dispatchEvent(new CustomEvent("astro:unmount"))})}disconnectedCallback(){document.removeEventListener("astro:after-swap",this.unmount),document.addEventListener("astro:after-swap",this.unmount,{once:!0})}connectedCallback(){if(!this.hasAttribute("await-children")||document.readyState==="interactive"||document.readyState==="complete")this.childrenConnectedCallback();else{let e=()=>{document.removeEventListener("DOMContentLoaded",e),c.disconnect(),this.childrenConnectedCallback()},c=new MutationObserver(()=>{var n;((n=this.lastChild)==null?void 0:n.nodeType)===Node.COMMENT_NODE&&this.lastChild.nodeValue==="astro:end"&&(this.lastChild.remove(),e())});c.observe(this,{childList:!0}),document.addEventListener("DOMContentLoaded",e)}}async childrenConnectedCallback(){let e=this.getAttribute("before-hydration-url");e&&await import(e),this.start()}async start(){let e=JSON.parse(this.getAttribute("opts")),c=this.getAttribute("client");if(Astro[c]===void 0){window.addEventListener(`astro:${c}`,()=>this.start(),{once:!0});return}try{await Astro[c](async()=>{let n=this.getAttribute("renderer-url"),[h,{default:p}]=await Promise.all([import(this.getAttribute("component-url")),n?import(n):()=>()=>{}]),u=this.getAttribute("component-export")||"default";if(!u.includes("."))this.Component=h[u];else{this.Component=h;for(let f of u.split("."))this.Component=this.Component[f]}return this.hydrator=p,this.hydrate},e,this)}catch(n){console.error(`[astro-island] Error hydrating ${this.getAttribute("component-url")}`,n)}}attributeChangedCallback(){this.hydrate()}}d(y,"observedAttributes",["props"]),customElements.get("astro-island")||customElements.define("astro-island",y)}})();</script><astro-island uid="Z1WIzC5" prefix="r0" component-url="/_astro/Navbar.DYuVtZy0.js" component-export="default" renderer-url="/_astro/client.DepRUxGq.js" props="{&quot;isHomePage&quot;:[0,false]}" ssr client="load" opts="{&quot;name&quot;:&quot;Navbar&quot;,&quot;value&quot;:true}" await-children><header class="bg-white shadow-xs fixed top-0 w-full z-50 "><nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8" role="navigation" aria-label="Navigation principale"><div class="flex justify-between h-20"><div class="flex items-center mr-3"><a href="/" class="flex items-center" aria-label="Accueil Oriane Montabonnet"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-leaf h-8 w-8 text-mint-600" aria-hidden="true"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"></path><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"></path></svg><span class="ml-2 text-xl font-serif font-medium text-sage-800">Oriane Montabonnet</span></a></div><ul class="hidden lg:flex md:items-center xl:space-x-8 lg:space-x-4" role="list"><li role="listitem"><button class="text-mint-600 transition-colors duration-200 font-medium min-h-[44px] min-w-[44px] flex items-center justify-center" aria-current="page">Accueil</button></li><li role="listitem"><a href="/a-propos/" class="text-sage-600 hover:text-mint-500 transition-colors duration-200 font-medium min-h-[44px] min-w-[44px] flex items-center justify-center">À propos</a></li><li role="listitem"><a href="/services/" class="text-sage-600 hover:text-mint-500 transition-colors duration-200 font-medium min-h-[44px] min-w-[44px] flex items-center justify-center">Mes Services</a></li><li role="listitem"><button class="text-sage-600 hover:text-mint-500 transition-colors duration-200 font-medium min-h-[44px] min-w-[44px] flex items-center justify-center">Tarifs</button></li><li role="listitem"><a href="/blog/" class="text-sage-600 hover:text-mint-500 transition-colors duration-200 font-medium min-h-[44px] min-w-[44px] flex items-center justify-center">Blog</a></li><li role="listitem"><a href="/rendez-vous/" class="text-sage-600 hover:text-mint-500 transition-colors duration-200 font-medium min-h-[44px] min-w-[44px] flex items-center justify-center">Prendre rendez-vous</a></li></ul><div class="flex items-center lg:hidden max-[412px]:gap-2 max-sm:gap-4 gap-6"><button class="text-sage-500 hover:text-sage-600 min-h-[44px] min-w-[44px] flex items-center justify-center" aria-expanded="false" aria-controls="mobile-menu" aria-label="Ouvrir le menu"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-menu h-6 w-6" aria-hidden="true"><path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h16"></path></svg></button></div></div></nav></header><!--astro:end--></astro-island> <main id="main-content" class="pt-20" tabindex="-1"> <div class="bg-sage-50 py-8 px-4"> <div class="max-w-3xl mx-auto"> <nav class="mb-4 text-sm text-sage-500" aria-label="Fil d'Ariane"> <ol class="flex items-center gap-2 flex-wrap" role="list"> <li role="listitem"><a href="/" class="hover:text-mint-600 transition-colors">Accueil</a></li> <li role="listitem" aria-hidden="true">›</li> <li role="listitem" aria-current="page" class="text-sage-700 font-medium">Politique de confidentialité</li> </ol> </nav> <h1 class="text-3xl md:text-4xl font-serif font-semibold text-sage-800">
+Politique de confidentialité
+</h1> </div> </div> <section class="max-w-3xl mx-auto px-4 py-8 md:py-10"> <p class="text-sage-700 mb-8">
+La présente politique de confidentialité décrit la façon dont
+<strong>Oriane Montabonnet</strong> (ci-après «&nbsp;nous&nbsp;» ou
+        «&nbsp;le responsable du traitement&nbsp;») collecte, utilise et protège
+        vos données personnelles, conformément au règlement (UE) 2016/679 du
+        Parlement européen et du Conseil du 27 avril 2016 (RGPD) et à la loi
+        n°78-17 du 6 janvier 1978 modifiée (loi Informatique et Libertés).
+</p> <!-- 1. Responsable du traitement --> <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+1. Responsable du traitement
+</h2> <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div> <address class="not-italic mb-8 space-y-1"> <p><strong>Oriane Montabonnet</strong>, psychopraticienne</p> <p>1086 Av. Albert Einstein, 34000 Montpellier</p> <p>
+E-mail :
+<a href="mailto:contact@omf-therapie.fr" class="text-mint-600 underline hover:text-mint-700"> contact@omf-therapie.fr </a> </p> <p>
+Téléphone :
+<a href="tel:+33650331853" class="text-mint-600 underline hover:text-mint-700"> 06 50 33 18 53 </a> </p> </address> <!-- 2. Données collectées --> <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+2. Données collectées
+</h2> <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div> <h3 class="text-xl font-serif font-semibold text-sage-800 mt-6 mb-3">
+Formulaire de contact
+</h3> <p class="mb-4">
+Lorsque vous utilisez notre formulaire de contact, nous collectons les
+        informations suivantes :
+</p> <ul class="list-disc pl-6 space-y-2 mb-6"> <li>Nom et prénom</li> <li>Adresse e-mail</li> <li>Numéro de téléphone</li> <li>Contenu de votre message</li> </ul> <h3 class="text-xl font-serif font-semibold text-sage-800 mt-6 mb-3">
+Formulaire de prise de rendez-vous
+</h3> <p class="mb-4">
+Lors de la réservation d'une séance en ligne, nous collectons :
+</p> <ul class="list-disc pl-6 space-y-2 mb-6"> <li>Nom et prénom</li> <li>Adresse e-mail</li> <li>Numéro de téléphone</li> <li>Type de consultation souhaité (individuelle, de couple, familiale)</li> <li>Durée souhaitée (60 ou 90 minutes)</li> <li>Motif de consultation (facultatif)</li> </ul> <h3 class="text-xl font-serif font-semibold text-sage-800 mt-6 mb-3">
+Intégration Google Calendar (usage interne uniquement)
+</h3> <p class="mb-4">
+Dans le cadre de la gestion des rendez-vous, l'application accède au compte
+        Google Calendar du responsable du traitement (la praticienne) afin de :
+</p> <ul class="list-disc pl-6 space-y-2 mb-4"> <li>vérifier les disponibilités en temps réel (données de disponibilité utilisées à la volée, jamais stockées) ;</li> <li>créer des événements de rendez-vous avec lien Google Meet pour les téléconsultations.</li> </ul> <p class="mb-4">
+L'identifiant d'événement Google Calendar et le lien Google Meet sont conservés
+        dans notre base de données le temps du rendez-vous, puis soumis à la politique
+        de conservation standard (5 ans).
+</p> <p class="mb-8"> <strong>Aucune donnée Google d'un patient ou visiteur n'est jamais collectée.</strong>
+Les patients ne se connectent pas avec Google. L'accès à l'API Google Calendar
+        est réalisé exclusivement côté serveur ; aucune donnée n'est exposée au navigateur.
+</p> <h3 class="text-xl font-serif font-semibold text-sage-800 mt-6 mb-3">
+Cookie de session administrateur
+</h3> <p class="mb-8">
+Un cookie de session technique (httpOnly, sécurisé) est utilisé
+        exclusivement pour l'authentification à l'espace d'administration du site.
+        Ce cookie n'effectue aucun suivi de navigation, n'est pas accessible via
+        JavaScript et n'est déposé que lors d'une connexion à l'interface
+        d'administration. <strong>Aucune donnée de navigation n'est collectée.</strong>
+Nous n'utilisons pas d'outil d'analyse d'audience (pas de Google Analytics,
+        pas de Matomo, etc.).
+</p> <!-- 3. Finalités et bases légales --> <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+3. Finalités et bases légales des traitements
+</h2> <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div> <div class="overflow-x-auto mb-8"> <table class="w-full text-sm border-collapse"> <thead> <tr class="bg-sage-100 text-sage-800"> <th class="text-left p-3 border border-sage-200 font-semibold">Finalité</th> <th class="text-left p-3 border border-sage-200 font-semibold">Base légale (RGPD)</th> </tr> </thead> <tbody> <tr> <td class="p-3 border border-sage-200">Répondre à vos demandes de contact</td> <td class="p-3 border border-sage-200">Consentement — art. 6-1-a</td> </tr> <tr class="bg-sage-50"> <td class="p-3 border border-sage-200">Gestion des rendez-vous et facturation</td> <td class="p-3 border border-sage-200">Exécution d'un contrat — art. 6-1-b</td> </tr> <tr> <td class="p-3 border border-sage-200">Administration et sécurité du site</td> <td class="p-3 border border-sage-200">Intérêt légitime — art. 6-1-f</td> </tr> </tbody> </table> </div> <!-- 4. Durée de conservation --> <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+4. Durée de conservation
+</h2> <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div> <ul class="list-disc pl-6 space-y-2 mb-8"> <li> <strong>Données de contact</strong> : 3 ans à compter du dernier contact,
+          conformément aux recommandations CNIL.
+</li> <li> <strong>Données de rendez-vous</strong> : 5 ans à compter de la séance,
+          correspondant au délai de prescription civile (art. 2224 du Code civil).
+</li> <li> <strong>Données de paiement</strong> : gérées directement par Stripe.
+          Les données comptables sont conservées 10 ans conformément aux obligations
+          légales (art. L123-22 du Code de commerce).
+</li> <li> <strong>Cookie de session</strong> : valable 7 jours, supprimé à la déconnexion anticipée.
+</li> </ul> <!-- 5. Destinataires et sous-traitants --> <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+5. Destinataires et sous-traitants
+</h2> <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div> <p class="mb-4">
+Vos données peuvent être transmises aux sous-traitants techniques
+        suivants, dans le strict cadre des finalités décrites ci-dessus. Ces
+        transferts hors Union européenne sont encadrés par des garanties
+        appropriées (clauses contractuelles types approuvées par la Commission
+        européenne) :
+</p> <ul class="list-disc pl-6 space-y-2 mb-8"> <li> <strong>Supabase</strong> (Supabase, Inc., USA) — base de données et
+          stockage sécurisé des données de rendez-vous et de contact.
+</li> <li> <strong>Resend</strong> (Resend, Inc., USA) — envoi des e-mails
+          transactionnels (confirmation de rendez-vous, accusé de réception de
+          contact).
+</li> <li> <strong>Stripe</strong> (Stripe, Inc., USA) — traitement sécurisé des
+          paiements pour les téléconsultations. Les données de carte bancaire ne
+          transitent pas par nos serveurs.
+</li> <li> <strong>Google</strong> (Google LLC, USA) — accès au calendrier de la
+          praticienne via l'API Google Calendar (scopes :
+<code class="text-sm bg-sage-100 px-1 rounded-sm">calendar.events</code> et
+<code class="text-sm bg-sage-100 px-1 rounded-sm">calendar.readonly</code>)
+          pour la vérification des disponibilités et la création d'événements avec
+          lien Google Meet pour les téléconsultations. Aucune donnée Google des
+          patients n'est traitée. —
+<a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" class="text-mint-600 underline hover:text-mint-700">Politique de confidentialité Google</a>.
+</li> <li> <strong>Netlify</strong> (Netlify, Inc., USA) — hébergement du site web.
+</li> </ul> <!-- 6. Vos droits --> <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+6. Vos droits
+</h2> <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div> <p class="mb-4">
+Conformément au RGPD, vous disposez des droits suivants concernant vos
+        données personnelles :
+</p> <ul class="list-disc pl-6 space-y-2 mb-6"> <li><strong>Droit d'accès</strong> (art. 15 RGPD) : obtenir la confirmation que vos données sont traitées et en recevoir une copie.</li> <li><strong>Droit de rectification</strong> (art. 16 RGPD) : faire corriger des données inexactes ou incomplètes.</li> <li><strong>Droit à l'effacement</strong> (art. 17 RGPD) : obtenir la suppression de vos données dans les conditions prévues par le RGPD.</li> <li><strong>Droit à la portabilité</strong> (art. 20 RGPD) : recevoir vos données dans un format structuré et lisible par machine.</li> <li><strong>Droit d'opposition</strong> (art. 21 RGPD) : vous opposer au traitement de vos données pour des motifs légitimes.</li> <li><strong>Droit à la limitation</strong> (art. 18 RGPD) : demander la suspension temporaire du traitement de vos données.</li> </ul> <p class="mb-4">
+Pour exercer vos droits, contactez-nous :
+</p> <ul class="list-disc pl-6 space-y-2 mb-6"> <li>
+Par e-mail :
+<a href="mailto:contact@omf-therapie.fr" class="text-mint-600 underline hover:text-mint-700">
+contact@omf-therapie.fr
+</a> </li> <li>
+Via notre formulaire de contact :
+<a href="/contact" class="text-mint-600 underline hover:text-mint-700">
+Nous contacter
+</a> </li> </ul> <p class="mb-8">
+Nous nous engageons à répondre dans un délai d'un mois à compter de la
+        réception de votre demande. En cas de réponse insatisfaisante, vous pouvez
+        adresser une réclamation à la
+<a href="https://www.cnil.fr/fr/plaintes" target="_blank" rel="noopener noreferrer" class="text-mint-600 underline hover:text-mint-700">
+Commission Nationale de l'Informatique et des Libertés (CNIL)
+</a>.
+</p> <!-- 7. Cookies --> <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+7. Cookies
+</h2> <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div> <p class="mb-4">
+Ce site utilise un seul cookie, de nature strictement technique :
+</p> <ul class="list-disc pl-6 space-y-2 mb-4"> <li> <strong>Cookie de session administrateur</strong> : déposé uniquement lors
+          d'une connexion à l'interface d'administration. Il est httpOnly (non
+          accessible via JavaScript), sécurisé (transmis uniquement via HTTPS),
+          valable 7 jours et supprimé à la déconnexion anticipée.
+</li> </ul> <p class="mb-8">
+Ce site ne dépose <strong>aucun cookie de mesure d'audience, de
+        publicité ou de suivi</strong>. Aucun consentement aux cookies n'est
+        requis pour les visiteurs du site.
+</p> <!-- 8. Sécurité --> <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+8. Sécurité des données
+</h2> <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div> <p class="mb-8">
+Nous mettons en œuvre les mesures techniques et organisationnelles
+        appropriées pour protéger vos données personnelles contre toute perte,
+        accès non autorisé, divulgation, altération ou destruction. Les données
+        sont chiffrées en transit (HTTPS/TLS) et au repos. L'accès aux données
+        est strictement limité aux personnes habilitées.
+</p> <!-- 9. Contact DPO --> <h2 class="text-2xl font-serif font-semibold text-sage-800 mt-8 mb-3">
+9. Contact — Responsable du traitement
+</h2> <div class="h-px bg-sage-200 mb-6" aria-hidden="true"></div> <p class="mb-8">
+Pour toute question relative à la présente politique de confidentialité ou
+        à l'exercice de vos droits, contactez directement le responsable du
+        traitement :
+<a href="mailto:contact@omf-therapie.fr" class="text-mint-600 underline hover:text-mint-700">
+contact@omf-therapie.fr
+</a>.
+</p> <hr class="my-8 border-sage-200"> <p class="text-sage-600 text-sm"> <time datetime="2026-05-20">Mise à jour : 20 mai 2026</time> </p> </section> </main> <footer class="bg-sage-800 text-sage-100" role="contentinfo" aria-label="Pied de page"> <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-4 pt-8"> <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8"> <!-- Colonne 1 : Marque --> <div class="space-y-4" role="group" aria-label="Marque"> <div class="flex items-center gap-2"> <!-- Icône feuille (lucide leaf) --> <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-mint-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="leaf"> <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"></path> <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"></path> </svg> <span class="text-lg font-serif font-medium transition-colors"> Oriane Montabonnet </span> </div> <p class="text-sage-300 text-sm">Psychopraticienne TCCE à Montpellier, Oriane Montabonnet vous accompagne en thérapie individuelle, de couple, familiale et dans la gestion de l&#39;anxiété et des troubles alimentaires.</p> <ul class="flex items-center gap-4" role="list" aria-label="Réseaux sociaux"> <li role="listitem"> <a href="https://www.instagram.com/omf.therapie" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 text-sage-300 hover:text-mint-400 hover:underline transition-colors" aria-label="Suivez-moi sur Instagram"> <!-- Icône Instagram inline SVG --> <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"> <rect width="20" height="20" x="2" y="2" rx="5" ry="5"></rect> <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path> <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"></line> </svg> <span>@omf.therapie</span> </a> </li> </ul> </div> <!-- Colonne 2 : Contact --> <div role="group" aria-label="Contact"> <h2 class="text-lg font-medium mb-4 text-sage-100">Contact</h2> <ul class="space-y-3" role="list" aria-label="Informations de contact"> <li role="listitem"> <a href="tel:+33650331853" class="flex items-center gap-2 text-sage-300 hover:text-mint-400 hover:underline transition-colors" aria-label="Appeler le 06 50 33 18 53"> <!-- Icône téléphone --> <svg xmlns="http://www.w3.org/2000/svg" class="min-h-5 min-w-5 h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"> <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.29h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.88a16 16 0 0 0 6.06 6.06l1.65-1.65a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path> </svg> <span>06 50 33 18 53</span> </a> </li> <li role="listitem"> <a href="mailto:contact@omf-therapie.fr" class="flex items-center gap-2 text-sage-300 hover:text-mint-400 hover:underline transition-colors" aria-label="Envoyer un email à contact@omf-therapie.fr"> <!-- Icône email --> <svg xmlns="http://www.w3.org/2000/svg" class="min-h-5 min-w-5 h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"> <rect width="20" height="16" x="2" y="4" rx="2"></rect> <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path> </svg> <span>contact@omf-therapie.fr</span> </a> </li> <li role="listitem"> <a href="https://www.google.com/maps/search/Oriane%20Montabonnet%201086%20Av.%20Albert%20Einstein%2C%2034000%20Montpellier" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 text-sage-300 hover:text-mint-400 hover:underline transition-colors" aria-label="Ouvrir la carte à Oriane Montabonnet 1086 Av. Albert Einstein, 34000 Montpellier"> <!-- Icône épingle carte --> <svg xmlns="http://www.w3.org/2000/svg" class="min-h-5 min-w-5 h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"> <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path> <circle cx="12" cy="10" r="3"></circle> </svg> <span>1086 Av. Albert Einstein, 34000 Montpellier</span> </a> </li> </ul> </div> <!-- Colonne 3 : Liens Rapides --> <nav aria-label="Navigation du pied de page"> <h2 class="text-lg font-medium mb-4 text-sage-100">Liens Rapides</h2> <ul class="space-y-3" role="list"> <li role="listitem"> <a href="/#home" class="text-sage-300 hover:text-mint-400 hover:underline transition-colors"> Accueil </a> </li><li role="listitem"> <a href="/blog" class="text-sage-300 hover:text-mint-400 hover:underline transition-colors"> Blog </a> </li><li role="listitem"> <a href="/contact" class="text-sage-300 hover:text-mint-400 hover:underline transition-colors"> Contact </a> </li><li role="listitem"> <a href="/rendez-vous" class="text-sage-300 hover:text-mint-400 hover:underline transition-colors"> Prendre rendez-vous </a> </li> </ul> </nav> <!-- Colonne 4 : Horaires --> <div role="group" aria-label="Horaires"> <h2 class="text-lg font-medium mb-4 text-sage-100">Horaires</h2> <div class="space-y-3 text-sage-300"> <div>Lundi - Vendredi</div> <ul role="list" aria-label="Horaires d'ouverture"> <li role="listitem">8h - 12h</li><li role="listitem">14h - 19h</li> </ul> </div> <div class="mt-3"> <a href="https://www.psychologue.net/cabinets/montabonnet-oriane?utm_source=448100&utm_medium=widget&utm_campaign=widget-company_stamp" target="_blank" rel="noopener noreferrer"> <img src="https://www.psychologue.net/stamp.xpng?com=448100&v=10" alt="Montabonnet Oriane" width="175" height="auto" loading="lazy"> </a> </div> </div> </div> <!-- Bas de pied de page --> <div class="mt-8 pt-4 border-t border-sage-700 text-center text-sage-300 text-sm space-y-2"> <p>©2026 Oriane Montabonnet. Tous droits réservés.</p> <nav aria-label="Liens légaux" class="flex flex-wrap justify-center gap-x-4 gap-y-1"> <a href="/mentions-legales" class="hover:text-mint-400 hover:underline transition-colors">
+Mentions légales
+</a> <a href="/confidentialite" class="hover:text-mint-400 hover:underline transition-colors">
+Confidentialité
+</a> <a href="/cgv" class="hover:text-mint-400 hover:underline transition-colors">
+CGV
+</a> <a href="/accessibilite" class="hover:text-mint-400 hover:underline transition-colors" aria-label="Page accessibilité — non conforme">
+Accessibilité : non conforme
+</a> </nav> </div> </div> </footer>  </body></html>

@@ -123,7 +123,7 @@ const Navbar = memo(
 
     return (
       <header
-        className={`bg-white shadow-sm fixed top-0 w-full z-50 ${className}`}
+        className={`bg-white shadow-xs fixed top-0 w-full z-50 ${className}`}
       >
         <nav
           className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"

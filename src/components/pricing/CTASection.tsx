@@ -7,7 +7,7 @@ export const CTASection = () => {
   return (
     <motion.div
       {...fadeIn()}
-      className="mt-5 md:mt-10 bg-white p-8 rounded-lg shadow-sm text-center"
+      className="mt-5 md:mt-10 bg-white p-8 rounded-lg shadow-xs text-center"
     >
       <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-4">
         Prêt à commencer ?

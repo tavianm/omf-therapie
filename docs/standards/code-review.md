@@ -7,7 +7,7 @@
 - [ ] `npm run lint` passes
 - [ ] `npm run test` passes (Vitest)
 - [ ] `npm run build` passes
-- [ ] `npm run typecheck` — note any new errors (advisory only; don't introduce new ones)
+- [ ] `npm run typecheck` passes (blocking CI gate)
 - [ ] **UI/visual change:** `npm run audit:a11y` passes (WCAG 2.1 AA)
 - [ ] **E2E-relevant change:** relevant Playwright specs pass locally
 

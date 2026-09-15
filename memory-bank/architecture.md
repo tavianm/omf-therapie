@@ -126,8 +126,8 @@ Email confirm      payment_pending (télé)
 
 ### CI / Quality Gates
 
-- **Workflow** `.github/workflows/ci.yml` (#85) : job `build` bloquant = `lint → test → build`. Job `typecheck-advisory` non bloquant (`continue-on-error: true`) qui surfacera les erreurs résiduelles (#68 suit les ~20 erreurs de typage préexistantes — googleapis, better-auth, stripe, react-email).
-- **Node** : `.nvmrc` pinne Node 20 (parité avec `netlify.toml`).
+- **Workflow** `.github/workflows/ci.yml` : job `build` bloquant = `lint → test → build → diff HTML`; job `typecheck` également bloquant.
+- **Node** : la racine `.nvmrc` pinne Node 22.23.2, résolu nativement par Netlify.
 - **Branch protection** (manuel) : après le 1er run sur `main`, exiger `CI / build` + « Dismiss stale pull request approvals ».
 
 ### Database (PostgreSQL 16)
@@ -200,4 +200,4 @@ Templates React Email dans `src/emails/` :
 - **PostgREST** : simule Supabase en local pour compatibilité SDK `@supabase/supabase-js`
 - **trailingSlash: 'always'** : tous les fetch() et redirects côté client DOIVENT inclure le slash final
 - **Avoirs internes plutôt que remboursements Stripe** (#63/#66) : annulation d'un RDV vidéo payé → avoir interne réutilisable (cash conservé). Aucun Stripe refund — `payment_received` = statut unifié « réglé ».
-- **CI bloquant, typecheck advisory** (#85) : lint+test+build ferment le merge ; typecheck reste advisory jusqu'à résolution de #68.
+- **CI bloquant** : lint, tests, build, diff HTML et typecheck ferment le merge.
