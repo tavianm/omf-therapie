@@ -19,7 +19,11 @@ import type { Appointment } from '../../../../types/appointment';
 import type { PrefillData } from '../../../../types/patient';
 import { getTypeLabel, getModeLabel } from '../../../../lib/pricing';
 import { formatTimeParis, isUpcoming } from '../../../../utils/date';
-import { aggregatePatients, type PatientAggregate } from '../../../../utils/workbench';
+import {
+  aggregatePatients,
+  getReviewableAppointmentId,
+  type PatientAggregate,
+} from '../../../../utils/workbench';
 import { Avatar, ModalOverlay, Prochainement, StatusChip } from '../ui';
 
 interface PatientsViewProps {
@@ -330,6 +334,33 @@ interface DossierProps {
 }
 
 function Dossier({ patient, onClose, onPlan }: DossierProps) {
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewMessage, setReviewMessage] = useState<string | null>(null);
+  const reviewableAppointmentId = getReviewableAppointmentId(patient.history);
+
+  async function handleSendReviewReminder() {
+    if (!reviewableAppointmentId) return;
+    setReviewLoading(true);
+    setReviewMessage(null);
+    try {
+      const response = await fetch('/api/send-review-email/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ appointmentId: reviewableAppointmentId }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? "Erreur lors de l'envoi du rappel d'avis");
+      }
+      setReviewMessage(`Relance d'avis envoyée à ${patient.name}.`);
+    } catch (error) {
+      setReviewMessage(error instanceof Error ? error.message : 'Erreur inconnue');
+    } finally {
+      setReviewLoading(false);
+    }
+  }
+
   return (
     <article className="flex flex-col" aria-label={`Dossier de ${patient.name}`}>
       {/* Identité */}
@@ -460,6 +491,24 @@ function Dossier({ patient, onClose, onPlan }: DossierProps) {
       >
         Envoyer un email
       </a>
+      <button
+        type="button"
+        onClick={handleSendReviewReminder}
+        disabled={!reviewableAppointmentId || reviewLoading}
+        className="
+          mt-2.5 w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm
+          font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50
+          focus:outline-hidden focus:ring-2 focus:ring-mint-400 transition-colors min-h-[44px]
+          disabled:cursor-not-allowed disabled:opacity-50
+        "
+      >
+        {reviewLoading ? 'Envoi…' : 'Envoyer rappel avis'}
+      </button>
+      {reviewMessage && (
+        <p role="status" aria-live="polite" className="mt-2 text-sm font-sans text-sage-700">
+          {reviewMessage}
+        </p>
+      )}
 
       {/* Historique */}
       <section className="mt-5" aria-label="Historique des séances">

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { Appointment } from '../../src/types/appointment';
 import {
   aggregatePatients,
+  canJoinVideoConsultation,
+  getReviewableAppointmentId,
   getInitials,
   getMinutesUntil,
   getMonthlyVolume,
@@ -102,6 +104,56 @@ describe('isActiveAppointment', () => {
     ] as const) {
       expect(isActiveAppointment(makeAppointment({ status }))).toBe(true);
     }
+  });
+});
+
+describe('workbench appointment actions', () => {
+  it('never exposes the video join action for a cancelled future appointment', () => {
+    expect(
+      canJoinVideoConsultation(
+        makeAppointment({
+          status: 'cancelled',
+          scheduled_at: TOMORROW_0900,
+          video_link: 'https://meet.google.com/cancelled',
+        }),
+        NOW,
+      ),
+    ).toBe(false);
+  });
+
+  it('allows the join action only for a future confirmed or paid video appointment', () => {
+    expect(
+      canJoinVideoConsultation(
+        makeAppointment({
+          status: 'confirmed',
+          scheduled_at: TOMORROW_0900,
+          video_link: 'https://meet.google.com/confirmed',
+        }),
+        NOW,
+      ),
+    ).toBe(true);
+    expect(
+      canJoinVideoConsultation(
+        makeAppointment({
+          status: 'payment_pending',
+          scheduled_at: TOMORROW_0900,
+          video_link: 'https://meet.google.com/unpaid',
+        }),
+        NOW,
+      ),
+    ).toBe(false);
+  });
+
+  it('selects a confirmed or paid appointment for a manual review reminder', () => {
+    expect(
+      getReviewableAppointmentId([
+        makeAppointment({ id: 'pending', status: 'pending' }),
+        makeAppointment({ id: 'paid', status: 'payment_received' }),
+      ]),
+    ).toBe('paid');
+    expect(
+      getReviewableAppointmentId([makeAppointment({ status: 'cancelled' })]),
+    ).toBeNull();
   });
 });
 
@@ -645,7 +697,10 @@ describe('getTomorrowSessions', () => {
     );
     const evening = getTomorrowSessions(
       [
-        makeAppointment({ id: 'dst2-ce-soir', scheduled_at: DST_TODAY_EVENING }),
+        makeAppointment({
+          id: 'dst2-ce-soir',
+          scheduled_at: DST_TODAY_EVENING,
+        }),
         makeAppointment({
           id: 'dst2-demain-0900',
           scheduled_at: DST_TOMORROW_0900,

@@ -45,6 +45,30 @@ export function isActiveAppointment(appointment: Appointment): boolean {
   return ACTIVE_STATUSES.has(appointment.status);
 }
 
+/** A future video session the practitioner may join from the workbench. */
+export function canJoinVideoConsultation(
+  appointment: Appointment,
+  nowMs: number = Date.now(),
+): boolean {
+  return (
+    appointment.appointment_mode === 'video' &&
+    Boolean(appointment.video_link) &&
+    (appointment.status === 'confirmed' ||
+      appointment.status === 'payment_received') &&
+    isUpcoming(appointment.scheduled_at, nowMs)
+  );
+}
+
+/** The latest appointment that may receive a manual review reminder. */
+export function getReviewableAppointmentId(
+  appointments: readonly Appointment[],
+): string | null {
+  const appointment = appointments.find(
+    item => item.status === 'confirmed' || item.status === 'payment_received',
+  );
+  return appointment?.id ?? null;
+}
+
 /** Why an appointment sits in the "À traiter" queue (flags may combine). */
 export interface TriageReasons {
   /** Start time already passed. */
