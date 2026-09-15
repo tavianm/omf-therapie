@@ -15,7 +15,7 @@ Le site tourne sous astro 5.18 avec un amas de vulnérabilités npm audit (1 cri
 
 ## Outcome
 
-`main` et la prod tournent sous astro 7.x ; `npm audit` ne remonte plus aucun critical/high sur le cluster astro/@astrojs/@netlify/blobs/nodemailer ; tous les gates passent (`test:low`, `lint`, `typecheck` advisory, `build`, `audit:a11y`) ; le site rendu est visuellement identique (booking, blog, emails de dev) et les URLs du blog sont préservées.
+`main` et la prod tournent sous astro 7.x ; `npm audit` ne remonte plus aucun critical/high sur le cluster astro/@astrojs/@netlify/blobs/nodemailer ; tous les gates passent (`test:low`, `lint`, `typecheck` bloquant, `build`, `audit:a11y`) ; le site rendu est visuellement identique (booking, blog, emails de dev) et les URLs du blog sont préservées.
 
 ## Appetite
 

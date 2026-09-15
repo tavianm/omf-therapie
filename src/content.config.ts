@@ -11,7 +11,7 @@ const blog = defineCollection({
     title: z.string(),
     excerpt: z.string(),
     date: z.string(), // French date format: "15 février 2025"
-    dateIso: z.string(), // ISO date: "2025-02-15" (for schema.org)
+    dateIso: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "dateIso must be YYYY-MM-DD"), // sort key for blog lists — fail the build on malformed frontmatter
     categories: z.array(z.string()),
     author: z.object({
       name: z.string(),

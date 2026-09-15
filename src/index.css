@@ -55,27 +55,31 @@
   .section-subtitle {
     @apply text-xl text-sage-600 mb-12 max-w-2xl mx-auto;
   }
-
-  /* Blog prose palette — ex-config typography plugin (tailwind.config.js), values unchanged */
-  .prose-sage {
-    --tw-prose-body: var(--color-sage-600);
-    --tw-prose-headings: var(--color-sage-800);
-    --tw-prose-lead: var(--color-sage-700);
-    --tw-prose-links: var(--color-mint-600);
-    --tw-prose-bold: var(--color-sage-800);
-    --tw-prose-counters: var(--color-sage-500);
-    --tw-prose-bullets: var(--color-sage-400);
-    --tw-prose-hr: var(--color-sage-200);
-    --tw-prose-quotes: var(--color-sage-700);
-    --tw-prose-quote-borders: var(--color-mint-300);
-    --tw-prose-captions: var(--color-sage-500);
-    --tw-prose-code: var(--color-sage-800);
-    --tw-prose-pre-code: var(--color-sage-200);
-    --tw-prose-pre-bg: var(--color-sage-800);
-    --tw-prose-th-borders: var(--color-sage-300);
-    --tw-prose-td-borders: var(--color-sage-200);
-  }
 }
+
+/* Blog prose palette — ex-config typography plugin (tailwind.config.js), values unchanged.
+   Deliberately UNLAYERED: Tailwind 4 buckets the typography plugin's `--tw-prose-*`
+   defaults into @layer utilities, which beats @layer components — an in-layer override
+   dies in the cascade. Unlayered author declarations outrank every layer. */
+.prose-sage {
+  --tw-prose-body: var(--color-sage-600);
+  --tw-prose-headings: var(--color-sage-800);
+  --tw-prose-lead: var(--color-sage-700);
+  --tw-prose-links: var(--color-mint-600);
+  --tw-prose-bold: var(--color-sage-800);
+  --tw-prose-counters: var(--color-sage-500);
+  --tw-prose-bullets: var(--color-sage-400);
+  --tw-prose-hr: var(--color-sage-200);
+  --tw-prose-quotes: var(--color-sage-700);
+  --tw-prose-quote-borders: var(--color-mint-300);
+  --tw-prose-captions: var(--color-sage-500);
+  --tw-prose-code: var(--color-sage-800);
+  --tw-prose-pre-code: var(--color-sage-200);
+  --tw-prose-pre-bg: var(--color-sage-800);
+  --tw-prose-th-borders: var(--color-sage-300);
+  --tw-prose-td-borders: var(--color-sage-200);
+}
+
 
 /* Dans index.css — font fallback calibré pour Inter */
 @font-face {

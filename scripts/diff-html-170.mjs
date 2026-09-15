@@ -70,7 +70,8 @@
  * - attribute ORDER changes are invisible (rule 8) - only presence/values.
  */
 
-import { readFile, stat } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -103,7 +104,7 @@ const EXPECTED_CLASS_RENAMES = new Map([
 ]);
 
 /** Pages excluded from the diff (too dynamic to arbitrate mechanically). */
-const EXCLUDED_PATHS = new Set(['/mes-rdvs/']);
+const EXCLUDED_PATHS = new Set(['/mes-rdvs/', '/reports/latest/', '/reports/playwright/']);
 
 /** Max diff hunks printed per URL. */
 const MAX_DIFFS_PER_URL = 10;
@@ -136,7 +137,7 @@ const INLINE_SCRIPT_PLACEHOLDER = 'INLINE-SCRIPT-BODY';
  * must NOT leak into the placeholder.)
  */
 const ASTRO_ASSET_RE =
-  /(\/_astro\/)([^"'\s<>()]+?)((?:\.[A-Za-z0-9]{1,4})+)(?=["'\s<>()])/g;
+  /(\/_astro\/)([^"'\s<>()]{1,200}?)((?:\.[A-Za-z0-9]{1,4})+)(?=["'\s<>()])/g;
 
 const ASTRO_ISLAND_UID_RE = /(<astro-island\b[^>]*?\buid=")[^"]*(")/g;
 
@@ -240,7 +241,11 @@ function decodeEntities(s) {
         body[1] === 'x' || body[1] === 'X'
           ? Number.parseInt(body.slice(2), 16)
           : Number.parseInt(body.slice(1), 10);
-      return Number.isSafeInteger(code) ? String.fromCodePoint(code) : m;
+      // fromCodePoint throws beyond the Unicode range; keep the raw entity
+      // instead of crashing the whole run on a hostile/pasted entity.
+      return Number.isSafeInteger(code) && code >= 0 && code <= 0x10ffff
+        ? String.fromCodePoint(code)
+        : m;
     }
     return NAMED_ENTITIES[body.toLowerCase()] ?? m;
   });
@@ -305,7 +310,14 @@ function tokenizeHtml(html, isBaseline) {
 
   const pushText = raw => {
     const text = decodeEntities(raw.replace(/\s+/g, ' ').trim());
-    if (text !== '') tokens.push(text); // rule 7: whitespace reflow is noise
+    if (text !== '') {
+      tokens.push(text);
+    } else if (raw.trim() === '' && raw !== '') {
+      // Whitespace-only text node between tags: keep a sentinel so losing the
+      // space between two inline elements (the compressHTML regression class
+      // the spec assigns this gate to arbitrate) flags instead of collapsing.
+      tokens.push('WS');
+    }
   };
 
   while (i < n) {
@@ -521,14 +533,61 @@ function extractSitemapUrls(xml) {
  */
 function urlToRelPath(loc) {
   const url = new URL(loc);
-  let pathname = url.pathname;
+  const raw = url.pathname;
+  let pathname = raw;
   try {
     pathname = decodeURIComponent(pathname);
   } catch {
     // Malformed escape sequence: fall back to the raw pathname.
   }
+  // Decoding can resurrect separators and dot-segments (%2F..%2F survives URL
+  // normalization): reject anything whose decoded form grows segments or
+  // contains traversal, rather than letting join() resolve outside dist/.
+  if (
+    pathname.includes('\0') ||
+    pathname.split('/').length !== raw.split('/').length ||
+    /(^|\/)%2e%2e(\/|$)/i.test(raw) ||
+    /(^|\/)\.{1,2}(\/|$)/.test(pathname)
+  ) {
+    return null;
+  }
   pathname = pathname.replace(/\/+$/, '');
   return pathname === '' ? 'index.html' : `${pathname}/index.html`;
+}
+
+/**
+ * Baseline page universe: every index.html in the capture, as a trailing-slash
+ * pathname (inverse of urlToRelPath). Root capture -> '/', blog/foo/index.html
+ * -> '/blog/foo/'.
+ */
+async function listBaselinePages(dir) {
+  const out = [];
+  async function walk(current, prefix) {
+    let entries;
+    try {
+      entries = await readdir(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.isDirectory()) {
+        await walk(join(current, e.name), `${prefix}${e.name}/`);
+      } else if (e.name === 'index.html') {
+        out.push(prefix);
+      }
+    }
+  }
+  await walk(dir, '/');
+  return out;
+}
+
+/** Every /_astro/... asset reference in a rendered page (attribute values). */
+function extractAstroRefs(html) {
+  const out = [];
+  const re = /\/_astro\/[^"'\s<>()]+/g;
+  let m;
+  while ((m = re.exec(html)) !== null) out.push(m[0]);
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -550,20 +609,35 @@ const ALLOWLISTED_DIFFS = [
   // the PR as a deep-link change for external referrers.
   {
     url: /^\/blog\/deconstruire-tabous-therapie\/$/,
-    hunk: /«id=comment-choisir-son-thérapeute»/,
+    baseline: /«id=comment-choisir-son-thérapeute»/,
+    dist: /«id=comment-choisir-son-thérapeute-»/,
   },
   // Markdown processor fix: v7 emits the correct closing guillemet (`… »`
-  // instead of `… «`) in two list items — a visible micro-correction. The
-  // baseline-side hunk carries the wrong U+201C char.
+  // instead of `… «`) in two list items — a visible micro-correction.
   {
     url: /^\/blog\/renforcer-communication-couple\/$/,
-    hunk: /“/,
+    baseline: /«[^»]*“[^»]*»/,
+    dist: /«[^»]*”[^»]*»/,
+  },
+  // Astro 7 emits an extra whitespace text node between </body> and </html>
+  // (document-tail formatting — outside any content, zero rendering impact).
+  // The WS sentinel made this visible on all 27 URLs; reviewed and accepted.
+  {
+    url: /.*/,
+    baseline: /^WS <\/body> <\/html>( WS)?$/,
+    dist: /^WS <\/body> «WS» <\/html>( WS)?$/,
   },
 ];
 
 function isAllowlisted(urlPath, hunk) {
+  // Both sides must match the documented old/new forms: matching the baseline
+  // text alone would green-light any unrelated diff that happens to sit near
+  // quoted text within the hunk's context window.
   return ALLOWLISTED_DIFFS.some(
-    entry => entry.url.test(urlPath) && entry.hunk.test(hunk),
+    entry =>
+      entry.url.test(urlPath) &&
+      entry.baseline.test(hunk.baseline) &&
+      entry.dist.test(hunk.dist),
   );
 }
 
@@ -613,9 +687,26 @@ async function main() {
   }
 
   const sitemapXml = await readFile(sitemapPath, 'utf8');
-  const allUrls = extractSitemapUrls(sitemapXml);
-  const excluded = allUrls.filter(u => EXCLUDED_PATHS.has(pathnameOf(u)));
-  const urls = allUrls.filter(u => !excluded.includes(u));
+  // URL universe = union of the new build's sitemap URLs and every index.html
+  // captured in the baseline: a baseline-only page means the page (or route)
+  // disappeared from the new build — that must FAIL, not silently shrink
+  // coverage. Reading only the new sitemap made removal structurally
+  // invisible (recall finding, PR #173 review).
+  const locs = extractSitemapUrls(sitemapXml);
+  const newPathnames = locs.map(pathnameOf);
+  const baselinePathnames = await listBaselinePages(baselineDir);
+  const allPathnames = [...new Set([...newPathnames, ...baselinePathnames])];
+  const excluded = allPathnames.filter(p => EXCLUDED_PATHS.has(p));
+  // Baseline-only entries are synthesized so the shared loop handles removals
+  // like any other URL (baseline HTML present + dist missing = loud failure).
+  const entries = allPathnames
+    .filter(p => !excluded.includes(p))
+    .map(p => {
+      const loc = locs.find(u => pathnameOf(u) === p);
+      return loc
+        ? { urlPath: p, relPath: urlToRelPath(loc) }
+        : { urlPath: p, relPath: p === '/' ? 'index.html' : `${p.replace(/\/+$/, '')}/index.html` };
+    });
 
   /** @type {Array<{url: string, hunks: Array<object>}>} */
   const urlDiffs = [];
@@ -623,11 +714,29 @@ async function main() {
   const ssrSkipped = [];
   let allowlistedCount = 0;
 
-  for (const url of urls) {
-    const relPath = urlToRelPath(url);
-    const urlPath = pathnameOf(url);
+  for (const { urlPath, relPath } of entries) {
+    if (relPath === null) {
+      urlDiffs.push({
+        url: urlPath,
+        hunks: [
+          {
+            baseline: '(sitemap <loc>)',
+            dist: 'UNMAPPABLE after decode (traversal/separator payload) — refusing to read',
+          },
+        ],
+      });
+      continue;
+    }
     const baselinePath = join(baselineDir, relPath);
     const distPath = join(distDir, relPath);
+    // Belt and braces: even a legitimate-looking path must stay contained.
+    if (relative(distDir, distPath).startsWith('..')) {
+      urlDiffs.push({
+        url: urlPath,
+        hunks: [{ baseline: '(sitemap <loc>)', dist: 'PATH ESCAPES DIST — refusing to read' }],
+      });
+      continue;
+    }
 
     let baselineHtml = null;
     try {
@@ -662,7 +771,7 @@ async function main() {
         hunks: [
           {
             baseline: '(file present in baseline)',
-            dist: 'FILE MISSING IN DIST — page no longer generated post-upgrade?',
+            dist: 'FILE MISSING IN DIST — page/route removed from the new build (or dropped from its sitemap)?',
           },
         ],
       });
@@ -683,10 +792,28 @@ async function main() {
           ]
         : buildHunks(a, b, ops);
 
-    const accepted = hunks.filter(h => isAllowlisted(urlPath, h.baseline));
+    const accepted = hunks.filter(h => isAllowlisted(urlPath, h));
     allowlistedCount += accepted.length;
-    const remaining = hunks.filter(h => !isAllowlisted(urlPath, h.baseline));
+    const remaining = hunks.filter(h => !isAllowlisted(urlPath, h));
     if (remaining.length > 0) urlDiffs.push({ url: urlPath, hunks: remaining });
+
+    // Dangling asset references: normalization tolerates chunk renames, so a
+    // broken /_astro/ reference (unstyled page, dead hydration island) would
+    // otherwise compare equal. The baseline capture kept only HTML — check the
+    // dist side, where a broken reference actually ships.
+    for (const ref of extractAstroRefs(distHtml)) {
+      if (!existsSync(join(distDir, ref))) {
+        urlDiffs.push({
+          url: urlPath,
+          hunks: [
+            {
+              baseline: '(asset present in baseline build)',
+              dist: `DANGLING ASSET REFERENCE: ${ref} not found under dist/`,
+            },
+          ],
+        });
+      }
+    }
   }
 
   // Report.
@@ -714,7 +841,7 @@ async function main() {
 
   const totalHunks = urlDiffs.reduce((acc, d) => acc + d.hunks.length, 0);
   const summary =
-    `${urls.length - ssrSkipped.length} URLs compared, ${excluded.length} excluded ` +
+    `${entries.length - ssrSkipped.length} URLs compared, ${excluded.length} excluded ` +
     `(${[...EXCLUDED_PATHS].join(', ')}), ${ssrSkipped.length} SSR-only skipped` +
     (ssrSkipped.length > 0 ? ` (${ssrSkipped.join(', ')})` : '') +
     `, ${totalHunks} diff hunk(s) on ${urlDiffs.length} URL(s), ` +

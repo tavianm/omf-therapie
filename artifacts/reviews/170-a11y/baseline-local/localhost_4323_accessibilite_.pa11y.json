@@ -1,0 +1,25 @@
+{
+  "url": "http://localhost:4323/accessibilite/",
+  "issues": [
+    {
+      "code": "WCAG2AA.Principle1.Guideline1_4.1_4_10.C32,C31,C33,C38,SCR34,G206",
+      "type": "warning",
+      "typeCode": 2,
+      "message": "This element has \"position: fixed\". This may require scrolling in two dimensions, which is considered a failure of this Success Criterion.",
+      "context": "<header class=\"bg-white shadow-sm fixed top-0 w-full z-50 \"><nav class=\"max-w-7xl mx-auto p...</header>",
+      "selector": "html > body > astro-island > header",
+      "runner": "htmlcs",
+      "runnerExtras": {}
+    },
+    {
+      "code": "WCAG2AA.Principle2.Guideline2_5.2_5_3.F96",
+      "type": "warning",
+      "typeCode": 2,
+      "message": "Accessible name for this element does not contain the visible label text. Check that for user interface components with labels that include text or images of text, the name contains the text that is presented visually.",
+      "context": "<a href=\"https://www.instagram.com/omf.therapie\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"flex items-center gap-2 text-sage-300 hover:text-mint-400 hover:underline transition-colors\" aria-label=\"Suivez-moi sur Instagram\"> <!-- Icône Instagram...",
+      "selector": "html > body > footer > div > div:nth-child(1) > div:nth-child(1) > ul > li > a",
+      "runner": "htmlcs",
+      "runnerExtras": {}
+    }
+  ]
+}

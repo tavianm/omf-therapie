@@ -8,9 +8,10 @@ export default defineConfig({
   site: 'https://omf-therapie.fr',
   trailingSlash: 'ignore',
   output: 'static',
-  // Astro 6+ flipped the default: compressHTML is now true out of the box.
-  // Pin it explicitly so the shipped markup stays byte-stable across the
-  // Astro 5 -> 7 bump (issue #170) regardless of future default changes.
+  // compressHTML defaults to 'jsx' in Astro 7 (config schema default), so the
+  // boolean true pin is load-bearing: it keeps the shipped markup byte-stable
+  // across the Astro 5 -> 7 bump (issue #170), arbitrated by the sitemap-wide
+  // HTML diff gate.
   compressHTML: true,
   adapter: netlify(),
   integrations: [

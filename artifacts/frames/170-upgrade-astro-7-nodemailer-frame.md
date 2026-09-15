@@ -17,7 +17,7 @@ date: 2026-09-14
 
 ## Constraints
 
-- Gates complets avant PR : `test:low`, `lint`, `typecheck` (advisory, ~20 erreurs résiduelles #68), `build`, `audit:a11y` — puis re-audit `npm audit` après upgrade.
+- Gates complets avant PR : `test:low`, `lint`, `typecheck` (bloquant depuis #86 — AGENTS.md en drift sur ce point), `build`, `audit:a11y` — puis re-audit `npm audit` après upgrade.
 - Upgrade **coordonné** : astro 7.x + `@astrojs/react` + `@astrojs/netlify` + `@astrojs/sitemap` + `@astrojs/tailwind` doivent rester peer-compatibles ; `@netlify/blobs` est fixé transitivement.
 - Deux majeurs franchis (5→6→7) : breaking changes à inventorier (engines Node, config, Content Collections, APIs retirées, Vite) — travail de l'étape `/R-analyze`.
 - Site monocompte en production : aucun changement métier attendu ; l'adapter Netlify touche le déploiement.

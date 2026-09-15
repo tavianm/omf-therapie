@@ -77,7 +77,6 @@
     "pa11y": "^9.1.1",
     "pa11y-ci": "^4.1.0",
     "pa11y-reporter-html": "^2.0.0",
-    "postcss": "^8.5.28",
     "prettier": "^3.9.6",
     "prettier-plugin-astro": "^0.14.1",
     "tailwindcss": "^4.3.3",
@@ -91,6 +90,6 @@
   "overrides": {
     "google-auth-library": "10.9.0",
     "sharp": "^0.35.4",
-    "@netlify/functions-dev": "^2.0.6"
+    "@netlify/functions-dev": "2.0.6"
   }
 }
