@@ -21,9 +21,13 @@ import {
   formatTimeParis,
   getRelativeDayLabel,
   isCancellableByTherapist,
-  isUpcoming,
 } from '../../../../utils/date';
-import { isReschedulable, type PatientAggregate } from '../../../../utils/workbench';
+import {
+  canJoinVideoConsultation,
+  isReviewableAppointment,
+  isReschedulable,
+  type PatientAggregate,
+} from '../../../../utils/workbench';
 import { Avatar, StatusChip, WB_STATUS_LABELS } from '../ui';
 
 /** Minimal patient context for the subtitle — derived by the caller. */
@@ -83,6 +87,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
   const [openPanel, setOpenPanel] = useState<'reschedule' | 'decline' | 'cancel' | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState('');
   const [actionMessage, setActionMessage] = useState('');
+  const [reviewSent, setReviewSent] = useState(false);
 
   // SC6 — notes re-align to the server value ONLY when no unsaved local edit
   // is in progress: a poll or a post-action refresh may bring new server
@@ -112,6 +117,31 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
   const canReschedule =
     isReschedulable(appointment) && appointment.status !== 'rescheduled';
   const canCancel = isCancellableByTherapist(appointment);
+  const canJoinVideo = canJoinVideoConsultation(appointment);
+  const canSendReview = isReviewableAppointment(appointment);
+
+  async function handleSendReview() {
+    setActionLoading('review');
+    setError(null);
+    try {
+      const res = await fetch('/api/send-review-email/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ appointmentId: appointment.id }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? `Erreur HTTP ${res.status}`);
+      }
+      setReviewSent(true);
+      setTimeout(() => setReviewSent(false), 4000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erreur inconnue');
+    } finally {
+      setActionLoading(null);
+    }
+  }
 
   async function callPatch(payload: Record<string, unknown>, key: string) {
     setActionLoading(key);
@@ -354,9 +384,9 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
       {/* ── Actions contextuelles ─────────────────────────────────────────── */}
       <section className="mt-4 space-y-2.5" aria-label="Actions sur le rendez-vous">
         {/* Rejoindre la visio */}
-        {isVideo && appointment.video_link && isUpcoming(appointment.scheduled_at) && (
+        {canJoinVideo && (
           <a
-            href={appointment.video_link}
+            href={appointment.video_link ?? undefined}
             target="_blank"
             rel="noopener noreferrer"
             className="
@@ -368,6 +398,28 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
           >
             Rejoindre la visio
           </a>
+        )}
+        {canSendReview && (
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleSendReview}
+              disabled={actionLoading === 'review'}
+              className="
+                inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium
+                font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50
+                focus:outline-hidden focus:ring-2 focus:ring-mint-400 focus:ring-offset-1
+                transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px]
+              "
+            >
+              {actionLoading === 'review' ? 'Envoi…' : 'Envoyer rappel avis'}
+            </button>
+            {reviewSent && (
+              <span role="status" aria-live="polite" className="text-sm font-sans text-mint-800">
+                Email envoyé
+              </span>
+            )}
+          </div>
         )}
         {isVideo && !appointment.video_link && (
           <button

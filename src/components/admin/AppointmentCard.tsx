@@ -17,6 +17,7 @@ import { useState } from 'react';
 import { getModeLabel, getTypeLabel } from '../../lib/pricing';
 import type { Appointment, AppointmentStatus } from '../../types/appointment';
 import { isCancellableByTherapist } from '../../utils/date';
+import { isReviewableAppointment } from '../../utils/workbench';
 import { ConfirmModal } from './ConfirmModal';
 import { Modal } from './Modal';
 
@@ -107,6 +108,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
   const isReadOnly = status === 'declined' || status === 'cancelled';
   // Éligibilité à l'annulation / report (fenêtre veille incluse, Europe/Paris).
   const isCancellable = isCancellableByTherapist(appointment);
+  const canSendReview = isReviewableAppointment(appointment);
   // Un RDV vidéo déjà payé (payment_received) ou un RDV présentiel déjà confirmé
   // (confirmed) se reporte par move direct admin : la thérapeute déplace le créneau
   // sans re-validation du patient. Pour les RDV vidéo, le paiement Stripe est conservé.
@@ -498,7 +500,7 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
             </>
           )}
 
-          {(status === 'confirmed' || status === 'payment_received') && (
+          {canSendReview && (
             <>
               <button
                 onClick={handleSendReview}

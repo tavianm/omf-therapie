@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 import type { Appointment } from '../../src/types/appointment';
 import {
   aggregatePatients,
+  canJoinVideoConsultation,
+  getReviewableAppointmentId,
   getInitials,
   getMinutesUntil,
   getMonthlyVolume,
   getNextSessions,
   getTodaySessions,
   isActiveAppointment,
+  isReviewableAppointment,
   isReschedulable,
   describeSlot,
   // Issue #164 — file « Demandes de RDV », KPI « Ma semaine » et « Demain ».
@@ -102,6 +105,79 @@ describe('isActiveAppointment', () => {
     ] as const) {
       expect(isActiveAppointment(makeAppointment({ status }))).toBe(true);
     }
+  });
+});
+
+describe('workbench appointment actions', () => {
+  it('never exposes the video join action for a cancelled future appointment', () => {
+    expect(
+      canJoinVideoConsultation(
+        makeAppointment({
+          status: 'cancelled',
+          scheduled_at: TOMORROW_0900,
+          video_link: 'https://meet.google.com/cancelled',
+        }),
+        NOW,
+      ),
+    ).toBe(false);
+  });
+
+  it('allows the join action only for a future confirmed or paid video appointment', () => {
+    expect(
+      canJoinVideoConsultation(
+        makeAppointment({
+          status: 'confirmed',
+          scheduled_at: TOMORROW_0900,
+          video_link: 'https://meet.google.com/confirmed',
+        }),
+        NOW,
+      ),
+    ).toBe(true);
+    expect(
+      canJoinVideoConsultation(
+        makeAppointment({
+          status: 'payment_pending',
+          scheduled_at: TOMORROW_0900,
+          video_link: 'https://meet.google.com/unpaid',
+        }),
+        NOW,
+      ),
+    ).toBe(false);
+  });
+
+  it('selects a confirmed or paid appointment for a manual review reminder', () => {
+    expect(
+      getReviewableAppointmentId([
+        makeAppointment({
+          id: 'future',
+          status: 'confirmed',
+          scheduled_at: TOMORROW_0900,
+        }),
+        makeAppointment({
+          id: 'paid',
+          status: 'payment_received',
+          scheduled_at: YESTERDAY_1000,
+        }),
+      ], NOW),
+    ).toBe('paid');
+    expect(
+      getReviewableAppointmentId(
+        [makeAppointment({ status: 'cancelled', scheduled_at: YESTERDAY_1000 })],
+        NOW,
+      ),
+    ).toBeNull();
+  });
+
+  it('waits until the scheduled duration has elapsed before allowing a review reminder', () => {
+    const appointment = makeAppointment({
+      status: 'confirmed',
+      scheduled_at: TODAY_1500,
+      duration: 60,
+    });
+
+    expect(isReviewableAppointment(appointment, NOW)).toBe(false);
+    expect(isReviewableAppointment(appointment, NOW + 60 * 60_000 - 1)).toBe(false);
+    expect(isReviewableAppointment(appointment, NOW + 60 * 60_000)).toBe(true);
   });
 });
 
@@ -645,7 +721,10 @@ describe('getTomorrowSessions', () => {
     );
     const evening = getTomorrowSessions(
       [
-        makeAppointment({ id: 'dst2-ce-soir', scheduled_at: DST_TODAY_EVENING }),
+        makeAppointment({
+          id: 'dst2-ce-soir',
+          scheduled_at: DST_TODAY_EVENING,
+        }),
         makeAppointment({
           id: 'dst2-demain-0900',
           scheduled_at: DST_TOMORROW_0900,

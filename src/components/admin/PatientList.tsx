@@ -3,6 +3,7 @@ import { toast, Toaster } from "react-hot-toast";
 import { getModeLabel, getTypeLabel } from "../../lib/pricing";
 import { AdminCreateButton } from "./AdminCreateButton";
 import type { Patient, PrefillData, AppointmentStatus } from "../../types/patient";
+import { isReviewableAppointment } from "../../utils/workbench";
 
 const STATUS_LABELS: Record<AppointmentStatus, string> = {
   pending: "En attente",
@@ -36,7 +37,11 @@ function getPanelId(email: string): string {
 function getReviewableAppointmentId(patient: Patient): string | null {
   const reviewableAppointment = patient.appointments.find(
     (appointment) =>
-      appointment.status === "confirmed" || appointment.status === "payment_received",
+      isReviewableAppointment({
+        status: appointment.status,
+        scheduled_at: appointment.scheduledAt,
+        duration: appointment.duration,
+      }),
   );
   return reviewableAppointment?.id ?? null;
 }

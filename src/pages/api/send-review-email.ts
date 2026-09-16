@@ -24,6 +24,7 @@ import { createElement } from 'react';
 import { auth } from '../../lib/auth';
 import { supabaseAdmin } from '../../lib/supabase';
 import { sendEmail, buildAppointmentConversationSubject } from '../../lib/resend';
+import { isReviewableAppointment } from '../../utils/workbench';
 import ReviewRequest from '../../emails/ReviewRequest';
 
 // ---------------------------------------------------------------------------
@@ -78,7 +79,7 @@ export const POST: APIRoute = async ({ request }) => {
   // 3. Récupérer le rendez-vous
   const { data: appt, error: fetchError } = await supabaseAdmin
     .from('appointments')
-    .select('id, patient_name, patient_email')
+    .select('id, patient_name, patient_email, status, scheduled_at, duration')
     .eq('id', appointmentId.trim())
     .single();
 
@@ -88,6 +89,13 @@ export const POST: APIRoute = async ({ request }) => {
 
   const patientName = appt.patient_name as string;
   const patientEmail = appt.patient_email as string;
+
+  if (!isReviewableAppointment(appt)) {
+    return jsonError(
+      400,
+      "Un rappel d'avis est possible après une séance confirmée ou réglée terminée",
+    );
+  }
 
   // 4. URLs de plateformes d'avis (optionnelles)
   const googleBusinessUrl = (import.meta.env.GOOGLE_BUSINESS_URL as string | undefined) || undefined;
