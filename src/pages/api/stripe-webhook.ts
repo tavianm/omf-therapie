@@ -62,12 +62,18 @@ async function createAndPersistCalendarEvent(
   } = { google_calendar_event_id: event.eventId };
   if (persistedVideoLink) update.video_link = persistedVideoLink;
 
-  const { error } = await supabaseAdmin
+  const { data: persisted, error } = await supabaseAdmin
     .from('appointments')
     .update(update)
-    .eq('id', appointment.id);
+    .eq('id', appointment.id)
+    .select('google_calendar_event_id')
+    .maybeSingle();
 
-  if (!error) return event;
+  const persistedEventId =
+    persisted && typeof persisted.google_calendar_event_id === 'string'
+      ? persisted.google_calendar_event_id
+      : null;
+  if (!error && persistedEventId === event.eventId) return event;
 
   await deleteCalendarEvent(event.eventId).catch(cleanupErr => {
     logger.error(
@@ -77,7 +83,11 @@ async function createAndPersistCalendarEvent(
     );
   });
 
-  throw new CalendarEventPersistenceError(appointment.id, event.eventId, error);
+  throw new CalendarEventPersistenceError(
+    appointment.id,
+    event.eventId,
+    error ?? new Error('Calendar event identifier was not persisted'),
+  );
 }
 
 async function resolveAppointmentIdFromCheckoutSession(

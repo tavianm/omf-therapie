@@ -133,6 +133,10 @@ beforeEach(() => {
   mockSupabaseChain.eq.mockReturnThis();
   mockSupabaseChain.is.mockReturnThis();
   mockSupabaseChain.select.mockReturnThis();
+  mockSupabaseChain.maybeSingle.mockResolvedValue({
+    data: { google_calendar_event_id: 'gcal_mock_event' },
+    error: null,
+  });
   // Default email result: success.
   mockBuildAndSend.mockResolvedValue({
     patientEmailSent: true,
@@ -313,19 +317,34 @@ describe('handlePaymentSucceeded — throw on patient email failure', () => {
 describe('handlePaymentSucceeded — calendar event persistence', () => {
   it('removes the event and fails the webhook when Supabase cannot store its ID', async () => {
     mockFirstDeliveryWins();
-    // First two eq calls belong to the payment-status claim. The third is the
-    // calendar-event persistence write and simulates a Supabase maintenance
-    // failure after Google has already created the event.
-    mockSupabaseChain.eq
-      .mockReturnValueOnce(mockSupabaseChain)
-      .mockReturnValueOnce(mockSupabaseChain)
-      .mockResolvedValueOnce({ error: { message: 'database unavailable' } });
+    // The persistence read after the update reports the database failure.
+    mockSupabaseChain.maybeSingle.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'database unavailable' },
+    });
 
     await expect(
       handlePaymentSucceeded('appt_001', 'pi_test_123', 'evt_001'),
     ).rejects.toThrow('Unable to persist Google Calendar event identifier');
 
     expect(createCalendarEvent).toHaveBeenCalledTimes(1);
+    expect(mockDeleteCalendarEvent).toHaveBeenCalledWith('gcal_mock_event');
+    expect(mockBuildAndSend).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the update affects no row without returning an error', async () => {
+    mockFirstDeliveryWins();
+    // PostgREST can acknowledge an UPDATE that matches no rows with a 2xx
+    // response. The re-read must reject that silent no-op too.
+    mockSupabaseChain.maybeSingle.mockResolvedValueOnce({
+      data: null,
+      error: null,
+    });
+
+    await expect(
+      handlePaymentSucceeded('appt_001', 'pi_test_123', 'evt_001'),
+    ).rejects.toThrow('Unable to persist Google Calendar event identifier');
+
     expect(mockDeleteCalendarEvent).toHaveBeenCalledWith('gcal_mock_event');
     expect(mockBuildAndSend).not.toHaveBeenCalled();
   });
