@@ -384,7 +384,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
         {/* Rejoindre la visio */}
         {canJoinVideo && (
           <a
-            href={appointment.video_link}
+            href={appointment.video_link ?? undefined}
             target="_blank"
             rel="noopener noreferrer"
             className="
