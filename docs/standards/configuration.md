@@ -56,6 +56,6 @@ npm run db:stop
 
 ## Build & deploy configuration
 
-- Deploy target is Netlify (`netlify.toml`); Node version is pinned in `.nvmrc` and must match `netlify.toml`.
+- Deploy target is Netlify (`netlify.toml`); Node v22.23.2 is pinned solely in the root `.nvmrc`, which Netlify resolves natively.
 - `npm run build` is the only supported production build; CI gates on it (`.github/workflows/ci.yml`).
 - SPA legacy aliases (`/Tarifs`, `/Services`, …) are redirected in `netlify.toml` — don't recreate those routes.

@@ -208,7 +208,7 @@ export function AppointmentsManager({ appointments }: AppointmentsManagerProps) 
           className="
             w-full pl-10 pr-9 py-2.5 text-sm text-sage-900 placeholder-sage-400 font-sans
             border border-sage-200 rounded-xl bg-white
-            focus:outline-none focus:ring-2 focus:ring-mint-400 focus:border-transparent
+            focus:outline-hidden focus:ring-2 focus:ring-mint-400 focus:border-transparent
             transition-colors min-h-[44px]
           "
         />
@@ -219,7 +219,7 @@ export function AppointmentsManager({ appointments }: AppointmentsManagerProps) 
             className="
               absolute right-2.5 top-1/2 -translate-y-1/2 w-6 h-6 inline-flex items-center justify-center
               rounded-full text-sage-400 hover:text-sage-700 hover:bg-sage-100
-              focus:outline-none focus:ring-2 focus:ring-mint-400 transition-colors
+              focus:outline-hidden focus:ring-2 focus:ring-mint-400 transition-colors
             "
             aria-label="Effacer la recherche"
           >
@@ -248,7 +248,7 @@ export function AppointmentsManager({ appointments }: AppointmentsManagerProps) 
               aria-pressed={isActive}
               className={`
                 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium font-sans
-                rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-mint-400
+                rounded-full border transition-colors focus:outline-hidden focus:ring-2 focus:ring-mint-400
                 ${isActive
                   ? 'bg-mint-600 text-white border-mint-600'
                   : 'bg-white text-sage-600 border-sage-200 hover:border-mint-400 hover:text-mint-700'}
@@ -320,8 +320,8 @@ export function AppointmentsManager({ appointments }: AppointmentsManagerProps) 
             aria-expanded={showPast}
             className="
               w-full flex items-center justify-between gap-3 px-4 py-3
-              bg-white rounded-xl border border-sage-200 shadow-sm
-              hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-mint-400
+              bg-white rounded-xl border border-sage-200 shadow-xs
+              hover:bg-sage-50 focus:outline-hidden focus:ring-2 focus:ring-mint-400
               transition-colors text-left
             "
           >
@@ -401,7 +401,7 @@ function DayGroupBlock({ group, expandedId, onToggle }: DayGroupBlockProps) {
                 aria-controls={pid}
                 className="
                   w-full flex items-center gap-3 px-4 py-3 text-left
-                  hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-mint-400
+                  hover:bg-sage-50 focus:outline-hidden focus:ring-2 focus:ring-mint-400
                   transition-colors min-h-[56px]
                 "
               >

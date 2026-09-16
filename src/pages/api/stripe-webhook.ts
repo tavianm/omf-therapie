@@ -10,32 +10,127 @@ import {
 import { supabaseAdmin } from '../../lib/supabase';
 import { logger } from '../../lib/logger';
 import { getTypeLabel, getModeLabel } from '../../lib/pricing';
-import { createCalendarEvent } from '../../lib/google-calendar';
+import {
+  createCalendarEvent,
+  deleteCalendarEvent,
+} from '../../lib/google-calendar';
 import { buildAndSendConfirmationEmails } from '../../lib/notifications';
 import type { Appointment } from '../../types/appointment';
 
-async function resolveAppointmentIdFromCheckoutSession(session: Stripe.Checkout.Session): Promise<string | null> {
+/**
+ * The Calendar event exists, but its identifier could not be durably linked to
+ * the appointment. This must escape the webhook so Stripe retries it: without
+ * the link, a later cancellation cannot remove the event and a retry can
+ * create a duplicate.
+ */
+class CalendarEventPersistenceError extends Error {
+  constructor(
+    readonly appointmentId: string,
+    readonly eventId: string,
+    readonly cause: unknown,
+  ) {
+    super('Unable to persist Google Calendar event identifier');
+    this.name = 'CalendarEventPersistenceError';
+  }
+}
+
+interface PersistedCalendarEvent {
+  eventId: string;
+  meetLink?: string;
+}
+
+/**
+ * Create an event and make its database link durable as one logical step.
+ * If Supabase rejects the link (for example during maintenance), remove the
+ * just-created event before making the Stripe delivery retryable.
+ */
+async function createAndPersistCalendarEvent(
+  appointment: Appointment,
+  params: Parameters<typeof createCalendarEvent>[0],
+  videoLink?: string,
+): Promise<PersistedCalendarEvent> {
+  const event = await createCalendarEvent(params);
+
+  if (params.withMeet && !event.meetLink) {
+    await deleteCalendarEvent(event.eventId);
+    throw new Error('Meet non retourné par Google Calendar');
+  }
+
+  const persistedVideoLink = videoLink ?? event.meetLink;
+  const update: Pick<Appointment, 'google_calendar_event_id'> & {
+    video_link?: string;
+  } = { google_calendar_event_id: event.eventId };
+  if (persistedVideoLink) update.video_link = persistedVideoLink;
+
+  const { data: persisted, error } = await supabaseAdmin
+    .from('appointments')
+    .update(update)
+    .eq('id', appointment.id)
+    .select('google_calendar_event_id')
+    .maybeSingle();
+
+  const persistedEventId =
+    persisted && typeof persisted.google_calendar_event_id === 'string'
+      ? persisted.google_calendar_event_id
+      : null;
+  if (!error && persistedEventId === event.eventId) return event;
+
+  logger.error(
+    'stripe-webhook: calendar event ID persistence could not be verified',
+    {
+      appointmentId: appointment.id,
+      calendarEventId: event.eventId,
+      persistenceOutcome: error ? 'database-error' : 'readback-mismatch',
+    },
+    error,
+  );
+
+  await deleteCalendarEvent(event.eventId).catch(cleanupErr => {
+    logger.error(
+      'stripe-webhook: orphan calendar event cleanup failed',
+      { appointmentId: appointment.id, calendarEventId: event.eventId },
+      cleanupErr,
+    );
+  });
+
+  throw new CalendarEventPersistenceError(
+    appointment.id,
+    event.eventId,
+    error ?? new Error('Calendar event identifier was not persisted'),
+  );
+}
+
+async function resolveAppointmentIdFromCheckoutSession(
+  session: Stripe.Checkout.Session,
+): Promise<string | null> {
   if (session.metadata?.appointment_id) {
     return session.metadata.appointment_id;
   }
 
-  const paymentIntentId = typeof session.payment_intent === 'string'
-    ? session.payment_intent
-    : session.payment_intent?.id;
+  const paymentIntentId =
+    typeof session.payment_intent === 'string'
+      ? session.payment_intent
+      : session.payment_intent?.id;
 
   if (paymentIntentId) {
     try {
-      const paymentIntent = await getStripe()?.paymentIntents.retrieve(paymentIntentId);
+      const paymentIntent =
+        await getStripe()?.paymentIntents.retrieve(paymentIntentId);
       const fromPaymentIntent = paymentIntent?.metadata?.appointment_id;
       if (fromPaymentIntent) return fromPaymentIntent;
     } catch (err) {
-      logger.error('stripe-webhook: failed to retrieve PaymentIntent to resolve appointment_id', { paymentIntentId }, err);
+      logger.error(
+        'stripe-webhook: failed to retrieve PaymentIntent to resolve appointment_id',
+        { paymentIntentId },
+        err,
+      );
     }
   }
 
-  const paymentLinkId = typeof session.payment_link === 'string'
-    ? session.payment_link
-    : session.payment_link?.id;
+  const paymentLinkId =
+    typeof session.payment_link === 'string'
+      ? session.payment_link
+      : session.payment_link?.id;
 
   if (paymentLinkId) {
     const { data, error } = await supabaseAdmin
@@ -45,7 +140,11 @@ async function resolveAppointmentIdFromCheckoutSession(session: Stripe.Checkout.
       .maybeSingle();
 
     if (error) {
-      logger.error('stripe-webhook: failed to resolve appointment_id via stripe_payment_link_id', { paymentLinkId }, error);
+      logger.error(
+        'stripe-webhook: failed to resolve appointment_id via stripe_payment_link_id',
+        { paymentLinkId },
+        error,
+      );
       return null;
     }
 
@@ -56,7 +155,11 @@ async function resolveAppointmentIdFromCheckoutSession(session: Stripe.Checkout.
 }
 
 function buildFallbackVideoLink(appointmentId: string): string {
-  const slug = appointmentId.replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 24) || 'session';
+  const slug =
+    appointmentId
+      .replace(/[^a-z0-9]/gi, '')
+      .toLowerCase()
+      .slice(0, 24) || 'session';
   return `https://meet.jit.si/omf-therapie-${slug}`;
 }
 
@@ -64,7 +167,9 @@ export const POST: APIRoute = async ({ request }) => {
   // 0. Vérifier que le secret webhook est configuré
   const webhookSecret = import.meta.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    logger.error('stripe-webhook: STRIPE_WEBHOOK_SECRET missing — webhooks disabled');
+    logger.error(
+      'stripe-webhook: STRIPE_WEBHOOK_SECRET missing — webhooks disabled',
+    );
     return new Response('Configuration webhook manquante', { status: 500 });
   }
 
@@ -79,7 +184,9 @@ export const POST: APIRoute = async ({ request }) => {
   // 2. Vérifier la signature
   const stripeClient = getStripe();
   if (!stripeClient) {
-    logger.error('stripe-webhook: STRIPE_SECRET_KEY missing — webhooks disabled');
+    logger.error(
+      'stripe-webhook: STRIPE_SECRET_KEY missing — webhooks disabled',
+    );
     return new Response('Configuration Stripe manquante', { status: 500 });
   }
   let event: Stripe.Event;
@@ -103,7 +210,10 @@ export const POST: APIRoute = async ({ request }) => {
         const appointmentId = paymentIntent.metadata?.appointment_id;
 
         if (!appointmentId) {
-          logger.warn('stripe-webhook: payment_intent.succeeded without appointment_id', { paymentIntentId: paymentIntent.id });
+          logger.warn(
+            'stripe-webhook: payment_intent.succeeded without appointment_id',
+            { paymentIntentId: paymentIntent.id },
+          );
           break;
         }
 
@@ -114,17 +224,26 @@ export const POST: APIRoute = async ({ request }) => {
       case 'checkout.session.completed':
       case 'checkout.session.async_payment_succeeded': {
         const session = event.data.object as Stripe.Checkout.Session;
-        const appointmentId = await resolveAppointmentIdFromCheckoutSession(session);
-        const paymentIntentId = typeof session.payment_intent === 'string'
-          ? session.payment_intent
-          : session.payment_intent?.id;
+        const appointmentId =
+          await resolveAppointmentIdFromCheckoutSession(session);
+        const paymentIntentId =
+          typeof session.payment_intent === 'string'
+            ? session.payment_intent
+            : session.payment_intent?.id;
 
         if (!appointmentId) {
-          logger.warn('stripe-webhook: checkout.session.completed without resolvable appointment_id (metadata/payment_intent/payment_link)', { paymentIntentId });
+          logger.warn(
+            'stripe-webhook: checkout.session.completed without resolvable appointment_id (metadata/payment_intent/payment_link)',
+            { paymentIntentId },
+          );
           break;
         }
 
-        await handlePaymentSucceeded(appointmentId, paymentIntentId ?? '', event.id);
+        await handlePaymentSucceeded(
+          appointmentId,
+          paymentIntentId ?? '',
+          event.id,
+        );
         break;
       }
 
@@ -133,7 +252,11 @@ export const POST: APIRoute = async ({ request }) => {
         break;
     }
   } catch (err) {
-    logger.error('stripe-webhook: error processing event', { eventType: event.type, eventId: event.id }, err);
+    logger.error(
+      'stripe-webhook: error processing event',
+      { eventType: event.type, eventId: event.id },
+      err,
+    );
     // Retourner 500 pour que Stripe retente
     return new Response('Erreur interne', { status: 500 });
   }
@@ -179,11 +302,18 @@ export const GET: APIRoute = async ({ request, url }) => {
       },
     );
   } catch (err) {
-    logger.error('stripe-webhook: mock GET handler failed', { appointmentId }, err);
-    return new Response(JSON.stringify({ ok: false, error: 'Erreur interne mock' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    logger.error(
+      'stripe-webhook: mock GET handler failed',
+      { appointmentId },
+      err,
+    );
+    return new Response(
+      JSON.stringify({ ok: false, error: 'Erreur interne mock' }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
   }
 };
 
@@ -191,7 +321,11 @@ export const GET: APIRoute = async ({ request, url }) => {
 // Handler interne — paiement reçu
 // ---------------------------------------------------------------------------
 
-export async function handlePaymentSucceeded(appointmentId: string, paymentIntentId: string, eventId: string): Promise<void> {
+export async function handlePaymentSucceeded(
+  appointmentId: string,
+  paymentIntentId: string,
+  eventId: string,
+): Promise<void> {
   // N1 — Reçu de paiement (idempotence L1 sur stripe_event_id).
   // On ne transitionne que si le statut est encore `payment_pending` ET
   // `stripe_event_id` est NULL : premier livreur seulement effectue l'UPDATE.
@@ -224,7 +358,9 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
 
     if (fetchErr || !fetched) {
       // Ligne introuvable : on ne peut rien faire, sortir proprement (200).
-      logger.info('stripe-webhook: RDV introuvable après reçu de paiement', { appointmentId });
+      logger.info('stripe-webhook: RDV introuvable après reçu de paiement', {
+        appointmentId,
+      });
       return;
     }
 
@@ -240,7 +376,10 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
   // comme garde principal des side-effects — stripe_event_id (N1) ne déduplique
   // que l'accusé de paiement, pas les emails.
   if (updatedAppt.confirmation_sent_at) {
-    logger.info('stripe-webhook: confirmations déjà délivrées (L2), skip idempotent', { appointmentId });
+    logger.info(
+      'stripe-webhook: confirmations déjà délivrées (L2), skip idempotent',
+      { appointmentId },
+    );
     return;
   }
 
@@ -264,7 +403,7 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
     ].join('\n');
 
     try {
-      const result = await createCalendarEvent({
+      const result = await createAndPersistCalendarEvent(updatedAppt, {
         title,
         start: start.toISOString(),
         end: end.toISOString(),
@@ -275,59 +414,44 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
         appointmentId: updatedAppt.id,
         colorId: '11',
       });
-      calendarEventCreated = true;
       if (result.meetLink) {
         videoLink = result.meetLink;
-        // Persister video_link ET google_calendar_event_id (issue #68) : le
-        // garde-fou `if (google_calendar_event_id)` en ligne 233 devient ainsi
-        // un vrai check d'idempotence. Sans cela, chaque retry recrée un
-        // événement calendrier + salle Meet (le garde était mort car on ne
-        // persistait que video_link).
-        const { error: persistMeetErr } = await supabaseAdmin
-          .from('appointments')
-          .update({ video_link: result.meetLink, google_calendar_event_id: result.eventId })
-          .eq('id', updatedAppt.id);
-        if (persistMeetErr) {
-          logger.error('stripe-webhook: échec persistance google_calendar_event_id (Meet)', { appointmentId: updatedAppt.id }, persistMeetErr);
-        }
-      } else {
-        throw new Error('Meet non retourné par Google Calendar');
+        calendarEventCreated = true;
       }
     } catch (meetErr) {
-      logger.error('stripe-webhook: Meet event creation failed, falling back without Meet', { appointmentId: updatedAppt.id }, meetErr);
+      if (meetErr instanceof CalendarEventPersistenceError) throw meetErr;
+      logger.error(
+        'stripe-webhook: Meet event creation failed, falling back without Meet',
+        { appointmentId: updatedAppt.id },
+        meetErr,
+      );
       const fallbackVideoLink = buildFallbackVideoLink(updatedAppt.id);
       videoLink = fallbackVideoLink;
       try {
-        await supabaseAdmin
-          .from('appointments')
-          .update({ video_link: fallbackVideoLink })
-          .eq('id', updatedAppt.id);
-      } catch (persistErr) {
-        logger.error('stripe-webhook: failed to persist fallback video link', { appointmentId: updatedAppt.id }, persistErr);
-      }
-      try {
-        const fallbackResult = await createCalendarEvent({
-          title,
-          start: start.toISOString(),
-          end: end.toISOString(),
-          description: `${description}\nLien visio: ${fallbackVideoLink}`,
-          location: 'Téléconsultation',
-          attendeeEmail: updatedAppt.patient_email,
-          withMeet: false,
-          appointmentId: `${updatedAppt.id}-fallback`,
-          colorId: '11',
-        });
+        await createAndPersistCalendarEvent(
+          updatedAppt,
+          {
+            title,
+            start: start.toISOString(),
+            end: end.toISOString(),
+            description: `${description}\nLien visio: ${fallbackVideoLink}`,
+            location: 'Téléconsultation',
+            attendeeEmail: updatedAppt.patient_email,
+            withMeet: false,
+            appointmentId: `${updatedAppt.id}-fallback`,
+            colorId: '11',
+          },
+          fallbackVideoLink,
+        );
         calendarEventCreated = true;
-        // Persister l'eventId du fallback (issue #68) — même raison que ci-dessus.
-        const { error: persistFallbackErr } = await supabaseAdmin
-          .from('appointments')
-          .update({ google_calendar_event_id: fallbackResult.eventId })
-          .eq('id', updatedAppt.id);
-        if (persistFallbackErr) {
-          logger.error('stripe-webhook: échec persistance google_calendar_event_id (fallback)', { appointmentId: updatedAppt.id }, persistFallbackErr);
-        }
       } catch (calendarErr) {
-        logger.error('stripe-webhook: fallback calendar event creation failed', { appointmentId: updatedAppt.id }, calendarErr);
+        if (calendarErr instanceof CalendarEventPersistenceError)
+          throw calendarErr;
+        logger.error(
+          'stripe-webhook: fallback calendar event creation failed',
+          { appointmentId: updatedAppt.id },
+          calendarErr,
+        );
       }
     }
   } else if (updatedAppt.appointment_mode === 'video') {
@@ -344,7 +468,7 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
     ].join('\n');
 
     try {
-      const eventResult = await createCalendarEvent({
+      await createAndPersistCalendarEvent(updatedAppt, {
         title,
         start: start.toISOString(),
         end: end.toISOString(),
@@ -356,16 +480,14 @@ export async function handlePaymentSucceeded(appointmentId: string, paymentInten
         colorId: '11',
       });
       calendarEventCreated = true;
-      // Persister l'eventId (issue #68) — évite la duplication sur retry.
-      const { error: persistEventErr } = await supabaseAdmin
-        .from('appointments')
-        .update({ google_calendar_event_id: eventResult.eventId })
-        .eq('id', updatedAppt.id);
-      if (persistEventErr) {
-        logger.error('stripe-webhook: échec persistance google_calendar_event_id (event)', { appointmentId: updatedAppt.id }, persistEventErr);
-      }
     } catch (calendarErr) {
-      logger.error('stripe-webhook: calendar event creation failed (existing video link)', { appointmentId: updatedAppt.id }, calendarErr);
+      if (calendarErr instanceof CalendarEventPersistenceError)
+        throw calendarErr;
+      logger.error(
+        'stripe-webhook: calendar event creation failed (existing video link)',
+        { appointmentId: updatedAppt.id },
+        calendarErr,
+      );
     }
   }
 

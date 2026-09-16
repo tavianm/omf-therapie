@@ -1,17 +1,21 @@
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
-import tailwind from '@astrojs/tailwind';
 import sitemap from '@astrojs/sitemap';
 import netlify from '@astrojs/netlify';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   site: 'https://omf-therapie.fr',
   trailingSlash: 'ignore',
   output: 'static',
+  // compressHTML defaults to 'jsx' in Astro 7 (config schema default), so the
+  // boolean true pin is load-bearing: it keeps the shipped markup byte-stable
+  // across the Astro 5 -> 7 bump (issue #170), arbitrated by the sitemap-wide
+  // HTML diff gate.
+  compressHTML: true,
   adapter: netlify(),
   integrations: [
     react(),
-    tailwind({ applyBaseStyles: false }), // We manage base styles in src/index.css
     sitemap({
       filter: (page) => ![
         'https://omf-therapie.fr/Tarifs/',
@@ -23,6 +27,10 @@ export default defineConfig({
     }),
   ],
   vite: {
+    // Tailwind v4 via the official Vite plugin (replaces the old Astro
+    // integration). Base styles are still managed in src/index.css via
+    // `@import "tailwindcss"` — no automatic base injection anymore.
+    plugins: [tailwindcss()],
     // Pre-bundle every bare specifier (and hydration sub-path) reachable from
     // a client island. An allowlist naming only the deps seen in one repro
     // lets the same failure class resurface one page later: a late-discovered
@@ -47,19 +55,20 @@ export default defineConfig({
     build: {
       rollupOptions: {
         output: {
-          // Function form: the object form above ('react-vendor', 'motion',
-          // 'ui', 'sentry') is silently ignored for Astro's hoisted client
-          // scripts (Astro runs its own Rollup pass for them), so none of the
-          // named chunks were ever emitted. The function form is invoked for
-          // every module and reliably splits @sentry/browser into its own
-          // cacheable chunk — keeping the ~70KB SDK out of the per-layout
-          // script hash so it stays cached across deploys. We only special-case
-          // Sentry here; the other vendor hints above are left as documentation
-          // of intent (single-importer modules are inlined regardless).
-          manualChunks: (id) => {
-            if (id.includes('node_modules/@sentry/browser')) {
-              return 'sentry';
-            }
+          // Vite 8 (Rolldown) silently ignores the `manualChunks` function
+          // form — the Sentry SDK split moved to Rolldown's `advancedChunks`
+          // groups API. Same intent as the pre-#170 manualChunks: split
+          // @sentry/browser into its own cacheable chunk so the ~70KB SDK
+          // stays out of the per-layout script hash and remains cached across
+          // deploys. We only special-case Sentry; single-importer vendor
+          // modules are inlined regardless.
+          advancedChunks: {
+            groups: [
+              {
+                name: 'sentry',
+                test: /node_modules[\\/]@sentry[\\/]browser/,
+              },
+            ],
           },
         },
       },

@@ -7,11 +7,11 @@
 - **Netlify** — auto-deploys from `main` on push.
 - **Build command:** `npm run build` (`astro build` → `dist/`)
 - **Publish directory:** `dist/`
-- **Node version:** 20 (`.nvmrc` + `netlify.toml` `NODE_VERSION = "20"`)
+- **Node version:** 22.23.2 (root `.nvmrc`; Netlify resolves it natively — no `NODE_VERSION` in `netlify.toml`)
 - **Custom domain:** omf-therapie.fr (CNAME in `public/`)
 - **Adapter:** `@astrojs/netlify` — generates `_redirects` + edge functions for SSR API routes.
 
-> **CI gate** (`.github/workflows/ci.yml`, merged via PR #85): the `build` job runs `lint → test → build` and must pass before merge. `typecheck-advisory` runs non-blocking (`continue-on-error: true`) until issue #68 clears residual type errors. **Branch protection** (manual): after the first workflow run on `main`, require `CI / build` + enable "Dismiss stale pull request approvals" in Settings → Branches.
+> **CI gate** (`.github/workflows/ci.yml`): the `build` job runs `lint → test → build → diff HTML` and the separate `typecheck` job also blocks merges. **Branch protection** (manual): require `CI / build` + enable "Dismiss stale pull request approvals" in Settings → Branches.
 
 ## Pre-deploy checklist
 

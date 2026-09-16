@@ -4,7 +4,7 @@
 
 ## Local setup
 
-1. Install Node 20 (see `.nvmrc`) and run `npm install`.
+1. Install Node 22.23.2 (see `.nvmrc`) and run `npm install`.
 2. Copy `.env.example` / `.env.local.example` and fill in values — see `docs/LOCAL_DEV.md` and `docs/standards/configuration.md`.
 3. Start local services: `npm run db:start` (Postgres + Mailpit).
 4. Run the dev server: `npm run dev` (http://localhost:4321).
@@ -13,7 +13,7 @@
 
 1. Branch from `main`: `feat/<issue>-<slug>` (e.g. `feat/63-admin-annulation-avoir-credit-rdv`).
 2. Open a PR against `main` linking the issue.
-3. CI (`.github/workflows/ci.yml`) runs **lint → test → build** — all three are blocking. `typecheck` is advisory until the residual `astro check` errors clear (issue #68).
+3. CI (`.github/workflows/ci.yml`) runs **lint → test → build → diff HTML** and `typecheck`; all are blocking.
 4. Merge to `main` deploys to Netlify automatically.
 
 Worktrees for parallel work live under `.claude/worktrees/` (gitignored, never committed); bootstrap one with `tools/worktree-setup.sh`, clean up with `tools/worktree-teardown.sh`.
@@ -24,7 +24,7 @@ Worktrees for parallel work live under `.claude/worktrees/` (gitignored, never c
 npm run lint         # eslint
 npm run test         # vitest run — add/adjust unit tests for behaviour changes
 npm run build        # production build must pass
-npm run typecheck    # advisory, but keep it from getting worse
+npm run typecheck    # blocking CI gate
 ```
 
 **UI/visual changes additionally require `npm run audit:a11y`** (Pa11y, WCAG 2.1 AA) with the dev server running — accessibility is a hard requirement, not a nice-to-have. Manual keyboard/screen-reader spot-checks for new interactive components: see `docs/standards/frontend-patterns.md`.

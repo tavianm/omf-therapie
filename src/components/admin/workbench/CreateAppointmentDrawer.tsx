@@ -338,7 +338,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
               type="button"
               onClick={onClose}
               aria-label="Fermer"
-              className="inline-flex items-center justify-center w-9 h-9 rounded-full text-sage-400 hover:text-sage-700 hover:bg-sage-100 focus:outline-none focus:ring-2 focus:ring-mint-400 transition-colors shrink-0"
+              className="inline-flex items-center justify-center w-9 h-9 rounded-full text-sage-400 hover:text-sage-700 hover:bg-sage-100 focus:outline-hidden focus:ring-2 focus:ring-mint-400 transition-colors shrink-0"
             >
               <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -380,7 +380,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                 autoComplete="off"
                 className="
                   mt-2 w-full rounded-xl border border-sage-200 px-3 py-2.5 text-sm font-sans text-sage-900
-                  placeholder-sage-400 focus:outline-none focus:ring-2 focus:ring-mint-400
+                  placeholder-sage-400 focus:outline-hidden focus:ring-2 focus:ring-mint-400
                   focus:border-transparent transition-colors min-h-[44px]
                 "
               />
@@ -393,7 +393,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                         onClick={() => selectPatient(patient.email, patient.name, patient.phone, patient.lastType)}
                         className="
                           w-full flex items-center gap-3 rounded-xl border border-mint-200 bg-mint-50 px-3 py-2.5
-                          text-left hover:border-mint-400 focus:outline-none focus:ring-2 focus:ring-mint-400
+                          text-left hover:border-mint-400 focus:outline-hidden focus:ring-2 focus:ring-mint-400
                           transition-colors
                         "
                       >
@@ -421,7 +421,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                           setChooserDismissed(true);
                           setForm((prev) => ({ ...prev, patient_email: '', patient_phone: '' }));
                         }}
-                        className="w-full rounded-xl border border-dashed border-sage-300 px-3 py-2.5 text-left text-sm font-sans text-sage-600 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-mint-400 transition-colors"
+                        className="w-full rounded-xl border border-dashed border-sage-300 px-3 py-2.5 text-left text-sm font-sans text-sage-600 hover:bg-sage-50 focus:outline-hidden focus:ring-2 focus:ring-mint-400 transition-colors"
                       >
                         + Nouveau patient « {form.patient_name.trim()} »
                         <span className="block text-xs text-sage-400 mt-0.5">
@@ -443,7 +443,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                     required
                     value={form.patient_email}
                     onChange={(e) => update('patient_email', e.target.value)}
-                    className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm font-sans text-sage-900 focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[44px]"
+                    className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm font-sans text-sage-900 focus:outline-hidden focus:ring-2 focus:ring-mint-400 min-h-[44px]"
                   />
                 </div>
                 <div>
@@ -455,7 +455,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                     type="tel"
                     value={form.patient_phone}
                     onChange={(e) => update('patient_phone', e.target.value)}
-                    className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm font-sans text-sage-900 focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[44px]"
+                    className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm font-sans text-sage-900 focus:outline-hidden focus:ring-2 focus:ring-mint-400 min-h-[44px]"
                   />
                 </div>
               </div>
@@ -471,7 +471,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                     id="wb-create-type"
                     value={form.appointment_type}
                     onChange={(e) => update('appointment_type', e.target.value as AppointmentType)}
-                    className="w-full rounded-xl border border-sage-200 px-2.5 py-2 text-sm font-sans text-sage-900 focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[44px]"
+                    className="w-full rounded-xl border border-sage-200 px-2.5 py-2 text-sm font-sans text-sage-900 focus:outline-hidden focus:ring-2 focus:ring-mint-400 min-h-[44px]"
                   >
                     {TYPE_OPTIONS.map((o) => (
                       <option key={o.value} value={o.value}>{o.label}</option>
@@ -484,7 +484,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                     id="wb-create-mode"
                     value={form.appointment_mode}
                     onChange={(e) => update('appointment_mode', e.target.value as AppointmentMode)}
-                    className="w-full rounded-xl border border-sage-200 px-2.5 py-2 text-sm font-sans text-sage-900 focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[44px]"
+                    className="w-full rounded-xl border border-sage-200 px-2.5 py-2 text-sm font-sans text-sage-900 focus:outline-hidden focus:ring-2 focus:ring-mint-400 min-h-[44px]"
                   >
                     {MODE_OPTIONS.map((o) => (
                       <option key={o.value} value={o.value}>{o.label}</option>
@@ -499,7 +499,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                     onChange={(e) =>
                       update('duration', e.target.value === 'custom' ? 'custom' : Number(e.target.value))
                     }
-                    className="w-full rounded-xl border border-sage-200 px-2.5 py-2 text-sm font-sans text-sage-900 focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[44px]"
+                    className="w-full rounded-xl border border-sage-200 px-2.5 py-2 text-sm font-sans text-sage-900 focus:outline-hidden focus:ring-2 focus:ring-mint-400 min-h-[44px]"
                   >
                     {DURATION_OPTIONS.map((o) => (
                       <option key={String(o.value)} value={String(o.value)}>{o.label}</option>
@@ -527,7 +527,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                         ),
                       )
                     }
-                    className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm font-sans text-sage-900 focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[44px]"
+                    className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm font-sans text-sage-900 focus:outline-hidden focus:ring-2 focus:ring-mint-400 min-h-[44px]"
                   />
                 </div>
               )}
@@ -556,7 +556,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                           aria-pressed={isSelected}
                           className={`
                             w-full rounded-xl border px-3 py-2.5 text-left transition-colors
-                            focus:outline-none focus:ring-2 focus:ring-mint-400
+                            focus:outline-hidden focus:ring-2 focus:ring-mint-400
                             ${isSelected ? 'border-mint-500 bg-mint-50 ring-1 ring-mint-400' : 'border-sage-200 bg-white hover:border-mint-300'}
                           `}
                         >
@@ -597,7 +597,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                 type="button"
                 onClick={() => setShowManualDate(!showManualDate)}
                 aria-expanded={showManualDate}
-                className="text-sm font-medium font-sans text-sage-700 hover:text-sage-900 focus:outline-none focus:ring-2 focus:ring-mint-400 rounded"
+                className="text-sm font-medium font-sans text-sage-700 hover:text-sage-900 focus:outline-hidden focus:ring-2 focus:ring-mint-400 rounded-sm"
               >
                 {showManualDate ? '−' : '+'} Définir une date &amp; heure manuelle (exception)
               </button>
@@ -611,7 +611,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                     type="datetime-local"
                     value={form.scheduled_at}
                     onChange={(e) => update('scheduled_at', e.target.value)}
-                    className="w-full rounded-xl border border-sage-200 px-3 py-2.5 text-sm font-sans text-sage-900 focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[44px]"
+                    className="w-full rounded-xl border border-sage-200 px-3 py-2.5 text-sm font-sans text-sage-900 focus:outline-hidden focus:ring-2 focus:ring-mint-400 min-h-[44px]"
                   />
                 </div>
               )}
@@ -623,7 +623,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                 type="button"
                 onClick={() => setShowOptions(!showOptions)}
                 aria-expanded={showOptions}
-                className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold font-sans text-sage-800 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-mint-400 rounded-xl"
+                className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold font-sans text-sage-800 focus:outline-hidden focus:ring-2 focus:ring-inset focus:ring-mint-400 rounded-xl"
               >
                 Options &amp; honoraires
                 <span className="text-xs font-normal text-mint-700 underline">{showOptions ? 'Masquer' : 'Afficher'}</span>
@@ -636,7 +636,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                         type="checkbox"
                         checked={form.override_first_session}
                         onChange={(e) => update('override_first_session', e.target.checked)}
-                        className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+                        className="h-4 w-4 rounded-sm border-sage-300 text-mint-600 focus:ring-mint-400"
                       />
                       1<sup>re</sup> séance
                     </label>
@@ -645,7 +645,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                         type="checkbox"
                         checked={form.is_solidarity}
                         onChange={(e) => update('is_solidarity', e.target.checked)}
-                        className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+                        className="h-4 w-4 rounded-sm border-sage-300 text-mint-600 focus:ring-mint-400"
                       />
                       Solidaire
                     </label>
@@ -654,7 +654,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                         type="checkbox"
                         checked={form.send_email}
                         onChange={(e) => update('send_email', e.target.checked)}
-                        className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+                        className="h-4 w-4 rounded-sm border-sage-300 text-mint-600 focus:ring-mint-400"
                       />
                       Email de confirmation
                     </label>
@@ -665,7 +665,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                         type="checkbox"
                         checked={form.useOverridePrice}
                         onChange={(e) => update('useOverridePrice', e.target.checked)}
-                        className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+                        className="h-4 w-4 rounded-sm border-sage-300 text-mint-600 focus:ring-mint-400"
                       />
                       Tarif manuel
                     </label>
@@ -678,7 +678,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                           min={0}
                           value={form.overridePrice}
                           onChange={(e) => update('overridePrice', Number(e.target.value))}
-                          className="w-24 rounded-xl border border-sage-200 px-3 py-2 text-sm font-sans text-sage-900 focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[44px]"
+                          className="w-24 rounded-xl border border-sage-200 px-3 py-2 text-sm font-sans text-sage-900 focus:outline-hidden focus:ring-2 focus:ring-mint-400 min-h-[44px]"
                         />
                       </div>
                     )}
@@ -697,7 +697,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                         value={form.video_link}
                         onChange={(e) => update('video_link', e.target.value)}
                         placeholder="https://meet.google.com/…"
-                        className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm font-sans text-sage-900 placeholder-sage-400 focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[44px]"
+                        className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm font-sans text-sage-900 placeholder-sage-400 focus:outline-hidden focus:ring-2 focus:ring-mint-400 min-h-[44px]"
                       />
                     </div>
                   )}
@@ -710,7 +710,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                       type="text"
                       value={form.patient_reason}
                       onChange={(e) => update('patient_reason', e.target.value)}
-                      className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm font-sans text-sage-900 focus:outline-none focus:ring-2 focus:ring-mint-400 min-h-[44px]"
+                      className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm font-sans text-sage-900 focus:outline-hidden focus:ring-2 focus:ring-mint-400 min-h-[44px]"
                     />
                   </div>
                   {availableCredit != null && availableCredit > 0 && (
@@ -719,7 +719,7 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
                         type="checkbox"
                         checked={form.use_credit}
                         onChange={(e) => update('use_credit', e.target.checked)}
-                        className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+                        className="h-4 w-4 rounded-sm border-sage-300 text-mint-600 focus:ring-mint-400"
                       />
                       Utiliser l'avoir disponible ({(availableCredit / 100).toFixed(2)} €)
                     </label>
@@ -759,14 +759,14 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 rounded-xl border-2 border-sage-200 bg-white px-4 py-2.5 text-sm font-semibold font-sans text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-mint-400 transition-colors min-h-[44px]"
+                className="flex-1 rounded-xl border-2 border-sage-200 bg-white px-4 py-2.5 text-sm font-semibold font-sans text-sage-700 hover:bg-sage-50 focus:outline-hidden focus:ring-2 focus:ring-mint-400 transition-colors min-h-[44px]"
               >
                 Terminer
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="flex-1 rounded-xl bg-sage-900 px-4 py-2.5 text-sm font-semibold font-sans text-white hover:bg-sage-800 focus:outline-none focus:ring-2 focus:ring-mint-400 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px]"
+                className="flex-1 rounded-xl bg-sage-900 px-4 py-2.5 text-sm font-semibold font-sans text-white hover:bg-sage-800 focus:outline-hidden focus:ring-2 focus:ring-mint-400 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px]"
               >
                 {loading ? 'Création…' : 'Créer ce rendez-vous'}
               </button>

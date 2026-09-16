@@ -1,0 +1,40 @@
+{
+  "issue": 170,
+  "rows": [
+    {
+      "sc_id": "SC2",
+      "sources": ["package-lock.json"],
+      "test_cmd": "npm audit --omit=dev --audit-level=high"
+    },
+    {
+      "sc_id": "SC4",
+      "sources": ["src/content.config.ts"],
+      "test_cmd": "test -f src/content.config.ts && ! grep -q \"type: 'content'\" src/content.config.ts && grep -q \"astro/zod\" src/content.config.ts"
+    },
+    {
+      "sc_id": "SC11",
+      "sources": ["astro.config.mjs"],
+      "test_cmd": "grep -q 'compressHTML: true' astro.config.mjs"
+    },
+    {
+      "sc_id": "SC12",
+      "sources": [".nvmrc"],
+      "test_cmd": "cat .nvmrc | grep -qE '^v?22\\.' && ! grep -q NODE_VERSION netlify.toml && test \"$(grep -c 'node-version-file' .github/workflows/ci.yml)\" = \"2\""
+    },
+    {
+      "sc_id": "SC13",
+      "sources": [".github/workflows/ci.yml"],
+      "test_cmd": "grep -q 'audit-level=high' .github/workflows/ci.yml"
+    },
+    {
+      "sc_id": "SC15",
+      "sources": ["package-lock.json"],
+      "test_cmd": "grep -A1 '\"node_modules/nodemailer\"' package-lock.json | grep -q '9\\.1\\.'"
+    },
+    {
+      "sc_id": "SC1",
+      "sources": ["astro.config.mjs"],
+      "test_cmd": "npm ci --silent && npm run build"
+    }
+  ]
+}

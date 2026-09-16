@@ -128,7 +128,7 @@ export function PatientList() {
             type="checkbox"
             checked={includeArchived}
             onChange={(event) => setIncludeArchived(event.target.checked)}
-            className="h-4 w-4 rounded border-sage-300 text-mint-700 focus:ring-mint-400"
+            className="h-4 w-4 rounded-sm border-sage-300 text-mint-700 focus:ring-mint-400"
           />
           Afficher les patients inactifs
         </label>
@@ -170,7 +170,7 @@ export function PatientList() {
               <li key={patient.email} className="rounded-2xl border border-sage-200 bg-white">
                 <button
                   type="button"
-                  className="w-full px-4 py-4 text-left hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-mint-400 rounded-2xl"
+                  className="w-full px-4 py-4 text-left hover:bg-sage-50 focus:outline-hidden focus:ring-2 focus:ring-mint-400 rounded-2xl"
                   aria-expanded={isExpanded}
                   aria-controls={panelId}
                   aria-label={`${isExpanded ? "Masquer" : "Afficher"} l'historique de ${patient.name}`}
@@ -209,7 +209,7 @@ export function PatientList() {
                           type="button"
                           onClick={() => handleSendReviewReminder(patient)}
                           disabled={isReviewActionDisabled}
-                          className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-none focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                          className="inline-flex items-center px-4 py-2 text-sm font-medium font-sans rounded-xl border border-sage-300 text-sage-700 hover:bg-sage-50 focus:outline-hidden focus:ring-2 focus:ring-sage-300 focus:ring-offset-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
                         >
                           {reviewLoadingEmail === patient.email ? "Envoi..." : "Relancer avis"}
                         </button>

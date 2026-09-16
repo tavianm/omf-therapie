@@ -52,7 +52,7 @@ const QualificationsSection = () => {
               {qualifications.map((qual, index) => (
                 <div
                   key={index}
-                  className="bg-white p-6 rounded-lg shadow-sm"
+                  className="bg-white p-6 rounded-lg shadow-xs"
                 >
                   <div className="text-mint-600 font-medium mb-2">
                     {qual.year}

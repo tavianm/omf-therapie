@@ -15,7 +15,7 @@ export const PriceCard = ({
   index,
 }: PriceCardProps) => {
   return (
-    <div className="bg-white p-8 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+    <div className="bg-white p-8 rounded-lg shadow-xs hover:shadow-md transition-shadow">
       <h3 className="text-3xl font-serif font-semibold text-sage-800 mb-4">
         {title}
       </h3>

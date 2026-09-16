@@ -136,8 +136,8 @@ function KpiCard({
         onClick={onClick}
         aria-label={accessibleName}
         className={`
-          w-full rounded-2xl border bg-white p-4 shadow-sm min-w-0 text-left
-          transition-colors hover:border-mint-300 focus:outline-none
+          w-full rounded-2xl border bg-white p-4 shadow-xs min-w-0 text-left
+          transition-colors hover:border-mint-300 focus:outline-hidden
           focus:ring-2 focus:ring-mint-400
           ${isWarning ? 'border-amber-200' : 'border-sage-200'}
         `}
@@ -149,7 +149,7 @@ function KpiCard({
   return (
     <div
       className={`
-        rounded-2xl border bg-white p-4 shadow-sm min-w-0
+        rounded-2xl border bg-white p-4 shadow-xs min-w-0
         ${isWarning ? 'border-amber-200' : 'border-sage-200'}
       `}
     >
@@ -366,7 +366,7 @@ export function SyntheseView({
 
       {/* ── Prochains rendez-vous ─────────────────────────────────────────── */}
       <section
-        className="rounded-2xl border border-sage-200 bg-white p-4 sm:p-5 shadow-sm"
+        className="rounded-2xl border border-sage-200 bg-white p-4 sm:p-5 shadow-xs"
         aria-labelledby="wb-next-title"
       >
         <header className="flex flex-wrap items-center gap-2.5 mb-3">
@@ -434,7 +434,7 @@ export function SyntheseView({
                       rel="noopener noreferrer"
                       className="
                         inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold font-sans
-                        rounded-xl bg-sage-900 text-white hover:bg-sage-800 focus:outline-none
+                        rounded-xl bg-sage-900 text-white hover:bg-sage-800 focus:outline-hidden
                         focus:ring-2 focus:ring-mint-400 focus:ring-offset-1 transition-colors
                         min-h-[40px] shrink-0
                       "
@@ -456,7 +456,7 @@ export function SyntheseView({
                       aria-label={`Voir les détails du rendez-vous de ${appointment.patient_name}`}
                       className="
                         inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium font-sans
-                        rounded-xl bg-mint-100 text-mint-900 hover:bg-mint-200 focus:outline-none
+                        rounded-xl bg-mint-100 text-mint-900 hover:bg-mint-200 focus:outline-hidden
                         focus:ring-2 focus:ring-mint-400 transition-colors min-h-[40px] shrink-0
                       "
                     >
@@ -472,7 +472,7 @@ export function SyntheseView({
 
       {/* ── Demandes de RDV ───────────────────────────────────────────────── */}
       <section
-        className="rounded-2xl border border-sage-200 bg-white p-4 sm:p-5 shadow-sm"
+        className="rounded-2xl border border-sage-200 bg-white p-4 sm:p-5 shadow-xs"
         aria-labelledby="wb-demandes-title"
       >
         <header className="flex flex-wrap items-center gap-2.5 mb-3">
@@ -521,7 +521,7 @@ export function SyntheseView({
                   aria-expanded={showAllDemands}
                   className="
                     inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-mint-100 text-sm
-                    font-medium font-sans text-mint-900 hover:bg-mint-200 focus:outline-none
+                    font-medium font-sans text-mint-900 hover:bg-mint-200 focus:outline-hidden
                     focus:ring-2 focus:ring-mint-400 transition-colors min-h-[40px]
                   "
                 >

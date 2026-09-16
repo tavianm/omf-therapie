@@ -122,7 +122,7 @@ function Input({
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
       required={required}
-      className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans placeholder:text-sage-400 focus:border-mint-400 focus:outline-none focus:ring-2 focus:ring-mint-200"
+      className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans placeholder:text-sage-400 focus:border-mint-400 focus:outline-hidden focus:ring-2 focus:ring-mint-200"
     />
   );
 }
@@ -141,9 +141,9 @@ export function AdminCreateButton({ prefillData }: AdminCreateButtonProps = {}) 
         onClick={() => setOpen(true)}
         className="
           inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold font-sans
-          rounded-xl bg-mint-700 text-white shadow-sm
+          rounded-xl bg-mint-700 text-white shadow-xs
           hover:bg-mint-800
-          focus:outline-none focus:ring-2 focus:ring-mint-400 focus:ring-offset-1
+          focus:outline-hidden focus:ring-2 focus:ring-mint-400 focus:ring-offset-1
           transition-colors min-h-[40px]
         "
         aria-label="Créer un rendez-vous manuellement"
@@ -409,7 +409,7 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
                 id="cm-type"
                 value={form.appointment_type}
                 onChange={e => update("appointment_type", e.target.value as AppointmentType)}
-                className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans focus:border-mint-400 focus:outline-none focus:ring-2 focus:ring-mint-200"
+                className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans focus:border-mint-400 focus:outline-hidden focus:ring-2 focus:ring-mint-200"
               >
                 {APPOINTMENT_TYPES.map(t => (
                   <option key={t.value} value={t.value}>{t.label}</option>
@@ -422,7 +422,7 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
                 id="cm-mode"
                 value={form.appointment_mode}
                 onChange={e => update("appointment_mode", e.target.value as AppointmentMode)}
-                className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans focus:border-mint-400 focus:outline-none focus:ring-2 focus:ring-mint-200"
+                className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans focus:border-mint-400 focus:outline-hidden focus:ring-2 focus:ring-mint-200"
               >
                 {APPOINTMENT_MODES.map(m => (
                   <option key={m.value} value={m.value}>{m.label}</option>
@@ -443,7 +443,7 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
                     ...(isCustom ? { useOverridePrice: true } : {}),
                   }));
                 }}
-                className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans focus:border-mint-400 focus:outline-none focus:ring-2 focus:ring-mint-200"
+                className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans focus:border-mint-400 focus:outline-hidden focus:ring-2 focus:ring-mint-200"
               >
                 {DURATIONS.map(d => (
                   <option key={d.value} value={d.value}>{d.label}</option>
@@ -457,7 +457,7 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
                   step={1}
                   value={form.customDurationMinutes}
                   onChange={(e) => setForm(f => ({ ...f, customDurationMinutes: Number(e.target.value) }))}
-                  className="mt-1 w-full rounded border border-sage-200 px-2 py-1 text-sm"
+                  className="mt-1 w-full rounded-sm border border-sage-200 px-2 py-1 text-sm"
                   placeholder="Durée en minutes (ex: 45)"
                   required
                 />
@@ -500,7 +500,7 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
               onChange={e => update("patient_reason", e.target.value)}
               rows={3}
               placeholder="Motif de consultation, contexte particulier…"
-              className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans placeholder:text-sage-400 focus:border-mint-400 focus:outline-none focus:ring-2 focus:ring-mint-200 resize-none"
+              className="w-full rounded-xl border border-sage-200 px-3 py-2 text-sm text-sage-900 font-sans placeholder:text-sage-400 focus:border-mint-400 focus:outline-hidden focus:ring-2 focus:ring-mint-200 resize-none"
             />
           </div>
 
@@ -519,7 +519,7 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
                     if (e.target.checked) { update("override_first_session", true); update("is_solidarity", false); }
                     else update("override_first_session", false);
                   }}
-                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400 disabled:opacity-40"
+                  className="h-4 w-4 rounded-sm border-sage-300 text-mint-600 focus:ring-mint-400 disabled:opacity-40"
                 />
                 <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
                   Remise nouveau client{" "}
@@ -535,7 +535,7 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
                     if (e.target.checked) { update("is_solidarity", true); update("override_first_session", false); }
                     else update("is_solidarity", false);
                   }}
-                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400 disabled:opacity-40"
+                  className="h-4 w-4 rounded-sm border-sage-300 text-mint-600 focus:ring-mint-400 disabled:opacity-40"
                 />
                 <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
                   Tarif solidaire{" "}
@@ -547,7 +547,7 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
                   type="checkbox"
                   checked={form.useOverridePrice}
                   onChange={(e) => setForm(f => ({ ...f, useOverridePrice: e.target.checked }))}
-                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+                  className="h-4 w-4 rounded-sm border-sage-300 text-mint-600 focus:ring-mint-400"
                 />
                 Tarif manuel
               </label>
@@ -558,7 +558,7 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
                   step={1}
                   value={form.overridePrice}
                   onChange={(e) => setForm(f => ({ ...f, overridePrice: Number(e.target.value) }))}
-                  className="mt-1 w-full rounded border border-sage-200 px-2 py-1 text-sm"
+                  className="mt-1 w-full rounded-sm border border-sage-200 px-2 py-1 text-sm"
                   placeholder="Tarif en € (ex: 45)"
                   required
                 />
@@ -586,7 +586,7 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
                   type="checkbox"
                   checked={form.use_credit}
                   onChange={e => update("use_credit", e.target.checked)}
-                  className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+                  className="h-4 w-4 rounded-sm border-sage-300 text-mint-600 focus:ring-mint-400"
                 />
                 <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
                   Utiliser l'avoir disponible{" "}
@@ -609,7 +609,7 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
               type="checkbox"
               checked={form.send_email}
               onChange={e => update("send_email", e.target.checked)}
-              className="h-4 w-4 rounded border-sage-300 text-mint-600 focus:ring-mint-400"
+              className="h-4 w-4 rounded-sm border-sage-300 text-mint-600 focus:ring-mint-400"
             />
             <span className="text-sm text-sage-700 font-sans group-hover:text-sage-900">
               Envoyer un email au patient
@@ -642,7 +642,7 @@ function AdminCreateModal({ onClose, prefillData }: { onClose: () => void; prefi
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 rounded-xl bg-mint-700 px-4 py-2.5 text-sm font-semibold text-white font-sans shadow-sm transition-colors hover:bg-mint-800 disabled:opacity-50"
+              className="flex-1 rounded-xl bg-mint-700 px-4 py-2.5 text-sm font-semibold text-white font-sans shadow-xs transition-colors hover:bg-mint-800 disabled:opacity-50"
             >
               {loading ? "Création…" : "Créer le rendez-vous"}
             </button>

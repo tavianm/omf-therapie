@@ -1,0 +1,73 @@
+{
+  "schema_version": "2",
+  "issue": 170,
+  "head": "46f08cb199aa3be00517e17018056ae850d9dfe9",
+  "runner_id": "run-falsify-170/2",
+  "oracle_ok": true,
+  "oracle_reason": "ok",
+  "rows": [
+    {
+      "sc_id": "SC2",
+      "test_cmd": "npm audit --omit=dev --audit-level=high",
+      "expect": "a critical astro@5.x in the prod tree must fail the audit gate",
+      "mutation": "package-lock.json: \"\\\"node_modules/astro\\\": {\\n      \\\"version\\\": \\\"7.3.2\\\",\" → …",
+      "fail_exit": 1,
+      "error": "FAIL exit=1: # npm audit report @opentelemetry/core <2.8.0 Severity: moderate OpenTelemetry Core: Unbounded memory allocation in W3C Baggage propagation - https://github.com/advisories/GHSA-8988-4f7v-96qf fix available via `npm audit fix --force` Will i",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC4",
+      "test_cmd": "test -f src/content.config.ts && ! grep -q \"type: 'content'\" src/content.config.ts && grep -q \"astro/zod\" src/content.config.ts",
+      "expect": "a z import regressed to astro:content (v7 removed it) must fail the legacy check",
+      "mutation": "src/content.config.ts: \"import { z } from 'astro/zod';\" → …",
+      "fail_exit": 1,
+      "error": "FAIL exit=1: bash: warning: setlocale: LC_ALL: cannot change locale (fr_FR.UTF-8)",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC11",
+      "test_cmd": "grep -q 'compressHTML: true' astro.config.mjs",
+      "expect": "the pin being flipped to false must fail the config check",
+      "mutation": "astro.config.mjs: \"compressHTML: true,\" → …",
+      "fail_exit": 1,
+      "error": "FAIL exit=1: bash: warning: setlocale: LC_ALL: cannot change locale (fr_FR.UTF-8)",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC12",
+      "test_cmd": "node -e \"const [x,y]=process.argv[1].replace(/^v/,'').split('.').map(Number); process.exit(x===22&&y>=12?0:1)\" \"$(cat .nvmrc)\" && ! grep -q NODE_VERSION netlify.toml && test \"$(grep -c 'node-version-file' .github/workflows/ci.yml)\" = \"2\"",
+      "expect": "a Node pin below the 22.12 engine floor must fail the pin check",
+      "mutation": ".nvmrc: \"v22.23.2\" → …",
+      "fail_exit": 1,
+      "error": "FAIL exit=1: bash: warning: setlocale: LC_ALL: cannot change locale (fr_FR.UTF-8)",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC13",
+      "test_cmd": "grep -q 'audit-level=high' .github/workflows/ci.yml",
+      "expect": "removing the CI audit step must fail the workflow check",
+      "mutation": ".github/workflows/ci.yml: \"        run: npm audit --omit=dev --audit-level=high\\n\" → …",
+      "fail_exit": 1,
+      "error": "FAIL exit=1: bash: warning: setlocale: LC_ALL: cannot change locale (fr_FR.UTF-8)",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC15",
+      "test_cmd": "grep -A1 '\"node_modules/nodemailer\"' package-lock.json | grep -q '9\\.1\\.'",
+      "expect": "a nodemailer regression to the vulnerable 9.0.3 must fail the version check",
+      "mutation": "package-lock.json: \"\\\"node_modules/nodemailer\\\": {\\n      \\\"version\\\": \\\"9.1.1\\\",\" → …",
+      "fail_exit": 1,
+      "error": "FAIL exit=1: bash: warning: setlocale: LC_ALL: cannot change locale (fr_FR.UTF-8)",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC1",
+      "test_cmd": "npm run build",
+      "expect": "a broken site URL in the astro config must fail the build (schema validation)",
+      "mutation": "astro.config.mjs: \"site: 'https://omf-therapie.fr',\" → …",
+      "fail_exit": 1,
+      "error": "FAIL exit=1: > omf-therapie@1.0.0 prebuild > node scripts/generate-build-env.mjs [build-env] wrote netlify/functions/_lib/build-env.ts (CONTEXT=development, COMMIT_REF=dev) > omf-therapie@1.0.0 build > astro build bash: warning: setlocale: LC_ALL: canno",
+      "status": "proven"
+    }
+  ]
+}

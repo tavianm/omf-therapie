@@ -1,5 +1,5 @@
 ---
-id: "8"
+postId: "8"
 title: "L'impact des mots : quand le langage alimente le mal-être"
 excerpt: "Découvrez comment notre dialogue intérieur influence notre bien-être psychologique et apprenez à transformer vos schémas de pensée pour une meilleure santé mentale."
 date: "26 avril 2026"

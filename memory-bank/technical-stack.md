@@ -36,8 +36,8 @@
 - **Dev server :** `npm run dev` — port **4321** (Astro), pas 5173 (Vite direct n'est plus utilisé).
 - **Adaptateur :** `@astrojs/netlify` — génère `_redirects` + edge functions pour les routes SSR.
 - **Plateforme :** Netlify (auto-déploiement depuis `main`).
-- **CI gate** (`.github/workflows/ci.yml`, PR #85) : `lint → test → build` bloquant ; `typecheck` advisory (issue #68 trace les ~20 erreurs résiduelles).
-- **Node :** 20 (`.nvmrc`, correspond à `netlify.toml`).
+- **CI gate** (`.github/workflows/ci.yml`) : `lint → test → build → diff HTML` et `typecheck` bloquants.
+- **Node :** 22.23.2 (root `.nvmrc`, résolu nativement par Netlify).
 
 ## Tooling
 

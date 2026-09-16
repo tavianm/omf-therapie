@@ -1,5 +1,5 @@
 ---
-id: "4"
+postId: "4"
 title: "Renforcer la communication dans le couple"
 excerpt: "Des stratégies efficaces pour améliorer la communication et résoudre les conflits dans votre relation de couple."
 date: "12 août 2025"

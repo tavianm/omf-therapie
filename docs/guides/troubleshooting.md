@@ -65,9 +65,9 @@ The credits system (`008_credits.sql`) must be applied. After `db:reset`, manual
 
 ## CI
 
-### Typecheck fails with ~20 errors but CI is green
+### Typecheck fails
 
-This is expected (PR #85). Typecheck runs as `typecheck-advisory` with `continue-on-error: true`. The 20 residual errors are library-typing mismatches (googleapis, better-auth, stripe version drift, react-email) tracked in issue #68. Don't add **new** type errors; fixing existing ones is appreciated but out of scope for most PRs.
+`npm run typecheck` is a blocking CI gate. Fix the diagnostic before pushing; the historical residual errors tracked by #68 were cleared before this policy changed.
 
 ### `.nvmrc` or `.github/workflows/ci.yml` missing locally
 
@@ -98,6 +98,11 @@ Check `netlify.toml` redirects — legacy SPA paths (`/Tarifs`, `/Services`, etc
 1. Stripe Dashboard → Webhooks → check if events are being delivered (200 response).
 2. Verify `STRIPE_WEBHOOK_SECRET` matches the live endpoint's signing secret.
 3. Check Netlify function logs for `/api/stripe-webhook` errors.
+
+If Google Calendar contains the event but `appointments.google_calendar_event_id`
+is empty, treat the webhook delivery as failed: the event cannot be deleted on
+cancellation. The webhook now removes the just-created event and returns `500`
+to Stripe when it cannot persist this identifier, so Stripe can retry safely.
 
 ### Google Calendar sync broken (prod)
 

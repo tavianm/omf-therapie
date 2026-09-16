@@ -25,7 +25,7 @@ import {
 import type { ReactNode } from 'react';
 
 // ---------------------------------------------------------------------------
-// Palette (valeurs exactes du tailwind.config.js)
+// Palette (valeurs exactes du @theme dans src/index.css)
 // ---------------------------------------------------------------------------
 
 const COLORS = {

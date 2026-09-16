@@ -37,11 +37,13 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 // Mock createCalendarEvent — returns a fake event ID + Meet link.
+const mockDeleteCalendarEvent = vi.fn().mockResolvedValue(undefined);
 vi.mock('@/lib/google-calendar', () => ({
   createCalendarEvent: vi.fn().mockResolvedValue({
     eventId: 'gcal_mock_event',
     meetLink: 'https://meet.google.com/mock-link',
   }),
+  deleteCalendarEvent: (...args: unknown[]) => mockDeleteCalendarEvent(...args),
 }));
 
 // Mock buildAndSendConfirmationEmails — controllable per-test.
@@ -131,6 +133,10 @@ beforeEach(() => {
   mockSupabaseChain.eq.mockReturnThis();
   mockSupabaseChain.is.mockReturnThis();
   mockSupabaseChain.select.mockReturnThis();
+  mockSupabaseChain.maybeSingle.mockResolvedValue({
+    data: { google_calendar_event_id: 'gcal_mock_event' },
+    error: null,
+  });
   // Default email result: success.
   mockBuildAndSend.mockResolvedValue({
     patientEmailSent: true,
@@ -305,6 +311,46 @@ describe('handlePaymentSucceeded — throw on patient email failure', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Calendar persistence — never leave an event that cancellation cannot find
+// ---------------------------------------------------------------------------
+
+describe('handlePaymentSucceeded — calendar event persistence', () => {
+  it('removes the event and fails the webhook when Supabase cannot store its ID', async () => {
+    mockFirstDeliveryWins();
+    // The persistence read after the update reports the database failure.
+    mockSupabaseChain.maybeSingle.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'database unavailable' },
+    });
+
+    await expect(
+      handlePaymentSucceeded('appt_001', 'pi_test_123', 'evt_001'),
+    ).rejects.toThrow('Unable to persist Google Calendar event identifier');
+
+    expect(createCalendarEvent).toHaveBeenCalledTimes(1);
+    expect(mockDeleteCalendarEvent).toHaveBeenCalledWith('gcal_mock_event');
+    expect(mockBuildAndSend).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the update affects no row without returning an error', async () => {
+    mockFirstDeliveryWins();
+    // PostgREST can acknowledge an UPDATE that matches no rows with a 2xx
+    // response. The re-read must reject that silent no-op too.
+    mockSupabaseChain.maybeSingle.mockResolvedValueOnce({
+      data: null,
+      error: null,
+    });
+
+    await expect(
+      handlePaymentSucceeded('appt_001', 'pi_test_123', 'evt_001'),
+    ).rejects.toThrow('Unable to persist Google Calendar event identifier');
+
+    expect(mockDeleteCalendarEvent).toHaveBeenCalledWith('gcal_mock_event');
+    expect(mockBuildAndSend).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Mark-delivered — full success → confirmation_sent_at set with IS NULL guard
 // ---------------------------------------------------------------------------
 
@@ -327,7 +373,7 @@ describe('handlePaymentSucceeded — mark delivered on success', () => {
     expect(mockBuildAndSend).toHaveBeenCalledTimes(1);
     // The last .is() call should be the confirmation_sent_at IS NULL guard.
     const isCalls = mockSupabaseChain.is.mock.calls;
-    expect(isCalls.some((call) => call[0] === 'confirmation_sent_at')).toBe(true);
+    expect(isCalls.some(call => call[0] === 'confirmation_sent_at')).toBe(true);
 
     // C5 (issue #126): the mark-delivered update carries BOTH flags in the
     // SAME payload — the post-payment confirmation email doubles as the
@@ -335,8 +381,8 @@ describe('handlePaymentSucceeded — mark delivered on success', () => {
     // confirmation_sent_at or the reconcile-invitations sweep would re-mail
     // the patient.
     const flagPayloads = mockSupabaseChain.update.mock.calls
-      .map((call) => call[0] as Record<string, unknown>)
-      .filter((payload) => 'confirmation_sent_at' in payload);
+      .map(call => call[0] as Record<string, unknown>)
+      .filter(payload => 'confirmation_sent_at' in payload);
     expect(flagPayloads).toHaveLength(1);
     expect(typeof flagPayloads[0]!.invitation_sent_at).toBe('string');
     expect(flagPayloads[0]!.invitation_sent_at).toBe(

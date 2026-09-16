@@ -340,7 +340,7 @@ try {
 - **Vitest** — tests unitaires / intégration dans `tests/unit/**` (env `node`). Couvre notamment `appointment-eligibility.ts`, `credits.ts`, `google-calendar.ts`.
 - **Playwright** — tests e2e dans `e2e/*.spec.ts` (`smoke.spec.ts`, `manual-slots.spec.ts`).
 - **pa11y + Lighthouse** — audits accessibilité WCAG 2.1 AA, **requis avant tout PR UI** (`npm run audit:a11y`).
-- **CI** (`.github/workflows/ci.yml`) — `lint → test → build` bloquant ; `typecheck` advisory (issue #68).
+- **CI** (`.github/workflows/ci.yml`) — `lint → test → build → diff HTML` et `typecheck` bloquants.
 
 ### Commands
 

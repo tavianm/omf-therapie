@@ -253,9 +253,9 @@ function TypeModeStep({
               onClick={() => updateField('appointment_type', type.value)}
               className={`
                 flex flex-col items-center gap-2 rounded-xl border-2 p-4 text-center transition-all duration-150
-                hover:border-sage-400 hover:bg-sage-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sage-600
+                hover:border-sage-400 hover:bg-sage-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-sage-600
                 ${state.appointment_type === type.value
-                  ? 'border-sage-600 bg-sage-50 shadow-sm'
+                  ? 'border-sage-600 bg-sage-50 shadow-xs'
                   : 'border-sage-200 bg-white'
                 }
               `}
@@ -283,9 +283,9 @@ function TypeModeStep({
               onClick={() => updateField('appointment_mode', mode.value)}
               className={`
                 flex flex-col items-start gap-1 rounded-xl border-2 p-4 text-left transition-all duration-150
-                hover:border-sage-400 hover:bg-sage-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sage-600
+                hover:border-sage-400 hover:bg-sage-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-sage-600
                 ${state.appointment_mode === mode.value
-                  ? 'border-sage-600 bg-sage-50 shadow-sm'
+                  ? 'border-sage-600 bg-sage-50 shadow-xs'
                   : 'border-sage-200 bg-white'
                 }
               `}
@@ -366,7 +366,7 @@ function TypeModeStep({
           className={`
             inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold
             text-white transition-all duration-150
-            focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2
+            focus:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2
             disabled:cursor-not-allowed disabled:opacity-40
           `}
           style={{ backgroundColor: ACCENT }}
@@ -444,7 +444,7 @@ function DatetimeStep({
           <div className="space-y-4" aria-live="polite" aria-busy="true">
             {[0, 1, 2].map(i => (
               <div key={i} className="animate-pulse rounded-xl border border-sage-200 bg-white p-4">
-                <div className="mb-3 h-4 w-40 rounded bg-sage-100" />
+                <div className="mb-3 h-4 w-40 rounded-sm bg-sage-100" />
                 <div className="flex flex-wrap gap-2">
                   {[0, 1, 2, 3].map(j => (
                     <div key={j} className="h-9 w-16 rounded-lg bg-sage-100" />
@@ -481,7 +481,7 @@ function DatetimeStep({
               <div
                 key={group.dateKey}
                 role="listitem"
-                className="rounded-xl border border-sage-200 bg-white p-4 shadow-sm"
+                className="rounded-xl border border-sage-200 bg-white p-4 shadow-xs"
               >
                 <h3 className="mb-3 text-sm font-semibold text-sage-800">{group.dateLabel}</h3>
                 <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={group.dateLabel}>
@@ -497,9 +497,9 @@ function DatetimeStep({
                         onClick={() => updateField('scheduled_at', slot.start)}
                         className={`
                          rounded-lg border-2 px-3 py-2 text-sm font-medium transition-all duration-150
-                         focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2
+                         focus:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2
                          ${isSelected
-                           ? 'text-white shadow-sm'
+                           ? 'text-white shadow-xs'
                            : 'border-sage-200 bg-white text-sage-700 hover:border-sage-400 hover:bg-sage-50'
                          }
                        `}
@@ -521,7 +521,7 @@ function DatetimeStep({
         <button
           type="button"
           onClick={prevStep}
-          className="inline-flex items-center gap-2 rounded-xl border-2 border-sage-200 bg-white px-5 py-2.5 text-sm font-semibold text-sage-700 transition-colors hover:border-sage-400 hover:bg-sage-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sage-600"
+          className="inline-flex items-center gap-2 rounded-xl border-2 border-sage-200 bg-white px-5 py-2.5 text-sm font-semibold text-sage-700 transition-colors hover:border-sage-400 hover:bg-sage-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-sage-600"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -532,7 +532,7 @@ function DatetimeStep({
           type="button"
           onClick={nextStep}
           disabled={!isValid}
-          className="inline-flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white transition-all duration-150 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
           style={{ backgroundColor: ACCENT }}
         >
           Continuer
@@ -567,7 +567,7 @@ function PatientInfoStep({
 
   const inputClass = (value: string) =>
     `w-full rounded-xl border-2 px-4 py-2.5 text-sm text-sage-800 placeholder:text-sage-400
-     transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sage-600
+     transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-sage-600
      ${value.length > 0 ? 'border-sage-300' : 'border-sage-200'} bg-white`;
 
   return (
@@ -694,7 +694,7 @@ function PatientInfoStep({
         <button
           type="button"
           onClick={prevStep}
-          className="inline-flex items-center gap-2 rounded-xl border-2 border-sage-200 bg-white px-5 py-2.5 text-sm font-semibold text-sage-700 transition-colors hover:border-sage-400 hover:bg-sage-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sage-600"
+          className="inline-flex items-center gap-2 rounded-xl border-2 border-sage-200 bg-white px-5 py-2.5 text-sm font-semibold text-sage-700 transition-colors hover:border-sage-400 hover:bg-sage-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-sage-600"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -705,7 +705,7 @@ function PatientInfoStep({
           type="button"
           onClick={nextStep}
           disabled={!isValid}
-          className="inline-flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white transition-all duration-150 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
           style={{ backgroundColor: ACCENT }}
         >
           Vérifier
@@ -753,7 +753,7 @@ function ReviewStep({
       </p>
 
       {/* Bloc séance */}
-      <section className="rounded-xl border border-sage-200 bg-white p-5 shadow-sm">
+      <section className="rounded-xl border border-sage-200 bg-white p-5 shadow-xs">
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-sage-500">
           Séance
         </h3>
@@ -786,7 +786,7 @@ function ReviewStep({
       </section>
 
       {/* Bloc patient */}
-      <section className="rounded-xl border border-sage-200 bg-white p-5 shadow-sm">
+      <section className="rounded-xl border border-sage-200 bg-white p-5 shadow-xs">
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-sage-500">
           Vos informations
         </h3>
@@ -837,7 +837,7 @@ function ReviewStep({
           type="button"
           onClick={prevStep}
           disabled={state.isSubmitting}
-          className="inline-flex items-center gap-2 rounded-xl border-2 border-sage-200 bg-white px-5 py-2.5 text-sm font-semibold text-sage-700 transition-colors hover:border-sage-400 hover:bg-sage-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sage-600 disabled:opacity-40"
+          className="inline-flex items-center gap-2 rounded-xl border-2 border-sage-200 bg-white px-5 py-2.5 text-sm font-semibold text-sage-700 transition-colors hover:border-sage-400 hover:bg-sage-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-sage-600 disabled:opacity-40"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -848,7 +848,7 @@ function ReviewStep({
           type="button"
           onClick={submitBooking}
           disabled={state.isSubmitting}
-          className="inline-flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white transition-all duration-150 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
           style={{ backgroundColor: ACCENT }}
         >
           {state.isSubmitting ? (
@@ -937,7 +937,7 @@ export default function BookingWizard() {
   }, [state.step]);
 
   return (
-    <div ref={wizardRef} tabIndex={-1} className="rounded-2xl border border-sage-200 bg-white p-6 shadow-md sm:p-8 focus:outline-none">
+    <div ref={wizardRef} tabIndex={-1} className="rounded-2xl border border-sage-200 bg-white p-6 shadow-md sm:p-8 focus:outline-hidden">
       <StepIndicator currentStep={state.step} />
 
       {state.step === 'type-mode' && (

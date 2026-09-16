@@ -1,7 +1,7 @@
 ---
 import type { GetStaticPaths } from 'astro';
 import type { CollectionEntry } from 'astro:content';
-import { getCollection } from 'astro:content';
+import { getCollection, render } from 'astro:content';
 import { ArrowLeft, Calendar, Clock, Tag, User } from 'lucide-react';
 import Layout from '../../layouts/Layout.astro';
 import Navbar from '../../components/islands/Navbar';
@@ -14,19 +14,27 @@ import { calculateReadingTime } from '../../utils/readingTime';
 export const getStaticPaths: GetStaticPaths = async () => {
   const entries = await getCollection('blog');
   return entries.map((entry) => ({
-    params: { slug: entry.id.replace(/\.md$/, '') }, // strip .md extension from Astro 5 entry.id
+    params: { slug: entry.id }, // glob loader: entry.id is the URL slug (relative path without extension)
     props: { entry },
   }));
 };
 
 type Props = { entry: CollectionEntry<'blog'> };
 const { entry } = Astro.props;
-const { Content } = await entry.render();
+const { Content } = await render(entry);
 const post = collectionEntryToBlogPost(entry);
 
 // Get related posts (same category, exclude current, not disabled)
 const allEntries = await getCollection('blog');
-const allPosts = allEntries.map(collectionEntryToBlogPost);
+// Sort explicitly: the glob loader's iteration order is not the legacy
+// collection order, so without this the related list shuffles between builds.
+// `date` is French-formatted ("15 février 2025") — sort on the ISO field.
+const allPosts = allEntries
+  .sort(
+    (a, b) =>
+      new Date(b.data.dateIso).getTime() - new Date(a.data.dateIso).getTime()
+  )
+  .map(collectionEntryToBlogPost);
 const relatedPosts = allPosts
   .filter(
     (p) =>
@@ -58,7 +66,7 @@ const readingTime = calculateReadingTime(entry.body ?? '');
 >
   <a
     href="#main-content"
-    class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded"
+    class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-mint-600 focus:text-white focus:rounded-sm"
   >
     Aller au contenu principal
   </a>
@@ -72,7 +80,7 @@ const readingTime = calculateReadingTime(entry.body ?? '');
         Retour aux articles
       </a>
 
-      <article class="bg-white rounded-lg shadow-sm overflow-hidden p-6 md:p-8">
+      <article class="bg-white rounded-lg shadow-xs overflow-hidden p-6 md:p-8">
         <div class="flex flex-wrap gap-2 mb-4">
           {post.categories.map((category) => (
             <a
@@ -140,7 +148,7 @@ const readingTime = calculateReadingTime(entry.body ?? '');
           </h2>
           <div class="grid md:grid-cols-2 gap-6">
             {relatedPosts.map((relatedPost) => (
-              <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+              <div class="bg-white rounded-lg shadow-xs overflow-hidden">
                 <a href={`/blog/${relatedPost.slug}`} class="block p-6">
                   <div class="flex flex-wrap gap-2 mb-2">
                     {relatedPost.categories.slice(0, 1).map((category) => (

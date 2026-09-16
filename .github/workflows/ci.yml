@@ -46,10 +46,12 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
       - name: Install
         run: npm ci
+      - name: Audit prod dependencies (blocking)
+        run: npm audit --omit=dev --audit-level=high
       - name: Verify google-auth-library dedupe
         # Guard against a future googleapis bump silently re-splitting
         # google-auth-library, which re-introduces the ts2322/2769 overload
@@ -77,6 +79,13 @@ jobs:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/omf_therapie
       - name: Build
         run: npm run build
+      - name: Verify HTML non-regression gate
+        # Compare the freshly built site to the versioned Astro 5 baseline.
+        # A missing baseline is a setup failure (exit 2), never a skipped gate.
+        run: npm run diff:html-170
+      - name: Verify HTML gate failure modes
+        # Companion fixtures prove the comparator itself fails closed.
+        run: npm run test:html-diff-170
 
   # Blocking gate member — type errors fail the run. The codebase previously
   # carried 26 pre-existing type errors (auth/payments/calendar/emails) that
@@ -90,7 +99,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
       - name: Install
         run: npm ci
