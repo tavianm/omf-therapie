@@ -75,6 +75,16 @@ async function createAndPersistCalendarEvent(
       : null;
   if (!error && persistedEventId === event.eventId) return event;
 
+  logger.error(
+    'stripe-webhook: calendar event ID persistence could not be verified',
+    {
+      appointmentId: appointment.id,
+      calendarEventId: event.eventId,
+      persistenceOutcome: error ? 'database-error' : 'readback-mismatch',
+    },
+    error,
+  );
+
   await deleteCalendarEvent(event.eventId).catch(cleanupErr => {
     logger.error(
       'stripe-webhook: orphan calendar event cleanup failed',
