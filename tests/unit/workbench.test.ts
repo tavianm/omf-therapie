@@ -10,6 +10,7 @@ import {
   getNextSessions,
   getTodaySessions,
   isActiveAppointment,
+  isReviewableAppointment,
   isReschedulable,
   describeSlot,
   // Issue #164 — file « Demandes de RDV », KPI « Ma semaine » et « Demain ».
@@ -165,6 +166,18 @@ describe('workbench appointment actions', () => {
         NOW,
       ),
     ).toBeNull();
+  });
+
+  it('waits until the scheduled duration has elapsed before allowing a review reminder', () => {
+    const appointment = makeAppointment({
+      status: 'confirmed',
+      scheduled_at: TODAY_1500,
+      duration: 60,
+    });
+
+    expect(isReviewableAppointment(appointment, NOW)).toBe(false);
+    expect(isReviewableAppointment(appointment, NOW + 60 * 60_000 - 1)).toBe(false);
+    expect(isReviewableAppointment(appointment, NOW + 60 * 60_000)).toBe(true);
   });
 });
 

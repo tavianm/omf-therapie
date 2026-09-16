@@ -61,13 +61,15 @@ export function canJoinVideoConsultation(
 
 /** A completed confirmed or paid session that may receive a review reminder. */
 export function isReviewableAppointment(
-  appointment: Pick<Appointment, 'status' | 'scheduled_at'>,
+  appointment: Pick<Appointment, 'status' | 'scheduled_at' | 'duration'>,
   nowMs: number = Date.now(),
 ): boolean {
   return (
     (appointment.status === 'confirmed' ||
       appointment.status === 'payment_received') &&
-    !isUpcoming(appointment.scheduled_at, nowMs)
+    new Date(appointment.scheduled_at).getTime() +
+      appointment.duration * 60_000 <=
+      nowMs
   );
 }
 

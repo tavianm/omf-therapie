@@ -79,7 +79,7 @@ export const POST: APIRoute = async ({ request }) => {
   // 3. Récupérer le rendez-vous
   const { data: appt, error: fetchError } = await supabaseAdmin
     .from('appointments')
-    .select('id, patient_name, patient_email, status, scheduled_at')
+    .select('id, patient_name, patient_email, status, scheduled_at, duration')
     .eq('id', appointmentId.trim())
     .single();
 
