@@ -99,6 +99,11 @@ Check `netlify.toml` redirects — legacy SPA paths (`/Tarifs`, `/Services`, etc
 2. Verify `STRIPE_WEBHOOK_SECRET` matches the live endpoint's signing secret.
 3. Check Netlify function logs for `/api/stripe-webhook` errors.
 
+If Google Calendar contains the event but `appointments.google_calendar_event_id`
+is empty, treat the webhook delivery as failed: the event cannot be deleted on
+cancellation. The webhook now removes the just-created event and returns `500`
+to Stripe when it cannot persist this identifier, so Stripe can retry safely.
+
 ### Google Calendar sync broken (prod)
 
 Likely OAuth token expired. The `CalendarAuthAlert` email notifies when auth fails. Re-authorize via `/mes-rdvs/` → Google Calendar reconnect flow (`api/admin/google-oauth/`).

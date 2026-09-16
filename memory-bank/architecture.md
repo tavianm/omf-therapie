@@ -151,6 +151,7 @@ Logique dans `src/lib/pricing.ts` — retourne `{ basePrice, discount, finalPric
 `src/lib/google-calendar.ts` :
 - **Local (`GOOGLE_CALENDAR_MOCK=true`)** : créneaux fictifs les mercredis, lien Meet fictif `https://meet.google.com/mock-xxx`
 - **Production** : Google Calendar API (service account) pour lire les créneaux et créer des événements avec lien Meet automatique
+- **Webhook Stripe** : l'événement créé et son `google_calendar_event_id` sont liés de manière durable avant l'envoi de confirmation. Si cette persistance échoue, l'événement est supprimé puis le webhook échoue afin que Stripe le rejoue ; une annulation peut ainsi toujours supprimer l'événement associé.
 
 ### Email System
 
