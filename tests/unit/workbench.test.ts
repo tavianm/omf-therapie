@@ -147,12 +147,23 @@ describe('workbench appointment actions', () => {
   it('selects a confirmed or paid appointment for a manual review reminder', () => {
     expect(
       getReviewableAppointmentId([
-        makeAppointment({ id: 'pending', status: 'pending' }),
-        makeAppointment({ id: 'paid', status: 'payment_received' }),
-      ]),
+        makeAppointment({
+          id: 'future',
+          status: 'confirmed',
+          scheduled_at: TOMORROW_0900,
+        }),
+        makeAppointment({
+          id: 'paid',
+          status: 'payment_received',
+          scheduled_at: YESTERDAY_1000,
+        }),
+      ], NOW),
     ).toBe('paid');
     expect(
-      getReviewableAppointmentId([makeAppointment({ status: 'cancelled' })]),
+      getReviewableAppointmentId(
+        [makeAppointment({ status: 'cancelled', scheduled_at: YESTERDAY_1000 })],
+        NOW,
+      ),
     ).toBeNull();
   });
 });

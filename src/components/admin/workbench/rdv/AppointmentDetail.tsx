@@ -24,6 +24,7 @@ import {
 } from '../../../../utils/date';
 import {
   canJoinVideoConsultation,
+  isReviewableAppointment,
   isReschedulable,
   type PatientAggregate,
 } from '../../../../utils/workbench';
@@ -117,6 +118,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
     isReschedulable(appointment) && appointment.status !== 'rescheduled';
   const canCancel = isCancellableByTherapist(appointment);
   const canJoinVideo = canJoinVideoConsultation(appointment);
+  const canSendReview = isReviewableAppointment(appointment);
 
   async function handleSendReview() {
     setActionLoading('review');
@@ -397,7 +399,7 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
             Rejoindre la visio
           </a>
         )}
-        {(appointment.status === 'confirmed' || appointment.status === 'payment_received') && (
+        {canSendReview && (
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               type="button"

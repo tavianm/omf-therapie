@@ -59,12 +59,25 @@ export function canJoinVideoConsultation(
   );
 }
 
-/** The latest appointment that may receive a manual review reminder. */
+/** A completed confirmed or paid session that may receive a review reminder. */
+export function isReviewableAppointment(
+  appointment: Pick<Appointment, 'status' | 'scheduled_at'>,
+  nowMs: number = Date.now(),
+): boolean {
+  return (
+    (appointment.status === 'confirmed' ||
+      appointment.status === 'payment_received') &&
+    !isUpcoming(appointment.scheduled_at, nowMs)
+  );
+}
+
+/** The most recent completed session that may receive a manual review reminder. */
 export function getReviewableAppointmentId(
   appointments: readonly Appointment[],
+  nowMs: number = Date.now(),
 ): string | null {
-  const appointment = appointments.find(
-    item => item.status === 'confirmed' || item.status === 'payment_received',
+  const appointment = appointments.find(item =>
+    isReviewableAppointment(item, nowMs),
   );
   return appointment?.id ?? null;
 }
