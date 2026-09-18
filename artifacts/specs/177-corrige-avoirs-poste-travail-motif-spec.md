@@ -70,6 +70,7 @@ Aucun changement de schéma : `credits.remaining`, `credit_usages`, `appointment
 - [ ] Deux consommations concurrentes ne peuvent pas dépasser le solde disponible (pas de sur-consommation).
 
 ```yaml
+claim: fail-closed
 priced:  "la somme des tranches consommées concurrentes ne dépasse jamais Σ remaining initial (atomicité du décompte)"
 not:     "vérifier seulement que le SQL contient la chaîne 'FOR UPDATE' (test de forme, pas de comportement)"
 oracles: ["2 transactions consommant chacune la totalité du solde → exactement une réussit, l'autre lève CREDIT_INSUFFICIENT",
@@ -79,6 +80,7 @@ oracles: ["2 transactions consommant chacune la totalité du solde → exactemen
 - [ ] Une demande supérieure au disponible échoue fermé : `CREDIT_INSUFFICIENT`, aucune ligne `credit_usages` écrite, `remaining` inchangés.
 
 ```yaml
+claim: fail-closed
 priced:  "échec fermé atomique — aucun effet partiel ne survit à un refus"
 not:     "compter les appels d'erreur côté JS (le rollback applicatif POST masque le défaut RPC)"
 oracles: ["p_amount = solde + 1 → exception, SELECT remaining identique au départ, credit_usages vide"]
