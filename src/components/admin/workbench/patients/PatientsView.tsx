@@ -537,6 +537,14 @@ function Dossier({ patient, onClose, onPlan }: DossierProps) {
                   <span className="block text-xs text-sage-500 font-sans truncate">
                     {formatTimeParis(appointment.scheduled_at)} · {appointment.duration} min · {getModeLabel(appointment.appointment_mode)}
                   </span>
+                  {appointment.patient_reason.trim() !== '' && (
+                    <span
+                      className="block text-xs text-sage-400 font-sans truncate"
+                      title={appointment.patient_reason}
+                    >
+                      {appointment.patient_reason}
+                    </span>
+                  )}
                 </span>
                 <span className="text-sm font-sans text-sage-700 shrink-0 tabular-nums">
                   {euros(appointment.final_price)}
