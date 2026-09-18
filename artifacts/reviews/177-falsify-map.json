@@ -1,0 +1,19 @@
+{
+  "issue": 177,
+  "rows": [
+    {
+      "sc_id": "SC6-parse-credit-balance",
+      "sources": [
+        "src/utils/credits.ts"
+      ],
+      "test_cmd": "ln -sfn /home/gindji/.grok/worktrees/177-corrige-avoirs-poste-travail-motif/node_modules node_modules && npx vitest run tests/unit/parse-credit-balance.test.ts --maxWorkers=1"
+    },
+    {
+      "sc_id": "SC1-SC4-consume-credits-rpc",
+      "sources": [
+        "supabase/migrations/020_consume_credits_lock_fix.sql"
+      ],
+      "test_cmd": "ln -sfn /home/gindji/.grok/worktrees/177-corrige-avoirs-poste-travail-motif/node_modules node_modules && npx vitest run --config vitest.integration.config.ts tests/integration/scheduling-credits.postgres.test.ts"
+    }
+  ]
+}

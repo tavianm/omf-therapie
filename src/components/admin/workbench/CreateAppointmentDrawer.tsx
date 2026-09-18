@@ -25,6 +25,7 @@ import {
   MIN_APPOINTMENT_DURATION_MINUTES,
 } from '../../../utils/domain';
 import { aggregatePatients, describeSlot, type DescribedSlot } from '../../../utils/workbench';
+import { parseCreditBalance } from '../../../utils/credits';
 import { Avatar, ModalOverlay } from './ui';
 
 interface CreateAppointmentDrawerProps {
@@ -159,8 +160,8 @@ export function CreateAppointmentDrawer({ open, appointments, prefill, onClose, 
     })
       .then(async (res) => {
         if (!res.ok) return;
-        const body = (await res.json()) as { available?: number };
-        if (typeof body.available === 'number') setAvailableCredit(body.available);
+        const balance = parseCreditBalance(await res.json());
+        if (balance != null) setAvailableCredit(balance);
       })
       .catch(() => undefined);
     return () => controller.abort();

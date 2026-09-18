@@ -319,6 +319,16 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
         </InfoCard>
       </div>
 
+      {/* ── Motif de consultation (issu du booking ou du tiroir) ─────────── */}
+      {appointment.patient_reason.trim() !== '' && (
+        <div className="mt-3 rounded-xl bg-mint-50 px-4 py-3">
+          <p className="text-[10px] font-semibold font-sans uppercase tracking-wider text-sage-500">
+            Motif
+          </p>
+          <p className="mt-1 text-sm font-sans text-sage-900">{appointment.patient_reason}</p>
+        </div>
+      )}
+
       {/* ── Lieu / visio ──────────────────────────────────────────────────── */}
       <div className="mt-3 rounded-xl bg-mint-50 p-4 flex items-center gap-3">
         <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-white shadow-xs text-mint-800 shrink-0">
