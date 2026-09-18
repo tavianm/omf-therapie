@@ -1,0 +1,38 @@
+{
+  "schema_version": "1",
+  "issue": 177,
+  "head": "943cc1b5d6d1a9a480ba2a9462f75725bc5282d3",
+  "runner_id": "run-falsify/1",
+  "oracle_ok": true,
+  "oracle_reason": "ok",
+  "rows": [
+    {
+      "sc_id": "SC6-parse-credit-balance",
+      "sources": [
+        "src/utils/credits.ts"
+      ],
+      "source_hashes": {
+        "src/utils/credits.ts": "6d82327c3e3c996b7727a8d0c85a04b82c56b4d654f32cd0744d1585592a9495"
+      },
+      "test_cmd": "ln -sfn /home/gindji/.grok/worktrees/177-corrige-avoirs-poste-travail-motif/node_modules node_modules && npx vitest run tests/unit/parse-credit-balance.test.ts --maxWorkers=1",
+      "fail_exit": 1,
+      "pass_exit": 0,
+      "error": "FAIL exit=1:   RUN  v4.1.11 /tmp/rf-fail.lj07db51   \u276f tests/unit/parse-credit-balance.test.ts (0 test)   Test Files  1 failed (1)       Tests  no tests    Start at  00:20:08    Duration  232ms (transform 40ms, setup 43ms, import 0ms, tests 0ms, environm",
+      "status": "proven"
+    },
+    {
+      "sc_id": "SC1-SC4-consume-credits-rpc",
+      "sources": [
+        "supabase/migrations/020_consume_credits_lock_fix.sql"
+      ],
+      "source_hashes": {
+        "supabase/migrations/020_consume_credits_lock_fix.sql": "3e8c3f041e950a930969b00c6d221f386bcfe0117d2fd68e8ca4c9cbfde4d029"
+      },
+      "test_cmd": "ln -sfn /home/gindji/.grok/worktrees/177-corrige-avoirs-poste-travail-motif/node_modules node_modules && npx vitest run --config vitest.integration.config.ts tests/integration/scheduling-credits.postgres.test.ts",
+      "fail_exit": 1,
+      "pass_exit": 0,
+      "error": "FAIL exit=1: bash: warning: setlocale: LC_ALL: cannot change locale (fr_FR.UTF-8) node:internal/modules/esm/resolve:271     throw new ERR_MODULE_NOT_FOUND(           ^  Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/tmp/rf-fail.33crgrcp/node_modules",
+      "status": "proven"
+    }
+  ]
+}
