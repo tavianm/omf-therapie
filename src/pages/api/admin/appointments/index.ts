@@ -321,10 +321,18 @@ export const POST: APIRoute = async ({ request, locals }) => {
         '[admin/appointments] Erreur consommation avoir:',
         creditErr,
       );
-      await supabaseAdmin
+      // Delete compensatoire : l'erreur est capturée et journalisée — un
+      // échec silencieux laisserait un RDV orphelin déjà payé en avoir.
+      const { error: deleteError } = await supabaseAdmin
         .from('appointments')
         .delete()
         .eq('id', appointment.id);
+      if (deleteError) {
+        console.error(
+          '[admin/appointments] Échec du delete compensatoire (RDV orphelin à vérifier):',
+          deleteError,
+        );
+      }
       return errorResponse(
         409,
         "Avoir insuffisant ou erreur lors de la consommation de l'avoir.",
