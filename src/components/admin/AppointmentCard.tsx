@@ -353,6 +353,13 @@ export function AppointmentCard({ appointment }: AppointmentCardProps) {
               </span>
             )}
           </p>
+          {appointment.credit_applied > 0 && (
+            <p className="text-xs text-mint-700 mt-0.5">
+              Avoir déduit : {formatPrice(appointment.credit_applied)} · reste
+              dû :{' '}
+              {formatPrice(appointment.final_price - appointment.credit_applied)}
+            </p>
+          )}
         </div>
         <div>
           <span className="block text-xs text-sage-400 mb-0.5">

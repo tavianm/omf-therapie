@@ -316,6 +316,12 @@ export function AppointmentDetail({ appointment, patient, variant, onClose, onRe
           <p className="font-medium">
             {euros(appointment.final_price)} · {paymentLabel(appointment)}
           </p>
+          {appointment.credit_applied > 0 && (
+            <p className="text-sage-500 text-xs mt-0.5">
+              Avoir déduit : {euros(appointment.credit_applied)} · reste dû :{' '}
+              {euros(appointment.final_price - appointment.credit_applied)}
+            </p>
+          )}
         </InfoCard>
       </div>
 

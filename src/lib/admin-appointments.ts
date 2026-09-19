@@ -29,6 +29,7 @@ export const APPOINTMENT_COLUMNS = [
   'base_price',
   'discount',
   'final_price',
+  'credit_applied',
   'is_first_session',
   'patient_name',
   'patient_email',

@@ -7,7 +7,7 @@
  *       {"error":"Non authentifié"}; non-admin → 403 {"error":"Accès refusé"}.
  *       Neither body may carry an `appointments` key (no data leak).
  *   (b) Success → 200 { appointments, fetchedAt } where every row's keys are
- *       EXACTLY the 24 APPOINTMENT_COLUMNS (id, therapist_notes and
+ *       EXACTLY the 25 APPOINTMENT_COLUMNS (id, therapist_notes and
  *       patient_reason included; nothing extra) and fetchedAt parses as a
  *       valid ISO 8601 date (the client-side monotonic marker, SC2a).
  *   (c) DB failure → 502 {"error":"Erreur lors de la récupération des
@@ -149,6 +149,7 @@ function makeRow(
     base_price: 6000,
     discount: 0,
     final_price: 6000,
+    credit_applied: 0,
     is_first_session: false,
     patient_name: 'Jeanne Dupont',
     patient_email: 'jeanne.dupont@example.com',
@@ -264,7 +265,8 @@ describe('GET /api/admin/appointments/ — liste admin authentifiée (issue #165
     // The literal 24-key set, compared against the shared APPOINTMENT_COLUMNS
     // constant — sorted deep-equal fails on ANY extra or missing key.
     const expectedKeys = [...APPOINTMENT_COLUMNS.split(',')].sort();
-    expect(expectedKeys).toHaveLength(24);
+    expect(expectedKeys).toHaveLength(25);
+    expect(expectedKeys).toContain('credit_applied');
     expect(expectedKeys).toContain('id');
     expect(expectedKeys).toContain('therapist_notes');
     expect(expectedKeys).toContain('patient_reason');
