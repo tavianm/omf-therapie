@@ -47,11 +47,11 @@ export const BOOKING_OPEN = false;
 /**
  * Resume wording (#184 update): the ONLINE-booking reopen date is
  * deliberately not promised anywhere. Slots are announced from
- * mid-January, under-promising on purpose (opening earlier than announced
+ * early January, under-promising on purpose (opening earlier than announced
  * is fine; later is not); the reservation reopen stays undated until the
  * therapist decides.
  */
-export const BOOKING_SLOTS_RESUME_HINT = 'à partir de mi-janvier 2027';
+export const BOOKING_SLOTS_RESUME_HINT = 'à partir de début janvier 2027';
 
 /**
  * 503 body sent by POST /api/appointments/ while paused. Composed from the

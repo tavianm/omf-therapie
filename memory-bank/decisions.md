@@ -328,7 +328,7 @@ Each decision entry should include:
 
 **Rationale:**
 
-- Un seul point de bascule = réouverture mécanique (runbook pas à pas dans le module même ; créneaux annoncés à partir de mi-janvier 2027 via `BOOKING_SLOTS_RESUME_HINT`, date de réouverture des réservations en ligne volontairement non annoncée)
+- Un seul point de bascule = réouverture mécanique (runbook pas à pas dans le module même ; créneaux annoncés à partir de début janvier 2027 via `BOOKING_SLOTS_RESUME_HINT`, date de réouverture des réservations en ligne volontairement non annoncée)
 - La branche `true` émet exactement le markup pré-pause → la porte HTML `diff:html-170` repasse verte à la réouverture sans édition d'allowlist (les entrées de fermeture deviennent mortes, à supprimer)
 - Tests auto-adaptatifs : `e2e/smoke.spec.ts` et `tests/unit/appointments-pause.test.ts` branchent leurs assertions sur la vraie constante importée
 - Refuser au niveau API protège contre tout client non-navigateur ; le 503 (et pas 403/404) dit « temporaire » aux crawlers comme aux humains
