@@ -670,7 +670,7 @@ const ALLOWLISTED_DIFFS = [
   {
     url: /^\/rendez-vous\/$/,
     baseline: /«astro-island,astro-slot,astro-static-slot\{display:contents\}»/,
-    dist: /«Une grande nouvelle, et une petite pause»/,
+    dist: /«Une petite pause»/,
   },
   // Non-discriminating by construction: the ld+json body is ONE ~980-char
   // text token (single-line set:html JSON.stringify in Layout.astro), and the
