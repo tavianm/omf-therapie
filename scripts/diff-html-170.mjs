@@ -631,6 +631,70 @@ const ALLOWLISTED_DIFFS = [
     baseline: /^WS <\/body> <\/html>( WS)?$/,
     dist: /^WS <\/body> «WS» <\/html>( WS)?$/,
   },
+  // ── /rendez-vous/ — booking pause (maternity-leave closure) ─────────────
+  //
+  // src/config/booking.config.ts (BOOKING_OPEN=false) conditionally replaces
+  // the BookingWizard island with a closure card, swaps the meta/og/twitter
+  // descriptions, drops the header subtitle and the JSON-LD ReserveAction,
+  // and points the error-banner link at /contact/. Expected path: the change
+  // enumerates as the hunks below (each true branch emits the exact pre-pause
+  // markup, so flipping the switch back makes every entry here go dead — the
+  // gate stays green at reopen with no allowlist edit; deleting these entries
+  // then is optional tidy-up). The hunk texts were derived by running THIS
+  // script's own tokenizer/diff on the current dist with the closure applied
+  // (no build was run when they were written) — verify against real output.
+  //
+  // Pre-committed bail path: the island deletion puts the edit depth at
+  // ~471 against MAX_DIFF_DEPTH=512 — under, but close. If a run instead
+  // prints the synthetic "[sequences too different…]" hunk, the LAST entry
+  // below matches it and token-level markup protection on /rendez-vous/ is
+  // SUSPENDED for the closure window, compensated ONLY by the pause-branch
+  // assertions in e2e/smoke.spec.ts. That is a real, accepted loss of
+  // coverage. Every /rendez-vous/ entry MUST be deleted at reopen.
+  {
+    url: /^\/rendez-vous\/$/,
+    baseline:
+      /«content=Prenez rendez-vous en ligne pour une séance de thérapie/,
+    dist: /«content=Les nouvelles demandes de rendez-vous sont en pause/,
+  },
+  {
+    url: /^\/rendez-vous\/$/,
+    baseline: /«Remplissez ce formulaire en quelques minutes/,
+    dist: /<\/h1>( WS)* <div class=mt-5/,
+  },
+  {
+    url: /^\/rendez-vous\/$/,
+    baseline: /«href=\/rendez-vous\/» > Contacter la thérapeute/,
+    dist: /«href=\/contact\/» > Contacter la thérapeute/,
+  },
+  {
+    url: /^\/rendez-vous\/$/,
+    baseline: /«astro-island,astro-slot,astro-static-slot\{display:contents\}»/,
+    dist: /«Une grande nouvelle, et une petite pause»/,
+  },
+  // Non-discriminating by construction: the ld+json body is ONE ~980-char
+  // text token (single-line set:html JSON.stringify in Layout.astro), and the
+  // potentialAction delta sits at char ~661 — beyond the SNIPPET_MAX=240
+  // excerpt truncation — so the B:/D: excerpts above are byte-identical and
+  // no regex pair can tell the paused payload from the open one. During the
+  // closure this entry suspends ld+json drift detection on this page (e.g.
+  // openingHoursSpecification or description edits would NOT flag); the live
+  // guard is e2e/smoke.spec.ts asserting HealthAndBeautyBusiness present /
+  // ReserveAction absent. Delete at reopen.
+  {
+    url: /^\/rendez-vous\/$/,
+    baseline:
+      /type=application\/ld\+json > «\{"@context":"https:\/\/schema\.org"/,
+    dist: /type=application\/ld\+json > «\{"@context":"https:\/\/schema\.org"/,
+  },
+  // Bail path only (see the block comment above): matches the synthetic
+  // hunk printed when the edit depth exceeds MAX_DIFF_DEPTH. Dead — and to
+  // be deleted — if the run enumerates real hunks instead.
+  {
+    url: /^\/rendez-vous\/$/,
+    baseline: /^\(\d+ tokens, first: /,
+    dist: /\[sequences too different for token diff — review manually\]$/,
+  },
 ];
 
 function isAllowlisted(urlPath, hunk) {

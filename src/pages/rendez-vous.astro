@@ -9,6 +9,7 @@
  */
 import Layout from '../layouts/Layout.astro';
 import BookingWizard from '../components/booking/BookingWizard';
+import { BOOKING_OPEN, BOOKING_REOPEN_HINT } from '../config/booking.config';
 
 const canonicalUrl = new URL('/rendez-vous', Astro.site).href;
 
@@ -41,46 +42,59 @@ const jsonLd = {
   priceRange: '€€',
   description:
     'Thérapie individuelle, de couple et familiale. Séances en présentiel (mercredi) et en téléconsultation.',
-  potentialAction: {
-    '@type': 'ReserveAction',
-    target: {
-      '@type': 'EntryPoint',
-      urlTemplate: canonicalUrl,
-      inLanguage: 'fr',
-      actionPlatform: [
-        'http://schema.org/DesktopWebPlatform',
-        'http://schema.org/MobileWebPlatform',
-      ],
-    },
-    result: {
-      '@type': 'Reservation',
-      name: 'Demande de rendez-vous OMF Thérapie',
-    },
-  },
+  // ReserveAction advertises a working booking flow to crawlers — omitted
+  // while bookings are paused (must stay last to keep key order stable).
+  ...(BOOKING_OPEN
+    ? {
+        potentialAction: {
+          '@type': 'ReserveAction',
+          target: {
+            '@type': 'EntryPoint',
+            urlTemplate: canonicalUrl,
+            inLanguage: 'fr',
+            actionPlatform: [
+              'http://schema.org/DesktopWebPlatform',
+              'http://schema.org/MobileWebPlatform',
+            ],
+          },
+          result: {
+            '@type': 'Reservation',
+            name: 'Demande de rendez-vous OMF Thérapie',
+          },
+        },
+      }
+    : {}),
 };
 ---
 
 <Layout
   title="Prendre rendez-vous — OMF Thérapie"
-  description="Prenez rendez-vous en ligne pour une séance de thérapie individuelle, de couple ou familiale. Consultations en présentiel le mercredi et en téléconsultation du lundi au vendredi."
+  description={BOOKING_OPEN
+    ? 'Prenez rendez-vous en ligne pour une séance de thérapie individuelle, de couple ou familiale. Consultations en présentiel le mercredi et en téléconsultation du lundi au vendredi.'
+    : 'Les nouvelles demandes de rendez-vous sont en pause (congé maternité) et reprendront autour de mi-janvier 2027. Oriane reste joignable par email via la page contact.'}
   canonical={canonicalUrl}
   jsonLd={jsonLd}
 >
   <main class="min-h-screen bg-sage-50 py-12">
     <div class="max-w-2xl mx-auto px-4">
-
       <!-- En-tête -->
       <header class="mb-10 text-center">
-        <p class="mb-3 text-sm font-medium uppercase tracking-widest text-sage-500">
+        <p
+          class="mb-3 text-sm font-medium uppercase tracking-widest text-sage-500"
+        >
           OMF Thérapie
         </p>
         <h1 class="font-serif text-3xl font-semibold text-sage-800 sm:text-4xl">
           Prendre rendez-vous
         </h1>
-        <p class="mx-auto mt-4 max-w-md text-sm text-sage-600">
-          Remplissez ce formulaire en quelques minutes. Oriane vous confirmera
-          votre créneau par email sous 24–48&nbsp;h.
-        </p>
+        {
+          BOOKING_OPEN && (
+            <p class="mx-auto mt-4 max-w-md text-sm text-sage-600">
+              Remplissez ce formulaire en quelques minutes. Oriane vous
+              confirmera votre créneau par email sous 24–48&nbsp;h.
+            </p>
+          )
+        }
         <div class="mt-5">
           <a
             href="/"
@@ -102,8 +116,12 @@ const jsonLd = {
         <p id="booking-link-error-message" class="text-sm text-amber-700">
           Ce lien de confirmation n'est plus valide.
         </p>
+        {
+          /* Paused: the wizard is gone, so error-link visitors are sent to
+            the contact page instead of back to this page. */
+        }
         <a
-          href="/rendez-vous/"
+          href={BOOKING_OPEN ? '/rendez-vous/' : '/contact/'}
           class="mt-3 inline-flex items-center gap-2 text-sm font-medium text-mint-700 hover:text-mint-800 transition-colors"
         >
           Contacter la thérapeute
@@ -111,12 +129,37 @@ const jsonLd = {
       </div>
 
       <!-- Island React — formulaire multi-étapes -->
-      <BookingWizard client:load />
+      {
+        BOOKING_OPEN ? (
+          <BookingWizard client:load />
+        ) : (
+          <section class="rounded-xl border border-sage-200 bg-white px-5 py-4 text-center">
+            <h2 class="font-serif text-2xl font-semibold text-sage-800">
+              Une grande nouvelle, et une petite pause
+            </h2>
+            <p class="mx-auto mt-3 max-w-md text-sm text-sage-700">
+              J'attends un enfant et je serai en congé maternité pendant les
+              prochains mois. Pendant cette période, les nouvelles demandes de
+              rendez-vous sont mises en pause.
+            </p>
+            <p class="mx-auto mt-3 max-w-md text-sm text-sage-700">
+              Les réservations en ligne réouvriront {BOOKING_REOPEN_HINT}. D'ici
+              là, je reste joignable par email pour toute question — je vous
+              réponds avec plaisir.
+            </p>
+            <a href="/contact/" class="btn-primary mt-5">
+              Contacter Oriane
+            </a>
+          </section>
+        )
+      }
 
       <!-- Informations pratiques -->
       <aside class="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div class="rounded-xl border border-sage-200 bg-white px-5 py-4">
-          <h2 class="mb-1.5 text-xs font-semibold uppercase tracking-widest text-sage-500">
+          <h2
+            class="mb-1.5 text-xs font-semibold uppercase tracking-widest text-sage-500"
+          >
             Présentiel
           </h2>
           <p class="text-sm text-sage-700">
@@ -125,7 +168,9 @@ const jsonLd = {
           <p class="mt-0.5 text-xs text-sage-500">8h–12h et 14h–19h</p>
         </div>
         <div class="rounded-xl border border-sage-200 bg-white px-5 py-4">
-          <h2 class="mb-1.5 text-xs font-semibold uppercase tracking-widest text-sage-500">
+          <h2
+            class="mb-1.5 text-xs font-semibold uppercase tracking-widest text-sage-500"
+          >
             Téléconsultation
           </h2>
           <p class="text-sm text-sage-700">
@@ -134,7 +179,6 @@ const jsonLd = {
           <p class="mt-0.5 text-xs text-sage-500">Prépaiement Stripe requis</p>
         </div>
       </aside>
-
     </div>
   </main>
 </Layout>
@@ -146,7 +190,8 @@ const jsonLd = {
 
   if (errorCard && errorMessage && errorParam) {
     const messageByCode = {
-      'lien-invalide': 'Le lien de confirmation est invalide, expiré ou déjà utilisé.',
+      'lien-invalide':
+        'Le lien de confirmation est invalide, expiré ou déjà utilisé.',
       'rdv-introuvable': 'Le rendez-vous demandé est introuvable.',
     };
 

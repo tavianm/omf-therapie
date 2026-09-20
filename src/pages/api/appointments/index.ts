@@ -13,6 +13,10 @@ import { isWithinBusinessHours } from '../../../utils/date';
 import { hasAppointmentConflict } from '../../../lib/appointment-conflicts';
 import { isSchedulingConflictError } from '../../../lib/scheduling-settings';
 import { isCabinetEligibleSlot } from '../../../lib/appointment-eligibility';
+import {
+  BOOKING_OPEN,
+  BOOKING_PAUSED_MESSAGE,
+} from '../../../config/booking.config';
 
 // ---------------------------------------------------------------------------
 // Validation helpers
@@ -41,6 +45,12 @@ function errorResponse(status: number, message: string, field?: string): Respons
 // ---------------------------------------------------------------------------
 
 export const POST: APIRoute = async ({ request }) => {
+  // Pause des nouvelles demandes (congé maternité) — cf. booking.config.ts.
+  // Refus avant TOUT effet de bord (parse, insertion, emails) : masquer le
+  // wizard n'est pas une garantie (bundle en cache, appel direct). Le parcours
+  // admin (/api/admin/appointments/) et la disponibilité restent ouverts.
+  if (!BOOKING_OPEN) return errorResponse(503, BOOKING_PAUSED_MESSAGE);
+
   // 0. Rate limiting — 5 requêtes par IP sur 15 minutes
   // x-nf-client-connection-ip est défini exclusivement par Netlify (non falsifiable).
   // x-forwarded-for en fallback (leftmost = client-controlled, moins fiable).
