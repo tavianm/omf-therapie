@@ -314,6 +314,35 @@ Each decision entry should include:
 
 ---
 
+## ADR-017: Pause des nouvelles demandes de RDV (congé maternité) — interrupteur BOOKING_OPEN
+
+**Date:** Septembre 2026 (#184)
+
+**Context:** Oriane sera en congé maternité plusieurs mois. Il ne faut plus accepter de **nouvelles demandes de rendez-vous patients**, sans figer le reste du site ni le poste de travail admin (suivi des RDV en cours, création manuelle, avoirs).
+
+**Decision:** Un interrupteur unique `BOOKING_OPEN` dans `src/config/booking.config.ts` (module sans import, lisible aussi comme module runtime par Playwright). À `false` :
+
+- `/rendez-vous/` n'affiche plus l'île `BookingWizard` mais une carte de fermeture dédiée (congé maternité, CTA vers `/contact/`) ; meta/og/twitter et suppression du `ReserveAction` JSON-LD (on n'annonce pas un flux fermé aux crawlers) ; lien du bandeau d'erreur → `/contact/`.
+- `POST /api/appointments/` (chemin public) répond **503 avant tout effet de bord** (`BOOKING_PAUSED_MESSAGE`) — masquer le wizard n'est pas une garantie (bundle en cache, appel direct).
+- `GET /api/availability` et les routes `/api/admin/**` restent ouverts : le poste de travail admin s'en sert (CreateAppointmentDrawer).
+
+**Rationale:**
+
+- Un seul point de bascule = réouverture mécanique (runbook pas à pas dans le module même ; créneaux annoncés à partir de début janvier 2027 via `BOOKING_SLOTS_RESUME_HINT`, date de réouverture des réservations en ligne volontairement non annoncée)
+- La branche `true` émet exactement le markup pré-pause → la porte HTML `diff:html-170` repasse verte à la réouverture sans édition d'allowlist (les entrées de fermeture deviennent mortes, à supprimer)
+- Tests auto-adaptatifs : `e2e/smoke.spec.ts` et `tests/unit/appointments-pause.test.ts` branchent leurs assertions sur la vraie constante importée
+- Refuser au niveau API protège contre tout client non-navigateur ; le 503 (et pas 403/404) dit « temporaire » aux crawlers comme aux humains
+
+**Consequences:**
+
+- ✅ Aucune nouvelle demande ne crée une ligne `pending` ni n'envoie d'emails pendant la fermeture
+- ✅ Parcours admin intact (création manuelle, disponibilités, suivi)
+- ⚠️ Détection de drift ld+json sur `/rendez-vous/` suspendue pendant la fermeture (hunk non discriminant, compensée par smoke.spec.ts) — cf. commentaire dans `scripts/diff-html-170.mjs`
+- ⚠️ La réouverture est une PR UI : `audit:a11y` obligatoire (runbook étape 3)
+- ⚠️ Les patients existants gardent leurs liens sécurisés (accepter/report) — hors périmètre de la pause, la thérapeute décide au cas par cas
+
+---
+
 ## Future Decisions to Document
 
 - Multi-language support approach (if implemented)

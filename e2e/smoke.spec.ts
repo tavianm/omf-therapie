@@ -1,4 +1,9 @@
 import { test, expect } from '@playwright/test';
+// First RUNTIME import from ../src in e2e/ (poste-travail-refresh.spec.ts:2
+// is type-only, erased at transpile). If Playwright's transform ever rejects
+// it, duplicate the literal locally with a must-mirror comment — reopen then
+// becomes a second edit instead of one.
+import { BOOKING_OPEN } from '../src/config/booking.config';
 
 // ────────────────────────────────────────────────────────────
 // Smoke tests — couverture minimale des pages critiques
@@ -8,7 +13,9 @@ test.describe('Home page', () => {
   test('charge et affiche la page', async ({ page }) => {
     await page.goto('/');
     // Le titre contient "Oriane" ou "Montabonnet" ou "Psychopraticienne"
-    await expect(page).toHaveTitle(/Oriane|Montabonnet|Psychopraticienne|Thérapie/i);
+    await expect(page).toHaveTitle(
+      /Oriane|Montabonnet|Psychopraticienne|Thérapie/i,
+    );
     await expect(page.locator('main')).toBeVisible();
   });
 
@@ -20,12 +27,14 @@ test.describe('Home page', () => {
 
   test('lien de prise de rendez-vous visible', async ({ page }) => {
     await page.goto('/');
-    const rdvLink = page.locator('a[href="/rendez-vous/"], a[href="/rendez-vous"]').first();
+    const rdvLink = page
+      .locator('a[href="/rendez-vous/"], a[href="/rendez-vous"]')
+      .first();
     await expect(rdvLink).toBeVisible();
   });
 });
 
-test.describe('/rendez-vous — wizard de réservation', () => {
+test.describe('/rendez-vous — pause des réservations', () => {
   test('charge la page du wizard', async ({ page }) => {
     // Utiliser le trailing slash (trailingSlash: 'always' dans astro.config)
     const res = await page.goto('/rendez-vous/');
@@ -34,11 +43,40 @@ test.describe('/rendez-vous — wizard de réservation', () => {
     await expect(page.locator('main')).toBeVisible();
   });
 
-  test('les options de type de rendez-vous sont présentes', async ({ page }) => {
+  test('affiche le wizard ou la carte de pause selon BOOKING_OPEN', async ({
+    page,
+  }) => {
     const res = await page.goto('/rendez-vous/');
     expect(res?.status()).toBeLessThan(400);
-    // Cherche les mots-clés du wizard de réservation
-    await expect(page.getByText(/individuel|couple|familial/i).first()).toBeVisible();
+
+    if (BOOKING_OPEN) {
+      // Open: the wizard options are back, unchanged.
+      await expect(
+        page.getByText(/individuel|couple|familial/i).first(),
+      ).toBeVisible();
+      return;
+    }
+
+    // Paused: closure card instead of the wizard.
+    await expect(page.getByText(/congé maternité/i)).toBeVisible();
+    // Slots are promised from early January; the online reopen stays undated.
+    await expect(page.getByText(/à partir de début janvier 2027/)).toBeVisible();
+    const cta = page.getByRole('link', { name: 'Contacter Oriane' });
+    await expect(cta).toBeVisible();
+    await expect(cta).toHaveAttribute('href', '/contact/');
+
+    // Layout.astro ships no client: directives and the paused page renders
+    // no Navbar — zero astro-island elements proves no client JS ships.
+    expect(await page.locator('astro-island').count()).toBe(0);
+
+    // Compensates the ld+json drift detection suspended in
+    // scripts/diff-html-170.mjs while the closure entries are live.
+    const ld = await page
+      .locator('script[type="application/ld+json"]')
+      .first()
+      .textContent();
+    expect(ld).toContain('HealthAndBeautyBusiness');
+    expect(ld).not.toContain('ReserveAction');
   });
 });
 
@@ -53,14 +91,18 @@ test.describe('/login', () => {
     const res = await page.goto('/login/');
     // Ce test passe uniquement si la BD BetterAuth est opérationnelle
     if (res?.status() === 200) {
-      await expect(page.locator('input[type="password"]')).toBeVisible({ timeout: 10_000 });
+      await expect(page.locator('input[type="password"]')).toBeVisible({
+        timeout: 10_000,
+      });
     }
     // Sans BD : le test est skippé (log seulement)
   });
 });
 
 test.describe('/mes-rdvs — protection auth', () => {
-  test('redirige vers /login si non connecté ou charge la page admin', async ({ page }) => {
+  test('redirige vers /login si non connecté ou charge la page admin', async ({
+    page,
+  }) => {
     await page.goto('/mes-rdvs/');
     // Soit redirect vers /login, soit charge la page (selon disponibilité BD auth)
     const url = page.url();
@@ -87,11 +129,15 @@ test.describe('/contact', () => {
     await expect(page.locator('form')).toBeVisible({ timeout: 15_000 });
   });
 
-  test('les champs principaux du formulaire sont présents', async ({ page }) => {
+  test('les champs principaux du formulaire sont présents', async ({
+    page,
+  }) => {
     await page.goto('/contact/');
     await page.locator('form').waitFor({ timeout: 15_000 });
     // Vérifie un champ nom ou email
-    const nameOrEmail = page.locator('input[name="name"], input[id*="name"], input[type="email"]').first();
+    const nameOrEmail = page
+      .locator('input[name="name"], input[id*="name"], input[type="email"]')
+      .first();
     await expect(nameOrEmail).toBeVisible();
   });
 });
@@ -113,7 +159,7 @@ test.describe('Pages services', () => {
 });
 
 test.describe('Accessibilité de base', () => {
-  test('la page d\'accueil a un seul <h1>', async ({ page }) => {
+  test("la page d'accueil a un seul <h1>", async ({ page }) => {
     await page.goto('/');
     const h1Count = await page.locator('h1').count();
     expect(h1Count).toBe(1);
