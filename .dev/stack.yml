@@ -32,7 +32,8 @@ build:
   orchestrator_config: ""
   formatter: prettier              # biome | eslint | rome | none — prettier formats, eslint lints
   formatter_config: .prettierrc.json
-  formatter_fix_cmd: "npm run format"
+  formatter_fix_cmd: "npx prettier --write"   # le hook format.cjs y ajoute les fichiers édités ;
+                                             # "npm run format" (prettier --write .) reformaterait tout le dépôt
 
 testing:
   unit: vitest                     # vitest run (tests/unit/**, node env)
