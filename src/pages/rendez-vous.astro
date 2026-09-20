@@ -9,7 +9,10 @@
  */
 import Layout from '../layouts/Layout.astro';
 import BookingWizard from '../components/booking/BookingWizard';
-import { BOOKING_OPEN, BOOKING_REOPEN_HINT } from '../config/booking.config';
+import {
+  BOOKING_OPEN,
+  BOOKING_SLOTS_RESUME_HINT,
+} from '../config/booking.config';
 
 const canonicalUrl = new URL('/rendez-vous', Astro.site).href;
 
@@ -71,7 +74,7 @@ const jsonLd = {
   title="Prendre rendez-vous — OMF Thérapie"
   description={BOOKING_OPEN
     ? 'Prenez rendez-vous en ligne pour une séance de thérapie individuelle, de couple ou familiale. Consultations en présentiel le mercredi et en téléconsultation du lundi au vendredi.'
-    : 'Les nouvelles demandes de rendez-vous sont en pause (congé maternité) et reprendront autour de mi-janvier 2027. Oriane reste joignable par email via la page contact.'}
+    : `Les nouvelles demandes de rendez-vous sont en pause (congé maternité). Les créneaux reprendront ${BOOKING_SLOTS_RESUME_HINT} ; la date de réouverture des réservations en ligne n'est pas encore fixée. Oriane reste joignable par email via la page contact.`}
   canonical={canonicalUrl}
   jsonLd={jsonLd}
 >
@@ -143,9 +146,10 @@ const jsonLd = {
               rendez-vous sont mises en pause.
             </p>
             <p class="mx-auto mt-3 max-w-md text-sm text-sage-700">
-              Les réservations en ligne réouvriront {BOOKING_REOPEN_HINT}. D'ici
-              là, je reste joignable par email pour toute question — je vous
-              réponds avec plaisir.
+              La date de réouverture des réservations en ligne n'est pas encore
+              fixée, mais les créneaux de rendez-vous reprendront
+              {BOOKING_SLOTS_RESUME_HINT}. D'ici là, je reste joignable par
+              email pour toute question — je vous réponds avec plaisir.
             </p>
             <a href="/contact/" class="btn-primary mt-5">
               Contacter Oriane

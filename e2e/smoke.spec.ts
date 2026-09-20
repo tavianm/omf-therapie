@@ -59,6 +59,8 @@ test.describe('/rendez-vous — pause des réservations', () => {
 
     // Paused: closure card instead of the wizard.
     await expect(page.getByText(/congé maternité/i)).toBeVisible();
+    // Slots are promised from mid-January; the online reopen stays undated.
+    await expect(page.getByText(/à partir de mi-janvier 2027/)).toBeVisible();
     const cta = page.getByRole('link', { name: 'Contacter Oriane' });
     await expect(cta).toBeVisible();
     await expect(cta).toHaveAttribute('href', '/contact/');

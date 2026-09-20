@@ -45,10 +45,13 @@
 export const BOOKING_OPEN = false;
 
 /**
- * Reopen wording, deliberately under-promising the early-to-mid January
- * window (opening earlier than announced is fine; later is not).
+ * Resume wording (#184 update): the ONLINE-booking reopen date is
+ * deliberately not promised anywhere. Slots are announced from
+ * mid-January, under-promising on purpose (opening earlier than announced
+ * is fine; later is not); the reservation reopen stays undated until the
+ * therapist decides.
  */
-export const BOOKING_REOPEN_HINT = 'autour de mi-janvier 2027';
+export const BOOKING_SLOTS_RESUME_HINT = 'à partir de mi-janvier 2027';
 
 /**
  * 503 body sent by POST /api/appointments/ while paused. Composed from the
@@ -56,4 +59,4 @@ export const BOOKING_REOPEN_HINT = 'autour de mi-janvier 2027';
  * (/api/admin/appointments/) and the availability endpoint deliberately
  * ignore the pause (the workbench keeps booking manually).
  */
-export const BOOKING_PAUSED_MESSAGE = `Les nouvelles demandes de rendez-vous sont en pause (congé maternité) et reprendront ${BOOKING_REOPEN_HINT}. Oriane reste joignable via la page contact.`;
+export const BOOKING_PAUSED_MESSAGE = `Les nouvelles demandes de rendez-vous sont en pause (congé maternité). Les créneaux reprendront ${BOOKING_SLOTS_RESUME_HINT} ; la date de réouverture des réservations en ligne n'est pas encore fixée. Oriane reste joignable via la page contact.`;
