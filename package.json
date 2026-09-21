@@ -32,9 +32,9 @@
     "db:stop": "docker compose down"
   },
   "dependencies": {
-    "@astrojs/netlify": "^8.2.5",
+    "@astrojs/netlify": "^8.2.6",
     "@astrojs/partytown": "^2.1.7",
-    "@astrojs/react": "^6.0.5",
+    "@astrojs/react": "^6.0.6",
     "@astrojs/sitemap": "^3.7.4",
     "@emailjs/browser": "^4.4.1",
     "@netlify/blobs": "10.7.13",
@@ -45,8 +45,8 @@
     "@supabase/supabase-js": "^2.116.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/pg": "^8.23.1",
-    "astro": "^7.3.2",
-    "better-auth": "^1.7.4",
+    "astro": "^7.3.3",
+    "better-auth": "^1.7.5",
     "date-fns": "^4.1.0",
     "framer-motion": "^11.18.2",
     "googleapis": "^171.4.0",
@@ -56,8 +56,8 @@
     "pg": "^8.23.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-hot-toast": "^2.6.0",
-    "resend": "^6.28.0",
+    "react-hot-toast": "^2.6.1",
+    "resend": "^6.28.1",
     "stripe": "^22.6.2",
     "ws": "^8.21.3"
   },
